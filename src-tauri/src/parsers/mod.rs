@@ -39,6 +39,8 @@ pub struct DocumentChunk {
     pub start_offset: usize,
     pub end_offset: usize,
     pub page_number: Option<usize>,
+    /// 위치 힌트 (XLSX: "Sheet1!A1:D50", PDF: "페이지 3", 등)
+    pub location_hint: Option<String>,
 }
 
 /// 파일 확장자로 파서 선택 후 파싱
@@ -81,6 +83,7 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<Document
             start_offset: start,
             end_offset: end,
             page_number: None,
+            location_hint: None,
         });
 
         start += step;

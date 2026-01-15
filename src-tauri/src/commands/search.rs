@@ -13,8 +13,13 @@ pub struct SearchResult {
     pub file_name: String,
     pub chunk_index: i64,
     pub content_preview: String,
+    pub full_content: String,
     pub score: f64,
     pub highlight_ranges: Vec<(usize, usize)>,
+    pub page_number: Option<i64>,
+    pub start_offset: i64,
+    /// 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3", HWPX: "섹션 2" 등)
+    pub location_hint: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,19 +57,32 @@ pub async fn search_keyword(
     // FTS5 검색 실행
     let fts_results = fts::search(&conn, &query, 50).map_err(|e| e.to_string())?;
 
+    // chunk_id로 추가 정보 조회
+    let chunk_ids: Vec<i64> = fts_results.iter().map(|r| r.chunk_id).collect();
+    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids).map_err(|e| e.to_string())?;
+    let chunk_map: HashMap<i64, db::ChunkInfo> = chunks
+        .into_iter()
+        .map(|c| (c.chunk_id, c))
+        .collect();
+
     // 결과 변환
     let results: Vec<SearchResult> = fts_results
         .into_iter()
-        .map(|r| {
+        .filter_map(|r| {
+            let chunk_info = chunk_map.get(&r.chunk_id);
             let highlight_ranges = fts::find_highlight_ranges(&r.content, &query);
-            SearchResult {
+            Some(SearchResult {
                 file_path: r.file_path,
                 file_name: r.file_name,
                 chunk_index: r.chunk_index,
                 content_preview: truncate_preview(&r.content, 200),
+                full_content: r.content,
                 score: r.score,
                 highlight_ranges,
-            }
+                page_number: chunk_info.and_then(|c| c.page_number),
+                start_offset: chunk_info.map(|c| c.start_offset).unwrap_or(0),
+                location_hint: chunk_info.and_then(|c| c.location_hint.clone()),
+            })
         })
         .collect();
 
@@ -142,8 +160,12 @@ pub async fn search_semantic(
                 file_name: chunk.file_name.clone(),
                 chunk_index: chunk.chunk_index,
                 content_preview: truncate_preview(&chunk.content, 200),
+                full_content: chunk.content.clone(),
                 score: vr.score as f64,
                 highlight_ranges: vec![], // 시맨틱 검색은 하이라이트 없음
+                page_number: chunk.page_number,
+                start_offset: chunk.start_offset,
+                location_hint: chunk.location_hint.clone(),
             })
         })
         .collect();
@@ -235,8 +257,12 @@ pub async fn search_hybrid(
                     file_name: chunk.file_name.clone(),
                     chunk_index: chunk.chunk_index,
                     content_preview: truncate_preview(&chunk.content, 200),
+                    full_content: chunk.content.clone(),
                     score: hr.score as f64,
                     highlight_ranges,
+                    page_number: chunk.page_number,
+                    start_offset: chunk.start_offset,
+                    location_hint: chunk.location_hint.clone(),
                 }
             })
         })

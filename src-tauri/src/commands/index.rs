@@ -115,17 +115,43 @@ pub async fn remove_folder(
         }
     }
 
-    let db_path = {
+    let (db_path, vector_index) = {
         let state = state.lock().map_err(|e| e.to_string())?;
-        state.db_path.clone()
+        (state.db_path.clone(), state.get_vector_index().ok())
     };
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
-    // 2. 감시 폴더 삭제
-    db::remove_watched_folder(&conn, &path).map_err(|e| e.to_string())?;
+    // 2. 벡터 인덱스에서 해당 폴더의 청크 삭제
+    if let Some(vi) = vector_index.as_ref() {
+        let file_chunk_ids = db::get_file_and_chunk_ids_in_folder(&conn, &path)
+            .map_err(|e| e.to_string())?;
 
-    // TODO: 해당 폴더의 파일들도 인덱스에서 삭제 (벡터 포함)
+        let mut removed_vectors = 0;
+        for (_file_id, chunk_ids) in file_chunk_ids {
+            for chunk_id in chunk_ids {
+                if vi.remove(chunk_id).is_ok() {
+                    removed_vectors += 1;
+                }
+            }
+        }
+
+        tracing::info!("Removed {} vectors for folder: {}", removed_vectors, path);
+
+        // 벡터 인덱스 저장
+        if let Err(e) = vi.save() {
+            tracing::warn!("Failed to save vector index after removal: {}", e);
+        }
+    }
+
+    // 3. DB에서 파일들 삭제 (FTS + chunks + files)
+    let deleted_count = db::delete_files_in_folder(&conn, &path)
+        .map_err(|e| e.to_string())?;
+
+    tracing::info!("Deleted {} files from folder: {}", deleted_count, path);
+
+    // 4. 감시 폴더 삭제
+    db::remove_watched_folder(&conn, &path).map_err(|e| e.to_string())?;
 
     Ok(())
 }

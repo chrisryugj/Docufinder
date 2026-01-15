@@ -7,8 +7,13 @@ interface SearchResult {
   file_name: string;
   chunk_index: number;
   content_preview: string;
+  full_content: string;
   score: number;
   highlight_ranges: [number, number][];
+  page_number: number | null;
+  start_offset: number;
+  /** 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3", HWPX: "섹션 2" 등) */
+  location_hint: string | null;
 }
 
 // 하이라이트 적용된 텍스트 렌더링
@@ -90,6 +95,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   // 인덱스 상태 조회
   const fetchStatus = useCallback(async () => {
@@ -165,10 +171,10 @@ function App() {
     return () => clearTimeout(timer);
   }, [query, searchMode]);
 
-  // 파일 열기
-  const handleOpenFile = async (filePath: string) => {
+  // 파일 열기 (페이지 지정 가능)
+  const handleOpenFile = async (filePath: string, page?: number | null) => {
     try {
-      await invoke("plugin:shell|open", { path: filePath });
+      await invoke("open_file", { path: filePath, page: page ?? null });
     } catch (error) {
       console.error("Failed to open file:", error);
     }
@@ -261,47 +267,84 @@ function App() {
         <div className="max-w-4xl mx-auto">
           {results.length > 0 ? (
             <div className="space-y-3">
-              {results.map((result, index) => (
-                <div
-                  key={`${result.file_path}-${result.chunk_index}-${index}`}
-                  className="bg-gray-800 rounded-lg p-4 hover:bg-gray-750 cursor-pointer
-                             border border-gray-700 hover:border-gray-600 transition-colors"
-                  onClick={() => handleOpenFile(result.file_path)}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <svg
-                        className="w-5 h-5 text-blue-400 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+              {results.map((result, index) => {
+                const isExpanded = expandedIndex === index;
+                return (
+                  <div
+                    key={`${result.file_path}-${result.chunk_index}-${index}`}
+                    className="bg-gray-800 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors"
+                  >
+                    {/* 헤더 */}
+                    <div className="flex items-start justify-between mb-2">
+                      <div
+                        className="flex items-center gap-2 cursor-pointer hover:text-blue-400"
+                        onClick={() => handleOpenFile(result.file_path, result.page_number)}
+                        title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      <span className="font-medium text-white">
-                        {result.file_name}
-                      </span>
+                        <svg
+                          className="w-5 h-5 text-blue-400 flex-shrink-0"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                        <span className="font-medium text-white">
+                          {result.file_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        {result.location_hint ? (
+                          <span className="bg-green-600/30 text-green-300 px-2 py-0.5 rounded font-medium">
+                            {result.location_hint}
+                          </span>
+                        ) : result.page_number ? (
+                          <span className="bg-blue-600/30 text-blue-300 px-2 py-0.5 rounded font-medium">
+                            {result.page_number}페이지
+                          </span>
+                        ) : (
+                          <span className="bg-gray-700 text-gray-400 px-2 py-0.5 rounded">
+                            섹션 {result.chunk_index + 1}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-xs text-gray-500">
-                      청크 #{result.chunk_index + 1}
-                    </span>
+
+                    {/* 내용 */}
+                    <div
+                      className="cursor-pointer"
+                      onClick={() => setExpandedIndex(isExpanded ? null : index)}
+                    >
+                      <p className="text-gray-300 text-sm leading-relaxed">
+                        <HighlightedText
+                          text={isExpanded ? result.full_content : result.content_preview}
+                          ranges={result.highlight_ranges}
+                        />
+                      </p>
+                      {!isExpanded && result.full_content.length > result.content_preview.length && (
+                        <button className="text-blue-400 text-xs mt-1 hover:underline">
+                          더보기 ▼
+                        </button>
+                      )}
+                      {isExpanded && (
+                        <button className="text-blue-400 text-xs mt-1 hover:underline">
+                          접기 ▲
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 경로 */}
+                    <p className="text-gray-500 text-xs mt-2 truncate">
+                      {result.file_path}
+                    </p>
                   </div>
-                  <p className="text-gray-300 text-sm leading-relaxed">
-                    <HighlightedText
-                      text={result.content_preview}
-                      ranges={result.highlight_ranges}
-                    />
-                  </p>
-                  <p className="text-gray-500 text-xs mt-2 truncate">
-                    {result.file_path}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : query.trim() && !isLoading ? (
             <div className="text-center text-gray-500 py-12">

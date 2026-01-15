@@ -35,7 +35,8 @@ pub fn init_database(db_path: &Path) -> Result<()> {
             start_offset INTEGER,
             end_offset INTEGER,
             page_number INTEGER,
-            paragraph_number INTEGER
+            paragraph_number INTEGER,
+            location_hint TEXT
         )",
         [],
     )?;
@@ -161,6 +162,59 @@ pub fn get_file_count(conn: &Connection) -> Result<usize> {
     conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
 }
 
+/// 폴더 내 파일 ID와 청크 ID 조회 (벡터 삭제용)
+pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) -> Result<Vec<(i64, Vec<i64>)>> {
+    // 폴더 경로로 시작하는 모든 파일 조회
+    let folder_prefix = if folder_path.ends_with('/') || folder_path.ends_with('\\') {
+        folder_path.to_string()
+    } else {
+        format!("{}%", folder_path) // LIKE 패턴용
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT id FROM files WHERE path LIKE ? OR path LIKE ?"
+    )?;
+
+    // Windows/Unix 경로 모두 지원
+    let pattern_unix = format!("{}/%", folder_path.replace('\\', "/"));
+    let pattern_win = format!("{}\\%", folder_path.replace('/', "\\"));
+
+    let file_ids: Vec<i64> = stmt
+        .query_map(params![pattern_unix, pattern_win], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut results = Vec::new();
+    for file_id in file_ids {
+        let chunk_ids = get_chunk_ids_for_file(conn, file_id)?;
+        results.push((file_id, chunk_ids));
+    }
+
+    Ok(results)
+}
+
+/// 폴더 내 모든 파일 삭제 (FTS + 파일)
+pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<usize> {
+    // 폴더 경로로 시작하는 모든 파일의 청크 FTS 먼저 삭제
+    let pattern_unix = format!("{}/%", folder_path.replace('\\', "/"));
+    let pattern_win = format!("{}\\%", folder_path.replace('/', "\\"));
+
+    conn.execute(
+        "DELETE FROM chunks_fts WHERE rowid IN (
+            SELECT c.id FROM chunks c
+            JOIN files f ON c.file_id = f.id
+            WHERE f.path LIKE ? OR f.path LIKE ?
+        )",
+        params![pattern_unix, pattern_win],
+    )?;
+
+    // 파일 삭제 (chunks는 CASCADE로 삭제됨)
+    conn.execute(
+        "DELETE FROM files WHERE path LIKE ? OR path LIKE ?",
+        params![pattern_unix, pattern_win],
+    )
+}
+
 // ==================== 청크 ====================
 
 /// 파일의 기존 청크 삭제
@@ -186,17 +240,19 @@ pub fn insert_chunk(
     start_offset: usize,
     end_offset: usize,
     page_number: Option<usize>,
+    location_hint: Option<&str>,
 ) -> Result<i64> {
     // 청크 메타데이터 저장
     conn.execute(
-        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number)
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, location_hint)
+         VALUES (?, ?, ?, ?, ?, ?)",
         params![
             file_id,
             chunk_index as i64,
             start_offset as i64,
             end_offset as i64,
-            page_number.map(|p| p as i64)
+            page_number.map(|p| p as i64),
+            location_hint
         ],
     )?;
 
@@ -217,7 +273,7 @@ pub fn insert_chunk(
 pub fn get_chunk_by_id(conn: &Connection, chunk_id: i64) -> Result<Option<ChunkInfo>> {
     let mut stmt = conn.prepare(
         "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                f.path, f.name, fts.content
+                c.location_hint, f.path, f.name, fts.content
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
@@ -232,9 +288,10 @@ pub fn get_chunk_by_id(conn: &Connection, chunk_id: i64) -> Result<Option<ChunkI
             start_offset: row.get(3)?,
             end_offset: row.get(4)?,
             page_number: row.get(5)?,
-            file_path: row.get(6)?,
-            file_name: row.get(7)?,
-            content: row.get(8)?,
+            location_hint: row.get(6)?,
+            file_path: row.get(7)?,
+            file_name: row.get(8)?,
+            content: row.get(9)?,
         })
     });
 
@@ -254,7 +311,7 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                f.path, f.name, fts.content
+                c.location_hint, f.path, f.name, fts.content
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
@@ -273,9 +330,10 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
             start_offset: row.get(3)?,
             end_offset: row.get(4)?,
             page_number: row.get(5)?,
-            file_path: row.get(6)?,
-            file_name: row.get(7)?,
-            content: row.get(8)?,
+            location_hint: row.get(6)?,
+            file_path: row.get(7)?,
+            file_name: row.get(8)?,
+            content: row.get(9)?,
         })
     })?;
 
@@ -297,6 +355,7 @@ pub struct ChunkInfo {
     pub start_offset: i64,
     pub end_offset: i64,
     pub page_number: Option<i64>,
+    pub location_hint: Option<String>,
     pub file_path: String,
     pub file_name: String,
     pub content: String,

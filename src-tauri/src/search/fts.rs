@@ -57,23 +57,37 @@ fn sanitize_fts_query(query: &str) -> String {
     format!("\"{}\"", escaped)
 }
 
-/// 하이라이트 범위 계산
+/// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
 pub fn find_highlight_ranges(content: &str, query: &str) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
     let query_lower = query.to_lowercase();
     let content_lower = content.to_lowercase();
 
-    let mut start = 0;
-    while let Some(pos) = content_lower[start..].find(&query_lower) {
-        let abs_pos = start + pos;
-        ranges.push((abs_pos, abs_pos + query.len()));
-        start = abs_pos + 1;
+    // 문자 단위로 변환
+    let content_chars: Vec<char> = content_lower.chars().collect();
+    let query_chars: Vec<char> = query_lower.chars().collect();
+
+    if query_chars.is_empty() {
+        return ranges;
+    }
+
+    let query_len = query_chars.len();
+    let content_len = content_chars.len();
+
+    let mut i = 0;
+    while i + query_len <= content_len {
+        if content_chars[i..i + query_len] == query_chars[..] {
+            ranges.push((i, i + query_len));
+            i += query_len; // 다음 검색은 매칭 끝에서
+        } else {
+            i += 1;
+        }
     }
 
     ranges
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FtsResult {
     pub chunk_id: i64,
     pub file_path: String,

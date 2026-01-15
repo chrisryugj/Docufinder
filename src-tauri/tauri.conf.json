@@ -40,7 +40,7 @@
         "language": "ko-KR"
       }
     },
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "shell": {
@@ -49,7 +49,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlGQTIzNUZDMUE5MERDRTcKUldUbjNKQWEvRFdpbi9VU2RrVzUvY2JFZG1MTTc5SzlhN25iSW9sQlhkT2piYWkvUFIyR0QwSnQK",
       "endpoints": [
-        "https://github.com/OWNER/Docufinder/releases/latest/download/latest.json"
+        "https://github.com/chrisryugj/Docufinder/releases/latest/download/latest.json"
       ]
     }
   }

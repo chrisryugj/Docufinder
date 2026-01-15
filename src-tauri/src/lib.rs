@@ -9,7 +9,8 @@ use embedder::Embedder;
 use indexer::manager::{IndexContext, WatchManager};
 use search::vector::VectorIndex;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use once_cell::sync::OnceCell;
+use std::sync::{Arc, Mutex, RwLock};
 use tauri::Manager;
 
 /// 앱 전역 상태
@@ -21,11 +22,11 @@ pub struct AppState {
     /// 모델 디렉토리 경로
     pub models_dir: PathBuf,
     /// 임베더 (lazy load)
-    embedder: OnceLock<Arc<Embedder>>,
+    embedder: OnceCell<Arc<Embedder>>,
     /// 벡터 인덱스 (lazy load)
-    vector_index: OnceLock<Arc<VectorIndex>>,
+    vector_index: OnceCell<Arc<VectorIndex>>,
     /// 파일 감시 매니저 (lazy load)
-    watch_manager: OnceLock<RwLock<WatchManager>>,
+    watch_manager: OnceCell<RwLock<WatchManager>>,
 }
 
 impl AppState {
@@ -39,9 +40,9 @@ impl AppState {
             db_path,
             vector_index_path,
             models_dir,
-            embedder: OnceLock::new(),
-            vector_index: OnceLock::new(),
-            watch_manager: OnceLock::new(),
+            embedder: OnceCell::new(),
+            vector_index: OnceCell::new(),
+            watch_manager: OnceCell::new(),
         }
     }
 
@@ -164,6 +165,12 @@ pub fn run() {
             // Store app state
             app.manage(Mutex::new(state));
 
+            // 개발 모드에서 DevTools 열기
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -189,6 +196,7 @@ pub fn run() {
             commands::index::get_index_status,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::file::open_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

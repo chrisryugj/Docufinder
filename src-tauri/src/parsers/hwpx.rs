@@ -1,6 +1,7 @@
-use super::{chunk_text, DocumentMetadata, ParseError, ParsedDocument};
+use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
@@ -15,8 +16,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let mut archive =
         ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
-    let mut all_text = String::new();
-    let mut section_count = 0;
+    // section 파일 정렬을 위해 BTreeMap 사용
+    let mut sections: BTreeMap<usize, String> = BTreeMap::new();
 
     // Contents 폴더 내 section*.xml 파일들 파싱
     for i in 0..archive.len() {
@@ -26,28 +27,50 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
         let name = file.name().to_string();
 
-        // section XML 파일만 처리
+        // section XML 파일만 처리 (section0.xml, section1.xml, ...)
         if name.starts_with("Contents/section") && name.ends_with(".xml") {
+            // section 번호 추출
+            let section_num = name
+                .trim_start_matches("Contents/section")
+                .trim_end_matches(".xml")
+                .parse::<usize>()
+                .unwrap_or(0);
+
             let mut contents = String::new();
             std::io::Read::read_to_string(&mut file, &mut contents)?;
 
             let section_text = extract_text_from_hwpx_section(&contents)?;
             if !section_text.is_empty() {
-                if !all_text.is_empty() {
-                    all_text.push_str("\n\n");
-                }
-                all_text.push_str(&section_text);
-                section_count += 1;
+                sections.insert(section_num, section_text);
             }
         }
+    }
+
+    let mut all_text = String::new();
+    let mut chunks = Vec::new();
+    let mut global_offset = 0;
+    let section_count = sections.len();
+
+    // 섹션 순서대로 처리 (0, 1, 2, ...)
+    for (section_num, section_text) in sections {
+        let page_number = section_num + 1; // 1-based 페이지 번호
+
+        // 섹션별 청크 생성
+        let section_chunks =
+            chunk_text_with_page(&section_text, 512, 64, page_number, global_offset);
+        chunks.extend(section_chunks);
+
+        if !all_text.is_empty() {
+            all_text.push_str("\n\n");
+            global_offset += 2;
+        }
+        global_offset += section_text.len();
+        all_text.push_str(&section_text);
     }
 
     if all_text.is_empty() {
         tracing::warn!("HWPX file has no text content: {:?}", path);
     }
-
-    // 청크 분할
-    let chunks = chunk_text(&all_text, 512, 64);
 
     Ok(ParsedDocument {
         content: all_text,
@@ -59,6 +82,46 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         },
         chunks,
     })
+}
+
+/// 페이지 정보 포함 청크 분할
+fn chunk_text_with_page(
+    text: &str,
+    chunk_size: usize,
+    overlap: usize,
+    page_number: usize,
+    base_offset: usize,
+) -> Vec<DocumentChunk> {
+    let mut chunks = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let total_len = chars.len();
+
+    if total_len == 0 {
+        return chunks;
+    }
+
+    let step = chunk_size.saturating_sub(overlap).max(1);
+    let mut start = 0;
+
+    while start < total_len {
+        let end = (start + chunk_size).min(total_len);
+        let chunk_content: String = chars[start..end].iter().collect();
+
+        chunks.push(DocumentChunk {
+            content: chunk_content,
+            start_offset: base_offset + start,
+            end_offset: base_offset + end,
+            page_number: Some(page_number),
+            location_hint: Some(format!("섹션 {}", page_number)),
+        });
+
+        start += step;
+        if end >= total_len {
+            break;
+        }
+    }
+
+    chunks
 }
 
 /// HWPX section XML에서 텍스트 추출

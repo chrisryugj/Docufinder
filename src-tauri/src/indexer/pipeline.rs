@@ -81,6 +81,7 @@ pub fn index_file(
             chunk.start_offset,
             chunk.end_offset,
             chunk.page_number,
+            chunk.location_hint.as_deref(),
         )
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
