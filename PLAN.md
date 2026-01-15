@@ -48,29 +48,30 @@
 
 ## 🚀 개발 단계
 
-### Phase 1: 기반 구축 (MVP) ✅ 셋업 완료
+### Phase 1: 기반 구축 (MVP) ✅ 완료
 - [x] Tauri 프로젝트 셋업
-- [ ] 기본 UI (검색창, 결과목록)
-- [ ] TXT 파일 파싱 + FTS5 검색
-- [ ] 폴더 선택 및 기본 인덱싱
+- [x] 기본 UI (검색창, 결과목록)
+- [x] TXT 파일 파싱 + FTS5 검색
+- [x] 폴더 선택 및 기본 인덱싱
 
-### Phase 2: 파일 파서 확장
-- [ ] HWPX 파서 (Auto_maeri 포팅)
-- [ ] DOCX 파서
-- [ ] XLSX 파서
-- [ ] PDF 파서
+### Phase 2: 파일 파서 확장 ✅ 완료
+- [x] HWPX 파서 (zip + quick-xml)
+- [x] DOCX 파서 (zip + quick-xml)
+- [x] XLSX 파서 (calamine)
+- [x] PDF 파서 (pdf-extract)
 
-### Phase 3: 시맨틱 검색
-- [ ] ONNX 런타임 통합
-- [ ] e5-small 임베딩 모델
-- [ ] 벡터 인덱스 (usearch)
-- [ ] 하이브리드 검색 (RRF)
+### Phase 3: 시맨틱 검색 ✅ 완료
+- [x] ONNX 런타임 통합 (ort 2.0.0-rc.11)
+- [x] e5-small 임베딩 모델 (multilingual-e5-small, 384차원)
+- [x] 벡터 인덱스 (usearch 2.23)
+- [x] 하이브리드 검색 (RRF)
 
-### Phase 4: 고급 기능
-- [ ] 파일 변경 감지 (실시간)
-- [ ] 증분 인덱싱
-- [ ] 문맥 미리보기 + 하이라이트
-- [ ] 파일 열기 (기본 앱 연동)
+### Phase 4: 고급 기능 ✅ 완료
+- [x] 파일 변경 감지 (notify + WatchManager)
+- [x] 증분 인덱싱 (백그라운드 자동 처리)
+- [x] 문맥 미리보기 + 하이라이트
+- [x] 파일 열기 (기본 앱 연동)
+- [x] 검색 모드 선택 UI (keyword/semantic/hybrid)
 
 ### Phase 5: 배포
 - [ ] MSI 설치파일 생성

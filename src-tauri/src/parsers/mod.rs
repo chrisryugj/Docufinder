@@ -53,8 +53,42 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
         "txt" | "md" => txt::parse(path),
         "hwpx" => hwpx::parse(path),
         "docx" => docx::parse(path),
-        "xlsx" => xlsx::parse(path),
+        "xlsx" | "xls" => xlsx::parse(path),
         "pdf" => pdf::parse(path),
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }
+}
+
+/// 텍스트를 청크로 분할 (공통 유틸)
+pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<DocumentChunk> {
+    let mut chunks = Vec::new();
+    let chars: Vec<char> = text.chars().collect();
+    let total_len = chars.len();
+
+    if total_len == 0 {
+        return chunks;
+    }
+
+    let step = chunk_size.saturating_sub(overlap).max(1);
+    let mut start = 0;
+
+    while start < total_len {
+        let end = (start + chunk_size).min(total_len);
+        let chunk_content: String = chars[start..end].iter().collect();
+
+        chunks.push(DocumentChunk {
+            content: chunk_content,
+            start_offset: start,
+            end_offset: end,
+            page_number: None,
+        });
+
+        start += step;
+
+        if end >= total_len {
+            break;
+        }
+    }
+
+    chunks
 }

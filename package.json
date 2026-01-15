@@ -11,7 +11,12 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
-  "keywords": ["document", "search", "hwpx", "tauri"],
+  "keywords": [
+    "document",
+    "search",
+    "hwpx",
+    "tauri"
+  ],
   "author": "Chris",
   "license": "MIT",
   "packageManager": "pnpm@10.20.0",
@@ -27,6 +32,10 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1",
+    "@tauri-apps/plugin-dialog": "^2.5.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-shell": "^2.3.4",
+    "@tauri-apps/plugin-updater": "^2.9.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   }
