@@ -358,6 +358,17 @@ pub fn get_chunk_ids_for_file(conn: &Connection, file_id: i64) -> Result<Vec<i64
     rows.collect()
 }
 
+/// 파일 경로로 chunk ID들 조회 (벡터 인덱스 삭제용)
+pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id FROM chunks c
+         JOIN files f ON c.file_id = f.id
+         WHERE f.path = ?"
+    )?;
+    let rows = stmt.query_map(params![path], |row| row.get(0))?;
+    rows.collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct ChunkInfo {
     pub chunk_id: i64,

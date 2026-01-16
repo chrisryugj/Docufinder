@@ -1,4 +1,5 @@
 mod commands;
+mod constants;
 mod db;
 mod embedder;
 mod indexer;
@@ -12,6 +13,8 @@ use std::path::PathBuf;
 use once_cell::sync::OnceCell;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::Manager;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 /// 앱 전역 상태
 pub struct AppState {
@@ -104,6 +107,57 @@ impl AppState {
     }
 }
 
+/// 로깅 초기화 (파일 + 콘솔)
+fn init_logging(app_data_dir: Option<&PathBuf>) {
+    // 기본 필터: 릴리즈에서는 info, 디버그에서는 debug
+    let default_filter = if cfg!(debug_assertions) {
+        "docufinder=debug,tauri=info"
+    } else {
+        "docufinder=info,tauri=warn"
+    };
+
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default_filter));
+
+    // 콘솔 출력 레이어
+    let stdout_layer = fmt::layer()
+        .with_target(true)
+        .with_level(true)
+        .with_thread_ids(false);
+
+    // 파일 로깅 (app_data_dir이 있는 경우에만)
+    if let Some(data_dir) = app_data_dir {
+        let logs_dir = data_dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
+
+        let file_appender = RollingFileAppender::new(
+            Rotation::DAILY,
+            &logs_dir,
+            "docufinder.log",
+        );
+
+        let file_layer = fmt::layer()
+            .with_ansi(false)
+            .with_target(true)
+            .with_level(true)
+            .with_writer(file_appender);
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(stdout_layer)
+            .with(file_layer)
+            .init();
+
+        tracing::info!("Logging initialized. Log dir: {:?}", logs_dir);
+    } else {
+        // 콘솔만
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(stdout_layer)
+            .init();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -117,8 +171,12 @@ pub fn run() {
             let app_data_dir = app
                 .path()
                 .app_data_dir()
-                .expect("Failed to get app data dir");
-            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data dir");
+                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+            std::fs::create_dir_all(&app_data_dir)
+                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+
+            // 로깅 초기화 (콘솔 + 파일)
+            init_logging(Some(&app_data_dir));
 
             // Create models directory
             let models_dir = app_data_dir.join("models");
@@ -126,7 +184,8 @@ pub fn run() {
 
             // Initialize database
             let state = AppState::new(&app_data_dir);
-            db::init_database(&state.db_path).expect("Failed to initialize database");
+            db::init_database(&state.db_path)
+                .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
             tracing::info!("DocuFinder initialized. DB: {:?}", state.db_path);
 
