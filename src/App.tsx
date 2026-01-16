@@ -96,6 +96,7 @@ function App() {
   const [isIndexing, setIsIndexing] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // 인덱스 상태 조회
   const fetchStatus = useCallback(async () => {
@@ -122,6 +123,7 @@ function App() {
 
       if (selected) {
         setIsIndexing(true);
+        setError(null);
         const result = await invoke<AddFolderResult>("add_folder", {
           path: selected,
         });
@@ -129,8 +131,10 @@ function App() {
         await fetchStatus();
         setIsIndexing(false);
       }
-    } catch (error) {
-      console.error("Failed to add folder:", error);
+    } catch (err) {
+      console.error("Failed to add folder:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`폴더 추가 실패: ${message}`);
       setIsIndexing(false);
     }
   };
@@ -144,6 +148,7 @@ function App() {
     }
 
     setIsLoading(true);
+    setError(null);
     try {
       const commandMap: Record<SearchMode, string> = {
         keyword: "search_keyword",
@@ -155,9 +160,12 @@ function App() {
       });
       setResults(response.results);
       setSearchTime(response.search_time_ms);
-    } catch (error) {
-      console.error("Search failed:", error);
+    } catch (err) {
+      console.error("Search failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`검색 실패: ${message}`);
       setResults([]);
+      setSearchTime(null);
     }
     setIsLoading(false);
   };
@@ -259,6 +267,18 @@ function App() {
               </span>
             )}
           </div>
+          {/* 에러 메시지 */}
+          {error && (
+            <div className="mt-3 p-3 bg-red-900/30 border border-red-600/50 rounded-lg flex items-center justify-between">
+              <span className="text-red-300 text-sm">{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-300 ml-2"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

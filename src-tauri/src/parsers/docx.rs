@@ -1,4 +1,4 @@
-use super::{chunk_text, DocumentMetadata, ParseError, ParsedDocument};
+use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::fs::File;
@@ -9,6 +9,7 @@ use zip::ZipArchive;
 /// DOCX 파일 파싱
 /// DOCX는 OOXML 기반 ZIP 포맷
 /// 구조: word/document.xml
+/// 페이지 break (<w:br w:type="page"/>) 감지 지원
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -23,35 +24,48 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let mut contents = String::new();
     std::io::Read::read_to_string(&mut document_xml, &mut contents)?;
 
-    let text = extract_text_from_docx(&contents)?;
+    let (pages, total_text) = extract_text_with_pages(&contents)?;
 
-    if text.is_empty() {
+    if total_text.is_empty() {
         tracing::warn!("DOCX file has no text content: {:?}", path);
     }
 
-    // 청크 분할
-    let chunks = chunk_text(&text, 512, 64);
+    // 페이지별 청크 생성
+    let chunks = chunk_pages(&pages, 512, 64);
+    let page_count = pages.len();
 
     Ok(ParsedDocument {
-        content: text,
+        content: total_text,
         metadata: DocumentMetadata {
             title: path.file_stem().and_then(|s| s.to_str()).map(String::from),
             author: None,
             created_at: None,
-            page_count: None,
+            page_count: if page_count > 1 { Some(page_count) } else { None },
         },
         chunks,
     })
 }
 
-/// DOCX document.xml에서 텍스트 추출
-fn extract_text_from_docx(xml_content: &str) -> Result<String, ParseError> {
+/// 페이지별 텍스트 정보
+struct PageText {
+    page_number: usize,
+    text: String,
+    start_offset: usize,
+}
+
+/// DOCX document.xml에서 페이지별 텍스트 추출
+/// <w:br w:type="page"/> 태그로 페이지 구분
+fn extract_text_with_pages(xml_content: &str) -> Result<(Vec<PageText>, String), ParseError> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
 
-    let mut text_parts: Vec<String> = Vec::new();
+    let mut pages: Vec<PageText> = Vec::new();
+    let mut current_page_text = String::new();
+    let mut current_page = 1;
     let mut current_paragraph = String::new();
     let mut in_text = false;
+    let mut total_offset = 0;
+    let mut page_start_offset = 0;
 
     loop {
         match reader.read_event() {
@@ -62,6 +76,46 @@ fn extract_text_from_docx(xml_content: &str) -> Result<String, ParseError> {
                 // w:t 태그 = 텍스트 내용
                 if name == "t" {
                     in_text = true;
+                }
+            }
+            Ok(Event::Empty(e)) => {
+                let local_name = e.local_name();
+                let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+
+                // <w:br w:type="page"/> 페이지 브레이크 감지
+                if name == "br" {
+                    let is_page_break = e.attributes().any(|attr| {
+                        if let Ok(attr) = attr {
+                            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                            let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                            (key == "type" || key == "w:type") && val == "page"
+                        } else {
+                            false
+                        }
+                    });
+
+                    if is_page_break {
+                        // 현재 문단 추가 후 페이지 저장
+                        if !current_paragraph.is_empty() {
+                            if !current_page_text.is_empty() {
+                                current_page_text.push('\n');
+                            }
+                            current_page_text.push_str(&current_paragraph);
+                            total_offset += current_paragraph.chars().count() + 1;
+                            current_paragraph.clear();
+                        }
+
+                        if !current_page_text.is_empty() {
+                            pages.push(PageText {
+                                page_number: current_page,
+                                text: current_page_text.clone(),
+                                start_offset: page_start_offset,
+                            });
+                        }
+                        current_page += 1;
+                        current_page_text.clear();
+                        page_start_offset = total_offset;
+                    }
                 }
             }
             Ok(Event::Text(e)) => {
@@ -81,7 +135,12 @@ fn extract_text_from_docx(xml_content: &str) -> Result<String, ParseError> {
                 }
                 // w:p 태그 종료 = 문단 끝
                 if name == "p" && !current_paragraph.is_empty() {
-                    text_parts.push(current_paragraph.clone());
+                    if !current_page_text.is_empty() {
+                        current_page_text.push('\n');
+                        total_offset += 1;
+                    }
+                    current_page_text.push_str(&current_paragraph);
+                    total_offset += current_paragraph.chars().count();
                     current_paragraph.clear();
                 }
             }
@@ -94,10 +153,61 @@ fn extract_text_from_docx(xml_content: &str) -> Result<String, ParseError> {
         }
     }
 
-    // 마지막 문단 처리
+    // 마지막 문단/페이지 처리
     if !current_paragraph.is_empty() {
-        text_parts.push(current_paragraph);
+        if !current_page_text.is_empty() {
+            current_page_text.push('\n');
+        }
+        current_page_text.push_str(&current_paragraph);
+    }
+    if !current_page_text.is_empty() {
+        pages.push(PageText {
+            page_number: current_page,
+            text: current_page_text,
+            start_offset: page_start_offset,
+        });
     }
 
-    Ok(text_parts.join("\n"))
+    // 전체 텍스트 생성
+    let total_text = pages.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("\n");
+
+    Ok((pages, total_text))
+}
+
+/// 페이지별로 청크 분할 (페이지 번호 유지)
+fn chunk_pages(pages: &[PageText], chunk_size: usize, overlap: usize) -> Vec<DocumentChunk> {
+    let mut chunks = Vec::new();
+
+    for page in pages {
+        let chars: Vec<char> = page.text.chars().collect();
+        let total_len = chars.len();
+
+        if total_len == 0 {
+            continue;
+        }
+
+        let step = chunk_size.saturating_sub(overlap).max(1);
+        let mut start = 0;
+
+        while start < total_len {
+            let end = (start + chunk_size).min(total_len);
+            let chunk_content: String = chars[start..end].iter().collect();
+
+            chunks.push(DocumentChunk {
+                content: chunk_content,
+                start_offset: page.start_offset + start,
+                end_offset: page.start_offset + end,
+                page_number: Some(page.page_number),
+                location_hint: Some(format!("페이지 {}", page.page_number)),
+            });
+
+            start += step;
+
+            if end >= total_len {
+                break;
+            }
+        }
+    }
+
+    chunks
 }

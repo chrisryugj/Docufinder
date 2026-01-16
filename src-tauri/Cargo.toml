@@ -48,6 +48,9 @@ thiserror = "2"
 tracing = "0.1"
 once_cell = "1"
 
+# Parallel processing
+rayon = "1.10"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
