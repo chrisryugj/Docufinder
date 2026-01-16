@@ -62,6 +62,7 @@ fn extract_text_with_location(
     let mut row_infos: Vec<(usize, String)> = Vec::new(); // (1-based row, text)
 
     let (start_row, _) = range.start().unwrap_or((0, 0));
+    let start_row = start_row as usize;
 
     for (row_idx, row) in range.rows().enumerate() {
         let actual_row = start_row + row_idx + 1; // 1-based Excel row

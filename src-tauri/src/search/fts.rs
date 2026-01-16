@@ -1,6 +1,7 @@
 use rusqlite::{Connection, params};
 
 /// FTS5 키워드 검색 (파일 정보 포함)
+/// snippet()으로 매칭 컨텍스트 자동 추출
 pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (특수문자 이스케이프)
     let safe_query = sanitize_fts_query(query);
@@ -9,6 +10,8 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
         return Ok(vec![]);
     }
 
+    // snippet(테이블, 컬럼인덱스, 시작마커, 끝마커, 생략기호, 토큰수)
+    // page_number, location_hint 직접 포함 (N+1 쿼리 제거)
     let mut stmt = conn.prepare(
         "SELECT
             c.id,
@@ -18,7 +21,10 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             fts.content,
             bm25(chunks_fts) as score,
             c.start_offset,
-            c.end_offset
+            c.end_offset,
+            c.page_number,
+            c.location_hint,
+            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet
          FROM chunks_fts fts
          JOIN chunks c ON c.id = fts.rowid
          JOIN files f ON f.id = c.file_id
@@ -37,6 +43,9 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             score: row.get(5)?,
             start_offset: row.get(6)?,
             end_offset: row.get(7)?,
+            page_number: row.get(8)?,
+            location_hint: row.get(9)?,
+            snippet: row.get(10)?,
         })
     })?;
 
@@ -97,4 +106,11 @@ pub struct FtsResult {
     pub score: f64,
     pub start_offset: i64,
     pub end_offset: i64,
+    /// 페이지 번호 (DOCX/PDF/HWPX)
+    pub page_number: Option<i64>,
+    /// 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3" 등)
+    pub location_hint: Option<String>,
+    /// FTS5 snippet() - 매칭 컨텍스트 (하이라이트 마커 포함)
+    /// [[HL]]매칭[[/HL]] 형식
+    pub snippet: String,
 }

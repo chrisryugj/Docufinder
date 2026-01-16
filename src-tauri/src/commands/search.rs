@@ -20,6 +20,9 @@ pub struct SearchResult {
     pub start_offset: i64,
     /// 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3", HWPX: "섹션 2" 등)
     pub location_hint: Option<String>,
+    /// FTS5 snippet - 매칭 컨텍스트 (하이라이트 마커 포함)
+    /// [[HL]]매칭[[/HL]] 형식
+    pub snippet: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,35 +57,28 @@ pub async fn search_keyword(
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
-    // FTS5 검색 실행
+    // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
     let fts_results = fts::search(&conn, &query, 50).map_err(|e| e.to_string())?;
 
-    // chunk_id로 추가 정보 조회
-    let chunk_ids: Vec<i64> = fts_results.iter().map(|r| r.chunk_id).collect();
-    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids).map_err(|e| e.to_string())?;
-    let chunk_map: HashMap<i64, db::ChunkInfo> = chunks
-        .into_iter()
-        .map(|c| (c.chunk_id, c))
-        .collect();
-
-    // 결과 변환
+    // 결과 변환 (snippet 활용, 추가 DB 조회 불필요)
     let results: Vec<SearchResult> = fts_results
         .into_iter()
-        .filter_map(|r| {
-            let chunk_info = chunk_map.get(&r.chunk_id);
-            let highlight_ranges = fts::find_highlight_ranges(&r.content, &query);
-            Some(SearchResult {
+        .map(|r| {
+            // snippet에서 하이라이트 범위 추출 (더 정확함)
+            let highlight_ranges = parse_snippet_highlights(&r.snippet);
+            SearchResult {
                 file_path: r.file_path,
                 file_name: r.file_name,
                 chunk_index: r.chunk_index,
-                content_preview: truncate_preview(&r.content, 200),
+                content_preview: strip_highlight_markers(&r.snippet),
                 full_content: r.content,
                 score: r.score,
                 highlight_ranges,
-                page_number: chunk_info.and_then(|c| c.page_number),
-                start_offset: chunk_info.map(|c| c.start_offset).unwrap_or(0),
-                location_hint: chunk_info.and_then(|c| c.location_hint.clone()),
-            })
+                page_number: r.page_number,
+                start_offset: r.start_offset,
+                location_hint: r.location_hint,
+                snippet: Some(r.snippet),
+            }
         })
         .collect();
 
@@ -166,6 +162,7 @@ pub async fn search_semantic(
                 page_number: chunk.page_number,
                 start_offset: chunk.start_offset,
                 location_hint: chunk.location_hint.clone(),
+                snippet: None, // 시맨틱 검색은 snippet 없음
             })
         })
         .collect();
@@ -246,23 +243,34 @@ pub async fn search_hybrid(
         .map(|c| (c.chunk_id, c))
         .collect();
 
+    // FTS 결과에서 snippet 맵 생성
+    let fts_snippet_map: HashMap<i64, String> = fts_results
+        .iter()
+        .map(|r| (r.chunk_id, r.snippet.clone()))
+        .collect();
+
     // 결과 변환 (RRF 순서 유지)
     let results: Vec<SearchResult> = hybrid_results
         .into_iter()
         .filter_map(|hr| {
             chunk_map.get(&hr.chunk_id).map(|chunk| {
-                let highlight_ranges = fts::find_highlight_ranges(&chunk.content, &query);
+                let snippet = fts_snippet_map.get(&hr.chunk_id).cloned();
+                let (content_preview, highlight_ranges) = match &snippet {
+                    Some(s) => (strip_highlight_markers(s), parse_snippet_highlights(s)),
+                    None => (truncate_preview(&chunk.content, 200), vec![]),
+                };
                 SearchResult {
                     file_path: chunk.file_path.clone(),
                     file_name: chunk.file_name.clone(),
                     chunk_index: chunk.chunk_index,
-                    content_preview: truncate_preview(&chunk.content, 200),
+                    content_preview,
                     full_content: chunk.content.clone(),
                     score: hr.score as f64,
                     highlight_ranges,
                     page_number: chunk.page_number,
                     start_offset: chunk.start_offset,
                     location_hint: chunk.location_hint.clone(),
+                    snippet,
                 }
             })
         })
@@ -294,4 +302,51 @@ fn truncate_preview(content: &str, max_len: usize) -> String {
         let truncated: String = content.chars().take(max_len).collect();
         format!("{}...", truncated)
     }
+}
+
+/// snippet에서 하이라이트 마커 제거
+/// [[HL]]매칭[[/HL]] → 매칭
+fn strip_highlight_markers(snippet: &str) -> String {
+    snippet
+        .replace("[[HL]]", "")
+        .replace("[[/HL]]", "")
+}
+
+/// snippet에서 하이라이트 범위(문자 인덱스) 추출
+/// [[HL]]매칭[[/HL]] 형식에서 (시작, 끝) 튜플 반환
+fn parse_snippet_highlights(snippet: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut clean_pos = 0; // 마커 제거 후 위치
+    let mut i = 0;
+    let chars: Vec<char> = snippet.chars().collect();
+    let len = chars.len();
+
+    while i < len {
+        // [[HL]] 마커 탐지
+        if i + 6 <= len && &snippet[char_offset(&chars, i)..char_offset(&chars, i + 6)] == "[[HL]]" {
+            let start = clean_pos;
+            i += 6; // [[HL]] 건너뛰기
+
+            // [[/HL]] 찾기
+            while i < len {
+                if i + 7 <= len && &snippet[char_offset(&chars, i)..char_offset(&chars, i + 7)] == "[[/HL]]" {
+                    ranges.push((start, clean_pos));
+                    i += 7; // [[/HL]] 건너뛰기
+                    break;
+                }
+                clean_pos += 1;
+                i += 1;
+            }
+        } else {
+            clean_pos += 1;
+            i += 1;
+        }
+    }
+
+    ranges
+}
+
+/// 문자 인덱스를 바이트 오프셋으로 변환
+fn char_offset(chars: &[char], char_idx: usize) -> usize {
+    chars.iter().take(char_idx).map(|c| c.len_utf8()).sum()
 }

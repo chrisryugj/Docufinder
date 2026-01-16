@@ -2,14 +2,25 @@ use rusqlite::{Connection, Result, params};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// DB 연결 생성
+/// DB 연결 생성 (WAL 모드 + 동시성 최적화)
 pub fn get_connection(db_path: &Path) -> Result<Connection> {
-    Connection::open(db_path)
+    let conn = Connection::open(db_path)?;
+
+    // WAL 모드: 읽기/쓰기 동시 허용, 인덱싱 중 검색 가능
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+
+    // busy_timeout: 잠금 충돌 시 5초 대기 (race condition 방지)
+    conn.pragma_update(None, "busy_timeout", 5000)?;
+
+    // synchronous=NORMAL: WAL에서 성능/안정성 균형
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+
+    Ok(conn)
 }
 
 /// 데이터베이스 초기화
 pub fn init_database(db_path: &Path) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = get_connection(db_path)?;
 
     // 파일 메타데이터 테이블
     conn.execute(
