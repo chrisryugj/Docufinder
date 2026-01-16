@@ -1,5 +1,206 @@
 @import "tailwindcss";
 
+/* ============================================
+   DocuFinder Design System
+   ============================================ */
+
+:root {
+  /* 색상 팔레트 */
+  --color-bg-primary: #111827;
+  --color-bg-secondary: #1f2937;
+  --color-bg-tertiary: #374151;
+  --color-bg-hover: #4b5563;
+
+  --color-text-primary: #f9fafb;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #9ca3af;
+
+  --color-border: #374151;
+  --color-border-hover: #4b5563;
+
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-light: rgba(59, 130, 246, 0.2);
+
+  /* 파일타입별 색상 */
+  --color-file-hwpx: #34d399;
+  --color-file-docx: #60a5fa;
+  --color-file-xlsx: #4ade80;
+  --color-file-pdf: #f87171;
+  --color-file-txt: #9ca3af;
+
+  /* 상태 색상 */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* 타이포그래피 */
+  --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+
+  /* 간격 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* 라운딩 */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* 트랜지션 */
+  --transition-fast: 150ms ease-out;
+  --transition-normal: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
+
+  /* 사이드바 */
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 0px;
+}
+
+/* 기본 스타일 */
+html, body, #root {
+  font-family: var(--font-family);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   애니메이션
+   ============================================ */
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-enter {
+  animation: modalEnter 0.2s ease-out;
+}
+
+/* 검색 결과 스태거 애니메이션 */
+.search-result-item {
+  animation: fadeSlideIn var(--transition-normal) forwards;
+  animation-delay: calc(var(--item-index, 0) * 30ms);
+  opacity: 0;
+}
+
+/* 사이드바 트랜지션 */
+.sidebar {
+  transition: width var(--transition-normal), transform var(--transition-normal);
+}
+
+/* 호버 효과 */
+.result-card {
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.result-card:hover {
+  transform: translateX(4px);
+  border-color: var(--color-accent);
+  background-color: var(--color-bg-secondary);
+}
+
+.result-card.selected {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-light);
+}
+
+/* ============================================
+   포커스 스타일 (접근성)
+   ============================================ */
+
+/* 키보드 포커스만 표시 */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* 버튼 포커스 */
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px var(--color-accent-light);
+}
+
+/* 입력 필드 포커스 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-light);
+}
+
+/* ============================================
+   유틸리티 클래스
+   ============================================ */
+
+/* 파일 타입 색상 */
+.file-type-hwpx { color: var(--color-file-hwpx); }
+.file-type-docx { color: var(--color-file-docx); }
+.file-type-xlsx { color: var(--color-file-xlsx); }
+.file-type-pdf { color: var(--color-file-pdf); }
+.file-type-txt { color: var(--color-file-txt); }
+
+/* 파일 타입 뱃지 배경 */
+.file-badge-hwpx { background-color: rgba(52, 211, 153, 0.15); color: var(--color-file-hwpx); }
+.file-badge-docx { background-color: rgba(96, 165, 250, 0.15); color: var(--color-file-docx); }
+.file-badge-xlsx { background-color: rgba(74, 222, 128, 0.15); color: var(--color-file-xlsx); }
+.file-badge-pdf { background-color: rgba(248, 113, 113, 0.15); color: var(--color-file-pdf); }
+.file-badge-txt { background-color: rgba(156, 163, 175, 0.15); color: var(--color-file-txt); }
+
+/* 스크롤바 숨기기 (필요시) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
   width: 8px;

@@ -2,6 +2,7 @@
 //!
 //! FileWatcher 이벤트를 받아서 증분 인덱싱 수행
 
+use crate::constants::SUPPORTED_EXTENSIONS;
 use crate::db;
 use crate::embedder::Embedder;
 use crate::indexer::pipeline;
@@ -115,8 +116,6 @@ impl WatchManager {
 
     /// 이벤트에서 처리할 파일 수집
     fn collect_files_from_event(event: &Event, pending: &mut HashSet<PathBuf>) {
-        // 지원 확장자
-        let supported = ["txt", "md", "hwpx", "docx", "xlsx", "xls", "pdf"];
 
         for path in &event.paths {
             // 파일만 처리 (디렉토리 제외)
@@ -131,7 +130,7 @@ impl WatchManager {
                 .unwrap_or("")
                 .to_lowercase();
 
-            if !supported.contains(&ext.as_str()) {
+            if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
                 continue;
             }
 
@@ -152,8 +151,9 @@ impl WatchManager {
                 }
                 EventKind::Remove(_) => {
                     tracing::debug!("File removed: {:?}", path);
-                    // 삭제는 별도 처리 (TODO)
-                    pending.remove(path);
+                    // 삭제된 파일도 pending에 추가하여 process_pending_files에서 처리
+                    // (path.exists() == false이면 DB에서 삭제됨)
+                    pending.insert(path.clone());
                 }
                 _ => {}
             }
@@ -178,10 +178,25 @@ impl WatchManager {
 
         for path in pending.drain() {
             if !path.exists() {
-                // 파일이 삭제된 경우 - DB에서도 삭제
+                // 파일이 삭제된 경우 - 벡터 인덱스와 DB에서 삭제
                 let path_str = path.to_string_lossy().to_string();
+
+                // 1. 벡터 인덱스에서 삭제 (DB 삭제 전에 chunk_ids 조회 필요)
+                if let Some(vi) = &ctx.vector_index {
+                    if let Ok(chunk_ids) = db::get_chunk_ids_for_path(&conn, &path_str) {
+                        for chunk_id in chunk_ids {
+                            if let Err(e) = vi.remove(chunk_id) {
+                                tracing::debug!("Failed to remove vector {}: {}", chunk_id, e);
+                            }
+                        }
+                    }
+                }
+
+                // 2. DB에서 삭제
                 if let Err(e) = db::delete_file(&conn, &path_str) {
                     tracing::warn!("Failed to delete file from DB: {}", e);
+                } else {
+                    tracing::info!("Deleted from index: {}", path_str);
                 }
                 continue;
             }

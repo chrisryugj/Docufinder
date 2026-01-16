@@ -37,6 +37,13 @@ pub async fn add_folder(
         return Err(format!("Folder does not exist: {}", path));
     }
 
+    // 경로 정규화 (심볼릭 링크 해결, .. 제거) - 경로 트래버설 방지
+    let canonical_path = folder_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid path '{}': {}", path, e))?;
+    let folder_path = canonical_path.as_path();
+    let path = canonical_path.to_string_lossy().to_string();
+
     let (db_path, embedder, vector_index) = {
         let state = state.lock().map_err(|e| e.to_string())?;
         (
