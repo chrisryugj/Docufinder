@@ -114,9 +114,29 @@ pnpm tauri:dev
 | 드라이브 루트 경고 | `useIndexStatus.ts` (ask dialog) | ✅ |
 | 이벤트 타입 | `types/index.ts` (IndexingProgress) | ✅ |
 
+### ✅ Sprint 4 완료 (파일명 검색)
+
+| 작업 | 파일 | 상태 |
+|------|------|------|
+| files_fts FTS5 테이블 | `db/mod.rs` | ✅ |
+| search_filename 커맨드 | `search/filename.rs`, `commands/search.rs` | ✅ |
+| 파일명 모드 버튼 | `types/search.ts`, `SearchBar.tsx` | ✅ |
+| 통합 모드 (파일명+내용) | `useSearch.ts`, `SearchResultList.tsx` | ✅ |
+| "파일명만" 필터 | `SearchFilters.tsx` | ✅ |
+| cleanPath 유틸 | `utils/cleanPath.ts` | ✅ |
+| 설정 모드 연동 | `settings.rs`, `App.tsx`, `SettingsModal.tsx` | ✅ |
+
+**기능 요약**:
+- Everything 스타일 파일명 검색
+- 4가지 검색 모드: 하이브리드/키워드/시맨틱/파일명
+- 내용 검색 시 파일명 매치도 함께 표시 (상단)
+- Windows Long Path prefix (`\\?\`) 자동 제거
+
 ### 📋 다음 할 일
 
-- [ ] 실제 테스트 (D:\ 드라이브 인덱싱)
+- [ ] 실제 테스트 (파일명 검색)
+- [ ] MSI 설치파일 생성
+- [ ] 자동 업데이트 설정
 
 ### 이전 세션 작업
 - **보기 밀도 설정**: 기본/컴팩트 모드 전환 기능
@@ -147,4 +167,4 @@ pnpm tauri:dev
 | `src/types/index.ts:31-45` | IndexingProgress 타입 |
 
 ## 마지막 업데이트
-2026-01-18 (Sprint 3 완료)
+2026-01-18 (Sprint 4 완료 - 파일명 검색)
