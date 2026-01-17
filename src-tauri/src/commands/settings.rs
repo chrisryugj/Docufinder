@@ -12,6 +12,8 @@ pub struct Settings {
     pub chunk_size: usize,
     pub chunk_overlap: usize,
     pub theme: Theme,
+    #[serde(default)]
+    pub min_confidence: u8,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -38,6 +40,7 @@ impl Default for Settings {
             chunk_size: 512,
             chunk_overlap: 64,
             theme: Theme::Dark,
+            min_confidence: 0,
         }
     }
 }

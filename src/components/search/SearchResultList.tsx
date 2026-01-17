@@ -40,18 +40,21 @@ export function SearchResultList({
         <div className="flex justify-end gap-2 mb-2">
           <button
             onClick={onCopyAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
             style={{
               backgroundColor: "var(--color-bg-secondary)",
-              color: "var(--color-text-muted)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-secondary)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-              e.currentTarget.style.color = "var(--color-text-primary)";
+              e.currentTarget.style.borderColor = "var(--color-accent)";
+              e.currentTarget.style.color = "var(--color-accent)";
+              e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
             }}
             onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--color-border)";
+              e.currentTarget.style.color = "var(--color-text-secondary)";
               e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-              e.currentTarget.style.color = "var(--color-text-muted)";
             }}
             title="검색 결과 클립보드 복사"
           >
@@ -63,18 +66,21 @@ export function SearchResultList({
           </button>
           <button
             onClick={onExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
             style={{
               backgroundColor: "var(--color-bg-secondary)",
-              color: "var(--color-text-muted)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-text-secondary)",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-              e.currentTarget.style.color = "var(--color-text-primary)";
+              e.currentTarget.style.borderColor = "var(--color-accent)";
+              e.currentTarget.style.color = "var(--color-accent)";
+              e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
             }}
             onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "var(--color-border)";
+              e.currentTarget.style.color = "var(--color-text-secondary)";
               e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-              e.currentTarget.style.color = "var(--color-text-muted)";
             }}
             title="CSV 파일로 내보내기"
           >

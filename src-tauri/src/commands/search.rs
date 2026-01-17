@@ -2,10 +2,18 @@ use crate::db;
 use crate::search::{fts, hybrid};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
 use tauri::State;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchType {
+    Keyword,
+    Semantic,
+    Hybrid,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchResult {
@@ -17,6 +25,8 @@ pub struct SearchResult {
     pub score: f64,
     /// 정규화된 신뢰도 (0-100)
     pub confidence: u8,
+    /// 검색 매칭 타입 (keyword/semantic/hybrid)
+    pub match_type: MatchType,
     pub highlight_ranges: Vec<(usize, usize)>,
     pub page_number: Option<i64>,
     pub start_offset: i64,
@@ -71,8 +81,7 @@ pub async fn search_keyword(
         .into_iter()
         .enumerate()
         .map(|(idx, r)| {
-            // snippet에서 하이라이트 범위 추출 (더 정확함)
-            let highlight_ranges = parse_snippet_highlights(&r.snippet);
+            let highlight_ranges = parse_highlight_ranges(&r.highlight);
             SearchResult {
                 file_path: r.file_path,
                 file_name: r.file_name,
@@ -81,6 +90,7 @@ pub async fn search_keyword(
                 full_content: r.content,
                 score: r.score,
                 confidence: confidences.get(idx).copied().unwrap_or(50),
+                match_type: MatchType::Keyword,
                 highlight_ranges,
                 page_number: r.page_number,
                 start_offset: r.start_offset,
@@ -190,6 +200,7 @@ pub async fn search_semantic(
                 full_content: chunk.content.clone(),
                 score: vr.score as f64,
                 confidence: normalize_vector_confidence(vr.score as f64),
+                match_type: MatchType::Semantic,
                 highlight_ranges: vec![], // 시맨틱 검색은 하이라이트 없음
                 page_number: chunk.page_number,
                 start_offset: chunk.start_offset,
@@ -269,7 +280,7 @@ pub async fn search_hybrid(
     };
 
     // 3. RRF 병합
-    let hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results, 60.0);
+    let hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), 60.0);
 
     // 4. chunk_id로 파일 정보 조회
     let chunk_ids: Vec<i64> = hybrid_results.iter().map(|r| r.chunk_id).collect();
@@ -286,6 +297,12 @@ pub async fn search_hybrid(
         .iter()
         .map(|r| (r.chunk_id, r.snippet.clone()))
         .collect();
+    let fts_highlight_map: HashMap<i64, Vec<(usize, usize)>> = fts_results
+        .iter()
+        .map(|r| (r.chunk_id, parse_highlight_ranges(&r.highlight)))
+        .collect();
+    let fts_chunk_ids: HashSet<i64> = fts_results.iter().map(|r| r.chunk_id).collect();
+    let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
     // RRF k 상수 (merge_results와 동일하게)
     const RRF_K: f64 = 60.0;
@@ -297,8 +314,21 @@ pub async fn search_hybrid(
             chunk_map.get(&hr.chunk_id).map(|chunk| {
                 let snippet = fts_snippet_map.get(&hr.chunk_id).cloned();
                 let (content_preview, highlight_ranges) = match &snippet {
-                    Some(s) => (strip_highlight_markers(s), parse_snippet_highlights(s)),
+                    Some(s) => (strip_highlight_markers(s), vec![]),
                     None => (truncate_preview(&chunk.content, 200), vec![]),
+                };
+                let highlight_ranges = fts_highlight_map
+                    .get(&hr.chunk_id)
+                    .cloned()
+                    .unwrap_or(highlight_ranges);
+                let match_type = match (
+                    fts_chunk_ids.contains(&hr.chunk_id),
+                    vector_chunk_ids.contains(&hr.chunk_id),
+                ) {
+                    (true, true) => MatchType::Hybrid,
+                    (true, false) => MatchType::Keyword,
+                    (false, true) => MatchType::Semantic,
+                    (false, false) => MatchType::Hybrid,
                 };
                 SearchResult {
                     file_path: chunk.file_path.clone(),
@@ -308,6 +338,7 @@ pub async fn search_hybrid(
                     full_content: chunk.content.clone(),
                     score: hr.score as f64,
                     confidence: normalize_rrf_confidence(hr.score as f64, RRF_K),
+                    match_type,
                     highlight_ranges,
                     page_number: chunk.page_number,
                     start_offset: chunk.start_offset,
@@ -354,26 +385,23 @@ fn strip_highlight_markers(snippet: &str) -> String {
         .replace("[[/HL]]", "")
 }
 
-/// snippet에서 하이라이트 범위(문자 인덱스) 추출
+/// highlight() 결과에서 하이라이트 범위(문자 인덱스) 추출
 /// [[HL]]매칭[[/HL]] 형식에서 (시작, 끝) 튜플 반환
-fn parse_snippet_highlights(snippet: &str) -> Vec<(usize, usize)> {
+fn parse_highlight_ranges(marked: &str) -> Vec<(usize, usize)> {
     let mut ranges = Vec::new();
-    let mut clean_pos = 0; // 마커 제거 후 위치
+    let mut clean_pos = 0;
     let mut i = 0;
-    let chars: Vec<char> = snippet.chars().collect();
+    let chars: Vec<char> = marked.chars().collect();
     let len = chars.len();
 
     while i < len {
-        // [[HL]] 마커 탐지
-        if i + 6 <= len && &snippet[char_offset(&chars, i)..char_offset(&chars, i + 6)] == "[[HL]]" {
+        if i + 6 <= len && &marked[char_offset(&chars, i)..char_offset(&chars, i + 6)] == "[[HL]]" {
             let start = clean_pos;
-            i += 6; // [[HL]] 건너뛰기
-
-            // [[/HL]] 찾기
+            i += 6;
             while i < len {
-                if i + 7 <= len && &snippet[char_offset(&chars, i)..char_offset(&chars, i + 7)] == "[[/HL]]" {
+                if i + 7 <= len && &marked[char_offset(&chars, i)..char_offset(&chars, i + 7)] == "[[/HL]]" {
                     ranges.push((start, clean_pos));
-                    i += 7; // [[/HL]] 건너뛰기
+                    i += 7;
                     break;
                 }
                 clean_pos += 1;

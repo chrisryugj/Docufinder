@@ -4,6 +4,7 @@ import type {
   FileTypeFilter,
   DateRangeFilter,
   ViewMode,
+  SearchMode,
 } from "../../types/search";
 import {
   SORT_OPTIONS,
@@ -18,6 +19,7 @@ interface SearchFiltersProps {
   resultCount?: number;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
+  searchMode?: SearchMode;
 }
 
 /**
@@ -29,6 +31,7 @@ export function SearchFilters({
   resultCount,
   viewMode = "flat",
   onViewModeChange,
+  searchMode,
 }: SearchFiltersProps) {
   const handleSortChange = (sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
@@ -49,7 +52,10 @@ export function SearchFilters({
   const hasActiveFilters =
     filters.sortBy !== "relevance" ||
     filters.fileType !== "all" ||
-    filters.dateRange !== "all";
+    filters.dateRange !== "all" ||
+    filters.keywordOnly;
+
+  const showKeywordOnlyToggle = searchMode === "hybrid";
 
   return (
     <div
@@ -81,14 +87,42 @@ export function SearchFilters({
         onChange={handleDateRangeChange}
       />
 
+      {showKeywordOnlyToggle && (
+        <label
+          className="flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer transition-colors"
+          style={{
+            borderColor: filters.keywordOnly ? "var(--color-accent)" : "var(--color-border)",
+            backgroundColor: filters.keywordOnly ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+            color: filters.keywordOnly ? "var(--color-accent)" : "var(--color-text-muted)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={filters.keywordOnly}
+            onChange={(e) => onFiltersChange({ ...filters, keywordOnly: e.target.checked })}
+            className="accent-blue-500"
+            aria-label="키워드 포함 결과만 보기"
+          />
+          키워드 포함만
+        </label>
+      )}
+
       {/* 초기화 버튼 */}
       {hasActiveFilters && (
         <button
           onClick={handleReset}
-          className="px-2 py-1 transition-colors"
-          style={{ color: "var(--color-text-muted)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-text-primary)")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-muted)")}
+          className="px-3 py-1.5 transition-colors border border-transparent rounded-md font-medium"
+          style={{
+            color: "var(--color-text-muted)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--color-error)";
+            e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--color-text-muted)";
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
           aria-label="필터 초기화"
         >
           초기화
@@ -97,14 +131,14 @@ export function SearchFilters({
 
       {/* 뷰 모드 토글 */}
       {onViewModeChange && (
-        <div className="flex items-center gap-0.5 ml-auto rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-secondary)" }}>
+        <div className="flex items-center gap-0.5 ml-auto border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>
           <button
             onClick={() => onViewModeChange("flat")}
-            className="p-1.5 rounded transition-colors"
+            className="p-1.5 rounded-sm transition-colors"
             style={{
-              backgroundColor: viewMode === "flat" ? "var(--color-bg-primary)" : "transparent",
+              backgroundColor: viewMode === "flat" ? "var(--color-bg-secondary)" : "transparent",
               color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
-              boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+              boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
             }}
             title="목록 보기"
             aria-label="목록 보기"
@@ -116,11 +150,11 @@ export function SearchFilters({
           </button>
           <button
             onClick={() => onViewModeChange("grouped")}
-            className="p-1.5 rounded transition-colors"
+            className="p-1.5 rounded-sm transition-colors"
             style={{
-              backgroundColor: viewMode === "grouped" ? "var(--color-bg-primary)" : "transparent",
+              backgroundColor: viewMode === "grouped" ? "var(--color-bg-secondary)" : "transparent",
               color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
-              boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+              boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
             }}
             title="파일별 그룹 보기"
             aria-label="파일별 그룹 보기"
@@ -135,7 +169,7 @@ export function SearchFilters({
 
       {/* 결과 수 */}
       {resultCount !== undefined && resultCount > 0 && (
-        <span style={{ color: "var(--color-text-muted)" }}>
+        <span className="font-medium" style={{ color: "var(--color-text-secondary)" }}>
           {resultCount}개 결과
         </span>
       )}
@@ -164,12 +198,13 @@ function FilterDropdown<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="appearance-none pl-3 pr-7 py-1.5 rounded-md border cursor-pointer
-          transition-colors focus:outline-none focus:ring-2"
+        className="appearance-none pl-3 pr-8 py-1.5 rounded-md border cursor-pointer font-medium
+          transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
         style={{
           backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
           borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
-          color: isDefault ? "var(--color-text-muted)" : "var(--color-accent)",
+          color: isDefault ? "var(--color-text-secondary)" : "var(--color-accent)",
+          fontSize: "0.875rem",
         }}
         aria-label={`${label} 필터`}
       >
@@ -181,8 +216,8 @@ function FilterDropdown<T extends string>({
       </select>
       {/* 드롭다운 아이콘 */}
       <svg
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
-        style={{ color: "var(--color-text-muted)" }}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+        style={{ color: isDefault ? "var(--color-text-muted)" : "var(--color-accent)" }}
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

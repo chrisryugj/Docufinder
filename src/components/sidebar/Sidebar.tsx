@@ -36,162 +36,119 @@ export function Sidebar({
       {/* 백드롭 (모바일/오버레이) */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 lg:hidden"
-          style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+          className="fixed inset-0 z-30 lg:hidden bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onToggle}
         />
       )}
 
       {/* 사이드바 */}
       <aside
-        className={`sidebar fixed left-0 top-0 h-full z-40 overflow-hidden transition-all duration-300 ease-out
-          ${isOpen ? "w-[var(--sidebar-width)] translate-x-0" : "w-[var(--sidebar-width)] -translate-x-full"}`}
+        className={`fixed left-0 top-0 h-full z-40 overflow-hidden transition-all duration-300 ease-out flex flex-col
+          ${isOpen ? "w-[var(--sidebar-width)] translate-x-0" : "w-[0px] -translate-x-full"}`}
         style={{
           backgroundColor: "var(--color-sidebar-bg)",
-          borderRight: "1px solid var(--color-sidebar-active)",
-          boxShadow: isOpen ? "var(--shadow-xl)" : "none",
-          color: "var(--color-sidebar-text)",
+          borderRight: "1px solid var(--color-sidebar-border)",
+          boxShadow: isOpen ? "var(--shadow-2xl)" : "none",
         }}
         aria-label="사이드바"
         aria-hidden={!isOpen}
       >
-        <div className="flex flex-col h-full">
-          {/* 헤더 */}
-          <div
-            className="flex items-center justify-between px-4 py-4 border-b"
-            style={{ borderColor: "var(--color-sidebar-active)" }}
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-6 shrink-0">
+          <h2 className="text-sm font-bold tracking-widest text-[#94A3B8] uppercase">
+            메뉴
+          </h2>
+          <button
+            onClick={onToggle}
+            className="p-2 rounded-lg transition-all duration-200 text-[#64748B] hover:text-white hover:bg-white/10 active:scale-95"
+            aria-label="사이드바 닫기"
           >
-            <h2 className="text-sm font-bold tracking-wide text-white opacity-90">
-              탐색
-            </h2>
-            <button
-              onClick={onToggle}
-              className="p-1.5 rounded transition-colors duration-200"
-              style={{ color: "var(--color-sidebar-muted)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-sidebar-hover)";
-                e.currentTarget.style.color = "white";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "var(--color-sidebar-muted)";
-              }}
-              aria-label="사이드바 닫기"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-              </svg>
-            </button>
-          </div>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+        </div>
 
-          {/* 콘텐츠 */}
-          <div className="flex-1 overflow-y-auto no-scrollbar">
-            {/* 폴더 섹션 */}
-            <section className="py-4">
-              <div className="flex items-center justify-between px-4 mb-3">
-                <h3
-                  className="text-xs font-semibold uppercase tracking-wider opacity-70"
-                  style={{ color: "var(--color-sidebar-text)" }}
-                >
-                  인덱스 폴더
-                </h3>
-                <button
-                  onClick={onAddFolder}
-                  className="p-1 rounded transition-colors duration-200"
-                  style={{ color: "var(--color-sidebar-muted)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-sidebar-hover)";
-                    e.currentTarget.style.color = "white";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                    e.currentTarget.style.color = "var(--color-sidebar-muted)";
-                  }}
-                  aria-label="폴더 추가"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
-              {/* Note: FolderTree might need text color adjustment via CSS or Props if it assumes light theme. 
-                  Assuming it uses inherited colors or CSS variables which we might need to override globally or contextually.
-                  For now, assuming it inherits color. 
-              */}
-              <div style={{ color: "var(--color-sidebar-text)" }}>
-                <FolderTree folders={watchedFolders} onRemoveFolder={onRemoveFolder} />
-              </div>
-            </section>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-8 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
 
-            {/* 구분선 */}
-            <div className="mx-4" style={{ borderTop: "1px solid var(--color-sidebar-active)" }} />
-
-            {/* 최근 검색 섹션 */}
-            <section className="py-4">
-              <h3
-                className="px-4 mb-3 text-xs font-semibold uppercase tracking-wider opacity-70"
-                style={{ color: "var(--color-sidebar-text)" }}
+          {/* Section: Indexed Folders */}
+          <section>
+            <div className="flex items-center justify-between px-2 mb-3">
+              <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                인덱싱된 폴더
+              </h3>
+              <button
+                onClick={onAddFolder}
+                className="p-1.5 rounded-md text-[#64748B] hover:text-white hover:bg-white/10 transition-all duration-200"
+                aria-label="폴더 추가"
+                title="폴더 추가"
               >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            </div>
+
+            <FolderTree
+              folders={watchedFolders}
+              onRemoveFolder={onRemoveFolder}
+            />
+          </section>
+
+          {/* Section: Recent Searches */}
+          <section>
+            <div className="flex items-center justify-between px-2 mb-3">
+              <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
                 최근 검색
               </h3>
-              <div style={{ color: "var(--color-sidebar-text)" }}>
-                <RecentSearches
-                  searches={recentSearches}
-                  onSelect={onSelectSearch}
-                  onRemove={onRemoveSearch}
-                  onClear={onClearSearches}
-                />
-              </div>
-            </section>
-          </div>
+              {recentSearches.length > 0 && (
+                <button
+                  onClick={onClearSearches}
+                  className="p-1.5 rounded-md text-[#64748B] hover:text-red-400 hover:bg-white/10 transition-all duration-200"
+                  aria-label="전체 삭제"
+                  title="검색 기록 전체 삭제"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              )}
+            </div>
 
-          {/* 푸터 - 단축키 힌트 */}
-          <div
-            className="px-4 py-4 border-t"
-            style={{
-              borderColor: "var(--color-sidebar-active)",
-              backgroundColor: "rgba(0,0,0,0.2)"
-            }}
-          >
-            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-sidebar-muted)" }}>
-              <kbd
-                className="px-1.5 py-0.5 rounded text-[10px] font-mono border"
-                style={{
-                  backgroundColor: "var(--color-sidebar-hover)",
-                  borderColor: "var(--color-sidebar-active)",
-                  color: "var(--color-sidebar-text)",
-                }}
-              >
-                Ctrl+B
-              </kbd>
-              <span>사이드바 토글</span>
+            <RecentSearches
+              searches={recentSearches}
+              onSelect={onSelectSearch}
+              onRemove={onRemoveSearch}
+            />
+          </section>
+
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-white/5 bg-black/20 shrink-0">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white/10 group-hover:ring-blue-500/50 transition-all">
+              US
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-200 truncate">User Profile</p>
+              <p className="text-xs text-slate-500 truncate">admin@gwangjin.go.kr</p>
             </div>
           </div>
         </div>
       </aside>
 
-      {/* 토글 버튼 (닫힌 상태에서만) */}
+
+      {/* Floating Toggle Button (Visible only when sidebar is closed) */}
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="fixed left-4 top-20 z-30 p-2.5 rounded-lg transition-all duration-200 hover:scale-105 shadow-md border"
-          style={{
-            backgroundColor: "white",
-            borderColor: "var(--color-border)",
-            color: "var(--color-text-secondary)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-            e.currentTarget.style.color = "var(--color-accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "white";
-            e.currentTarget.style.color = "var(--color-text-secondary)";
-          }}
+          className="fixed left-6 top-4 z-50 p-2.5 rounded-xl bg-white/80 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.1)] border border-white/50 text-slate-600 hover:text-blue-600 hover:scale-105 active:scale-95 transition-all duration-300"
           aria-label="사이드바 열기"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
       )}

@@ -6,6 +6,9 @@ type BadgeVariant =
   | "success"
   | "warning"
   | "danger"
+  | "keyword"
+  | "semantic"
+  | "hybrid"
   | "hwpx"
   | "docx"
   | "xlsx"
@@ -60,6 +63,21 @@ const getVariantStyle = (variant: BadgeVariant): CSSProperties => {
       return {
         backgroundColor: "rgba(245, 158, 11, 0.15)",
         color: "var(--color-warning)",
+      };
+    case "keyword":
+      return {
+        backgroundColor: "var(--color-accent-subtle)",
+        color: "var(--color-accent)",
+      };
+    case "semantic":
+      return {
+        backgroundColor: "rgba(245, 158, 11, 0.15)",
+        color: "var(--color-warning)",
+      };
+    case "hybrid":
+      return {
+        backgroundColor: "rgba(14, 165, 233, 0.15)",
+        color: "var(--color-info)",
       };
     case "danger":
       return {

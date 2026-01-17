@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
+import { getMatchTypeBadge } from "./matchType";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { ConfidenceBadge } from "../ui/ConfidenceBadge";
@@ -30,6 +31,14 @@ export function SearchResultItem({
 
   // 경로에서 폴더 추출
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
+  const expandedView = isExpanded
+    ? buildExpandedContext(result.full_content, result.highlight_ranges, result.snippet)
+    : null;
+  const displayText = isExpanded ? expandedView?.text ?? result.full_content : result.content_preview;
+  const displayRanges = isExpanded
+    ? expandedView?.ranges ?? result.highlight_ranges
+    : result.highlight_ranges;
+  const matchBadge = getMatchTypeBadge(result.match_type);
 
   // 경로 복사
   const handleCopyPath = useCallback(
@@ -154,6 +163,7 @@ export function SearchResultItem({
           ) : result.page_number ? (
             <Badge variant="primary">{result.page_number}p</Badge>
           ) : null}
+          <Badge variant={matchBadge.variant}>{matchBadge.label}</Badge>
           <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
             {fileExt.toUpperCase()}
           </Badge>
@@ -191,8 +201,9 @@ export function SearchResultItem({
             }}
           >
             <HighlightedText
-              text={isExpanded ? result.full_content : result.content_preview}
-              ranges={result.highlight_ranges}
+              text={displayText}
+              ranges={displayRanges}
+              snippet={!isExpanded ? result.snippet : undefined}
             />
           </p>
           {!isExpanded && result.full_content.length > result.content_preview.length && (
@@ -203,26 +214,168 @@ export function SearchResultItem({
         </div>
       </div>
 
-      {/* 경로 (브레드크럼 스타일) */}
-      <p
-        className="text-xs mt-2 truncate font-mono"
-        style={{ color: "var(--color-text-muted)" }}
-        title={result.file_path}
+      {/* 경로 (Windows 스타일 배지) */}
+      <div
+        className="flex flex-wrap items-center gap-1 mt-3"
+        title={result.file_path.replace(/^\\\\\?\\/, "")}
       >
-        {formatBreadcrumb(folderPath)}
-      </p>
+        {formatPathToBadges(folderPath).map((part, i, arr) => (
+          <div key={i} className="flex items-center">
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+              style={{
+                backgroundColor: "var(--color-bg-tertiary)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              {part}
+            </span>
+            {i < arr.length - 1 && (
+              <span className="mx-0.5" style={{ color: "var(--color-border-hover)" }}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-/** 경로를 브레드크럼 형식으로 변환 */
-function formatBreadcrumb(path: string): string {
-  // Windows long path prefix 제거
+/** 경로를 배열로 변환 (Windows 스타일) */
+function formatPathToBadges(path: string): string[] {
+  // Windows long path prefix 제거 및 백슬래시 통일
   let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
-  const parts = cleanPath.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (parts.length <= 3) {
-    return parts.join(" › ");
+  // 드라이브 레터와 폴더 분리
+  return cleanPath.split(/[/\\]/).filter(Boolean);
+}
+
+const EXPANDED_CONTEXT_BEFORE_CHARS = 120;
+
+function buildExpandedContext(
+  fullText: string,
+  ranges: [number, number][],
+  snippet?: string
+): { text: string; ranges: [number, number][] } {
+  const anchor = snippet
+    ? findSnippetAnchor(fullText, snippet, ranges)
+    : findFirstRangeAnchor(ranges);
+  const effectiveAnchor = anchor ?? findFirstRangeAnchor(ranges);
+  if (!effectiveAnchor) {
+    return { text: fullText, ranges };
   }
-  // 처음 1개 + ... + 마지막 2개
-  return `${parts[0]} › ... › ${parts.slice(-2).join(" › ")}`;
+
+  const startOffset = Math.max(0, effectiveAnchor.start - EXPANDED_CONTEXT_BEFORE_CHARS);
+  if (startOffset === 0) {
+    return { text: fullText, ranges };
+  }
+
+  const trimmedText = fullText.slice(startOffset);
+  const trimmedRanges = ranges
+    .filter(([, end]) => end > startOffset)
+    .map(([start, end]) => {
+      const clippedStart = Math.max(0, start - startOffset);
+      const clippedEnd = Math.max(0, end - startOffset);
+      return [clippedStart, clippedEnd] as [number, number];
+    });
+
+  return { text: trimmedText, ranges: trimmedRanges };
+}
+
+function findSnippetAnchor(
+  fullText: string,
+  snippet: string,
+  ranges: [number, number][]
+): { start: number; end: number } | null {
+  const segments = snippet.split("...");
+  let fallback: { start: number; end: number } | null = null;
+
+  for (const segment of segments) {
+    if (!segment.includes("[[HL]]")) {
+      continue;
+    }
+
+    const parsed = parseSnippetSegment(segment);
+    if (!parsed.text.trim()) {
+      continue;
+    }
+
+    let searchStart = 0;
+    while (true) {
+      const index = fullText.indexOf(parsed.text, searchStart);
+      if (index === -1) {
+        break;
+      }
+
+      const candidate = parsed.ranges.length
+        ? {
+            start: index + parsed.ranges[0][0],
+            end: index + parsed.ranges[0][1],
+          }
+        : { start: index, end: index + parsed.text.length };
+
+      if (!fallback) {
+        fallback = candidate;
+      }
+
+      if (ranges.some(([rangeStart, rangeEnd]) => candidate.start >= rangeStart && candidate.end <= rangeEnd)) {
+        return candidate;
+      }
+
+      searchStart = index + parsed.text.length;
+    }
+  }
+
+  return fallback;
+}
+
+function parseSnippetSegment(
+  segment: string
+): { text: string; ranges: [number, number][] } {
+  const ranges: [number, number][] = [];
+  let text = "";
+  let i = 0;
+
+  while (i < segment.length) {
+    if (segment.slice(i, i + 6) === "[[HL]]") {
+      const start = text.length;
+      i += 6;
+      const endMarker = segment.indexOf("[[/HL]]", i);
+      if (endMarker !== -1) {
+        text += segment.slice(i, endMarker);
+        ranges.push([start, text.length]);
+        i = endMarker + 7;
+      } else {
+        text += segment.slice(i);
+        ranges.push([start, text.length]);
+        break;
+      }
+    } else {
+      text += segment[i];
+      i += 1;
+    }
+  }
+
+  return { text, ranges };
+}
+
+function findFirstRangeAnchor(
+  ranges: [number, number][]
+): { start: number; end: number } | null {
+  if (ranges.length === 0) {
+    return null;
+  }
+
+  let [start, end] = ranges[0];
+  for (const [rangeStart, rangeEnd] of ranges) {
+    if (rangeStart < start) {
+      start = rangeStart;
+      end = rangeEnd;
+    }
+  }
+
+  return { start, end };
 }

@@ -66,11 +66,11 @@ export function Dropdown<T extends string | number>({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         style={{
           backgroundColor: "var(--color-bg-tertiary)",
           border: `1px solid ${isOpen ? "var(--color-accent)" : "var(--color-border)"}`,
-          boxShadow: isOpen ? "0 0 0 3px var(--color-accent-light)" : undefined,
+          boxShadow: isOpen ? "0 0 0 2px var(--color-accent-muted)" : undefined,
         }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
@@ -101,7 +101,7 @@ export function Dropdown<T extends string | number>({
       {/* Menu */}
       {isOpen && (
         <div
-          className="absolute z-50 mt-1 w-full min-w-[160px] rounded-lg py-1"
+          className="absolute z-50 mt-1 w-full min-w-[160px] rounded-md py-1"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",
@@ -122,7 +122,7 @@ export function Dropdown<T extends string | number>({
                 color: option.value === value ? "var(--color-accent)" : "var(--color-text-primary)",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-hover)";
+                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = "transparent";

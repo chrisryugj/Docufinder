@@ -24,7 +24,8 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             c.end_offset,
             c.page_number,
             c.location_hint,
-            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet
+            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet,
+            highlight(chunks_fts, 0, '[[HL]]', '[[/HL]]') as highlight
          FROM chunks_fts fts
          JOIN chunks c ON c.id = fts.rowid
          JOIN files f ON f.id = c.file_id
@@ -46,6 +47,7 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             page_number: row.get(8)?,
             location_hint: row.get(9)?,
             snippet: row.get(10)?,
+            highlight: row.get(11)?,
         })
     })?;
 
@@ -75,32 +77,73 @@ fn sanitize_fts_query(query: &str) -> String {
 
 /// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
 pub fn find_highlight_ranges(content: &str, query: &str) -> Vec<(usize, usize)> {
-    let mut ranges = Vec::new();
-    let query_lower = query.to_lowercase();
-    let content_lower = content.to_lowercase();
-
-    // 문자 단위로 변환
-    let content_chars: Vec<char> = content_lower.chars().collect();
-    let query_chars: Vec<char> = query_lower.chars().collect();
-
-    if query_chars.is_empty() {
-        return ranges;
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return vec![];
     }
 
-    let query_len = query_chars.len();
-    let content_len = content_chars.len();
+    let mut terms: Vec<String> = trimmed
+        .split_whitespace()
+        .map(|term| term.trim_matches('"').trim_matches('\''))
+        .filter(|term| !term.is_empty())
+        .map(|term| term.to_lowercase())
+        .collect();
 
-    let mut i = 0;
-    while i + query_len <= content_len {
-        if content_chars[i..i + query_len] == query_chars[..] {
-            ranges.push((i, i + query_len));
-            i += query_len; // 다음 검색은 매칭 끝에서
-        } else {
-            i += 1;
+    if terms.is_empty() {
+        return vec![];
+    }
+
+    terms.sort();
+    terms.dedup();
+
+    let content_lower = content.to_lowercase();
+    let content_chars: Vec<char> = content_lower.chars().collect();
+    let content_len = content_chars.len();
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+
+    for term in terms {
+        let term_chars: Vec<char> = term.chars().collect();
+        if term_chars.is_empty() {
+            continue;
+        }
+
+        let term_len = term_chars.len();
+        if term_len > content_len {
+            continue;
+        }
+
+        let mut i = 0;
+        while i + term_len <= content_len {
+            if content_chars[i..i + term_len] == term_chars[..] {
+                ranges.push((i, i + term_len));
+                i += term_len;
+            } else {
+                i += 1;
+            }
         }
     }
 
-    ranges
+    if ranges.is_empty() {
+        return ranges;
+    }
+
+    ranges.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    let mut merged = Vec::with_capacity(ranges.len());
+    let mut current = ranges[0];
+    for range in ranges.into_iter().skip(1) {
+        if range.0 <= current.1 {
+            if range.1 > current.1 {
+                current.1 = range.1;
+            }
+        } else {
+            merged.push(current);
+            current = range;
+        }
+    }
+    merged.push(current);
+
+    merged
 }
 
 #[derive(Debug, Clone)]
@@ -120,4 +163,7 @@ pub struct FtsResult {
     /// FTS5 snippet() - 매칭 컨텍스트 (하이라이트 마커 포함)
     /// [[HL]]매칭[[/HL]] 형식
     pub snippet: String,
+    /// FTS5 highlight() - 전체 컨텐츠에 하이라이트 마커 포함
+    /// [[HL]]매칭[[/HL]] 형식
+    pub highlight: String,
 }

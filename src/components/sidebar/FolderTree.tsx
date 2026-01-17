@@ -41,7 +41,7 @@ export function FolderTree({ folders, onRemoveFolder }: FolderTreeProps) {
     return (
       <div
         className="text-sm py-2 px-3"
-        style={{ color: "var(--color-text-muted)" }}
+        style={{ color: "var(--color-sidebar-muted)" }}
       >
         등록된 폴더가 없습니다
       </div>
@@ -56,20 +56,12 @@ export function FolderTree({ folders, onRemoveFolder }: FolderTreeProps) {
         return (
           <li key={folder} role="treeitem" aria-expanded={isExpanded}>
             <div
-              className="group flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer transition-colors"
-              style={{ backgroundColor: "transparent" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-hover)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }}
+              className="group flex items-center gap-3 px-3 py-2 mx-2 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/10 text-slate-400 hover:text-white"
               onClick={() => toggleExpand(folder)}
             >
               {/* 폴더 아이콘 */}
               <svg
-                className="w-4 h-4 flex-shrink-0"
-                style={{ color: "#EAB308" }}
+                className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-90 text-yellow-500" : "text-slate-500 group-hover:text-yellow-400"}`}
                 fill="currentColor"
                 viewBox="0 0 20 20"
                 aria-hidden="true"
@@ -79,28 +71,20 @@ export function FolderTree({ folders, onRemoveFolder }: FolderTreeProps) {
 
               {/* 폴더 이름 */}
               <span
-                className="flex-1 text-sm truncate"
-                style={{ color: "var(--color-text-primary)" }}
+                className="flex-1 text-sm truncate font-medium"
                 title={displayPath}
               >
                 {getFolderName(folder)}
               </span>
 
-              {/* 삭제 버튼 */}
+              {/* 삭제 버튼 - Hover시 드러남 */}
               {onRemoveFolder && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onRemoveFolder(folder);
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 transition-opacity"
-                  style={{ color: "var(--color-text-muted)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.color = "var(--color-error)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.color = "var(--color-text-muted)";
-                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all duration-200"
                   aria-label={`${getFolderName(folder)} 폴더 제거`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -113,8 +97,7 @@ export function FolderTree({ folders, onRemoveFolder }: FolderTreeProps) {
             {/* 전체 경로 (확장 시) */}
             {isExpanded && (
               <div
-                className="ml-6 px-3 py-1 text-xs break-all"
-                style={{ color: "var(--color-text-muted)" }}
+                className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded bg-black/20 text-slate-500 break-all font-mono"
               >
                 {displayPath}
               </div>

@@ -4,32 +4,41 @@ interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
   isIndexing: boolean;
+  isSidebarOpen: boolean;
 }
 
-export function Header({ onAddFolder, onOpenSettings, isIndexing }: HeaderProps) {
+export function Header({ onAddFolder, onOpenSettings, isIndexing, isSidebarOpen }: HeaderProps) {
   return (
     <header
-      className="px-6 py-4 flex justify-between items-center border-b bg-[var(--color-bg-primary)]"
-      style={{ borderColor: 'var(--color-border)' }}
+      className={`py-4 flex justify-between items-center bg-transparent transition-all duration-300 ${isSidebarOpen ? "px-6" : "pl-20 pr-6"
+        }`}
     >
-      <div className="flex items-center gap-3">
-        {/* App Icon */}
-        <div className="flex-shrink-0">
-          <img
-            src="/app-icon.svg"
-            alt="DocuFinder Logo"
-            className="w-10 h-10 object-contain"
-          />
-        </div>
+      <div className="flex items-center gap-4">
 
-        {/* Title Container */}
-        <div>
-          <h1 className="text-xl font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-            DocuFinder
-          </h1>
-          <p className="text-xs font-medium tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
-            로컬 문서 검색 시스템
-          </p>
+        <div className="flex items-center gap-3">
+          {/* App Icon */}
+          <div className="flex-shrink-0 text-blue-600">
+            <svg
+              className="w-8 h-8"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <rect x="4" y="4" width="16" height="16" rx="4" className="fill-blue-100" />
+              <path d="M15 15L19 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="10.5" cy="10.5" r="4.5" stroke="currentColor" strokeWidth="2.5" />
+            </svg>
+          </div>
+
+          {/* Title Container */}
+          <div>
+            <h1 className="text-xl font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+              DocuFinder
+            </h1>
+            <p className="text-xs font-medium tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+              로컬 문서 검색 시스템
+            </p>
+          </div>
         </div>
       </div>
 

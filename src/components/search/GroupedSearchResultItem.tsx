@@ -4,6 +4,7 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { ConfidenceBadge } from "../ui/ConfidenceBadge";
 import { HighlightedText } from "./HighlightedText";
+import { getMatchTypeBadge } from "./matchType";
 
 interface GroupedSearchResultItemProps {
   group: GroupedSearchResult;
@@ -106,7 +107,9 @@ export function GroupedSearchResultItem({
 
       {/* 청크 목록 */}
       <div className="space-y-2">
-        {displayChunks.map((chunk, idx) => (
+        {displayChunks.map((chunk, idx) => {
+          const matchBadge = getMatchTypeBadge(chunk.match_type);
+          return (
           <div
             key={`${chunk.chunk_index}-${idx}`}
             className="flex gap-2 p-2 rounded-md cursor-pointer transition-colors"
@@ -120,19 +123,34 @@ export function GroupedSearchResultItem({
             }}
           >
             {/* 위치 표시 */}
-            <div className="flex-shrink-0 w-16 text-xs" style={{ color: "var(--color-text-muted)" }}>
-              {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
+            <div className="flex-shrink-0 w-20 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <div>
+                {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
+              </div>
+              <div className="mt-1">
+                <Badge variant={matchBadge.variant}>
+                  {matchBadge.label}
+                </Badge>
+              </div>
             </div>
 
             {/* 내용 미리보기 */}
             <div className="flex-1 min-w-0">
               <p
-                className="text-sm truncate"
-                style={{ color: "var(--color-text-secondary)" }}
+                className="text-sm leading-relaxed"
+                style={{
+                  color: "var(--color-text-secondary)",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 4,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                  whiteSpace: "pre-line",
+                }}
               >
                 <HighlightedText
                   text={chunk.content_preview}
                   ranges={chunk.highlight_ranges}
+                  snippet={chunk.snippet}
                 />
               </p>
             </div>
@@ -140,7 +158,8 @@ export function GroupedSearchResultItem({
             {/* 신뢰도 (컴팩트) */}
             <ConfidenceBadge confidence={chunk.confidence} compact showBar={false} />
           </div>
-        ))}
+        );
+        })}
 
         {/* 더보기/접기 */}
         {hasMore && (

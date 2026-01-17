@@ -15,21 +15,25 @@ const getVariantStyles = (variant: ButtonVariant): CSSProperties => {
       return {
         backgroundColor: "var(--color-accent)",
         color: "white",
+        border: "1px solid var(--color-accent)",
       };
     case "secondary":
       return {
-        backgroundColor: "var(--color-bg-tertiary)",
+        backgroundColor: "var(--color-bg-secondary)",
         color: "var(--color-text-secondary)",
+        border: "1px solid var(--color-border)",
       };
     case "ghost":
       return {
         backgroundColor: "transparent",
         color: "var(--color-text-muted)",
+        border: "1px solid transparent",
       };
     case "danger":
       return {
         backgroundColor: "var(--color-error)",
         color: "white",
+        border: "1px solid var(--color-error)",
       };
   }
 };
@@ -39,24 +43,23 @@ const getHoverStyles = (variant: ButtonVariant): CSSProperties => {
     case "primary":
       return {
         backgroundColor: "var(--color-accent-hover)",
-        boxShadow: "0 4px 12px rgba(14, 165, 233, 0.3)",
-        transform: "translateY(-1px)",
+        borderColor: "var(--color-accent-hover)",
       };
     case "secondary":
       return {
-        backgroundColor: "var(--color-bg-hover)",
-        boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+        backgroundColor: "var(--color-bg-tertiary)",
+        borderColor: "var(--color-border-hover)",
+        color: "var(--color-text-primary)",
       };
     case "ghost":
       return {
         backgroundColor: "var(--color-bg-tertiary)",
-        color: "var(--color-text-secondary)",
+        color: "var(--color-text-primary)",
       };
     case "danger":
       return {
-        backgroundColor: "#B91C1C",
-        boxShadow: "0 4px 12px rgba(220, 38, 38, 0.3)",
-        transform: "translateY(-1px)",
+        backgroundColor: "#991B1B",
+        borderColor: "#991B1B",
       };
   }
 };
@@ -91,9 +94,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={`
-          rounded-lg font-medium transition-all duration-200
+          rounded-md font-medium transition-colors duration-100
           disabled:cursor-not-allowed disabled:opacity-50
-          hover:shadow-md active:scale-[0.98]
           ${sizeStyles[size]}
           ${className}
         `}
@@ -119,7 +121,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"
               style={{ borderTopColor: "transparent" }}
             />
-            {children}
+            {isLoading && children ? "로딩 중..." : null}
           </span>
         ) : (
           children

@@ -50,10 +50,10 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     >
       <div
         ref={modalRef}
-        className="w-full max-w-lg mx-4 animate-modal-enter rounded-xl"
+        className="w-full max-w-lg mx-4 animate-modal-enter rounded-lg"
         style={{
           backgroundColor: "var(--color-bg-secondary)",
-          boxShadow: "var(--shadow-xl)",
+          boxShadow: "var(--shadow-lg)",
           border: "1px solid var(--color-border)",
         }}
       >
@@ -71,7 +71,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg transition-all duration-200"
+            className="p-1.5 rounded-md transition-all duration-200"
             style={{ color: "var(--color-text-muted)" }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";

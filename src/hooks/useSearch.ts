@@ -14,6 +14,7 @@ import { SEARCH_COMMANDS } from "../types/api";
 
 interface UseSearchOptions {
   debounceMs?: number;
+  minConfidence?: number;
 }
 
 interface UseSearchReturn {
@@ -39,13 +40,15 @@ interface UseSearchReturn {
  */
 export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const { debounceMs = 300 } = options;
+  // minConfidence는 외부에서 변경될 수 있으므로 직접 참조
+  const minConfidence = options.minConfidence ?? 0;
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
+  const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
 
@@ -95,6 +98,18 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const filteredResults = useMemo(() => {
     let filtered = [...results];
 
+    if (minConfidence > 0) {
+      filtered = filtered.filter((r) => r.confidence >= minConfidence);
+    }
+
+    if (filters.keywordOnly) {
+      filtered = filtered.filter((r) => {
+        // 대소문자 무관하게 비교 (serde 직렬화 호환성)
+        const type = (r.match_type ?? "").toLowerCase();
+        return type === "keyword" || type === "hybrid";
+      });
+    }
+
     // 파일 타입 필터
     if (filters.fileType !== "all") {
       const extMap: Record<FileTypeFilter, string[]> = {
@@ -134,7 +149,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
 
     return filtered;
-  }, [results, filters]);
+  }, [results, filters, minConfidence]);
 
   // 파일별 그룹핑 결과
   const groupedResults = useMemo(() => {

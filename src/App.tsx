@@ -1,5 +1,7 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { Settings } from "./types/settings";
 
 // Hooks
 import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches, useExport, useTheme } from "./hooks";
@@ -12,12 +14,13 @@ import { SettingsModal } from "./components/settings/SettingsModal";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [minConfidence, setMinConfidence] = useState(0);
 
   // 테마
-  const { resolvedTheme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
 
   // 검색 상태
   const {
@@ -35,7 +38,7 @@ function App() {
     setFilters,
     viewMode,
     setViewMode,
-  } = useSearch({ debounceMs: 300 });
+  } = useSearch({ debounceMs: 300, minConfidence });
 
   // 인덱스 상태
   const {
@@ -64,6 +67,79 @@ function App() {
     clearSearchError();
     clearIndexError();
   }, [clearSearchError, clearIndexError]);
+
+  // 설정 로드 (최소 신뢰도 적용)
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const settings = await invoke<Settings>("get_settings");
+        setMinConfidence(settings.min_confidence ?? 0);
+      } catch (err) {
+        console.warn("Failed to load settings:", err);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const resetSearchFocus = () => {
+      if (settingsOpen) return;
+      const input = searchInputRef.current;
+      if (!input) return;
+
+      const activeElement = document.activeElement;
+      const isEditable =
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+      if (isEditable && activeElement !== input) {
+        return;
+      }
+
+      if (activeElement === input) {
+        input.blur();
+      }
+
+      requestAnimationFrame(() => {
+        input.focus();
+      });
+    };
+
+    const setup = async () => {
+      const window = getCurrentWindow();
+      try {
+        if (await window.isFocused()) {
+          resetSearchFocus();
+        }
+        unlisten = await window.onFocusChanged(({ payload }) => {
+          if (payload) {
+            resetSearchFocus();
+          }
+        });
+      } catch (err) {
+        console.warn("Failed to register focus handler:", err);
+      }
+    };
+
+    setup();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [settingsOpen]);
+
+  useEffect(() => {
+    if (searchMode !== "hybrid" && filters.keywordOnly) {
+      setFilters({ ...filters, keywordOnly: false });
+    }
+  }, [searchMode, filters, setFilters]);
 
   // 파일 열기
   const handleOpenFile = useCallback(
@@ -193,71 +269,78 @@ function App() {
         onClearSearches={clearSearches}
       />
 
-      {/* 메인 콘텐츠 (사이드바 열림에 따라 마진 조정) */}
+      {/* 메인 콘텐츠 (사이드바 열림에 따라 전체 이동) */}
       <div
-        className={`flex flex-col min-h-screen transition-[margin] duration-200
-          ${sidebarOpen ? "ml-[var(--sidebar-width)]" : "ml-0"}`}
+        className={`flex flex-col h-screen transition-all duration-300 ease-in-out
+          ${sidebarOpen ? "pl-[var(--sidebar-width)]" : "pl-0"}`}
       >
-        {/* Header */}
-        <Header
-          onAddFolder={addFolder}
-          onOpenSettings={() => setSettingsOpen(true)}
-          isIndexing={isIndexing}
-        />
-
-        {/* Search Bar */}
-        <div className="p-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <SearchBar
-            ref={searchInputRef}
-            query={query}
-            onQueryChange={handleQueryChange}
-            searchMode={searchMode}
-            onSearchModeChange={setSearchMode}
-            isLoading={isLoading}
-            status={status}
-            resultCount={filteredResults.length}
-            searchTime={searchTime}
+        {/* Sticky Header - 사이드바와 함께 이동 */}
+        <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/90 backdrop-blur-md border-b" style={{ borderColor: 'var(--color-border)' }}>
+          <Header
+            onAddFolder={addFolder}
+            onOpenSettings={() => setSettingsOpen(true)}
+            isIndexing={isIndexing}
+            isSidebarOpen={sidebarOpen}
           />
-
-          {/* 에러 메시지 */}
-          {error && <ErrorBanner message={error} onDismiss={clearError} />}
         </div>
 
-        {/* 필터 바 (결과가 있을 때만 표시) */}
-        {query && filteredResults.length > 0 && (
-          <div className="px-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
-            <div className="max-w-4xl mx-auto">
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          {/* Search Bar Area */}
+          <div className="px-6 py-8">
+            <SearchBar
+              ref={searchInputRef}
+              query={query}
+              onQueryChange={handleQueryChange}
+              searchMode={searchMode}
+              onSearchModeChange={setSearchMode}
+              isLoading={isLoading}
+              status={status}
+              resultCount={filteredResults.length}
+              searchTime={searchTime}
+            />
+
+            {/* 에러 메시지 */}
+            {error && <div className="mt-4"><ErrorBanner message={error} onDismiss={clearError} /></div>}
+          </div>
+
+          {/* 필터 바 (결과가 있을 때만 표시) */}
+          {query && filteredResults.length > 0 && (
+            <div className="sticky top-0 z-10 px-6 py-2 bg-[var(--color-bg-primary)]/95 backdrop-blur border-y" style={{ borderColor: 'var(--color-border)' }}>
+              <div className="max-w-4xl mx-auto">
               <SearchFilters
                 filters={filters}
                 onFiltersChange={setFilters}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 resultCount={filteredResults.length}
+                searchMode={searchMode}
+              />
+              </div>
+            </div>
+          )}
+
+          {/* Results Area */}
+          <main className="px-6 pb-20">
+            <div className="max-w-4xl mx-auto mt-4">
+              <SearchResultList
+                results={filteredResults}
+                groupedResults={groupedResults}
+                viewMode={viewMode}
+                query={query}
+                isLoading={isLoading}
+                selectedIndex={selectedIndex}
+                onOpenFile={handleOpenFile}
+                onCopyPath={handleCopyPath}
+                onOpenFolder={handleOpenFolder}
+                onExportCSV={() => exportToCSV(filteredResults, query)}
+                onCopyAll={() => copyToClipboard(filteredResults, query)}
               />
             </div>
-          </div>
-        )}
+          </main>
+        </div>
 
-        {/* Results Area */}
-        <main className="flex-1 px-6 py-4 overflow-auto">
-          <div className="max-w-4xl mx-auto">
-            <SearchResultList
-              results={filteredResults}
-              groupedResults={groupedResults}
-              viewMode={viewMode}
-              query={query}
-              isLoading={isLoading}
-              selectedIndex={selectedIndex}
-              onOpenFile={handleOpenFile}
-              onCopyPath={handleCopyPath}
-              onOpenFolder={handleOpenFolder}
-              onExportCSV={() => exportToCSV(filteredResults, query)}
-              onCopyAll={() => copyToClipboard(filteredResults, query)}
-            />
-          </div>
-        </main>
-
-        {/* Status Bar */}
+        {/* Status Bar (Fixed at bottom) */}
         <StatusBar status={status} />
       </div>
 
@@ -266,6 +349,7 @@ function App() {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onThemeChange={setTheme}
+        onSettingsSaved={(settings) => setMinConfidence(settings.min_confidence ?? 0)}
       />
 
       {/* Toast */}

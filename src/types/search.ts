@@ -8,12 +8,19 @@ export interface SearchResult {
   score: number;
   /** 정규화된 신뢰도 (0-100) */
   confidence: number;
+  /** 검색 매칭 타입 */
+  match_type: SearchResultMatchType;
   highlight_ranges: [number, number][];
   page_number: number | null;
   start_offset: number;
   /** 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3", HWPX: "섹션 2" 등) */
   location_hint: string | null;
+  /** FTS5 snippet (하이라이트 마커 포함) */
+  snippet?: string;
 }
+
+/** 검색 매칭 타입 */
+export type SearchResultMatchType = "keyword" | "semantic" | "hybrid";
 
 /** 그룹화된 검색 결과 (파일별) */
 export interface GroupedSearchResult {
@@ -71,6 +78,7 @@ export interface SearchFilters {
   sortBy: SortOption;
   fileType: FileTypeFilter;
   dateRange: DateRangeFilter;
+  keywordOnly: boolean;
 }
 
 /** 기본 필터 값 */
@@ -78,6 +86,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
   sortBy: "relevance",
   fileType: "all",
   dateRange: "all",
+  keywordOnly: false,
 };
 
 /** 정렬 옵션 목록 */

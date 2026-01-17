@@ -3,20 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
-import type { Theme } from "../../hooks/useTheme";
-
-interface Settings {
-  search_mode: "keyword" | "semantic" | "hybrid";
-  max_results: number;
-  chunk_size: number;
-  chunk_overlap: number;
-  theme: Theme;
-}
+import type { Settings } from "../../types/settings";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onThemeChange?: (theme: Theme) => void;
+  onThemeChange?: (theme: Settings["theme"]) => void;
+  onSettingsSaved?: (settings: Settings) => void;
 }
 
 const SEARCH_MODE_OPTIONS = [
@@ -38,7 +31,9 @@ const MAX_RESULTS_OPTIONS = [
   { value: "200", label: "200개" },
 ];
 
-export function SettingsModal({ isOpen, onClose, onThemeChange }: SettingsModalProps) {
+const CONFIDENCE_STEP = 5;
+
+export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -71,6 +66,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange }: SettingsModalP
     setError(null);
     try {
       await invoke("update_settings", { settings });
+      onSettingsSaved?.(settings);
       onClose();
     } catch (err) {
       setError(`설정 저장 실패: ${err}`);
@@ -85,7 +81,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange }: SettingsModalP
 
       // 테마 변경 시 즉시 적용
       if (key === "theme" && onThemeChange) {
-        onThemeChange(value as Theme);
+        onThemeChange(value as Settings["theme"]);
       }
     }
   };
@@ -156,6 +152,37 @@ export function SettingsModal({ isOpen, onClose, onThemeChange }: SettingsModalP
               onChange={(value) => handleChange("max_results", parseInt(value))}
               placeholder="결과 수 선택"
             />
+          </div>
+
+          {/* 최소 신뢰도 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              최소 신뢰도
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={CONFIDENCE_STEP}
+                value={settings.min_confidence}
+                onChange={(e) => handleChange("min_confidence", Number(e.target.value))}
+                className="flex-1 accent-blue-500"
+                aria-label="최소 신뢰도 설정"
+              />
+              <div
+                className="min-w-[48px] text-sm font-semibold text-right"
+                style={{ color: "var(--color-text-primary)" }}
+              >
+                {settings.min_confidence}%
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              설정 값 미만의 결과는 표시하지 않습니다
+            </p>
           </div>
 
           {/* 테마 */}
