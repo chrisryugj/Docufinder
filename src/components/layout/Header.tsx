@@ -9,40 +9,45 @@ interface HeaderProps {
 export function Header({ onAddFolder, onOpenSettings, isIndexing }: HeaderProps) {
   return (
     <header
-      className="px-6 py-4 flex justify-between items-center border-b"
+      className="px-6 py-4 flex justify-between items-center border-b bg-[var(--color-bg-primary)]"
       style={{ borderColor: 'var(--color-border)' }}
     >
-      <div>
-        <h1 className="text-2xl font-bold font-display" style={{ color: 'var(--color-text-primary)' }}>
-          DocuFinder
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          로컬 문서 검색 시스템
-        </p>
+      <div className="flex items-center gap-3">
+        {/* App Icon */}
+        <div className="flex-shrink-0">
+          <img
+            src="/app-icon.svg"
+            alt="DocuFinder Logo"
+            className="w-10 h-10 object-contain"
+          />
+        </div>
+
+        {/* Title Container */}
+        <div>
+          <h1 className="text-xl font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+            DocuFinder
+          </h1>
+          <p className="text-xs font-medium tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
+            로컬 문서 검색 시스템
+          </p>
+        </div>
       </div>
+
       <div className="flex items-center gap-3">
         <Button
           onClick={onAddFolder}
           disabled={isIndexing}
           isLoading={isIndexing}
           aria-label="폴더 추가"
+          className="font-medium shadow-none hover:shadow-sm transition-colors"
         >
           {isIndexing ? "인덱싱 중..." : "폴더 추가"}
         </Button>
         <button
           onClick={onOpenSettings}
-          className="p-2 rounded-lg transition-all duration-200 hover:scale-105"
+          className="p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
           style={{
-            color: 'var(--color-text-muted)',
-            backgroundColor: 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--color-bg-tertiary)';
-            e.currentTarget.style.color = 'var(--color-text-primary)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = 'var(--color-text-muted)';
+            color: 'var(--color-text-secondary)',
           }}
           aria-label="설정"
         >

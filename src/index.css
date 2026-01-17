@@ -1,11 +1,436 @@
 @import "tailwindcss";
 
 /* ============================================
-   DocuFinder Design System - Arctic Clean
+   DocuFinder Design System - GovTech Standard
    ============================================ */
 
 /* Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ============================================
+   Light Mode (Default)
+   ============================================ */
+:root,
+:root.light {
+  /* 배경 - 명확한 구분감 */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F8FAFC;
+  /* Slate-50 */
+  --color-bg-tertiary: #F1F5F9;
+  /* Slate-100 */
+  --color-bg-hover: #E2E8F0;
+  /* Slate-200 */
+
+  /* 텍스트 - 가독성 최우선 (High Contrast) */
+  --color-text-primary: #0F172A;
+  /* Slate-900 */
+  --color-text-secondary: #334155;
+  /* Slate-700 */
+  --color-text-muted: #64748B;
+  /* Slate-500 */
+
+  /* 테두리 - 선명한 경계 */
+  --color-border: #CBD5E1;
+  /* Slate-300 */
+  --color-border-hover: #94A3B8;
+  /* Slate-400 */
+
+  /* 액센트 (Deep Navy & Royal Blue) - 신뢰감 */
+  --color-accent: #2563EB;
+  /* Royal Blue (Blue-600) */
+  --color-accent-hover: #1D4ED8;
+  /* Blue-700 */
+  --color-accent-active: #1E40AF;
+  /* Blue-800 */
+  --color-accent-light: #EFF6FF;
+  /* Blue-50 */
+  --color-accent-muted: #DBEAFE;
+  /* Blue-100 */
+
+  /* 사이드바 전용 (Deep Navy) */
+  --color-sidebar-bg: #0F172A;
+  /* Slate-900 */
+  --color-sidebar-text: #F8FAFC;
+  /* Slate-50 */
+  --color-sidebar-muted: #94A3B8;
+  /* Slate-400 */
+  --color-sidebar-hover: #1E293B;
+  /* Slate-800 */
+  --color-sidebar-active: #334155;
+  /* Slate-700 */
+
+  /* 파일타입별 색상 - 명확한 인지 */
+  --color-file-hwpx: #7C3AED;
+  /* Violet-600 */
+  --color-file-docx: #2563EB;
+  /* Blue-600 */
+  --color-file-xlsx: #16A34A;
+  /* Green-600 */
+  --color-file-pdf: #DC2626;
+  /* Red-600 */
+  --color-file-txt: #475569;
+  /* Slate-600 */
+
+  /* 파일타입 배경 - Solid에 가까운 연한 톤 */
+  --color-file-hwpx-bg: #F5F3FF;
+  --color-file-docx-bg: #EFF6FF;
+  --color-file-xlsx-bg: #F0FDF4;
+  --color-file-pdf-bg: #FEF2F2;
+  --color-file-txt-bg: #F8FAFC;
+
+  /* 상태 색상 - 직관적 */
+  --color-success: #15803D;
+  /* Green-700 */
+  --color-warning: #B45309;
+  /* Amber-700 */
+  --color-error: #B91C1C;
+  /* Red-700 */
+  --color-error-rgb: 185, 28, 28;
+
+  /* 하이라이트 (검색 결과) - 눈에 띄게 */
+  --color-highlight-bg: #FEF08A;
+  /* Yellow-200 */
+  --color-highlight-text: #854D0E;
+  /* Yellow-800 */
+
+  /* 그림자 - 절제됨 (Short & Sharp) */
+  --shadow-xs: 0 1px 0 rgba(15, 23, 42, 0.05);
+  /* Border-like */
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -1px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.1), 0 4px 6px -2px rgba(15, 23, 42, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 10px 10px -5px rgba(15, 23, 42, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+  --shadow-card-hover: 0 10px 15px -3px rgba(37, 99, 235, 0.1);
+
+  /* 스크롤바 */
+  --scrollbar-track: #F1F5F9;
+  --scrollbar-thumb: #94A3B8;
+  --scrollbar-thumb-hover: #64748B;
+}
+
+/* ============================================
+   Dark Mode
+   ============================================ */
+:root.dark {
+  /* 배경 - 짙은 회색조 */
+  --color-bg-primary: #0F172A;
+  /* Slate-900 */
+  --color-bg-secondary: #1E293B;
+  /* Slate-800 */
+  --color-bg-tertiary: #334155;
+  /* Slate-700 */
+  --color-bg-hover: #475569;
+  /* Slate-600 */
+
+  /* 텍스트 */
+  --color-text-primary: #F8FAFC;
+  /* Slate-50 */
+  --color-text-secondary: #CBD5E1;
+  /* Slate-300 */
+  --color-text-muted: #94A3B8;
+  /* Slate-400 */
+
+  /* 테두리 */
+  --color-border: #334155;
+  /* Slate-700 */
+  --color-border-hover: #475569;
+  /* Slate-600 */
+
+  /* 액센트 */
+  --color-accent: #3B82F6;
+  /* Blue-500 */
+  --color-accent-hover: #60A5FA;
+  /* Blue-400 */
+  --color-accent-active: #93C5FD;
+  /* Blue-300 */
+  --color-accent-light: rgba(59, 130, 246, 0.15);
+  --color-accent-muted: rgba(59, 130, 246, 0.25);
+
+  /* 사이드바 전용 (다크모드에선 배경과 동일하게 가거나 약간 더 어둡게) */
+  --color-sidebar-bg: #020617;
+  /* Slate-950 */
+  --color-sidebar-text: #F8FAFC;
+  --color-sidebar-muted: #94A3B8;
+  --color-sidebar-hover: #1E293B;
+  --color-sidebar-active: #334155;
+
+  /* 파일타입별 색상 - 명도 상향 */
+  --color-file-hwpx: #A78BFA;
+  --color-file-docx: #60A5FA;
+  --color-file-xlsx: #4ADE80;
+  --color-file-pdf: #F87171;
+  --color-file-txt: #94A3B8;
+
+  /* 파일타입 배경 */
+  --color-file-hwpx-bg: rgba(167, 139, 250, 0.15);
+  --color-file-docx-bg: rgba(96, 165, 250, 0.15);
+  --color-file-xlsx-bg: rgba(74, 222, 128, 0.15);
+  --color-file-pdf-bg: rgba(248, 113, 113, 0.15);
+  --color-file-txt-bg: rgba(148, 163, 184, 0.15);
+
+  /* 상태 색상 */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-error-rgb: 239, 68, 68;
+
+  /* 하이라이트 */
+  --color-highlight-bg: rgba(234, 179, 8, 0.3);
+  --color-highlight-text: #FEF08A;
+
+  /* 그림자 */
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  --shadow-card-hover: 0 10px 15px -3px rgba(59, 130, 246, 0.2);
+
+  /* 스크롤바 */
+  --scrollbar-track: #1E293B;
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #64748B;
+}
+
+/* ============================================
+   공통 디자인 토큰
+   ============================================ */
+:root {
+  /* 타이포그래피 - Pretendard 단일화 */
+  --font-display: 'Pretendard', system-ui, sans-serif;
+  --font-body: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* 타이포그래피 - 폰트 크기 */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+
+  /* 타이포그래피 - 줄간격 (조금 더 조임) */
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 1.8;
+
+  /* 타이포그래피 - 글자 간격 */
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.015em;
+
+  /* 간격 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+
+  /* 라운딩 - 단정하게 (Small Radius) */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  /* 기본 컨테이너 */
+  --radius-lg: 8px;
+  /* 큰 카드 */
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  /* 트랜지션 - 즉각적 (Fast) */
+  --transition-fast: 100ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 사이드바 */
+  --sidebar-width: 260px;
+  /* 약간 축소 */
+}
+
+/* ============================================
+   기본 스타일
+   ============================================ */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  font-family: var(--font-body);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+/* ============================================
+   유틸리티 & 컴포넌트 스타일
+   ============================================ */
+
+/* 카드 스타일 - Clean Solid */
+.result-card {
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.result-card:hover {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+  background-color: var(--color-bg-secondary);
+}
+
+.result-card.selected {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent-light);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+/* Glassmorphism 제거 -> Solid 스타일로 대체 */
+.glass,
+.glass-card {
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  /* 블러 효과 제거 */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 포커스 - 고대비 */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* 파일 타입 유틸리티 */
+.file-type-hwpx {
+  color: var(--color-file-hwpx);
+}
+
+.file-type-docx {
+  color: var(--color-file-docx);
+}
+
+.file-type-xlsx {
+  color: var(--color-file-xlsx);
+}
+
+.file-type-pdf {
+  color: var(--color-file-pdf);
+}
+
+.file-type-txt {
+  color: var(--color-file-txt);
+}
+
+.file-badge-hwpx {
+  background-color: var(--color-file-hwpx-bg);
+  color: var(--color-file-hwpx);
+  border: 1px solid rgba(124, 58, 237, 0.1);
+}
+
+.file-badge-docx {
+  background-color: var(--color-file-docx-bg);
+  color: var(--color-file-docx);
+  border: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.file-badge-xlsx {
+  background-color: var(--color-file-xlsx-bg);
+  color: var(--color-file-xlsx);
+  border: 1px solid rgba(22, 163, 74, 0.1);
+}
+
+.file-badge-pdf {
+  background-color: var(--color-file-pdf-bg);
+  color: var(--color-file-pdf);
+  border: 1px solid rgba(220, 38, 38, 0.1);
+}
+
+.file-badge-txt {
+  background-color: var(--color-file-txt-bg);
+  color: var(--color-file-txt);
+  border: 1px solid rgba(71, 85, 105, 0.1);
+}
+
+/* 스크롤바 커스텀 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid var(--scrollbar-track);
+  /* 공간 확보 */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* 유틸리티 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+::selection {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+/* 애니메이션 제거/축소 */
+.animate-modal-enter {
+  animation: none;
+}
+
+.animate-slide-in {
+  animation: none;
+}
+
+.search-result-item {
+  opacity: 1;
+  animation: none;
+}
+
+/* 텍스트 그라데이션 제거 -> 단색 강조 */
+.text-gradient {
+  background: none;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: unset;
+  color: var(--color-accent);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
 
 /* ============================================
    Light Mode (Default)
@@ -200,7 +625,9 @@ html {
   -moz-osx-font-smoothing: grayscale;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   font-family: var(--font-body);
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
@@ -215,6 +642,7 @@ html, body, #root {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -222,17 +650,31 @@ html, body, #root {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes modalEnter {
@@ -240,6 +682,7 @@ html, body, #root {
     opacity: 0;
     transform: scale(0.95) translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -251,6 +694,7 @@ html, body, #root {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+
   to {
     opacity: 0;
     transform: scale(0.95) translateY(10px);
@@ -258,13 +702,23 @@ html, body, #root {
 }
 
 @keyframes backdropFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes backdropFadeOut {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes slideInRight {
@@ -272,6 +726,7 @@ html, body, #root {
     opacity: 0;
     transform: translateX(-100%);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
@@ -282,6 +737,7 @@ html, body, #root {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
@@ -296,12 +752,10 @@ html, body, #root {
 }
 
 .animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-bg-tertiary) 25%,
-    var(--color-bg-hover) 50%,
-    var(--color-bg-tertiary) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-bg-tertiary) 25%,
+      var(--color-bg-hover) 50%,
+      var(--color-bg-tertiary) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
@@ -394,23 +848,57 @@ select:focus-visible {
    ============================================ */
 
 /* 파일 타입 색상 */
-.file-type-hwpx { color: var(--color-file-hwpx); }
-.file-type-docx { color: var(--color-file-docx); }
-.file-type-xlsx { color: var(--color-file-xlsx); }
-.file-type-pdf { color: var(--color-file-pdf); }
-.file-type-txt { color: var(--color-file-txt); }
+.file-type-hwpx {
+  color: var(--color-file-hwpx);
+}
+
+.file-type-docx {
+  color: var(--color-file-docx);
+}
+
+.file-type-xlsx {
+  color: var(--color-file-xlsx);
+}
+
+.file-type-pdf {
+  color: var(--color-file-pdf);
+}
+
+.file-type-txt {
+  color: var(--color-file-txt);
+}
 
 /* 파일 타입 뱃지 */
-.file-badge-hwpx { background-color: var(--color-file-hwpx-bg); color: var(--color-file-hwpx); }
-.file-badge-docx { background-color: var(--color-file-docx-bg); color: var(--color-file-docx); }
-.file-badge-xlsx { background-color: var(--color-file-xlsx-bg); color: var(--color-file-xlsx); }
-.file-badge-pdf { background-color: var(--color-file-pdf-bg); color: var(--color-file-pdf); }
-.file-badge-txt { background-color: var(--color-file-txt-bg); color: var(--color-file-txt); }
+.file-badge-hwpx {
+  background-color: var(--color-file-hwpx-bg);
+  color: var(--color-file-hwpx);
+}
+
+.file-badge-docx {
+  background-color: var(--color-file-docx-bg);
+  color: var(--color-file-docx);
+}
+
+.file-badge-xlsx {
+  background-color: var(--color-file-xlsx-bg);
+  color: var(--color-file-xlsx);
+}
+
+.file-badge-pdf {
+  background-color: var(--color-file-pdf-bg);
+  color: var(--color-file-pdf);
+}
+
+.file-badge-txt {
+  background-color: var(--color-file-txt-bg);
+  color: var(--color-file-txt);
+}
 
 /* 스크롤바 숨기기 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

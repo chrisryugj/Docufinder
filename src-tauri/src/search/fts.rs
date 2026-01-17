@@ -52,7 +52,7 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
     results.collect()
 }
 
-/// FTS5 쿼리 전처리 (특수문자 처리)
+/// FTS5 쿼리 전처리 (특수문자 처리 + prefix match)
 fn sanitize_fts_query(query: &str) -> String {
     // 빈 쿼리 처리
     let trimmed = query.trim();
@@ -60,10 +60,17 @@ fn sanitize_fts_query(query: &str) -> String {
         return String::new();
     }
 
-    // FTS5 특수문자 이스케이프
-    // 쌍따옴표로 감싸서 안전하게 검색
-    let escaped = trimmed.replace('"', "\"\"");
-    format!("\"{}\"", escaped)
+    // 각 단어를 쌍따옴표로 감싸고 와일드카드 추가 (prefix match)
+    // "분장"* → "분장", "분장을", "분장이" 등 모두 매칭
+    let terms: Vec<String> = trimmed
+        .split_whitespace()
+        .map(|word| {
+            let escaped = word.replace('"', "\"\"");
+            format!("\"{}\"*", escaped)
+        })
+        .collect();
+
+    terms.join(" ")
 }
 
 /// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
