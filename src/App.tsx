@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 // Hooks
-import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches } from "./hooks";
+import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches, useExport, useTheme } from "./hooks";
 
 // Components
 import { Header, StatusBar, ErrorBanner } from "./components/layout";
@@ -15,6 +15,9 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // 테마
+  const { resolvedTheme, setTheme } = useTheme();
 
   // 검색 상태
   const {
@@ -38,6 +41,7 @@ function App() {
     error: indexError,
     clearError: clearIndexError,
     addFolder,
+    removeFolder,
   } = useIndexStatus();
 
   // 최근 검색
@@ -47,6 +51,9 @@ function App() {
     removeSearch,
     clearSearches,
   } = useRecentSearches();
+
+  // 내보내기
+  const { exportToCSV, copyToClipboard, toast, showToast } = useExport();
 
   // 에러 통합
   const error = searchError || indexError;
@@ -67,24 +74,28 @@ function App() {
     []
   );
 
-  // 경로 복사
+  // 경로 복사 (\\?\ 접두사 제거)
   const handleCopyPath = useCallback(async (path: string) => {
     try {
-      await navigator.clipboard.writeText(path);
-      // TODO: 토스트 알림 표시
+      const cleanPath = path.replace(/^\\\\\?\\/, "");
+      await navigator.clipboard.writeText(cleanPath);
+      showToast("경로가 복사되었습니다", "success");
     } catch (err) {
       console.error("Failed to copy path:", err);
+      showToast("경로 복사 실패", "error");
     }
-  }, []);
+  }, [showToast]);
 
-  // 폴더 열기
+  // 폴더 열기 (\\?\ 접두사 제거)
   const handleOpenFolder = useCallback(async (folderPath: string) => {
     try {
-      await invoke("open_folder", { path: folderPath });
+      const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
+      await invoke("open_folder", { path: cleanPath });
     } catch (err) {
       console.error("Failed to open folder:", err);
+      showToast("폴더 열기 실패", "error");
     }
-  }, []);
+  }, [showToast]);
 
   // 사이드바 토글
   const toggleSidebar = useCallback(() => {
@@ -165,13 +176,14 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* 사이드바 */}
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={toggleSidebar}
         watchedFolders={status?.watched_folders ?? []}
         onAddFolder={addFolder}
+        onRemoveFolder={removeFolder}
         recentSearches={recentSearches}
         onSelectSearch={handleSelectSearch}
         onRemoveSearch={removeSearch}
@@ -191,7 +203,7 @@ function App() {
         />
 
         {/* Search Bar */}
-        <div className="p-6 border-b border-gray-800">
+        <div className="p-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <SearchBar
             ref={searchInputRef}
             query={query}
@@ -210,7 +222,7 @@ function App() {
 
         {/* 필터 바 (결과가 있을 때만 표시) */}
         {query && filteredResults.length > 0 && (
-          <div className="px-6 border-b border-gray-800">
+          <div className="px-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
             <div className="max-w-4xl mx-auto">
               <SearchFilters
                 filters={filters}
@@ -231,6 +243,8 @@ function App() {
               onOpenFile={handleOpenFile}
               onCopyPath={handleCopyPath}
               onOpenFolder={handleOpenFolder}
+              onExportCSV={() => exportToCSV(filteredResults, query)}
+              onCopyAll={() => copyToClipboard(filteredResults, query)}
             />
           </div>
         </main>
@@ -243,7 +257,22 @@ function App() {
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onThemeChange={setTheme}
       />
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className="fixed bottom-20 right-6 px-4 py-2 rounded-lg text-sm z-50 text-white"
+          style={{
+            backgroundColor: toast.type === "success" ? 'var(--color-success)' : 'var(--color-error)',
+            boxShadow: 'var(--shadow-lg)'
+          }}
+          role="alert"
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

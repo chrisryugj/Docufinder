@@ -11,7 +11,7 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -25,7 +25,7 @@ pub struct WatchManager {
 /// 인덱싱에 필요한 컨텍스트
 pub struct IndexContext {
     pub db_path: PathBuf,
-    pub embedder: Option<Arc<Embedder>>,
+    pub embedder: Option<Arc<Mutex<Embedder>>>,
     pub vector_index: Option<Arc<VectorIndex>>,
 }
 

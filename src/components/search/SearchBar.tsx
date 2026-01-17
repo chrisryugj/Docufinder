@@ -38,14 +38,27 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             placeholder="검색어를 입력하세요..."
-            className="w-full px-4 py-3 pl-12 bg-gray-800 border border-gray-700 rounded-lg
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       text-white placeholder-gray-500"
+            className="w-full px-4 py-3.5 pl-12 rounded-xl transition-all duration-200"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-primary)",
+              boxShadow: "var(--shadow-sm)",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "var(--color-accent)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px var(--color-accent-light)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "var(--color-border)";
+              e.currentTarget.style.boxShadow = "var(--shadow-sm)";
+            }}
             aria-label="검색어 입력"
           />
           {/* 검색 아이콘 */}
           <svg
-            className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500"
+            className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5"
+            style={{ color: "var(--color-text-muted)" }}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -62,7 +75,11 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
           {isLoading && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
               <div
-                className="w-5 h-5 border-2 border-gray-500 border-t-blue-500 rounded-full animate-spin"
+                className="w-5 h-5 rounded-full animate-spin"
+                style={{
+                  border: "2px solid var(--color-border)",
+                  borderTopColor: "var(--color-accent)",
+                }}
                 role="status"
                 aria-label="검색 중"
               />
@@ -75,20 +92,39 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
           {SEARCH_MODES.map((mode) => {
             const needsSemantic = mode.value !== "keyword";
             const disabled = needsSemantic && !status?.semantic_available;
+            const isActive = searchMode === mode.value;
+
             return (
               <button
                 key={mode.value}
                 onClick={() => !disabled && onSearchModeChange(mode.value)}
                 disabled={disabled}
-                className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                  searchMode === mode.value
-                    ? "bg-blue-600 text-white"
+                className="px-3.5 py-1.5 text-sm rounded-lg transition-all duration-200"
+                style={{
+                  backgroundColor: isActive
+                    ? "var(--color-accent)"
+                    : "var(--color-bg-secondary)",
+                  color: isActive
+                    ? "white"
                     : disabled
-                      ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                      : "bg-gray-800 text-gray-400 hover:bg-gray-700"
-                }`}
+                      ? "var(--color-text-muted)"
+                      : "var(--color-text-secondary)",
+                  opacity: disabled ? 0.5 : 1,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  fontWeight: isActive ? 500 : 400,
+                }}
+                onMouseEnter={(e) => {
+                  if (!disabled && !isActive) {
+                    e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!disabled && !isActive) {
+                    e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+                  }
+                }}
                 title={disabled ? "모델 파일 필요" : mode.desc}
-                aria-pressed={searchMode === mode.value}
+                aria-pressed={isActive}
               >
                 {mode.label}
               </button>
@@ -97,7 +133,10 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
 
           {/* 검색 결과 카운트 */}
           {searchTime !== null && resultCount !== undefined && resultCount > 0 && (
-            <span className="ml-auto text-gray-500 text-sm self-center">
+            <span
+              className="ml-auto text-sm self-center"
+              style={{ color: "var(--color-text-muted)" }}
+            >
               {resultCount}개 결과 ({searchTime}ms)
             </span>
           )}

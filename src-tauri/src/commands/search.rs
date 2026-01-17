@@ -126,8 +126,31 @@ pub async fn search_semantic(
         )
     };
 
+    // 벡터 인덱스 상태 확인
+    let index_size = vector_index.size();
+    let map_size = vector_index.id_map_size();
+
+    tracing::debug!(
+        "Semantic search: index_size={}, map_size={}",
+        index_size,
+        map_size
+    );
+
+    if index_size == 0 {
+        return Err("시맨틱 검색 인덱스가 비어 있습니다. 폴더를 인덱싱해주세요.".to_string());
+    }
+
+    if map_size == 0 {
+        return Err(
+            "시맨틱 검색 매핑이 손상되었습니다. 인덱스를 삭제하고 다시 인덱싱해주세요."
+                .to_string(),
+        );
+    }
+
     // 1. 쿼리 임베딩
     let query_embedding = embedder
+        .lock()
+        .map_err(|e| format!("Embedder lock error: {}", e))?
         .embed(&query, true)
         .map_err(|e| e.to_string())?;
 
@@ -219,10 +242,16 @@ pub async fn search_hybrid(
     // 2. 벡터 검색 (가능한 경우)
     let vector_results = match (embedder.as_ref(), vector_index.as_ref()) {
         (Some(emb), Some(vi)) => {
-            match emb.embed(&query, true) {
-                Ok(query_embedding) => vi.search(&query_embedding, 50).unwrap_or_default(),
+            match emb.lock() {
+                Ok(mut emb_guard) => match emb_guard.embed(&query, true) {
+                    Ok(query_embedding) => vi.search(&query_embedding, 50).unwrap_or_default(),
+                    Err(e) => {
+                        tracing::warn!("Failed to embed query: {}", e);
+                        vec![]
+                    }
+                },
                 Err(e) => {
-                    tracing::warn!("Failed to embed query: {}", e);
+                    tracing::warn!("Failed to lock embedder: {}", e);
                     vec![]
                 }
             }

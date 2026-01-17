@@ -41,7 +41,8 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+      className="fixed inset-0 flex items-center justify-center z-50"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.6)" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -49,16 +50,37 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     >
       <div
         ref={modalRef}
-        className="bg-gray-800 rounded-lg shadow-xl border border-gray-700 w-full max-w-lg mx-4 animate-modal-enter"
+        className="w-full max-w-lg mx-4 animate-modal-enter rounded-xl"
+        style={{
+          backgroundColor: "var(--color-bg-secondary)",
+          boxShadow: "var(--shadow-xl)",
+          border: "1px solid var(--color-border)",
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-          <h2 id="modal-title" className="text-lg font-semibold">
+        <div
+          className="flex items-center justify-between px-6 py-4 border-b"
+          style={{ borderColor: "var(--color-border)" }}
+        >
+          <h2
+            id="modal-title"
+            className="text-lg font-semibold"
+            style={{ color: "var(--color-text-primary)" }}
+          >
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors p-1 rounded hover:bg-gray-700"
+            className="p-1.5 rounded-lg transition-all duration-200"
+            style={{ color: "var(--color-text-muted)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+              e.currentTarget.style.color = "var(--color-text-primary)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "var(--color-text-muted)";
+            }}
             aria-label="닫기"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -68,7 +90,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4">
+        <div className="px-6 py-5">
           {children}
         </div>
       </div>

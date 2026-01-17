@@ -80,7 +80,10 @@ export function SearchFilters({
       {hasActiveFilters && (
         <button
           onClick={handleReset}
-          className="px-2 py-1 text-gray-500 hover:text-gray-300 transition-colors"
+          className="px-2 py-1 transition-colors"
+          style={{ color: "var(--color-text-muted)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-text-primary)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-text-muted)")}
           aria-label="필터 초기화"
         >
           초기화
@@ -89,7 +92,7 @@ export function SearchFilters({
 
       {/* 결과 수 */}
       {resultCount !== undefined && resultCount > 0 && (
-        <span className="ml-auto text-gray-500">
+        <span className="ml-auto" style={{ color: "var(--color-text-muted)" }}>
           {resultCount}개 결과
         </span>
       )}
@@ -118,13 +121,13 @@ function FilterDropdown<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className={`appearance-none pl-3 pr-7 py-1.5 rounded-md border cursor-pointer
-          transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500
-          ${
-            isDefault
-              ? "bg-gray-800 border-gray-700 text-gray-400"
-              : "bg-blue-900/30 border-blue-600/50 text-blue-300"
-          }`}
+        className="appearance-none pl-3 pr-7 py-1.5 rounded-md border cursor-pointer
+          transition-colors focus:outline-none focus:ring-2"
+        style={{
+          backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
+          borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
+          color: isDefault ? "var(--color-text-muted)" : "var(--color-accent)",
+        }}
         aria-label={`${label} 필터`}
       >
         {options.map((option) => (
@@ -135,7 +138,8 @@ function FilterDropdown<T extends string>({
       </select>
       {/* 드롭다운 아이콘 */}
       <svg
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500 pointer-events-none"
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+        style={{ color: "var(--color-text-muted)" }}
         fill="none"
         stroke="currentColor"
         viewBox="0 0 24 24"

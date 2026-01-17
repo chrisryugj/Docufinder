@@ -54,38 +54,66 @@ export function SearchResultItem({
 
   return (
     <div
-      className={`
-        search-result-item result-card
-        bg-gray-800 rounded-lg p-4 border
-        ${isSelected
-          ? "border-blue-500 ring-2 ring-blue-500/20 bg-blue-900/10"
-          : "border-gray-700"
-        }
-      `}
+      className="search-result-item result-card"
+      style={{
+        "--item-index": index,
+        padding: "1.25rem 1.5rem",
+        ...(isSelected && {
+          borderColor: "var(--color-accent)",
+          backgroundColor: "var(--color-accent-light)",
+          boxShadow: "0 0 0 3px var(--color-accent-muted)",
+        }),
+      } as React.CSSProperties}
       role="option"
       aria-selected={isSelected}
-      style={{ "--item-index": index } as React.CSSProperties}
       tabIndex={isSelected ? 0 : -1}
     >
       {/* 헤더 */}
       <div className="flex items-start justify-between mb-2">
         <div
-          className="flex items-center gap-2 cursor-pointer hover:text-blue-400 flex-1 min-w-0"
+          className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 group/filename transition-colors duration-200"
           onClick={() => onOpenFile(result.file_path, result.page_number)}
           title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
+          style={{ color: "var(--color-text-primary)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--color-accent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--color-text-primary)";
+          }}
         >
           <FileIcon fileName={result.file_name} size="md" />
-          <span className="font-medium text-white truncate">{result.file_name}</span>
+          <span
+            className="truncate"
+            style={{ fontSize: "1.125rem", fontWeight: 600 }}
+          >
+            {result.file_name}
+          </span>
+          <svg
+            className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
         </div>
 
         {/* 액션 버튼 + 뱃지 */}
         <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-          {/* 액션 버튼들 */}
-          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* 액션 버튼들 - 항상 노출 (opacity 0.5 → hover 1) */}
+          <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
             {/* 경로 복사 */}
             <button
               onClick={handleCopyPath}
-              className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
+              className="p-1 rounded transition-colors"
+              style={{ color: "var(--color-text-muted)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--color-text-secondary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--color-text-muted)";
+              }}
               title="경로 복사"
               aria-label="파일 경로 복사"
             >
@@ -98,7 +126,14 @@ export function SearchResultItem({
             {onOpenFolder && (
               <button
                 onClick={handleOpenFolder}
-                className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
+                className="p-1 rounded transition-colors"
+                style={{ color: "var(--color-text-muted)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--color-text-secondary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--color-text-muted)";
+                }}
                 title="폴더 열기"
                 aria-label="상위 폴더 열기"
               >
@@ -122,27 +157,54 @@ export function SearchResultItem({
       </div>
 
       {/* 내용 */}
-      <div className="cursor-pointer" onClick={onToggleExpand}>
-        <p className="text-gray-300 text-sm leading-relaxed">
-          <HighlightedText
-            text={isExpanded ? result.full_content : result.content_preview}
-            ranges={result.highlight_ranges}
-          />
-        </p>
-        {!isExpanded && result.full_content.length > result.content_preview.length && (
-          <span className="text-blue-400 text-xs mt-1 hover:underline inline-block">
-            더보기 ▼
-          </span>
-        )}
-        {isExpanded && (
-          <span className="text-blue-400 text-xs mt-1 hover:underline inline-block">
-            접기 ▲
-          </span>
-        )}
+      <div
+        className="cursor-pointer rounded-md p-2 -mx-2 transition-colors flex gap-2"
+        onClick={onToggleExpand}
+        style={{ backgroundColor: "transparent" }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        {/* 토글 아이콘 */}
+        <svg
+          className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          style={{ color: "var(--color-text-muted)" }}
+          fill="currentColor"
+          viewBox="0 0 20 20"
+        >
+          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-sm"
+            style={{
+              color: "var(--color-text-secondary)",
+              lineHeight: "var(--leading-relaxed)",
+              letterSpacing: "0.3px",
+            }}
+          >
+            <HighlightedText
+              text={isExpanded ? result.full_content : result.content_preview}
+              ranges={result.highlight_ranges}
+            />
+          </p>
+          {!isExpanded && result.full_content.length > result.content_preview.length && (
+            <span className="text-xs mt-1 inline-block" style={{ color: "var(--color-accent)" }}>
+              더보기
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 경로 (브레드크럼 스타일) */}
-      <p className="text-gray-500 text-xs mt-2 truncate" title={result.file_path}>
+      <p
+        className="text-xs mt-2 truncate font-mono"
+        style={{ color: "var(--color-text-muted)" }}
+        title={result.file_path}
+      >
         {formatBreadcrumb(folderPath)}
       </p>
     </div>
@@ -151,7 +213,9 @@ export function SearchResultItem({
 
 /** 경로를 브레드크럼 형식으로 변환 */
 function formatBreadcrumb(path: string): string {
-  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  // Windows long path prefix 제거
+  let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
+  const parts = cleanPath.replace(/\\/g, "/").split("/").filter(Boolean);
   if (parts.length <= 3) {
     return parts.join(" › ");
   }

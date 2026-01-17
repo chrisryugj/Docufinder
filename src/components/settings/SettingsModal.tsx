@@ -3,18 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
+import type { Theme } from "../../hooks/useTheme";
 
 interface Settings {
   search_mode: "keyword" | "semantic" | "hybrid";
   max_results: number;
   chunk_size: number;
   chunk_overlap: number;
-  theme: "dark" | "light" | "system";
+  theme: Theme;
 }
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onThemeChange?: (theme: Theme) => void;
 }
 
 const SEARCH_MODE_OPTIONS = [
@@ -24,8 +26,8 @@ const SEARCH_MODE_OPTIONS = [
 ];
 
 const THEME_OPTIONS = [
-  { value: "dark", label: "다크 모드" },
   { value: "light", label: "라이트 모드" },
+  { value: "dark", label: "다크 모드" },
   { value: "system", label: "시스템 설정" },
 ];
 
@@ -36,7 +38,7 @@ const MAX_RESULTS_OPTIONS = [
   { value: "200", label: "200개" },
 ];
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onThemeChange }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -80,6 +82,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     if (settings) {
       setSettings({ ...settings, [key]: value });
+
+      // 테마 변경 시 즉시 적용
+      if (key === "theme" && onThemeChange) {
+        onThemeChange(value as Theme);
+      }
     }
   };
 
@@ -87,7 +94,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     return (
       <Modal isOpen={isOpen} onClose={onClose} title="설정">
         <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <div
+            className="animate-spin rounded-full h-8 w-8 border-2"
+            style={{
+              borderColor: "var(--color-border)",
+              borderTopColor: "var(--color-accent)",
+            }}
+          />
         </div>
       </Modal>
     );
@@ -96,7 +109,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="설정">
       {error && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded text-red-400 text-sm">
+        <div
+          className="mb-4 p-3 rounded-lg text-sm"
+          style={{
+            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "var(--color-error)",
+          }}
+        >
           {error}
         </div>
       )}
@@ -105,7 +125,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="space-y-5">
           {/* 검색 모드 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
               기본 검색 모드
             </label>
             <Dropdown
@@ -114,14 +137,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               onChange={(value) => handleChange("search_mode", value as Settings["search_mode"])}
               placeholder="검색 모드 선택"
             />
-            <p className="mt-1 text-xs text-gray-500">
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
               하이브리드: 키워드 + 의미 검색 결합 (모델 필요)
             </p>
           </div>
 
           {/* 최대 결과 수 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
               최대 검색 결과
             </label>
             <Dropdown
@@ -134,7 +160,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {/* 테마 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
               테마
             </label>
             <Dropdown
@@ -146,7 +175,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* 버튼 */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
+          <div
+            className="flex justify-end gap-3 pt-4 border-t"
+            style={{ borderColor: "var(--color-border)" }}
+          >
             <Button variant="ghost" onClick={onClose}>
               취소
             </Button>

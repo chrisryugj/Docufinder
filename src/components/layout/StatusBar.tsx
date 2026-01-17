@@ -6,13 +6,34 @@ interface StatusBarProps {
 
 export function StatusBar({ status }: StatusBarProps) {
   return (
-    <footer className="border-t border-gray-700 bg-gray-800 px-4 py-2">
-      <div className="flex justify-between text-sm text-gray-400">
-        <span>인덱싱된 문서: {status?.total_files ?? 0}개</span>
+    <footer
+      className="px-4 py-2.5 border-t"
+      style={{
+        backgroundColor: "var(--color-bg-secondary)",
+        borderColor: "var(--color-border)",
+      }}
+    >
+      <div
+        className="flex justify-between text-sm"
+        style={{ color: "var(--color-text-muted)" }}
+      >
         <span>
-          {status?.watched_folders.length
-            ? `폴더: ${status.watched_folders.length}개`
-            : "폴더를 추가하세요"}
+          인덱싱된 문서:{" "}
+          <span style={{ color: "var(--color-text-secondary)" }}>
+            {status?.total_files ?? 0}개
+          </span>
+        </span>
+        <span>
+          {status?.watched_folders.length ? (
+            <>
+              폴더:{" "}
+              <span style={{ color: "var(--color-text-secondary)" }}>
+                {status.watched_folders.length}개
+              </span>
+            </>
+          ) : (
+            "폴더를 추가하세요"
+          )}
         </span>
       </div>
     </footer>

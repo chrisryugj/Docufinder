@@ -1,45 +1,170 @@
 @import "tailwindcss";
 
 /* ============================================
-   DocuFinder Design System
+   DocuFinder Design System - Arctic Clean
    ============================================ */
 
-:root {
-  /* 색상 팔레트 */
-  --color-bg-primary: #111827;
-  --color-bg-secondary: #1f2937;
-  --color-bg-tertiary: #374151;
-  --color-bg-hover: #4b5563;
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
-  --color-text-primary: #f9fafb;
-  --color-text-secondary: #d1d5db;
-  --color-text-muted: #9ca3af;
+/* ============================================
+   Light Mode (Default)
+   ============================================ */
+:root,
+:root.light {
+  /* 배경 - 명도 대비 강화 */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F0F4F8;
+  --color-bg-tertiary: #E8EEF5;
+  --color-bg-hover: #D8E2EF;
 
-  --color-border: #374151;
-  --color-border-hover: #4b5563;
+  /* 텍스트 */
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748B;
 
-  --color-accent: #3b82f6;
-  --color-accent-hover: #2563eb;
-  --color-accent-light: rgba(59, 130, 246, 0.2);
+  /* 테두리 */
+  --color-border: #E2E8F0;
+  --color-border-hover: #CBD5E1;
 
-  /* 파일타입별 색상 */
-  --color-file-hwpx: #34d399;
-  --color-file-docx: #60a5fa;
-  --color-file-xlsx: #4ade80;
-  --color-file-pdf: #f87171;
-  --color-file-txt: #9ca3af;
+  /* 액센트 (스카이 블루) */
+  --color-accent: #0EA5E9;
+  --color-accent-hover: #0284C7;
+  --color-accent-active: #0369A1;
+  --color-accent-light: rgba(14, 165, 233, 0.1);
+  --color-accent-muted: rgba(14, 165, 233, 0.2);
+
+  /* 파일타입별 색상 - HWPX는 퍼플 (한글 아이덴티티) */
+  --color-file-hwpx: #7C3AED;
+  --color-file-docx: #2563EB;
+  --color-file-xlsx: #16A34A;
+  --color-file-pdf: #DC2626;
+  --color-file-txt: #64748B;
+
+  /* 파일타입 배경 */
+  --color-file-hwpx-bg: rgba(124, 58, 237, 0.1);
+  --color-file-docx-bg: rgba(37, 99, 235, 0.1);
+  --color-file-xlsx-bg: rgba(22, 163, 74, 0.1);
+  --color-file-pdf-bg: rgba(220, 38, 38, 0.1);
+  --color-file-txt-bg: rgba(100, 116, 139, 0.1);
+
+  /* 상태 색상 - 더 따뜻한 톤 */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-error-rgb: 239, 68, 68;
+
+  /* 하이라이트 (검색 결과) */
+  --color-highlight-bg: rgba(250, 204, 21, 0.35);
+  --color-highlight-text: #92400E;
+
+  /* 그림자 - 6단계 체계 */
+  --shadow-xs: 0 0.5px 1px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 8px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 20px -3px rgba(15, 23, 42, 0.1), 0 4px 8px -4px rgba(15, 23, 42, 0.06);
+  --shadow-xl: 0 20px 30px -5px rgba(15, 23, 42, 0.12), 0 8px 12px -6px rgba(15, 23, 42, 0.06);
+  --shadow-2xl: 0 25px 50px -12px rgba(15, 23, 42, 0.2);
+  --shadow-card-hover: 0 12px 24px rgba(14, 165, 233, 0.12);
+
+  /* 스크롤바 */
+  --scrollbar-track: #F1F5F9;
+  --scrollbar-thumb: #CBD5E1;
+  --scrollbar-thumb-hover: #94A3B8;
+}
+
+/* ============================================
+   Dark Mode
+   ============================================ */
+:root.dark {
+  /* 배경 - 명도 조정 (약간 밝게) */
+  --color-bg-primary: #0F172A;
+  --color-bg-secondary: #1A2536;
+  --color-bg-tertiary: #2C3E50;
+  --color-bg-hover: #3D5066;
+
+  /* 텍스트 */
+  --color-text-primary: #F1F5F9;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #94A3B8;
+
+  /* 테두리 */
+  --color-border: #334155;
+  --color-border-hover: #475569;
+
+  /* 액센트 (밝은 스카이 블루) */
+  --color-accent: #38BDF8;
+  --color-accent-hover: #0EA5E9;
+  --color-accent-active: #0284C7;
+  --color-accent-light: rgba(56, 189, 248, 0.15);
+  --color-accent-muted: rgba(56, 189, 248, 0.25);
+
+  /* 파일타입별 색상 - HWPX는 퍼플 (한글 아이덴티티) */
+  --color-file-hwpx: #A78BFA;
+  --color-file-docx: #60A5FA;
+  --color-file-xlsx: #4ADE80;
+  --color-file-pdf: #F87171;
+  --color-file-txt: #94A3B8;
+
+  /* 파일타입 배경 */
+  --color-file-hwpx-bg: rgba(167, 139, 250, 0.2);
+  --color-file-docx-bg: rgba(96, 165, 250, 0.15);
+  --color-file-xlsx-bg: rgba(74, 222, 128, 0.15);
+  --color-file-pdf-bg: rgba(248, 113, 113, 0.15);
+  --color-file-txt-bg: rgba(148, 163, 184, 0.15);
 
   /* 상태 색상 */
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-error: #EF4444;
+  --color-error-rgb: 239, 68, 68;
 
-  /* 타이포그래피 */
-  --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  /* 하이라이트 (검색 결과) */
+  --color-highlight-bg: rgba(234, 179, 8, 0.35);
+  --color-highlight-text: #FDE68A;
+
+  /* 그림자 - 6단계 체계 */
+  --shadow-xs: 0 0.5px 1px rgba(0, 0, 0, 0.2);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 20px -3px rgba(0, 0, 0, 0.4), 0 4px 8px -4px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 30px -5px rgba(0, 0, 0, 0.5), 0 8px 12px -6px rgba(0, 0, 0, 0.4);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  --shadow-card-hover: 0 12px 24px rgba(56, 189, 248, 0.15);
+
+  /* 스크롤바 */
+  --scrollbar-track: #1E293B;
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #64748B;
+}
+
+/* ============================================
+   공통 디자인 토큰
+   ============================================ */
+:root {
+  /* 타이포그래피 - 폰트 패밀리 */
+  --font-display: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* 타이포그래피 - 폰트 크기 */
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.875rem;
   --font-size-base: 1rem;
   --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+
+  /* 타이포그래피 - 줄간격 */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+  --leading-loose: 2;
+
+  /* 타이포그래피 - 글자 간격 */
+  --tracking-tight: -0.025em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.025em;
 
   /* 간격 */
   --spacing-xs: 0.25rem;
@@ -47,35 +172,44 @@
   --spacing-md: 1rem;
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
 
-  /* 라운딩 */
-  --radius-sm: 0.25rem;
+  /* 라운딩 - 맥락별 */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-full: 9999px;
 
   /* 트랜지션 */
-  --transition-fast: 150ms ease-out;
-  --transition-normal: 200ms ease-out;
-  --transition-slow: 300ms ease-out;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
   /* 사이드바 */
-  --sidebar-width: 260px;
-  --sidebar-width-collapsed: 0px;
+  --sidebar-width: 280px;
 }
 
-/* 기본 스타일 */
-html, body, #root {
-  font-family: var(--font-family);
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
+/* ============================================
+   기본 스타일
+   ============================================ */
+html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  font-family: var(--font-body);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
 /* ============================================
    애니메이션
    ============================================ */
-
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
@@ -112,43 +246,126 @@ html, body, #root {
   }
 }
 
+@keyframes modalExit {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes backdropFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
 .animate-modal-enter {
   animation: modalEnter 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.25s ease-out;
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-tertiary) 25%,
+    var(--color-bg-hover) 50%,
+    var(--color-bg-tertiary) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
 
 /* 검색 결과 스태거 애니메이션 */
 .search-result-item {
   animation: fadeSlideIn var(--transition-normal) forwards;
-  animation-delay: calc(var(--item-index, 0) * 30ms);
+  animation-delay: calc(var(--item-index, 0) * 40ms);
   opacity: 0;
 }
 
-/* 사이드바 트랜지션 */
-.sidebar {
-  transition: width var(--transition-normal), transform var(--transition-normal);
-}
-
-/* 호버 효과 */
+/* ============================================
+   카드 & 호버 효과
+   ============================================ */
 .result-card {
-  transition: transform var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
 }
 
 .result-card:hover {
-  transform: translateX(4px);
   border-color: var(--color-accent);
-  background-color: var(--color-bg-secondary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .result-card.selected {
   border-color: var(--color-accent);
   background-color: var(--color-accent-light);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+}
+
+/* ============================================
+   글래스모피즘
+   ============================================ */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+:root.dark .glass {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+/* 강화된 글래스모피즘 (검색바 등) */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+:root.dark .glass-card {
+  background: rgba(26, 37, 54, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 /* ============================================
    포커스 스타일 (접근성)
    ============================================ */
-
-/* 키보드 포커스만 표시 */
 :focus {
   outline: none;
 }
@@ -158,7 +375,6 @@ html, body, #root {
   outline-offset: 2px;
 }
 
-/* 버튼 포커스 */
 button:focus-visible,
 [role="button"]:focus-visible {
   outline: 2px solid var(--color-accent);
@@ -166,7 +382,6 @@ button:focus-visible,
   box-shadow: 0 0 0 4px var(--color-accent-light);
 }
 
-/* 입력 필드 포커스 */
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
@@ -185,14 +400,14 @@ select:focus-visible {
 .file-type-pdf { color: var(--color-file-pdf); }
 .file-type-txt { color: var(--color-file-txt); }
 
-/* 파일 타입 뱃지 배경 */
-.file-badge-hwpx { background-color: rgba(52, 211, 153, 0.15); color: var(--color-file-hwpx); }
-.file-badge-docx { background-color: rgba(96, 165, 250, 0.15); color: var(--color-file-docx); }
-.file-badge-xlsx { background-color: rgba(74, 222, 128, 0.15); color: var(--color-file-xlsx); }
-.file-badge-pdf { background-color: rgba(248, 113, 113, 0.15); color: var(--color-file-pdf); }
-.file-badge-txt { background-color: rgba(156, 163, 175, 0.15); color: var(--color-file-txt); }
+/* 파일 타입 뱃지 */
+.file-badge-hwpx { background-color: var(--color-file-hwpx-bg); color: var(--color-file-hwpx); }
+.file-badge-docx { background-color: var(--color-file-docx-bg); color: var(--color-file-docx); }
+.file-badge-xlsx { background-color: var(--color-file-xlsx-bg); color: var(--color-file-xlsx); }
+.file-badge-pdf { background-color: var(--color-file-pdf-bg); color: var(--color-file-pdf); }
+.file-badge-txt { background-color: var(--color-file-txt-bg); color: var(--color-file-txt); }
 
-/* 스크롤바 숨기기 (필요시) */
+/* 스크롤바 숨기기 */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -201,27 +416,45 @@ select:focus-visible {
   scrollbar-width: none;
 }
 
-/* Custom scrollbar for dark theme */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--scrollbar-thumb-hover);
 }
 
-/* Selection highlight */
+/* Selection */
 ::selection {
-  background-color: #3b82f6;
+  background-color: var(--color-accent);
   color: white;
+}
+
+/* 텍스트 그라데이션 */
+.text-gradient {
+  background: linear-gradient(135deg, var(--color-accent), #A855F7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 디스플레이 폰트 */
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* 모노스페이스 */
+.font-mono {
+  font-family: var(--font-mono);
 }
