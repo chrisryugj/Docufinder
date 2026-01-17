@@ -11,4 +11,5 @@ export interface Settings {
   theme: Theme;
   min_confidence: number;
   view_density: ViewDensity;
+  include_subfolders: boolean;
 }

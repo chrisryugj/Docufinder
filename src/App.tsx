@@ -4,17 +4,19 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings, ViewDensity } from "./types/settings";
 
 // Hooks
-import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches, useExport, useTheme } from "./hooks";
+import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme } from "./hooks";
 
 // Components
 import { Header, StatusBar, ErrorBanner } from "./components/layout";
 import { SearchBar, SearchFilters, SearchResultList } from "./components/search";
 import { Sidebar } from "./components/sidebar";
 import { SettingsModal } from "./components/settings/SettingsModal";
+import { ToastContainer } from "./components/ui/Toast";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -29,6 +31,7 @@ function App() {
   const {
     query,
     setQuery,
+    filenameResults,
     filteredResults,
     groupedResults,
     searchTime,
@@ -47,10 +50,12 @@ function App() {
   const {
     status,
     isIndexing,
+    progress,
     error: indexError,
     clearError: clearIndexError,
     addFolder,
     removeFolder,
+    cancelIndexing,
   } = useIndexStatus();
 
   // 최근 검색
@@ -61,8 +66,11 @@ function App() {
     clearSearches,
   } = useRecentSearches();
 
-  // 내보내기
-  const { exportToCSV, copyToClipboard, toast, showToast } = useExport();
+  // 토스트 알림
+  const { toasts, showToast, updateToast, dismissToast } = useToast();
+
+  // 내보내기 (토스트 연동)
+  const { exportToCSV, copyToClipboard } = useExport({ showToast });
 
   // 에러 통합
   const error = searchError || indexError;
@@ -71,11 +79,12 @@ function App() {
     clearIndexError();
   }, [clearSearchError, clearIndexError]);
 
-  // 설정 로드 (최소 신뢰도, 보기 밀도 적용)
+  // 설정 로드 (검색 모드, 최소 신뢰도, 보기 밀도 적용)
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await invoke<Settings>("get_settings");
+        setSearchMode(settings.search_mode ?? "hybrid");
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "normal");
       } catch (err) {
@@ -84,7 +93,7 @@ function App() {
     };
 
     loadSettings();
-  }, []);
+  }, [setSearchMode]);
 
   // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
   useEffect(() => {
@@ -145,16 +154,25 @@ function App() {
     }
   }, [searchMode, filters, setFilters]);
 
-  // 파일 열기
+  // 파일 열기 (검색 결과 클릭 시 최근 검색에 저장)
   const handleOpenFile = useCallback(
     async (filePath: string, page?: number | null) => {
+      // 검색 결과 클릭 시 최근 검색에 저장
+      const trimmedQuery = query.trim();
+      if (trimmedQuery.length >= 2) {
+        addSearch(trimmedQuery);
+      }
+
+      const toastId = showToast("파일 여는 중...", "loading");
       try {
         await invoke("open_file", { path: filePath, page: page ?? null });
+        updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
       } catch (err) {
         console.error("Failed to open file:", err);
+        updateToast(toastId, { message: "파일 열기 실패", type: "error" });
       }
     },
-    []
+    [query, addSearch, showToast, updateToast]
   );
 
   // 경로 복사 (\\?\ 접두사 제거)
@@ -194,20 +212,37 @@ function App() {
     [setQuery]
   );
 
-  // 검색 실행 시 최근 검색에 추가 (300ms 디바운스 후 결과가 있을 때)
+  // 검색어 변경 (저장은 별도 로직에서 처리)
   const handleQueryChange = useCallback(
     (newQuery: string) => {
       setQuery(newQuery);
-      // 검색어가 2자 이상이면 최근 검색에 추가 (지연)
-      if (newQuery.trim().length >= 2) {
-        const timeoutId = setTimeout(() => {
-          addSearch(newQuery.trim());
-        }, 1000);
-        return () => clearTimeout(timeoutId);
-      }
     },
-    [setQuery, addSearch]
+    [setQuery]
   );
+
+  // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
+  useEffect(() => {
+    // 이전 타이머 취소
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+      searchTimerRef.current = null;
+    }
+
+    // 검색어 2자 이상 + 결과 있을 때만 저장 예약
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length >= 2 && filteredResults.length > 0) {
+      searchTimerRef.current = setTimeout(() => {
+        addSearch(trimmedQuery);
+        searchTimerRef.current = null;
+      }, 3000); // 3초 유지 시 저장
+    }
+
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, [query, filteredResults.length, addSearch]);
 
   // 키보드 단축키
   useKeyboardShortcuts(
@@ -342,8 +377,9 @@ function App() {
           <main className="px-6 pb-20">
             <div className="max-w-4xl mx-auto mt-4">
               <SearchResultList
-                results={filteredResults}
-                groupedResults={groupedResults}
+                results={filters.filenameOnly ? [] : filteredResults}
+                filenameResults={filenameResults}
+                groupedResults={filters.filenameOnly ? [] : groupedResults}
                 viewMode={viewMode}
                 viewDensity={viewDensity}
                 onViewDensityChange={setViewDensity}
@@ -361,7 +397,7 @@ function App() {
         </div>
 
         {/* Status Bar (Fixed at bottom) */}
-        <StatusBar status={status} />
+        <StatusBar status={status} progress={progress} onCancelIndexing={cancelIndexing} />
       </div>
 
       {/* Settings Modal */}
@@ -370,24 +406,14 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         onThemeChange={setTheme}
         onSettingsSaved={(settings) => {
+          setSearchMode(settings.search_mode ?? "hybrid");
           setMinConfidence(settings.min_confidence ?? 0);
           setViewDensity(settings.view_density ?? "normal");
         }}
       />
 
-      {/* Toast */}
-      {toast && (
-        <div
-          className="fixed bottom-20 right-6 px-4 py-2 rounded-lg text-sm z-50 text-white"
-          style={{
-            backgroundColor: toast.type === "success" ? 'var(--color-success)' : 'var(--color-error)',
-            boxShadow: 'var(--shadow-lg)'
-          }}
-          role="alert"
-        >
-          {toast.message}
-        </div>
-      )}
+      {/* Toast Container */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
       {/* Scroll to Top FAB */}
       {showScrollTop && (

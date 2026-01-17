@@ -8,5 +8,6 @@ export {
   useFavorites,
 } from "./useLocalStorage";
 export { useExport } from "./useExport";
+export { useToast } from "./useToast";
 export { useTheme } from "./useTheme";
 export type { Theme, ResolvedTheme } from "./useTheme";

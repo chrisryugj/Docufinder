@@ -1,6 +1,7 @@
 /** Tauri IPC 커맨드 이름 */
 export type TauriCommand =
   | "search_keyword"
+  | "search_filename"
   | "search_semantic"
   | "search_hybrid"
   | "add_folder"
@@ -12,6 +13,7 @@ export type TauriCommand =
 
 /** 검색 모드별 커맨드 매핑 */
 export const SEARCH_COMMANDS = {
+  filename: "search_filename",
   keyword: "search_keyword",
   semantic: "search_semantic",
   hybrid: "search_hybrid",

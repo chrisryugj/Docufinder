@@ -11,6 +11,7 @@ use indexer::manager::{IndexContext, WatchManager};
 use search::vector::VectorIndex;
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 type SharedEmbedder = Arc<Mutex<Embedder>>;
@@ -32,6 +33,8 @@ pub struct AppState {
     vector_index: OnceCell<Arc<VectorIndex>>,
     /// 파일 감시 매니저 (lazy load)
     watch_manager: OnceCell<RwLock<WatchManager>>,
+    /// 현재 인덱싱 작업 취소 플래그
+    indexing_cancel_flag: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -48,7 +51,23 @@ impl AppState {
             embedder: OnceCell::new(),
             vector_index: OnceCell::new(),
             watch_manager: OnceCell::new(),
+            indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// 인덱싱 취소 플래그 가져오기 (새 작업 시작 시 리셋됨)
+    pub fn get_cancel_flag(&self) -> Arc<AtomicBool> {
+        self.indexing_cancel_flag.clone()
+    }
+
+    /// 인덱싱 취소 플래그 리셋
+    pub fn reset_cancel_flag(&self) {
+        self.indexing_cancel_flag.store(false, Ordering::Relaxed);
+    }
+
+    /// 인덱싱 취소 요청
+    pub fn cancel_indexing(&self) {
+        self.indexing_cancel_flag.store(true, Ordering::Relaxed);
     }
 
     /// 임베더 가져오기 (필요시 로드)
@@ -258,11 +277,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::search::search_keyword,
+            commands::search::search_filename,
             commands::search::search_semantic,
             commands::search::search_hybrid,
             commands::index::add_folder,
             commands::index::remove_folder,
             commands::index::get_index_status,
+            commands::index::get_folder_stats,
+            commands::index::get_folders_with_info,
+            commands::index::toggle_favorite,
+            commands::index::cancel_indexing,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,

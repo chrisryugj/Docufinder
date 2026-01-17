@@ -81,17 +81,70 @@ pnpm tauri:dev
 
 ## 최근 세션 작업 (2026-01-17)
 
-### UI 개선
+**계획 문서**: `.claude/plans/refactoring-plan.md`
+
+### ✅ Sprint 1 완료
+
+| 작업 | 파일 | 상태 |
+|------|------|------|
+| 토스트 시스템 분리 | `src/components/ui/Toast.tsx`, `src/hooks/useToast.ts` | ✅ |
+| 파일 열기 피드백 | `src/App.tsx:148-161` | ✅ |
+| 최근검색 시간 배지 | `src/components/sidebar/RecentSearches.tsx` | ✅ |
+| RecentSearch 타입 마이그레이션 | `src/hooks/useLocalStorage.ts`, `src/types/search.ts` | ✅ |
+| formatRelativeTime 유틸 | `src/utils/formatRelativeTime.ts` | ✅ |
+| 사이드바 접기/펼치기 | `src/components/sidebar/Sidebar.tsx` | ✅ |
+
+### ✅ Sprint 2 완료
+
+| 작업 | 파일 | 상태 |
+|------|------|------|
+| 폴더별 인덱싱 통계 | `db/mod.rs:372-398`, `FolderTree.tsx` | ✅ |
+| 하위폴더 포함 토글 (설정) | `settings.rs:19-25`, `SettingsModal.tsx:228-258` | ✅ |
+| 하위폴더 설정 실제 연동 | `pipeline.rs:42-173`, `index.rs:63-82` | ✅ |
+| 즐겨찾기 폴더 (DB) | `db/mod.rs:118-160` | ✅ |
+| 즐겨찾기 폴더 (백엔드) | `index.rs:221-260` | ✅ |
+| 즐겨찾기 폴더 (프론트) | `FolderTree.tsx` (별 아이콘 + 상단 정렬) | ✅ |
+
+### ✅ Sprint 3 완료
+
+| 작업 | 파일 | 상태 |
+|------|------|------|
+| 인덱싱 진행률 시스템 | `pipeline.rs`, `index.rs`, `lib.rs` | ✅ |
+| 진행률 UI + 취소 버튼 | `StatusBar.tsx`, `useIndexStatus.ts` | ✅ |
+| 드라이브 루트 경고 | `useIndexStatus.ts` (ask dialog) | ✅ |
+| 이벤트 타입 | `types/index.ts` (IndexingProgress) | ✅ |
+
+### 📋 다음 할 일
+
+- [ ] 실제 테스트 (D:\ 드라이브 인덱싱)
+
+### 이전 세션 작업
 - **보기 밀도 설정**: 기본/컴팩트 모드 전환 기능
 - **컴팩트 모드**: 세로 ~50% 축소 (line-clamp 2줄, 경로 숨김, 패딩/간격 축소)
 - **검색바**: 그라디언트 제거, 미니멀 디자인으로 간소화
 - **스크롤 맨 위로 FAB**: 300px 이상 스크롤 시 표시
-- **사이드바 푸터**: 저작권 글자 크기 증가 (10px → 12px)
-
-### 이전 세션 작업
 - 다크모드 UI 전면 개선
 - FTS5 한국어 키워드 검색 버그 수정
 - RAG 스타일 신뢰도 표시 및 파일 그룹핑
 
+## 핵심 파일 (Sprint 2 신규)
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/src/db/mod.rs:118-160` | 즐겨찾기 토글, 폴더 상세정보 조회 |
+| `src-tauri/src/indexer/pipeline.rs:42-173` | recursive 옵션 지원 인덱싱 |
+| `src-tauri/src/commands/settings.rs:101-113` | 설정 동기 조회 (get_settings_sync) |
+| `src/components/sidebar/FolderTree.tsx` | 폴더 통계, 즐겨찾기 UI |
+| `src/types/index.ts` | FolderStats, WatchedFolderInfo 타입 |
+
+## 핵심 파일 (Sprint 3 신규)
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/src/indexer/pipeline.rs:128-288` | 진행률 콜백 + 취소 지원 인덱싱 |
+| `src-tauri/src/commands/index.rs:41-162` | Tauri 이벤트 emit + cancel_indexing 커맨드 |
+| `src-tauri/src/lib.rs:36-70` | indexing_cancel_flag (AtomicBool) |
+| `src/hooks/useIndexStatus.ts` | 진행률 이벤트 리스너 + 드라이브 경고 |
+| `src/components/layout/StatusBar.tsx` | 진행률 바 + 취소 버튼 UI |
+| `src/types/index.ts:31-45` | IndexingProgress 타입 |
+
 ## 마지막 업데이트
-2026-01-17
+2026-01-18 (Sprint 3 완료)

@@ -16,6 +16,12 @@ pub struct Settings {
     pub min_confidence: u8,
     #[serde(default)]
     pub view_density: ViewDensity,
+    #[serde(default = "default_include_subfolders")]
+    pub include_subfolders: bool,
+}
+
+fn default_include_subfolders() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -32,6 +38,7 @@ pub enum SearchMode {
     Keyword,
     Semantic,
     Hybrid,
+    Filename,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -52,6 +59,7 @@ impl Default for Settings {
             theme: Theme::Dark,
             min_confidence: 0,
             view_density: ViewDensity::Normal,
+            include_subfolders: true,
         }
     }
 }
@@ -95,6 +103,20 @@ pub async fn get_settings(state: State<'_, Mutex<AppState>>) -> Result<Settings,
         let _ = fs::write(&settings_path, content);
 
         Ok(settings)
+    }
+}
+
+/// 설정 동기 조회 (내부 사용)
+pub fn get_settings_sync(app_data_dir: &PathBuf) -> Settings {
+    let settings_path = get_settings_path(app_data_dir);
+
+    if settings_path.exists() {
+        let content = fs::read_to_string(&settings_path).ok();
+        content
+            .and_then(|c| serde_json::from_str(&c).ok())
+            .unwrap_or_default()
+    } else {
+        Settings::default()
     }
 }
 

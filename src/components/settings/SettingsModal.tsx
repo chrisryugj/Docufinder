@@ -13,9 +13,10 @@ interface SettingsModalProps {
 }
 
 const SEARCH_MODE_OPTIONS = [
+  { value: "hybrid", label: "하이브리드 (권장)" },
   { value: "keyword", label: "키워드 검색" },
   { value: "semantic", label: "의미 검색" },
-  { value: "hybrid", label: "하이브리드 (권장)" },
+  { value: "filename", label: "파일명 검색" },
 ];
 
 const THEME_OPTIONS = [
@@ -223,6 +224,38 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
             <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
               컴팩트: 더 많은 결과를 한 화면에 표시
             </p>
+          </div>
+
+          {/* 하위폴더 포함 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                하위폴더 포함
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                폴더 추가 시 하위폴더도 함께 인덱싱
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.include_subfolders ?? true}
+              onClick={() => handleChange("include_subfolders", !(settings.include_subfolders ?? true))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                (settings.include_subfolders ?? true)
+                  ? "bg-blue-500"
+                  : "bg-gray-600"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  (settings.include_subfolders ?? true) ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
           </div>
 
           {/* 버튼 */}

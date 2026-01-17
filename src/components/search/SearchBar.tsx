@@ -103,7 +103,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
             {SEARCH_MODES.map((mode) => {
-              const needsSemantic = mode.value !== "keyword";
+              const needsSemantic = mode.value === "semantic" || mode.value === "hybrid";
               const disabled = needsSemantic && !status?.semantic_available;
               const isActive = searchMode === mode.value;
 

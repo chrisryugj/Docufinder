@@ -21,6 +21,8 @@ interface UseSearchReturn {
   query: string;
   setQuery: (query: string) => void;
   results: SearchResult[];
+  /** 파일명 검색 결과 (통합 모드에서 상단 표시용) */
+  filenameResults: SearchResult[];
   filteredResults: SearchResult[];
   groupedResults: GroupedSearchResult[];
   searchTime: number | null;
@@ -45,6 +47,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [filenameResults, setFilenameResults] = useState<SearchResult[]>([]);
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +62,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     async (searchQuery: string, mode: SearchMode) => {
       if (!searchQuery.trim()) {
         setResults([]);
+        setFilenameResults([]);
         setSearchTime(null);
         return;
       }
@@ -67,16 +71,30 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       setError(null);
 
       try {
-        const response = await invoke<SearchResponse>(SEARCH_COMMANDS[mode], {
-          query: searchQuery,
-        });
-        setResults(response.results);
-        setSearchTime(response.search_time_ms);
+        if (mode === "filename") {
+          // 파일명 모드: 파일명 검색만 실행
+          const response = await invoke<SearchResponse>(SEARCH_COMMANDS[mode], {
+            query: searchQuery,
+          });
+          setResults(response.results);
+          setFilenameResults([]);
+          setSearchTime(response.search_time_ms);
+        } else {
+          // 내용 검색 모드: 파일명 검색도 병렬 실행 (통합 모드)
+          const [contentResponse, filenameResponse] = await Promise.all([
+            invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }),
+            invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }),
+          ]);
+          setResults(contentResponse.results);
+          setFilenameResults(filenameResponse.results);
+          setSearchTime(contentResponse.search_time_ms);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Search failed:", err);
         setError(`검색 실패: ${message}`);
         setResults([]);
+        setFilenameResults([]);
         setSearchTime(null);
       }
 
@@ -182,6 +200,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     query,
     setQuery,
     results,
+    filenameResults,
     filteredResults,
     groupedResults,
     searchTime,

@@ -1,5 +1,5 @@
 use crate::db;
-use crate::search::{fts, hybrid};
+use crate::search::{filename, fts, hybrid};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -13,6 +13,7 @@ pub enum MatchType {
     Keyword,
     Semantic,
     Hybrid,
+    Filename,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,6 +116,79 @@ pub async fn search_keyword(
         total_count,
         search_time_ms,
         search_mode: "keyword".to_string(),
+    })
+}
+
+/// 파일명 검색 (FTS5)
+#[tauri::command]
+pub async fn search_filename(
+    query: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<SearchResponse, String> {
+    let start = Instant::now();
+
+    if query.trim().is_empty() {
+        return Ok(SearchResponse {
+            results: vec![],
+            total_count: 0,
+            search_time_ms: 0,
+            search_mode: "filename".to_string(),
+        });
+    }
+
+    let db_path = {
+        let state = state.lock().map_err(|e| e.to_string())?;
+        state.db_path.clone()
+    };
+
+    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+
+    // 파일명 FTS5 검색 실행
+    let filename_results = filename::search(&conn, &query, 50).map_err(|e| e.to_string())?;
+
+    // 스코어 정규화 (BM25 → 0-100 confidence)
+    let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
+    let confidences = normalize_fts_confidence(&scores);
+
+    // 결과 변환 (파일명 검색은 청크가 없으므로 파일 단위 결과)
+    let results: Vec<SearchResult> = filename_results
+        .into_iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let highlight_ranges = parse_highlight_ranges(&r.highlight);
+            SearchResult {
+                file_path: r.file_path,
+                file_name: r.file_name.clone(),
+                chunk_index: 0, // 파일명 검색은 청크 없음
+                content_preview: r.file_name.clone(), // 파일명 자체가 preview
+                full_content: r.file_name,
+                score: r.score,
+                confidence: confidences.get(idx).copied().unwrap_or(50),
+                match_type: MatchType::Filename,
+                highlight_ranges,
+                page_number: None,
+                start_offset: 0,
+                location_hint: Some(r.file_type),
+                snippet: None,
+            }
+        })
+        .collect();
+
+    let total_count = results.len();
+    let search_time_ms = start.elapsed().as_millis() as u64;
+
+    tracing::info!(
+        "Filename search '{}': {} results in {}ms",
+        query,
+        total_count,
+        search_time_ms
+    );
+
+    Ok(SearchResponse {
+        results,
+        total_count,
+        search_time_ms,
+        search_mode: "filename".to_string(),
     })
 }
 

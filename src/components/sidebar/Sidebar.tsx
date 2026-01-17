@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
+import type { RecentSearch } from "../../types/search";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -9,7 +11,7 @@ interface SidebarProps {
   onRemoveFolder?: (path: string) => void;
   onAddFolder: () => void;
   // 최근 검색 관련
-  recentSearches: string[];
+  recentSearches: RecentSearch[];
   onSelectSearch: (query: string) => void;
   onRemoveSearch: (query: string) => void;
   onClearSearches: () => void;
@@ -31,6 +33,10 @@ export function Sidebar({
   onRemoveSearch,
   onClearSearches,
 }: SidebarProps) {
+  // 섹션 접기/펼치기 상태
+  const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
+  const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
+
   return (
     <>
       {/* 백드롭 (모바일/오버레이) */}
@@ -75,9 +81,22 @@ export function Sidebar({
           {/* Section: Indexed Folders */}
           <section>
             <div className="flex items-center justify-between px-2 mb-3">
-              <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+              <button
+                onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
+                className="flex items-center gap-2 text-xs font-semibold text-[#64748B] uppercase tracking-wider hover:text-white transition-colors"
+                aria-expanded={isFoldersExpanded}
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform duration-200 ${isFoldersExpanded ? "rotate-90" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
                 인덱싱된 폴더
-              </h3>
+                <span className="text-[10px] font-normal text-slate-500">({watchedFolders.length})</span>
+              </button>
               <button
                 onClick={onAddFolder}
                 className="p-1.5 rounded-md text-[#64748B] hover:text-white hover:bg-white/10 transition-all duration-200"
@@ -90,18 +109,33 @@ export function Sidebar({
               </button>
             </div>
 
-            <FolderTree
-              folders={watchedFolders}
-              onRemoveFolder={onRemoveFolder}
-            />
+            {isFoldersExpanded && (
+              <FolderTree
+                folders={watchedFolders}
+                onRemoveFolder={onRemoveFolder}
+              />
+            )}
           </section>
 
           {/* Section: Recent Searches */}
           <section>
             <div className="flex items-center justify-between px-2 mb-3">
-              <h3 className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+              <button
+                onClick={() => setIsSearchesExpanded(!isSearchesExpanded)}
+                className="flex items-center gap-2 text-xs font-semibold text-[#64748B] uppercase tracking-wider hover:text-white transition-colors"
+                aria-expanded={isSearchesExpanded}
+              >
+                <svg
+                  className={`w-3 h-3 transition-transform duration-200 ${isSearchesExpanded ? "rotate-90" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
                 최근 검색
-              </h3>
+                <span className="text-[10px] font-normal text-slate-500">({recentSearches.length})</span>
+              </button>
               {recentSearches.length > 0 && (
                 <button
                   onClick={onClearSearches}
@@ -116,11 +150,13 @@ export function Sidebar({
               )}
             </div>
 
-            <RecentSearches
-              searches={recentSearches}
-              onSelect={onSelectSearch}
-              onRemove={onRemoveSearch}
-            />
+            {isSearchesExpanded && (
+              <RecentSearches
+                searches={recentSearches}
+                onSelect={onSelectSearch}
+                onRemove={onRemoveSearch}
+              />
+            )}
           </section>
 
         </div>

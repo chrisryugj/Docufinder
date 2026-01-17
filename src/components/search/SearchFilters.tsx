@@ -53,9 +53,12 @@ export function SearchFilters({
     filters.sortBy !== "relevance" ||
     filters.fileType !== "all" ||
     filters.dateRange !== "all" ||
-    filters.keywordOnly;
+    filters.keywordOnly ||
+    filters.filenameOnly;
 
   const showKeywordOnlyToggle = searchMode === "hybrid";
+  // 파일명 모드가 아닐 때만 "파일명만" 필터 표시
+  const showFilenameOnlyToggle = searchMode !== "filename";
 
   return (
     <div
@@ -104,6 +107,26 @@ export function SearchFilters({
             aria-label="키워드 포함 결과만 보기"
           />
           키워드 포함만
+        </label>
+      )}
+
+      {showFilenameOnlyToggle && (
+        <label
+          className="flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer transition-colors"
+          style={{
+            borderColor: filters.filenameOnly ? "var(--color-accent)" : "var(--color-border)",
+            backgroundColor: filters.filenameOnly ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+            color: filters.filenameOnly ? "var(--color-accent)" : "var(--color-text-muted)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={filters.filenameOnly}
+            onChange={(e) => onFiltersChange({ ...filters, filenameOnly: e.target.checked })}
+            className="accent-blue-500"
+            aria-label="파일명 매치만 보기"
+          />
+          파일명만
         </label>
       )}
 
