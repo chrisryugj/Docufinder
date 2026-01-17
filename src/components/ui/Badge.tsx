@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, CSSProperties } from "react";
 
 type BadgeVariant =
   | "default"
@@ -18,18 +18,60 @@ interface BadgeProps {
   className?: string;
 }
 
-const variantStyles: Record<BadgeVariant, string> = {
-  default: "bg-gray-700 text-gray-300",
-  primary: "bg-blue-600/30 text-blue-300",
-  success: "bg-green-600/30 text-green-300",
-  warning: "bg-yellow-600/30 text-yellow-300",
-  danger: "bg-red-600/30 text-red-300",
-  // 파일 타입별 색상
-  hwpx: "bg-emerald-600/30 text-emerald-300",
-  docx: "bg-blue-600/30 text-blue-300",
-  xlsx: "bg-green-600/30 text-green-300",
-  pdf: "bg-red-600/30 text-red-300",
-  txt: "bg-gray-600/30 text-gray-300",
+// CSS 변수 기반 스타일 반환
+const getVariantStyle = (variant: BadgeVariant): CSSProperties => {
+  switch (variant) {
+    case "hwpx":
+      return {
+        backgroundColor: "var(--color-file-hwpx-bg)",
+        color: "var(--color-file-hwpx)",
+      };
+    case "docx":
+      return {
+        backgroundColor: "var(--color-file-docx-bg)",
+        color: "var(--color-file-docx)",
+      };
+    case "xlsx":
+      return {
+        backgroundColor: "var(--color-file-xlsx-bg)",
+        color: "var(--color-file-xlsx)",
+      };
+    case "pdf":
+      return {
+        backgroundColor: "var(--color-file-pdf-bg)",
+        color: "var(--color-file-pdf)",
+      };
+    case "txt":
+      return {
+        backgroundColor: "var(--color-file-txt-bg)",
+        color: "var(--color-file-txt)",
+      };
+    case "primary":
+      return {
+        backgroundColor: "var(--color-accent-light)",
+        color: "var(--color-accent)",
+      };
+    case "success":
+      return {
+        backgroundColor: "rgba(34, 197, 94, 0.15)",
+        color: "var(--color-success)",
+      };
+    case "warning":
+      return {
+        backgroundColor: "rgba(245, 158, 11, 0.15)",
+        color: "var(--color-warning)",
+      };
+    case "danger":
+      return {
+        backgroundColor: "rgba(239, 68, 68, 0.15)",
+        color: "var(--color-error)",
+      };
+    default:
+      return {
+        backgroundColor: "var(--color-bg-tertiary)",
+        color: "var(--color-text-muted)",
+      };
+  }
 };
 
 export function Badge({
@@ -37,13 +79,12 @@ export function Badge({
   children,
   className = "",
 }: BadgeProps) {
+  const variantStyle = getVariantStyle(variant);
+
   return (
     <span
-      className={`
-        inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-        ${variantStyles[variant]}
-        ${className}
-      `}
+      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${className}`}
+      style={variantStyle}
     >
       {children}
     </span>
@@ -51,9 +92,7 @@ export function Badge({
 }
 
 // 파일 확장자에서 Badge variant 추출
-export function getFileTypeBadgeVariant(
-  fileName: string
-): BadgeVariant {
+export function getFileTypeBadgeVariant(fileName: string): BadgeVariant {
   const ext = fileName.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "hwpx":

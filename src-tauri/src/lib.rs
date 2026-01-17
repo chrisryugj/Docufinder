@@ -12,6 +12,8 @@ use search::vector::VectorIndex;
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
 use std::sync::{Arc, Mutex, RwLock};
+
+type SharedEmbedder = Arc<Mutex<Embedder>>;
 use tauri::Manager;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -25,7 +27,7 @@ pub struct AppState {
     /// 모델 디렉토리 경로
     pub models_dir: PathBuf,
     /// 임베더 (lazy load)
-    embedder: OnceCell<Arc<Embedder>>,
+    embedder: OnceCell<SharedEmbedder>,
     /// 벡터 인덱스 (lazy load)
     vector_index: OnceCell<Arc<VectorIndex>>,
     /// 파일 감시 매니저 (lazy load)
@@ -50,14 +52,13 @@ impl AppState {
     }
 
     /// 임베더 가져오기 (필요시 로드)
-    pub fn get_embedder(&self) -> Result<Arc<Embedder>, String> {
+    pub fn get_embedder(&self) -> Result<SharedEmbedder, String> {
         self.embedder
             .get_or_try_init(|| {
-                let model_path = self.models_dir.join("multilingual-e5-small").join("model.onnx");
-                let tokenizer_path = self
-                    .models_dir
-                    .join("multilingual-e5-small")
-                    .join("tokenizer.json");
+                let model_dir = self.models_dir.join("multilingual-e5-small");
+                let model_path = model_dir.join("model.onnx");
+                let tokenizer_path = model_dir.join("tokenizer.json");
+                let dll_path = model_dir.join("onnxruntime.dll");
 
                 if !model_path.exists() {
                     return Err(format!(
@@ -66,8 +67,16 @@ impl AppState {
                     ));
                 }
 
+                // ONNX Runtime DLL 경로 설정 (load-dynamic 모드)
+                if dll_path.exists() {
+                    std::env::set_var("ORT_DYLIB_PATH", &dll_path);
+                    tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
+                } else {
+                    tracing::warn!("onnxruntime.dll not found at {:?}", dll_path);
+                }
+
                 Embedder::new(&model_path, &tokenizer_path)
-                    .map(Arc::new)
+                    .map(|e| Arc::new(Mutex::new(e)))
                     .map_err(|e| e.to_string())
             })
             .cloned()
@@ -94,6 +103,7 @@ impl AppState {
     pub fn get_watch_manager(&self) -> Result<&RwLock<WatchManager>, String> {
         self.watch_manager
             .get_or_try_init(|| {
+                // 시맨틱 검색 활성화 (ONNX Runtime 1.20.1)
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
@@ -256,6 +266,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,
+            commands::file::open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

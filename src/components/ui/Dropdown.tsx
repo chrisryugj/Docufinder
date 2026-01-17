@@ -66,27 +66,25 @@ export function Dropdown<T extends string | number>({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className={`
-          flex items-center justify-between gap-2 px-3 py-1.5 text-sm
-          bg-gray-800 border border-gray-700 rounded-lg
-          hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500
-          disabled:opacity-50 disabled:cursor-not-allowed
-          ${isOpen ? "ring-2 ring-blue-500" : ""}
-        `}
+        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{
+          backgroundColor: "var(--color-bg-tertiary)",
+          border: `1px solid ${isOpen ? "var(--color-accent)" : "var(--color-border)"}`,
+          boxShadow: isOpen ? "0 0 0 3px var(--color-accent-light)" : undefined,
+        }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
         {renderTrigger ? (
           renderTrigger(selected)
         ) : (
-          <span className={selected ? "text-gray-200" : "text-gray-500"}>
+          <span style={{ color: selected ? "var(--color-text-primary)" : "var(--color-text-muted)" }}>
             {selected?.label || placeholder}
           </span>
         )}
         <svg
-          className={`w-4 h-4 text-gray-500 transition-transform ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          style={{ color: "var(--color-text-muted)" }}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -103,7 +101,12 @@ export function Dropdown<T extends string | number>({
       {/* Menu */}
       {isOpen && (
         <div
-          className="absolute z-50 mt-1 w-full min-w-[160px] bg-gray-800 border border-gray-700 rounded-lg shadow-lg py-1"
+          className="absolute z-50 mt-1 w-full min-w-[160px] rounded-lg py-1"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            border: "1px solid var(--color-border)",
+            boxShadow: "var(--shadow-lg)",
+          }}
           role="listbox"
         >
           {options.map((option) => (
@@ -114,17 +117,24 @@ export function Dropdown<T extends string | number>({
                 onChange(option.value);
                 setIsOpen(false);
               }}
-              className={`
-                w-full text-left px-3 py-2 text-sm
-                hover:bg-gray-700 focus:bg-gray-700 focus:outline-none
-                ${option.value === value ? "text-blue-400" : "text-gray-300"}
-              `}
+              className="w-full text-left px-3 py-2 text-sm transition-colors focus:outline-none"
+              style={{
+                color: option.value === value ? "var(--color-accent)" : "var(--color-text-primary)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-bg-hover)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
               role="option"
               aria-selected={option.value === value}
             >
               <div className="font-medium">{option.label}</div>
               {option.description && (
-                <div className="text-xs text-gray-500">{option.description}</div>
+                <div className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  {option.description}
+                </div>
               )}
             </button>
           ))}

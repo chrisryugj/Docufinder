@@ -33,20 +33,48 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <>
+      {/* 백드롭 (모바일/오버레이) */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 lg:hidden"
+          style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+          onClick={onToggle}
+        />
+      )}
+
       {/* 사이드바 */}
       <aside
-        className={`sidebar fixed left-0 top-0 h-full bg-gray-900 border-r border-gray-800 z-40 overflow-hidden
-          ${isOpen ? "w-[var(--sidebar-width)]" : "w-0"}`}
+        className={`sidebar fixed left-0 top-0 h-full z-40 overflow-hidden transition-all duration-300 ease-out
+          ${isOpen ? "w-[var(--sidebar-width)] translate-x-0" : "w-[var(--sidebar-width)] -translate-x-full"}`}
+        style={{
+          backgroundColor: "var(--color-bg-secondary)",
+          borderRight: "1px solid var(--color-border)",
+          boxShadow: isOpen ? "var(--shadow-xl)" : "none",
+        }}
         aria-label="사이드바"
         aria-hidden={!isOpen}
       >
-        <div className="flex flex-col h-full w-[var(--sidebar-width)]">
+        <div className="flex flex-col h-full">
           {/* 헤더 */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-            <h2 className="text-sm font-medium text-gray-300">탐색</h2>
+          <div
+            className="flex items-center justify-between px-4 py-3 border-b"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h2 className="text-sm font-semibold" style={{ color: "var(--color-text-secondary)" }}>
+              탐색
+            </h2>
             <button
               onClick={onToggle}
-              className="p-1 text-gray-500 hover:text-gray-300 rounded transition-colors"
+              className="p-1.5 rounded-lg transition-all duration-200"
+              style={{ color: "var(--color-text-muted)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                e.currentTarget.style.color = "var(--color-text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "var(--color-text-muted)";
+              }}
               aria-label="사이드바 닫기"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -58,14 +86,24 @@ export function Sidebar({
           {/* 콘텐츠 */}
           <div className="flex-1 overflow-y-auto">
             {/* 폴더 섹션 */}
-            <section className="py-3">
-              <div className="flex items-center justify-between px-4 mb-2">
-                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <section className="py-4">
+              <div className="flex items-center justify-between px-4 mb-3">
+                <h3
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
                   인덱스 폴더
                 </h3>
                 <button
                   onClick={onAddFolder}
-                  className="p-0.5 text-gray-500 hover:text-blue-400 rounded transition-colors"
+                  className="p-1 rounded transition-all duration-200"
+                  style={{ color: "var(--color-text-muted)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "var(--color-accent)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--color-text-muted)";
+                  }}
                   aria-label="폴더 추가"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -77,11 +115,14 @@ export function Sidebar({
             </section>
 
             {/* 구분선 */}
-            <div className="border-t border-gray-800 mx-4" />
+            <div className="mx-4" style={{ borderTop: "1px solid var(--color-border)" }} />
 
             {/* 최근 검색 섹션 */}
-            <section className="py-3">
-              <h3 className="px-4 mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <section className="py-4">
+              <h3
+                className="px-4 mb-3 text-xs font-semibold uppercase tracking-wider"
+                style={{ color: "var(--color-text-muted)" }}
+              >
                 최근 검색
               </h3>
               <RecentSearches
@@ -94,9 +135,20 @@ export function Sidebar({
           </div>
 
           {/* 푸터 - 단축키 힌트 */}
-          <div className="px-4 py-2 border-t border-gray-800">
-            <div className="flex items-center gap-2 text-xs text-gray-600">
-              <kbd className="px-1.5 py-0.5 bg-gray-800 rounded text-gray-500">Ctrl+B</kbd>
+          <div
+            className="px-4 py-3 border-t"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <kbd
+                className="px-1.5 py-0.5 rounded text-xs font-mono"
+                style={{
+                  backgroundColor: "var(--color-bg-tertiary)",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                Ctrl+B
+              </kbd>
               <span>사이드바 토글</span>
             </div>
           </div>
@@ -107,10 +159,23 @@ export function Sidebar({
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="fixed left-4 top-20 z-30 p-2 bg-gray-800 hover:bg-gray-700 rounded-md shadow-lg transition-colors"
+          className="fixed left-4 top-20 z-30 p-2.5 rounded-lg transition-all duration-200 hover:scale-105"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            boxShadow: "var(--shadow-lg)",
+            color: "var(--color-text-muted)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+            e.currentTarget.style.color = "var(--color-text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+            e.currentTarget.style.color = "var(--color-text-muted)";
+          }}
           aria-label="사이드바 열기"
         >
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
           </svg>
         </button>

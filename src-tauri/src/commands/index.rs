@@ -46,10 +46,15 @@ pub async fn add_folder(
 
     let (db_path, embedder, vector_index) = {
         let state = state.lock().map_err(|e| e.to_string())?;
+        tracing::info!("Getting embedder and vector index...");
+        let emb = state.get_embedder();
+        tracing::info!("Embedder result: {:?}", emb.is_ok());
+        let vi = state.get_vector_index();
+        tracing::info!("Vector index result: {:?}", vi.is_ok());
         (
             state.db_path.clone(),
-            state.get_embedder().ok(),
-            state.get_vector_index().ok(),
+            emb.ok(),
+            vi.ok(),
         )
     };
 

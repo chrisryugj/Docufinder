@@ -6,13 +6,20 @@ interface ErrorBannerProps {
 export function ErrorBanner({ message, onDismiss }: ErrorBannerProps) {
   return (
     <div
-      className="mt-3 p-3 bg-red-900/30 border border-red-600/50 rounded-lg flex items-center justify-between"
+      className="mt-3 p-3 rounded-lg flex items-center justify-between"
+      style={{
+        backgroundColor: "rgba(var(--color-error-rgb), 0.15)",
+        border: "1px solid var(--color-error)",
+      }}
       role="alert"
     >
-      <span className="text-red-300 text-sm">{message}</span>
+      <span className="text-sm" style={{ color: "var(--color-error)" }}>
+        {message}
+      </span>
       <button
         onClick={onDismiss}
-        className="text-red-400 hover:text-red-300 ml-2"
+        className="ml-2 hover:opacity-70 transition-opacity"
+        style={{ color: "var(--color-error)" }}
         aria-label="에러 닫기"
       >
         ✕

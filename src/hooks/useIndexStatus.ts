@@ -10,6 +10,7 @@ interface UseIndexStatusReturn {
   clearError: () => void;
   refreshStatus: () => Promise<void>;
   addFolder: () => Promise<AddFolderResult | null>;
+  removeFolder: (path: string) => Promise<void>;
 }
 
 /**
@@ -71,6 +72,19 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, [refreshStatus]);
 
+  // 폴더 제거
+  const removeFolder = useCallback(async (path: string): Promise<void> => {
+    try {
+      setError(null);
+      await invoke("remove_folder", { path });
+      await refreshStatus();
+    } catch (err) {
+      console.error("Failed to remove folder:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`폴더 제거 실패: ${message}`);
+    }
+  }, [refreshStatus]);
+
   return {
     status,
     isIndexing,
@@ -78,5 +92,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
     clearError,
     refreshStatus,
     addFolder,
+    removeFolder,
   };
 }

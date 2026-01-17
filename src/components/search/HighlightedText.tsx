@@ -21,11 +21,16 @@ export function HighlightedText({ text, ranges }: HighlightedTextProps) {
     if (start > lastIndex) {
       parts.push(text.slice(lastIndex, start));
     }
-    // 하이라이트 텍스트
+    // 하이라이트 텍스트 - CSS 변수 기반 테마 대응
     parts.push(
       <mark
         key={i}
-        className="bg-yellow-500/30 text-yellow-200 rounded px-0.5"
+        style={{
+          backgroundColor: "var(--color-highlight-bg)",
+          color: "var(--color-highlight-text)",
+          borderRadius: "2px",
+          padding: "0 2px",
+        }}
       >
         {text.slice(start, end)}
       </mark>

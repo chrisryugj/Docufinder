@@ -64,8 +64,8 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setResults(response.results);
         setSearchTime(response.search_time_ms);
       } catch (err) {
-        console.error("Search failed:", err);
         const message = err instanceof Error ? err.message : String(err);
+        console.error("Search failed:", err);
         setError(`검색 실패: ${message}`);
         setResults([]);
         setSearchTime(null);

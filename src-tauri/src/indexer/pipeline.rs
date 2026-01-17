@@ -12,14 +12,14 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 
 /// 단일 파일 인덱싱 (FTS + 벡터)
 pub fn index_file(
     conn: &Connection,
     path: &Path,
-    embedder: Option<&Arc<Embedder>>,
+    embedder: Option<&Arc<Mutex<Embedder>>>,
     vector_index: Option<&Arc<VectorIndex>>,
 ) -> Result<IndexResult, IndexError> {
     // 1. 파일 파싱
@@ -42,7 +42,7 @@ pub fn index_file(
 pub fn index_folder(
     conn: &Connection,
     folder_path: &Path,
-    embedder: Option<&Arc<Embedder>>,
+    embedder: Option<&Arc<Mutex<Embedder>>>,
     vector_index: Option<&Arc<VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     // 지원 확장자
@@ -199,7 +199,7 @@ fn save_document_to_db(
     conn: &Connection,
     path: &Path,
     document: ParsedDocument,
-    embedder: Option<&Arc<Embedder>>,
+    embedder: Option<&Arc<Mutex<Embedder>>>,
     vector_index: Option<&Arc<VectorIndex>>,
 ) -> Result<(usize, usize), IndexError> {
     let path_str = path.to_string_lossy().to_string();
@@ -264,21 +264,33 @@ fn save_document_to_db(
 
     // 벡터 인덱싱
     let vectors_count = if let (Some(emb), Some(vi)) = (embedder, vector_index) {
-        match emb.embed_batch(&chunk_contents) {
-            Ok(embeddings) => {
-                for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
-                    if let Err(e) = vi.add(*chunk_id, embedding) {
-                        tracing::warn!("Failed to add vector for chunk {}: {}", chunk_id, e);
+        tracing::info!("Starting vector indexing for {} ({} chunks)", path_str, chunk_contents.len());
+        match emb.lock() {
+            Ok(mut emb_guard) => {
+                tracing::info!("Embedder locked, calling embed_batch...");
+                match emb_guard.embed_batch(&chunk_contents) {
+                    Ok(embeddings) => {
+                        tracing::info!("embed_batch succeeded, {} embeddings", embeddings.len());
+                        for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
+                            if let Err(e) = vi.add(*chunk_id, embedding) {
+                                tracing::warn!("Failed to add vector for chunk {}: {}", chunk_id, e);
+                            }
+                        }
+                        chunk_ids.len()
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to embed chunks for {}: {}", path_str, e);
+                        0
                     }
                 }
-                chunk_ids.len()
             }
             Err(e) => {
-                tracing::warn!("Failed to embed chunks for {}: {}", path_str, e);
+                tracing::warn!("Failed to lock embedder for {}: {}", path_str, e);
                 0
             }
         }
     } else {
+        tracing::debug!("No embedder/vector_index available, skipping vector indexing");
         0
     };
 
