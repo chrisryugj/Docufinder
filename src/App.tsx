@@ -24,6 +24,7 @@ function App() {
     query,
     setQuery,
     filteredResults,
+    groupedResults,
     searchTime,
     isLoading,
     error: searchError,
@@ -32,6 +33,8 @@ function App() {
     setSearchMode,
     filters,
     setFilters,
+    viewMode,
+    setViewMode,
   } = useSearch({ debounceMs: 300 });
 
   // 인덱스 상태
@@ -227,6 +230,9 @@ function App() {
               <SearchFilters
                 filters={filters}
                 onFiltersChange={setFilters}
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                resultCount={filteredResults.length}
               />
             </div>
           </div>
@@ -237,6 +243,8 @@ function App() {
           <div className="max-w-4xl mx-auto">
             <SearchResultList
               results={filteredResults}
+              groupedResults={groupedResults}
+              viewMode={viewMode}
               query={query}
               isLoading={isLoading}
               selectedIndex={selectedIndex}

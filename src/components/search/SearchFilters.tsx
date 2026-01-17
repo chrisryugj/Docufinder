@@ -3,6 +3,7 @@ import type {
   SortOption,
   FileTypeFilter,
   DateRangeFilter,
+  ViewMode,
 } from "../../types/search";
 import {
   SORT_OPTIONS,
@@ -15,6 +16,8 @@ interface SearchFiltersProps {
   filters: FiltersType;
   onFiltersChange: (filters: FiltersType) => void;
   resultCount?: number;
+  viewMode?: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
 }
 
 /**
@@ -24,6 +27,8 @@ export function SearchFilters({
   filters,
   onFiltersChange,
   resultCount,
+  viewMode = "flat",
+  onViewModeChange,
 }: SearchFiltersProps) {
   const handleSortChange = (sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
@@ -90,9 +95,47 @@ export function SearchFilters({
         </button>
       )}
 
+      {/* 뷰 모드 토글 */}
+      {onViewModeChange && (
+        <div className="flex items-center gap-0.5 ml-auto rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-secondary)" }}>
+          <button
+            onClick={() => onViewModeChange("flat")}
+            className="p-1.5 rounded transition-colors"
+            style={{
+              backgroundColor: viewMode === "flat" ? "var(--color-bg-primary)" : "transparent",
+              color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
+              boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+            }}
+            title="목록 보기"
+            aria-label="목록 보기"
+            aria-pressed={viewMode === "flat"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <button
+            onClick={() => onViewModeChange("grouped")}
+            className="p-1.5 rounded transition-colors"
+            style={{
+              backgroundColor: viewMode === "grouped" ? "var(--color-bg-primary)" : "transparent",
+              color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
+              boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.1)" : "none",
+            }}
+            title="파일별 그룹 보기"
+            aria-label="파일별 그룹 보기"
+            aria-pressed={viewMode === "grouped"}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* 결과 수 */}
       {resultCount !== undefined && resultCount > 0 && (
-        <span className="ml-auto" style={{ color: "var(--color-text-muted)" }}>
+        <span style={{ color: "var(--color-text-muted)" }}>
           {resultCount}개 결과
         </span>
       )}

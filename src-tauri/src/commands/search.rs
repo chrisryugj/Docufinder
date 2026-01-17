@@ -15,6 +15,8 @@ pub struct SearchResult {
     pub content_preview: String,
     pub full_content: String,
     pub score: f64,
+    /// 정규화된 신뢰도 (0-100)
+    pub confidence: u8,
     pub highlight_ranges: Vec<(usize, usize)>,
     pub page_number: Option<i64>,
     pub start_offset: i64,
@@ -60,10 +62,15 @@ pub async fn search_keyword(
     // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
     let fts_results = fts::search(&conn, &query, 50).map_err(|e| e.to_string())?;
 
+    // 스코어 정규화 (BM25 → 0-100 confidence)
+    let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
+    let confidences = normalize_fts_confidence(&scores);
+
     // 결과 변환 (snippet 활용, 추가 DB 조회 불필요)
     let results: Vec<SearchResult> = fts_results
         .into_iter()
-        .map(|r| {
+        .enumerate()
+        .map(|(idx, r)| {
             // snippet에서 하이라이트 범위 추출 (더 정확함)
             let highlight_ranges = parse_snippet_highlights(&r.snippet);
             SearchResult {
@@ -73,6 +80,7 @@ pub async fn search_keyword(
                 content_preview: strip_highlight_markers(&r.snippet),
                 full_content: r.content,
                 score: r.score,
+                confidence: confidences.get(idx).copied().unwrap_or(50),
                 highlight_ranges,
                 page_number: r.page_number,
                 start_offset: r.start_offset,
@@ -181,6 +189,7 @@ pub async fn search_semantic(
                 content_preview: truncate_preview(&chunk.content, 200),
                 full_content: chunk.content.clone(),
                 score: vr.score as f64,
+                confidence: normalize_vector_confidence(vr.score as f64),
                 highlight_ranges: vec![], // 시맨틱 검색은 하이라이트 없음
                 page_number: chunk.page_number,
                 start_offset: chunk.start_offset,
@@ -278,6 +287,9 @@ pub async fn search_hybrid(
         .map(|r| (r.chunk_id, r.snippet.clone()))
         .collect();
 
+    // RRF k 상수 (merge_results와 동일하게)
+    const RRF_K: f64 = 60.0;
+
     // 결과 변환 (RRF 순서 유지)
     let results: Vec<SearchResult> = hybrid_results
         .into_iter()
@@ -295,6 +307,7 @@ pub async fn search_hybrid(
                     content_preview,
                     full_content: chunk.content.clone(),
                     score: hr.score as f64,
+                    confidence: normalize_rrf_confidence(hr.score as f64, RRF_K),
                     highlight_ranges,
                     page_number: chunk.page_number,
                     start_offset: chunk.start_offset,
@@ -378,4 +391,47 @@ fn parse_snippet_highlights(snippet: &str) -> Vec<(usize, usize)> {
 /// 문자 인덱스를 바이트 오프셋으로 변환
 fn char_offset(chars: &[char], char_idx: usize) -> usize {
     chars.iter().take(char_idx).map(|c| c.len_utf8()).sum()
+}
+
+// ============================================
+// 스코어 정규화 함수들 (0-100 confidence)
+// ============================================
+
+/// FTS5 BM25 스코어를 confidence로 변환
+/// BM25는 음수이고 낮을수록 좋음 → Min-Max 정규화 후 역전
+fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
+    if scores.is_empty() {
+        return vec![];
+    }
+
+    // 모든 점수가 동일한 경우
+    let min = scores.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    if (max - min).abs() < f64::EPSILON {
+        return vec![100; scores.len()];
+    }
+
+    scores
+        .iter()
+        .map(|&score| {
+            // BM25는 낮을수록 좋음 → 역전 (max - score) / (max - min)
+            let normalized = (max - score) / (max - min);
+            (normalized * 100.0).round().min(100.0).max(0.0) as u8
+        })
+        .collect()
+}
+
+/// 벡터 유사도 스코어를 confidence로 변환
+/// 이미 0-1 범위이므로 단순히 100을 곱함
+fn normalize_vector_confidence(score: f64) -> u8 {
+    (score * 100.0).round().min(100.0).max(0.0) as u8
+}
+
+/// RRF 스코어를 confidence로 변환
+/// 이론적 최대값: 2/(k+1) (양쪽 모두 1위일 때)
+fn normalize_rrf_confidence(score: f64, k: f64) -> u8 {
+    let max_possible = 2.0 / (k + 1.0);
+    let normalized = (score / max_possible).min(1.0);
+    (normalized * 100.0).round().min(100.0).max(0.0) as u8
 }

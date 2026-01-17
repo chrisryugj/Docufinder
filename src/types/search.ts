@@ -6,12 +6,28 @@ export interface SearchResult {
   content_preview: string;
   full_content: string;
   score: number;
+  /** 정규화된 신뢰도 (0-100) */
+  confidence: number;
   highlight_ranges: [number, number][];
   page_number: number | null;
   start_offset: number;
   /** 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3", HWPX: "섹션 2" 등) */
   location_hint: string | null;
 }
+
+/** 그룹화된 검색 결과 (파일별) */
+export interface GroupedSearchResult {
+  file_path: string;
+  file_name: string;
+  chunks: SearchResult[];
+  /** 가장 높은 신뢰도 */
+  top_confidence: number;
+  /** 총 매칭 수 */
+  total_matches: number;
+}
+
+/** 결과 뷰 모드 */
+export type ViewMode = "flat" | "grouped";
 
 /** 검색 응답 */
 export interface SearchResponse {
@@ -42,7 +58,7 @@ export const SEARCH_MODES: SearchModeInfo[] = [
 // =====================
 
 /** 정렬 옵션 */
-export type SortOption = "relevance" | "date_desc" | "date_asc" | "name" | "size";
+export type SortOption = "relevance" | "confidence" | "date_desc" | "date_asc" | "name" | "size";
 
 /** 파일 타입 필터 */
 export type FileTypeFilter = "all" | "hwpx" | "docx" | "xlsx" | "pdf" | "txt";
@@ -67,6 +83,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
 /** 정렬 옵션 목록 */
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: "relevance", label: "관련도순" },
+  { value: "confidence", label: "신뢰도순" },
   { value: "date_desc", label: "최신순" },
   { value: "date_asc", label: "오래된순" },
   { value: "name", label: "이름순" },

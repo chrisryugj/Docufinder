@@ -1,9 +1,12 @@
 import { useState } from "react";
-import type { SearchResult } from "../../types/search";
+import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import { SearchResultItem } from "./SearchResultItem";
+import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
 
 interface SearchResultListProps {
   results: SearchResult[];
+  groupedResults?: GroupedSearchResult[];
+  viewMode?: ViewMode;
   query: string;
   isLoading: boolean;
   selectedIndex?: number;
@@ -16,6 +19,8 @@ interface SearchResultListProps {
 
 export function SearchResultList({
   results,
+  groupedResults = [],
+  viewMode = "flat",
   query,
   isLoading,
   selectedIndex,
@@ -83,22 +88,36 @@ export function SearchResultList({
 
         {/* 결과 목록 */}
         <div role="listbox" aria-label="검색 결과" className="space-y-3">
-        {results.map((result, index) => (
-          <div key={`${result.file_path}-${result.chunk_index}-${index}`} className="group">
-            <SearchResultItem
-              result={result}
-              index={index}
-              isExpanded={expandedIndex === index}
-              isSelected={selectedIndex === index}
-              onToggleExpand={() =>
-                setExpandedIndex(expandedIndex === index ? null : index)
-              }
-              onOpenFile={onOpenFile}
-              onCopyPath={onCopyPath}
-              onOpenFolder={onOpenFolder}
-            />
-          </div>
-        ))}
+          {viewMode === "grouped" && groupedResults.length > 0 ? (
+            // 그룹 뷰
+            groupedResults.map((group) => (
+              <GroupedSearchResultItem
+                key={group.file_path}
+                group={group}
+                onOpenFile={onOpenFile}
+                onCopyPath={onCopyPath}
+                onOpenFolder={onOpenFolder}
+              />
+            ))
+          ) : (
+            // 플랫 뷰
+            results.map((result, index) => (
+              <div key={`${result.file_path}-${result.chunk_index}-${index}`} className="group">
+                <SearchResultItem
+                  result={result}
+                  index={index}
+                  isExpanded={expandedIndex === index}
+                  isSelected={selectedIndex === index}
+                  onToggleExpand={() =>
+                    setExpandedIndex(expandedIndex === index ? null : index)
+                  }
+                  onOpenFile={onOpenFile}
+                  onCopyPath={onCopyPath}
+                  onOpenFolder={onOpenFolder}
+                />
+              </div>
+            ))
+          )}
         </div>
       </div>
     );

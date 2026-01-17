@@ -3,6 +3,7 @@ import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
+import { ConfidenceBadge } from "../ui/ConfidenceBadge";
 
 interface SearchResultItemProps {
   result: SearchResult;
@@ -143,6 +144,9 @@ export function SearchResultItem({
               </button>
             )}
           </div>
+
+          {/* 신뢰도 */}
+          <ConfidenceBadge confidence={result.confidence} />
 
           {/* 뱃지 */}
           {result.location_hint ? (
