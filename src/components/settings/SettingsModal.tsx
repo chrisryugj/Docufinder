@@ -31,6 +31,11 @@ const MAX_RESULTS_OPTIONS = [
   { value: "200", label: "200개" },
 ];
 
+const VIEW_DENSITY_OPTIONS = [
+  { value: "normal", label: "기본 (넓게)" },
+  { value: "compact", label: "컴팩트 (좁게)" },
+];
+
 const CONFIDENCE_STEP = 5;
 
 export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved }: SettingsModalProps) {
@@ -199,6 +204,25 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
               onChange={(value) => handleChange("theme", value as Settings["theme"])}
               placeholder="테마 선택"
             />
+          </div>
+
+          {/* 결과 보기 밀도 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              검색 결과 보기
+            </label>
+            <Dropdown
+              options={VIEW_DENSITY_OPTIONS}
+              value={settings.view_density ?? "normal"}
+              onChange={(value) => handleChange("view_density", value as Settings["view_density"])}
+              placeholder="보기 모드 선택"
+            />
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              컴팩트: 더 많은 결과를 한 화면에 표시
+            </p>
           </div>
 
           {/* 버튼 */}

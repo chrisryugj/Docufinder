@@ -14,6 +14,16 @@ pub struct Settings {
     pub theme: Theme,
     #[serde(default)]
     pub min_confidence: u8,
+    #[serde(default)]
+    pub view_density: ViewDensity,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewDensity {
+    #[default]
+    Normal,
+    Compact,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -41,6 +51,7 @@ impl Default for Settings {
             chunk_overlap: 64,
             theme: Theme::Dark,
             min_confidence: 0,
+            view_density: ViewDensity::Normal,
         }
     }
 }

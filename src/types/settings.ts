@@ -1,6 +1,8 @@
 import type { Theme } from "../hooks/useTheme";
 import type { SearchMode } from "./search";
 
+export type ViewDensity = "normal" | "compact";
+
 export interface Settings {
   search_mode: SearchMode;
   max_results: number;
@@ -8,4 +10,5 @@ export interface Settings {
   chunk_overlap: number;
   theme: Theme;
   min_confidence: number;
+  view_density: ViewDensity;
 }

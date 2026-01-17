@@ -11,6 +11,7 @@ interface SearchResultItemProps {
   index: number;
   isExpanded: boolean;
   isSelected?: boolean;
+  isCompact?: boolean;
   onToggleExpand: () => void;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
@@ -22,6 +23,7 @@ export function SearchResultItem({
   index,
   isExpanded,
   isSelected = false,
+  isCompact = false,
   onToggleExpand,
   onOpenFile,
   onCopyPath,
@@ -67,7 +69,7 @@ export function SearchResultItem({
       className="search-result-item result-card"
       style={{
         "--item-index": index,
-        padding: "1.25rem 1.5rem",
+        padding: isCompact ? "0.5rem 0.75rem" : "1.25rem 1.5rem",
         ...(isSelected && {
           borderColor: "var(--color-accent)",
           backgroundColor: "var(--color-accent-light)",
@@ -79,9 +81,9 @@ export function SearchResultItem({
       tabIndex={isSelected ? 0 : -1}
     >
       {/* 헤더 */}
-      <div className="flex items-start justify-between mb-2">
+      <div className={`flex items-start justify-between ${isCompact ? "mb-1" : "mb-2"}`}>
         <div
-          className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 group/filename transition-colors duration-200"
+          className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename transition-colors duration-200 ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(result.file_path, result.page_number)}
           title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
           style={{ color: "var(--color-text-primary)" }}
@@ -92,10 +94,10 @@ export function SearchResultItem({
             e.currentTarget.style.color = "var(--color-text-primary)";
           }}
         >
-          <FileIcon fileName={result.file_name} size="md" />
+          <FileIcon fileName={result.file_name} size={isCompact ? "sm" : "md"} />
           <span
             className="truncate"
-            style={{ fontSize: "1.125rem", fontWeight: 600 }}
+            style={{ fontSize: isCompact ? "0.9375rem" : "1.125rem", fontWeight: 600 }}
           >
             {result.file_name}
           </span>
@@ -172,7 +174,7 @@ export function SearchResultItem({
 
       {/* 내용 */}
       <div
-        className="cursor-pointer rounded-md p-2 -mx-2 transition-colors flex gap-2"
+        className={`cursor-pointer rounded-md transition-colors flex gap-2 ${isCompact ? "p-1 -mx-1" : "p-2 -mx-2"}`}
         onClick={onToggleExpand}
         style={{ backgroundColor: "transparent" }}
         onMouseEnter={(e) => {
@@ -184,7 +186,7 @@ export function SearchResultItem({
       >
         {/* 토글 아이콘 */}
         <svg
-          className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          className={`w-3 h-3 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
           fill="currentColor"
           viewBox="0 0 20 20"
@@ -193,11 +195,17 @@ export function SearchResultItem({
         </svg>
         <div className="flex-1 min-w-0">
           <p
-            className="text-sm"
+            className={isCompact ? "text-xs" : "text-sm"}
             style={{
               color: "var(--color-text-secondary)",
-              lineHeight: "var(--leading-relaxed)",
+              lineHeight: isCompact ? "1.4" : "var(--leading-relaxed)",
               letterSpacing: "0.3px",
+              ...(isCompact && !isExpanded && {
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical" as const,
+                overflow: "hidden",
+              }),
             }}
           >
             <HighlightedText
@@ -207,40 +215,42 @@ export function SearchResultItem({
             />
           </p>
           {!isExpanded && result.full_content.length > result.content_preview.length && (
-            <span className="text-xs mt-1 inline-block" style={{ color: "var(--color-accent)" }}>
+            <span className="text-xs mt-0.5 inline-block" style={{ color: "var(--color-accent)" }}>
               더보기
             </span>
           )}
         </div>
       </div>
 
-      {/* 경로 (Windows 스타일 배지) */}
-      <div
-        className="flex flex-wrap items-center gap-1 mt-3"
-        title={result.file_path.replace(/^\\\\\?\\/, "")}
-      >
-        {formatPathToBadges(folderPath).map((part, i, arr) => (
-          <div key={i} className="flex items-center">
-            <span
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-              style={{
-                backgroundColor: "var(--color-bg-tertiary)",
-                border: "1px solid var(--color-border)",
-                color: "var(--color-text-muted)",
-              }}
-            >
-              {part}
-            </span>
-            {i < arr.length - 1 && (
-              <span className="mx-0.5" style={{ color: "var(--color-border-hover)" }}>
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+      {/* 경로 (Windows 스타일 배지) - 컴팩트 모드에서는 숨김 */}
+      {!isCompact && (
+        <div
+          className="flex flex-wrap items-center gap-1 mt-3"
+          title={result.file_path.replace(/^\\\\\?\\/, "")}
+        >
+          {formatPathToBadges(folderPath).map((part, i, arr) => (
+            <div key={i} className="flex items-center">
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                style={{
+                  backgroundColor: "var(--color-bg-tertiary)",
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-text-muted)",
+                }}
+              >
+                {part}
               </span>
-            )}
-          </div>
-        ))}
-      </div>
+              {i < arr.length - 1 && (
+                <span className="mx-0.5" style={{ color: "var(--color-border-hover)" }}>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

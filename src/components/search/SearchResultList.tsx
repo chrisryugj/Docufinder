@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
+import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
 
@@ -7,6 +8,8 @@ interface SearchResultListProps {
   results: SearchResult[];
   groupedResults?: GroupedSearchResult[];
   viewMode?: ViewMode;
+  viewDensity?: ViewDensity;
+  onViewDensityChange?: (density: ViewDensity) => void;
   query: string;
   isLoading: boolean;
   selectedIndex?: number;
@@ -21,6 +24,8 @@ export function SearchResultList({
   results,
   groupedResults = [],
   viewMode = "flat",
+  viewDensity = "normal",
+  onViewDensityChange,
   query,
   isLoading,
   selectedIndex,
@@ -31,69 +36,109 @@ export function SearchResultList({
   onCopyAll,
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const isCompact = viewDensity === "compact";
 
   // 결과가 있을 때
   if (results.length > 0) {
     return (
       <div className="space-y-3">
-        {/* 내보내기 버튼 */}
-        <div className="flex justify-end gap-2 mb-2">
-          <button
-            onClick={onCopyAll}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
-            style={{
-              backgroundColor: "var(--color-bg-secondary)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-secondary)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-              e.currentTarget.style.color = "var(--color-accent)";
-              e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-border)";
-              e.currentTarget.style.color = "var(--color-text-secondary)";
-              e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-            }}
-            title="검색 결과 클립보드 복사"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-            </svg>
-            복사
-          </button>
-          <button
-            onClick={onExportCSV}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
-            style={{
-              backgroundColor: "var(--color-bg-secondary)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-secondary)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-              e.currentTarget.style.color = "var(--color-accent)";
-              e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-border)";
-              e.currentTarget.style.color = "var(--color-text-secondary)";
-              e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-            }}
-            title="CSV 파일로 내보내기"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            CSV
-          </button>
+        {/* 툴바: 보기 모드 토글 + 내보내기 */}
+        <div className="flex justify-between items-center mb-2">
+          {/* 보기 밀도 토글 */}
+          {onViewDensityChange && (
+            <div className="flex items-center gap-1 p-0.5 rounded-md" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+              <button
+                onClick={() => onViewDensityChange("normal")}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-all ${!isCompact ? "font-medium" : ""}`}
+                style={{
+                  backgroundColor: !isCompact ? "var(--color-bg-primary)" : "transparent",
+                  color: !isCompact ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                  boxShadow: !isCompact ? "var(--shadow-sm)" : "none",
+                }}
+                title="기본 보기"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                기본
+              </button>
+              <button
+                onClick={() => onViewDensityChange("compact")}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-all ${isCompact ? "font-medium" : ""}`}
+                style={{
+                  backgroundColor: isCompact ? "var(--color-bg-primary)" : "transparent",
+                  color: isCompact ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                  boxShadow: isCompact ? "var(--shadow-sm)" : "none",
+                }}
+                title="컴팩트 보기"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                </svg>
+                컴팩트
+              </button>
+            </div>
+          )}
+
+          {/* 내보내기 버튼 */}
+          <div className="flex gap-2 ml-auto">
+            <button
+              onClick={onCopyAll}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-secondary)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-accent)";
+                e.currentTarget.style.color = "var(--color-accent)";
+                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border)";
+                e.currentTarget.style.color = "var(--color-text-secondary)";
+                e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+              }}
+              title="검색 결과 클립보드 복사"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              복사
+            </button>
+            <button
+              onClick={onExportCSV}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-secondary)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-accent)";
+                e.currentTarget.style.color = "var(--color-accent)";
+                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "var(--color-border)";
+                e.currentTarget.style.color = "var(--color-text-secondary)";
+                e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+              }}
+              title="CSV 파일로 내보내기"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              CSV
+            </button>
+          </div>
         </div>
 
         {/* 결과 목록 */}
-        <div role="listbox" aria-label="검색 결과" className="space-y-3">
+        <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
           {viewMode === "grouped" && groupedResults.length > 0 ? (
             // 그룹 뷰
             groupedResults.map((group) => (
@@ -103,6 +148,7 @@ export function SearchResultList({
                 onOpenFile={onOpenFile}
                 onCopyPath={onCopyPath}
                 onOpenFolder={onOpenFolder}
+                isCompact={isCompact}
               />
             ))
           ) : (
@@ -114,6 +160,7 @@ export function SearchResultList({
                   index={index}
                   isExpanded={expandedIndex === index}
                   isSelected={selectedIndex === index}
+                  isCompact={isCompact}
                   onToggleExpand={() =>
                     setExpandedIndex(expandedIndex === index ? null : index)
                   }

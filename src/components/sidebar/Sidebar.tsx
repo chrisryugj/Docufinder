@@ -125,16 +125,11 @@ export function Sidebar({
 
         </div>
 
-        {/* Footer */}
+        {/* Footer - 저작권 */}
         <div className="p-4 border-t border-white/5 bg-black/20 shrink-0">
-          <div className="flex items-center gap-3 px-2 py-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer group">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs ring-2 ring-white/10 group-hover:ring-blue-500/50 transition-all">
-              US
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-200 truncate">User Profile</p>
-              <p className="text-xs text-slate-500 truncate">admin@gwangjin.go.kr</p>
-            </div>
+          <div className="text-center text-xs text-slate-500 space-y-0.5">
+            <p>© 2025 개친절한 류주임</p>
+            <p>광진구청 AI 동호회 (AI.Do)</p>
           </div>
         </div>
       </aside>

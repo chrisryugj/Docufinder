@@ -11,6 +11,7 @@ interface GroupedSearchResultItemProps {
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  isCompact?: boolean;
 }
 
 /**
@@ -23,14 +24,16 @@ export function GroupedSearchResultItem({
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  isCompact = false,
 }: GroupedSearchResultItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
 
-  // 기본 3개만 표시, 펼치면 전체
-  const displayChunks = isExpanded ? group.chunks : group.chunks.slice(0, 3);
-  const hasMore = group.chunks.length > 3;
+  // 컴팩트 모드: 2개만, 기본: 3개, 펼치면 전체
+  const defaultCount = isCompact ? 2 : 3;
+  const displayChunks = isExpanded ? group.chunks : group.chunks.slice(0, defaultCount);
+  const hasMore = group.chunks.length > defaultCount;
 
   const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -47,11 +50,11 @@ export function GroupedSearchResultItem({
   };
 
   return (
-    <div className="result-card" style={{ padding: "1rem 1.25rem" }}>
+    <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }}>
       {/* 그룹 헤더 */}
-      <div className="flex items-center justify-between mb-3">
+      <div className={`flex items-center justify-between ${isCompact ? "mb-2" : "mb-3"}`}>
         <div
-          className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0 group/filename"
+          className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(group.file_path)}
           style={{ color: "var(--color-text-primary)" }}
           onMouseEnter={(e) => {
@@ -61,8 +64,8 @@ export function GroupedSearchResultItem({
             e.currentTarget.style.color = "var(--color-text-primary)";
           }}
         >
-          <FileIcon fileName={group.file_name} size="md" />
-          <span className="truncate font-semibold text-base">
+          <FileIcon fileName={group.file_name} size={isCompact ? "sm" : "md"} />
+          <span className={`truncate font-semibold ${isCompact ? "text-sm" : "text-base"}`}>
             {group.file_name}
           </span>
           <Badge variant="default">{group.total_matches}건</Badge>
@@ -106,13 +109,13 @@ export function GroupedSearchResultItem({
       </div>
 
       {/* 청크 목록 */}
-      <div className="space-y-2">
+      <div className={isCompact ? "space-y-1" : "space-y-2"}>
         {displayChunks.map((chunk, idx) => {
           const matchBadge = getMatchTypeBadge(chunk.match_type);
           return (
           <div
             key={`${chunk.chunk_index}-${idx}`}
-            className="flex gap-2 p-2 rounded-md cursor-pointer transition-colors"
+            className={`flex rounded-md cursor-pointer transition-colors ${isCompact ? "gap-1.5 p-1.5" : "gap-2 p-2"}`}
             style={{ backgroundColor: "var(--color-bg-secondary)" }}
             onClick={() => onOpenFile(chunk.file_path, chunk.page_number)}
             onMouseEnter={(e) => {
@@ -123,25 +126,27 @@ export function GroupedSearchResultItem({
             }}
           >
             {/* 위치 표시 */}
-            <div className="flex-shrink-0 w-20 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            <div className={`flex-shrink-0 ${isCompact ? "w-16" : "w-20"} text-xs`} style={{ color: "var(--color-text-muted)" }}>
               <div>
                 {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
               </div>
-              <div className="mt-1">
-                <Badge variant={matchBadge.variant}>
-                  {matchBadge.label}
-                </Badge>
-              </div>
+              {!isCompact && (
+                <div className="mt-1">
+                  <Badge variant={matchBadge.variant}>
+                    {matchBadge.label}
+                  </Badge>
+                </div>
+              )}
             </div>
 
             {/* 내용 미리보기 */}
             <div className="flex-1 min-w-0">
               <p
-                className="text-sm leading-relaxed"
+                className={`leading-relaxed ${isCompact ? "text-xs" : "text-sm"}`}
                 style={{
                   color: "var(--color-text-secondary)",
                   display: "-webkit-box",
-                  WebkitLineClamp: 4,
+                  WebkitLineClamp: isCompact ? 2 : 4,
                   WebkitBoxOrient: "vertical",
                   overflow: "hidden",
                   whiteSpace: "pre-line",
@@ -165,7 +170,7 @@ export function GroupedSearchResultItem({
         {hasMore && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full py-1.5 text-xs rounded-md transition-colors"
+            className={`w-full text-xs rounded-md transition-colors ${isCompact ? "py-1" : "py-1.5"}`}
             style={{
               color: "var(--color-accent)",
               backgroundColor: "var(--color-bg-secondary)",
@@ -177,19 +182,21 @@ export function GroupedSearchResultItem({
               e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
             }}
           >
-            {isExpanded ? "접기" : `+${group.chunks.length - 3}개 더보기`}
+            {isExpanded ? "접기" : `+${group.chunks.length - defaultCount}개 더보기`}
           </button>
         )}
       </div>
 
-      {/* 경로 */}
-      <p
-        className="text-xs mt-2 truncate font-mono"
-        style={{ color: "var(--color-text-muted)" }}
-        title={group.file_path}
-      >
-        {formatBreadcrumb(folderPath)}
-      </p>
+      {/* 경로 - 컴팩트 모드에서 숨김 */}
+      {!isCompact && (
+        <p
+          className="text-xs mt-2 truncate font-mono"
+          style={{ color: "var(--color-text-muted)" }}
+          title={group.file_path}
+        >
+          {formatBreadcrumb(folderPath)}
+        </p>
+      )}
     </div>
   );
 }

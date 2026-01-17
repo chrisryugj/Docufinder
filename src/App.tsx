@@ -1,7 +1,7 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, UIEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { Settings } from "./types/settings";
+import type { Settings, ViewDensity } from "./types/settings";
 
 // Hooks
 import { useSearch, useIndexStatus, useKeyboardShortcuts, useRecentSearches, useExport, useTheme } from "./hooks";
@@ -14,10 +14,13 @@ import { SettingsModal } from "./components/settings/SettingsModal";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [minConfidence, setMinConfidence] = useState(0);
+  const [viewDensity, setViewDensity] = useState<ViewDensity>("normal");
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   // 테마
   const { setTheme } = useTheme();
@@ -68,12 +71,13 @@ function App() {
     clearIndexError();
   }, [clearSearchError, clearIndexError]);
 
-  // 설정 로드 (최소 신뢰도 적용)
+  // 설정 로드 (최소 신뢰도, 보기 밀도 적용)
   useEffect(() => {
     const loadSettings = async () => {
       try {
         const settings = await invoke<Settings>("get_settings");
         setMinConfidence(settings.min_confidence ?? 0);
+        setViewDensity(settings.view_density ?? "normal");
       } catch (err) {
         console.warn("Failed to load settings:", err);
       }
@@ -254,6 +258,16 @@ function App() {
     }
   }
 
+  // 스크롤 핸들러
+  const handleScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    setShowScrollTop(scrollTop > 300);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* 사이드바 */}
@@ -285,7 +299,11 @@ function App() {
         </div>
 
         {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto overflow-x-hidden"
+        >
           {/* Search Bar Area */}
           <div className="px-6 py-8">
             <SearchBar
@@ -327,6 +345,8 @@ function App() {
                 results={filteredResults}
                 groupedResults={groupedResults}
                 viewMode={viewMode}
+                viewDensity={viewDensity}
+                onViewDensityChange={setViewDensity}
                 query={query}
                 isLoading={isLoading}
                 selectedIndex={selectedIndex}
@@ -349,7 +369,10 @@ function App() {
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onThemeChange={setTheme}
-        onSettingsSaved={(settings) => setMinConfidence(settings.min_confidence ?? 0)}
+        onSettingsSaved={(settings) => {
+          setMinConfidence(settings.min_confidence ?? 0);
+          setViewDensity(settings.view_density ?? "normal");
+        }}
       />
 
       {/* Toast */}
@@ -364,6 +387,31 @@ function App() {
         >
           {toast.message}
         </div>
+      )}
+
+      {/* Scroll to Top FAB */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-20 right-6 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 z-40"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            border: "1px solid var(--color-border)",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          }}
+          aria-label="맨 위로 스크롤"
+        >
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+        </button>
       )}
     </div>
   );
