@@ -2,6 +2,14 @@ use rusqlite::{Connection, Result, params};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// LIKE 패턴 특수문자 이스케이프 (SQL Injection 방지)
+/// %, _, \ 문자를 이스케이프하여 리터럴로 처리
+fn escape_like_pattern(s: &str) -> String {
+    s.replace('\\', "\\\\")
+     .replace('%', "\\%")
+     .replace('_', "\\_")
+}
+
 /// DB 연결 생성 (WAL 모드 + 동시성 최적화)
 pub fn get_connection(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
@@ -52,7 +60,7 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         [],
     )?;
 
-    // FTS5 전문 검색 인덱스
+    // FTS5 전문 검색 인덱스 (청크 내용)
     conn.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
             content,
@@ -62,15 +70,38 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         [],
     )?;
 
+    // FTS5 파일명 검색 인덱스
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+            name,
+            content_rowid='id',
+            tokenize='unicode61'
+        )",
+        [],
+    )?;
+
+    // 기존 파일 → files_fts 마이그레이션 (최초 실행 시)
+    conn.execute(
+        "INSERT OR IGNORE INTO files_fts (rowid, name) SELECT id, name FROM files",
+        [],
+    )?;
+
     // 감시 폴더 테이블
     conn.execute(
         "CREATE TABLE IF NOT EXISTS watched_folders (
             id INTEGER PRIMARY KEY,
             path TEXT UNIQUE NOT NULL,
-            added_at INTEGER
+            added_at INTEGER,
+            is_favorite INTEGER DEFAULT 0
         )",
         [],
     )?;
+
+    // 기존 테이블에 is_favorite 컬럼 추가 (마이그레이션)
+    let _ = conn.execute(
+        "ALTER TABLE watched_folders ADD COLUMN is_favorite INTEGER DEFAULT 0",
+        [],
+    );
 
     // 인덱스 생성
     conn.execute(
@@ -115,6 +146,50 @@ pub fn remove_watched_folder(conn: &Connection, path: &str) -> Result<usize> {
     conn.execute("DELETE FROM watched_folders WHERE path = ?", params![path])
 }
 
+/// 즐겨찾기 토글
+pub fn toggle_favorite(conn: &Connection, path: &str) -> Result<bool> {
+    // 현재 상태 확인
+    let current: i32 = conn.query_row(
+        "SELECT COALESCE(is_favorite, 0) FROM watched_folders WHERE path = ?",
+        params![path],
+        |row| row.get(0),
+    )?;
+
+    let new_value = if current == 0 { 1 } else { 0 };
+
+    conn.execute(
+        "UPDATE watched_folders SET is_favorite = ? WHERE path = ?",
+        params![new_value, path],
+    )?;
+
+    Ok(new_value == 1)
+}
+
+/// 폴더 정보 (즐겨찾기 포함)
+#[derive(Debug, Clone)]
+pub struct WatchedFolderInfo {
+    pub path: String,
+    pub is_favorite: bool,
+    pub added_at: Option<i64>,
+}
+
+/// 감시 폴더 목록 조회 (상세 정보 포함)
+pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFolderInfo>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, COALESCE(is_favorite, 0), added_at FROM watched_folders ORDER BY is_favorite DESC, added_at DESC"
+    )?;
+
+    let rows = stmt.query_map([], |row| {
+        Ok(WatchedFolderInfo {
+            path: row.get(0)?,
+            is_favorite: row.get::<_, i32>(1)? == 1,
+            added_at: row.get(2)?,
+        })
+    })?;
+
+    rows.collect()
+}
+
 // ==================== 파일 ====================
 
 /// 파일 저장 (upsert)
@@ -150,17 +225,32 @@ pub fn upsert_file(
         |row| row.get(0),
     )?;
 
+    // files_fts 인덱스 갱신 (파일명 검색용)
+    conn.execute(
+        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)
+         ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+        params![file_id, name],
+    )?;
+
     Ok(file_id)
 }
 
 /// 파일 삭제 (청크도 CASCADE로 삭제됨)
 pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
-    // 먼저 FTS에서 삭제
+    // chunks_fts에서 삭제
     conn.execute(
         "DELETE FROM chunks_fts WHERE rowid IN (
             SELECT c.id FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.path = ?
+        )",
+        params![path],
+    )?;
+
+    // files_fts에서 삭제 (파일명 검색 인덱스)
+    conn.execute(
+        "DELETE FROM files_fts WHERE rowid IN (
+            SELECT id FROM files WHERE path = ?
         )",
         params![path],
     )?;
@@ -175,20 +265,17 @@ pub fn get_file_count(conn: &Connection) -> Result<usize> {
 
 /// 폴더 내 파일 ID와 청크 ID 조회 (벡터 삭제용)
 pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) -> Result<Vec<(i64, Vec<i64>)>> {
-    // 폴더 경로로 시작하는 모든 파일 조회
-    let folder_prefix = if folder_path.ends_with('/') || folder_path.ends_with('\\') {
-        folder_path.to_string()
-    } else {
-        format!("{}%", folder_path) // LIKE 패턴용
-    };
+    // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
+    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
 
     let mut stmt = conn.prepare(
-        "SELECT id FROM files WHERE path LIKE ? OR path LIKE ?"
+        "SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'"
     )?;
 
     // Windows/Unix 경로 모두 지원
-    let pattern_unix = format!("{}/%", folder_path.replace('\\', "/"));
-    let pattern_win = format!("{}\\%", folder_path.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", escaped_unix);
+    let pattern_win = format!("{}\\\\%", escaped_win); // \\ → \\\\ (escaped backslash)
 
     let file_ids: Vec<i64> = stmt
         .query_map(params![pattern_unix, pattern_win], |row| row.get(0))?
@@ -206,22 +293,34 @@ pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) ->
 
 /// 폴더 내 모든 파일 삭제 (FTS + 파일)
 pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<usize> {
-    // 폴더 경로로 시작하는 모든 파일의 청크 FTS 먼저 삭제
-    let pattern_unix = format!("{}/%", folder_path.replace('\\', "/"));
-    let pattern_win = format!("{}\\%", folder_path.replace('/', "\\"));
+    // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
+    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", escaped_unix);
+    let pattern_win = format!("{}\\\\%", escaped_win);
 
+    // chunks_fts 삭제
     conn.execute(
         "DELETE FROM chunks_fts WHERE rowid IN (
             SELECT c.id FROM chunks c
             JOIN files f ON c.file_id = f.id
-            WHERE f.path LIKE ? OR f.path LIKE ?
+            WHERE f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\'
+        )",
+        params![pattern_unix, pattern_win],
+    )?;
+
+    // files_fts 삭제 (파일명 검색 인덱스)
+    conn.execute(
+        "DELETE FROM files_fts WHERE rowid IN (
+            SELECT id FROM files
+            WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'
         )",
         params![pattern_unix, pattern_win],
     )?;
 
     // 파일 삭제 (chunks는 CASCADE로 삭제됨)
     conn.execute(
-        "DELETE FROM files WHERE path LIKE ? OR path LIKE ?",
+        "DELETE FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
         params![pattern_unix, pattern_win],
     )
 }
@@ -367,6 +466,36 @@ pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>>
     )?;
     let rows = stmt.query_map(params![path], |row| row.get(0))?;
     rows.collect()
+}
+
+/// 폴더 통계 정보
+#[derive(Debug, Clone)]
+pub struct FolderStats {
+    pub file_count: usize,
+    pub last_indexed: Option<i64>,
+}
+
+/// 폴더별 인덱싱 통계 조회
+pub fn get_folder_stats(conn: &Connection, folder_path: &str) -> Result<FolderStats> {
+    // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
+    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", escaped_unix);
+    let pattern_win = format!("{}\\\\%", escaped_win);
+
+    let result = conn.query_row(
+        "SELECT COUNT(*) as file_count, MAX(indexed_at) as last_indexed
+         FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
+        params![pattern_unix, pattern_win],
+        |row| {
+            Ok(FolderStats {
+                file_count: row.get::<_, i64>(0)? as usize,
+                last_indexed: row.get(1)?,
+            })
+        },
+    )?;
+
+    Ok(result)
 }
 
 #[derive(Debug, Clone)]

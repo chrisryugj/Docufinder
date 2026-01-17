@@ -1,35 +1,29 @@
 import { useCallback, useState } from "react";
 import type { SearchResult } from "../types/search";
 
+type ShowToastFn = (message: string, type: "success" | "error" | "loading" | "info") => string;
+
+interface UseExportOptions {
+  showToast?: ShowToastFn;
+}
+
 interface UseExportReturn {
   exportToCSV: (results: SearchResult[], query: string) => void;
   copyToClipboard: (results: SearchResult[], query: string) => Promise<void>;
   isExporting: boolean;
-  toast: { message: string; type: "success" | "error" } | null;
-  clearToast: () => void;
-  showToast: (message: string, type: "success" | "error") => void;
 }
 
 /**
  * 검색 결과 내보내기 훅
  */
-export function useExport(): UseExportReturn {
+export function useExport(options?: UseExportOptions): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error";
-  } | null>(null);
 
-  const clearToast = useCallback(() => setToast(null), []);
-
-  // 자동 토스트 닫기
-  const showToast = useCallback(
-    (message: string, type: "success" | "error") => {
-      setToast({ message, type });
-      setTimeout(() => setToast(null), 3000);
-    },
-    []
-  );
+  // 외부 showToast가 없으면 console.log로 대체
+  const showToast = options?.showToast ?? ((msg: string) => {
+    console.log("[Export]", msg);
+    return "";
+  });
 
   /**
    * CSV 내보내기 (다운로드)
@@ -136,9 +130,6 @@ export function useExport(): UseExportReturn {
     exportToCSV,
     copyToClipboard,
     isExporting,
-    toast,
-    clearToast,
-    showToast,
   };
 }
 

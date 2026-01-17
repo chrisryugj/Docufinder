@@ -20,7 +20,7 @@ export interface SearchResult {
 }
 
 /** 검색 매칭 타입 */
-export type SearchResultMatchType = "keyword" | "semantic" | "hybrid";
+export type SearchResultMatchType = "keyword" | "semantic" | "hybrid" | "filename";
 
 /** 그룹화된 검색 결과 (파일별) */
 export interface GroupedSearchResult {
@@ -44,7 +44,13 @@ export interface SearchResponse {
 }
 
 /** 검색 모드 */
-export type SearchMode = "keyword" | "semantic" | "hybrid";
+export type SearchMode = "keyword" | "semantic" | "hybrid" | "filename";
+
+/** 최근 검색 기록 */
+export interface RecentSearch {
+  query: string;
+  timestamp: number;  // Unix timestamp (ms)
+}
 
 /** 검색 모드 정보 */
 export interface SearchModeInfo {
@@ -55,9 +61,10 @@ export interface SearchModeInfo {
 
 /** 검색 모드 목록 */
 export const SEARCH_MODES: SearchModeInfo[] = [
-  { value: "keyword", label: "키워드", desc: "FTS5 전문검색" },
   { value: "hybrid", label: "하이브리드", desc: "키워드 + AI 통합" },
+  { value: "keyword", label: "키워드", desc: "FTS5 전문검색" },
   { value: "semantic", label: "시맨틱", desc: "AI 의미 검색" },
+  { value: "filename", label: "파일명", desc: "파일명 검색" },
 ];
 
 // =====================
@@ -79,6 +86,8 @@ export interface SearchFilters {
   fileType: FileTypeFilter;
   dateRange: DateRangeFilter;
   keywordOnly: boolean;
+  /** 파일명 결과만 표시 (통합 모드) */
+  filenameOnly: boolean;
 }
 
 /** 기본 필터 값 */
@@ -87,6 +96,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
   fileType: "all",
   dateRange: "all",
   keywordOnly: false,
+  filenameOnly: false,
 };
 
 /** 정렬 옵션 목록 */

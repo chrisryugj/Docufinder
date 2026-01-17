@@ -1,10 +1,29 @@
 use crate::db;
-use crate::indexer::pipeline;
+use crate::indexer::pipeline::{self, IndexingProgress};
 use crate::AppState;
+use super::settings::get_settings_sync;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+
+/// 시스템 폴더 블랙리스트 검증 (Path Traversal 방지)
+fn is_safe_path(path: &Path) -> bool {
+    let path_str = path.to_string_lossy().to_lowercase();
+    let blocked = [
+        "\\windows\\",
+        "\\program files\\",
+        "\\program files (x86)\\",
+        "\\programdata\\",
+        "\\$recycle.bin\\",
+        "\\system volume information\\",
+        "/windows/",
+        "/program files/",
+        "/program files (x86)/",
+        "/programdata/",
+    ];
+    !blocked.iter().any(|b| path_str.contains(b))
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct IndexStatus {
@@ -24,10 +43,24 @@ pub struct AddFolderResult {
     pub message: String,
 }
 
-/// 감시 폴더 추가 및 인덱싱
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FolderStats {
+    pub file_count: usize,
+    pub last_indexed: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WatchedFolderInfo {
+    pub path: String,
+    pub is_favorite: bool,
+    pub added_at: Option<i64>,
+}
+
+/// 감시 폴더 추가 및 인덱싱 (진행률 이벤트 포함)
 #[tauri::command]
 pub async fn add_folder(
     path: String,
+    app_handle: AppHandle,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<AddFolderResult, String> {
     tracing::info!("Adding folder to watch: {}", path);
@@ -41,11 +74,22 @@ pub async fn add_folder(
     let canonical_path = folder_path
         .canonicalize()
         .map_err(|e| format!("Invalid path '{}': {}", path, e))?;
+
+    // 시스템 폴더 블랙리스트 검증
+    if !is_safe_path(&canonical_path) {
+        return Err(format!(
+            "Access denied: '{}' is a protected system folder",
+            canonical_path.display()
+        ));
+    }
+
     let folder_path = canonical_path.as_path();
     let path = canonical_path.to_string_lossy().to_string();
 
-    let (db_path, embedder, vector_index) = {
+    let (db_path, embedder, vector_index, cancel_flag) = {
         let state = state.lock().map_err(|e| e.to_string())?;
+        // 새 인덱싱 시작 시 취소 플래그 리셋
+        state.reset_cancel_flag();
         tracing::info!("Getting embedder and vector index...");
         let emb = state.get_embedder();
         tracing::info!("Embedder result: {:?}", emb.is_ok());
@@ -55,24 +99,50 @@ pub async fn add_folder(
             state.db_path.clone(),
             emb.ok(),
             vi.ok(),
+            state.get_cancel_flag(),
         )
     };
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
+    // 설정에서 하위폴더 포함 여부 확인
+    let app_data_dir = db_path.parent().map(|p| p.to_path_buf());
+    let include_subfolders = app_data_dir
+        .map(|dir| get_settings_sync(&dir).include_subfolders)
+        .unwrap_or(true);
+
+    tracing::info!("Include subfolders: {}", include_subfolders);
+
     // 1. 감시 폴더 등록
     db::add_watched_folder(&conn, &path).map_err(|e| e.to_string())?;
 
-    // 2. 폴더 인덱싱
-    let result = pipeline::index_folder(
-        &conn,
-        folder_path,
-        embedder.as_ref(),
-        vector_index.as_ref(),
-    )
+    // 2. 진행률 콜백 설정
+    let app_handle_clone = app_handle.clone();
+    let progress_callback: pipeline::ProgressCallback = Box::new(move |progress: IndexingProgress| {
+        // Tauri 이벤트로 진행률 전송
+        if let Err(e) = app_handle_clone.emit("indexing-progress", &progress) {
+            tracing::warn!("Failed to emit progress: {}", e);
+        }
+    });
+
+    // 3. 폴더 인덱싱 (진행률 + 취소 지원)
+    let folder_path_buf = folder_path.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || {
+        pipeline::index_folder_with_progress(
+            &conn,
+            &folder_path_buf,
+            embedder.as_ref(),
+            vector_index.as_ref(),
+            include_subfolders,
+            cancel_flag,
+            Some(progress_callback),
+        )
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
     .map_err(|e| e.to_string())?;
 
-    // 3. 파일 감시 시작
+    // 4. 파일 감시 시작
     {
         let state = state.lock().map_err(|e| e.to_string())?;
         if let Ok(wm) = state.get_watch_manager() {
@@ -84,7 +154,9 @@ pub async fn add_folder(
         }
     }
 
-    let message = if result.failed_count > 0 {
+    let message = if result.errors.iter().any(|e| e.contains("Cancelled")) {
+        "인덱싱이 취소되었습니다".to_string()
+    } else if result.failed_count > 0 {
         format!(
             "Indexed {} files ({} vectors), {} failed",
             result.indexed_count, result.vectors_count, result.failed_count
@@ -105,6 +177,15 @@ pub async fn add_folder(
         vectors_count: result.vectors_count,
         message,
     })
+}
+
+/// 인덱싱 취소
+#[tauri::command]
+pub async fn cancel_indexing(state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    tracing::info!("Cancelling indexing...");
+    let state = state.lock().map_err(|e| e.to_string())?;
+    state.cancel_indexing();
+    Ok(())
 }
 
 /// 감시 폴더 제거
@@ -150,10 +231,9 @@ pub async fn remove_folder(
 
         tracing::info!("Removed {} vectors for folder: {}", removed_vectors, path);
 
-        // 벡터 인덱스 저장
-        if let Err(e) = vi.save() {
-            tracing::warn!("Failed to save vector index after removal: {}", e);
-        }
+        // 벡터 인덱스 저장 (실패 시 에러 반환 - DB 일관성 유지)
+        vi.save()
+            .map_err(|e| format!("Failed to save vector index: {}", e))?;
     }
 
     // 3. DB에서 파일들 삭제 (FTS + chunks + files)
@@ -196,4 +276,65 @@ pub async fn get_index_status(state: State<'_, Mutex<AppState>>) -> Result<Index
         vectors_count,
         semantic_available,
     })
+}
+
+/// 폴더별 인덱싱 통계 조회
+#[tauri::command]
+pub async fn get_folder_stats(
+    path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<FolderStats, String> {
+    let db_path = {
+        let state = state.lock().map_err(|e| e.to_string())?;
+        state.db_path.clone()
+    };
+
+    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let stats = db::get_folder_stats(&conn, &path).map_err(|e| e.to_string())?;
+
+    Ok(FolderStats {
+        file_count: stats.file_count,
+        last_indexed: stats.last_indexed,
+    })
+}
+
+/// 감시 폴더 목록 조회 (상세 정보 포함)
+#[tauri::command]
+pub async fn get_folders_with_info(
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<WatchedFolderInfo>, String> {
+    let db_path = {
+        let state = state.lock().map_err(|e| e.to_string())?;
+        state.db_path.clone()
+    };
+
+    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let folders = db::get_watched_folders_with_info(&conn).map_err(|e| e.to_string())?;
+
+    Ok(folders
+        .into_iter()
+        .map(|f| WatchedFolderInfo {
+            path: f.path,
+            is_favorite: f.is_favorite,
+            added_at: f.added_at,
+        })
+        .collect())
+}
+
+/// 즐겨찾기 토글
+#[tauri::command]
+pub async fn toggle_favorite(
+    path: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<bool, String> {
+    let db_path = {
+        let state = state.lock().map_err(|e| e.to_string())?;
+        state.db_path.clone()
+    };
+
+    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let is_favorite = db::toggle_favorite(&conn, &path).map_err(|e| e.to_string())?;
+
+    tracing::info!("Toggled favorite for {}: {}", path, is_favorite);
+    Ok(is_favorite)
 }

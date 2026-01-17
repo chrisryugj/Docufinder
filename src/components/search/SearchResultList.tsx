@@ -3,9 +3,12 @@ import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/se
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
+import { cleanPath } from "../../utils/cleanPath";
 
 interface SearchResultListProps {
   results: SearchResult[];
+  /** 파일명 검색 결과 (통합 모드에서 상단 표시) */
+  filenameResults?: SearchResult[];
   groupedResults?: GroupedSearchResult[];
   viewMode?: ViewMode;
   viewDensity?: ViewDensity;
@@ -22,6 +25,7 @@ interface SearchResultListProps {
 
 export function SearchResultList({
   results,
+  filenameResults = [],
   groupedResults = [],
   viewMode = "flat",
   viewDensity = "normal",
@@ -38,8 +42,11 @@ export function SearchResultList({
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const isCompact = viewDensity === "compact";
 
+  // 전체 결과 (파일명 + 내용)
+  const hasResults = results.length > 0 || filenameResults.length > 0;
+
   // 결과가 있을 때
-  if (results.length > 0) {
+  if (hasResults) {
     return (
       <div className="space-y-3">
         {/* 툴바: 보기 모드 토글 + 내보내기 */}
@@ -137,41 +144,115 @@ export function SearchResultList({
           </div>
         </div>
 
+        {/* 파일명 매치 섹션 (통합 모드) */}
+        {filenameResults.length > 0 && (
+          <div className="mb-4">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2"
+              style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+            >
+              <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                파일명 매치
+              </span>
+              <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-accent-light)", color: "var(--color-accent)" }}>
+                {filenameResults.length}
+              </span>
+            </div>
+            <div className={isCompact ? "space-y-1" : "space-y-2"}>
+              {filenameResults.map((result, index) => (
+                <div
+                  key={`filename-${result.file_path}-${index}`}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                  style={{ backgroundColor: "var(--color-bg-secondary)" }}
+                  onClick={() => onOpenFile(result.file_path)}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+                  }}
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
+                      {result.file_name}
+                    </div>
+                    <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+                      {cleanPath(result.file_path)}
+                    </div>
+                  </div>
+                  <div
+                    className="text-xs px-2 py-0.5 rounded"
+                    style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}
+                  >
+                    {result.location_hint || result.file_path.split('.').pop()?.toUpperCase()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 내용 매치 섹션 헤더 */}
+        {filenameResults.length > 0 && results.length > 0 && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2"
+            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+          >
+            <svg className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              내용 매치
+            </span>
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
+              {results.length}
+            </span>
+          </div>
+        )}
+
         {/* 결과 목록 */}
-        <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
-          {viewMode === "grouped" && groupedResults.length > 0 ? (
-            // 그룹 뷰
-            groupedResults.map((group) => (
-              <GroupedSearchResultItem
-                key={group.file_path}
-                group={group}
-                onOpenFile={onOpenFile}
-                onCopyPath={onCopyPath}
-                onOpenFolder={onOpenFolder}
-                isCompact={isCompact}
-              />
-            ))
-          ) : (
-            // 플랫 뷰
-            results.map((result, index) => (
-              <div key={`${result.file_path}-${result.chunk_index}-${index}`} className="group">
-                <SearchResultItem
-                  result={result}
-                  index={index}
-                  isExpanded={expandedIndex === index}
-                  isSelected={selectedIndex === index}
-                  isCompact={isCompact}
-                  onToggleExpand={() =>
-                    setExpandedIndex(expandedIndex === index ? null : index)
-                  }
+        {results.length > 0 && (
+          <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+            {viewMode === "grouped" && groupedResults.length > 0 ? (
+              // 그룹 뷰
+              groupedResults.map((group) => (
+                <GroupedSearchResultItem
+                  key={group.file_path}
+                  group={group}
                   onOpenFile={onOpenFile}
                   onCopyPath={onCopyPath}
                   onOpenFolder={onOpenFolder}
+                  isCompact={isCompact}
                 />
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            ) : (
+              // 플랫 뷰
+              results.map((result, index) => (
+                <div key={`${result.file_path}-${result.chunk_index}-${index}`} className="group">
+                  <SearchResultItem
+                    result={result}
+                    index={index}
+                    isExpanded={expandedIndex === index}
+                    isSelected={selectedIndex === index}
+                    isCompact={isCompact}
+                    onToggleExpand={() =>
+                      setExpandedIndex(expandedIndex === index ? null : index)
+                    }
+                    onOpenFile={onOpenFile}
+                    onCopyPath={onCopyPath}
+                    onOpenFolder={onOpenFolder}
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
     );
   }

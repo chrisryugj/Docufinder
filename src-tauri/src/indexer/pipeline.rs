@@ -12,8 +12,23 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
+
+/// 인덱싱 진행률 정보
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IndexingProgress {
+    pub phase: String,
+    pub total_files: usize,
+    pub processed_files: usize,
+    pub current_file: Option<String>,
+    pub folder_path: String,
+    pub error: Option<String>,
+}
+
+/// 진행률 콜백 타입
+pub type ProgressCallback = Box<dyn Fn(IndexingProgress) + Send + Sync>;
 
 /// 단일 파일 인덱싱 (FTS + 벡터)
 pub fn index_file(
@@ -45,9 +60,19 @@ pub fn index_folder(
     embedder: Option<&Arc<Mutex<Embedder>>>,
     vector_index: Option<&Arc<VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
-    // 지원 확장자
-    // 1. 파일 경로 수집 (재귀 탐색)
-    let file_paths = collect_files(folder_path, SUPPORTED_EXTENSIONS);
+    index_folder_with_options(conn, folder_path, embedder, vector_index, true)
+}
+
+/// 폴더 내 파일 인덱싱 (recursive 옵션 지원)
+pub fn index_folder_with_options(
+    conn: &Connection,
+    folder_path: &Path,
+    embedder: Option<&Arc<Mutex<Embedder>>>,
+    vector_index: Option<&Arc<VectorIndex>>,
+    recursive: bool,
+) -> Result<FolderIndexResult, IndexError> {
+    // 1. 파일 경로 수집
+    let file_paths = collect_files(folder_path, SUPPORTED_EXTENSIONS, recursive);
 
     tracing::info!(
         "Found {} files to index in {:?}",
@@ -96,6 +121,9 @@ pub fn index_folder(
                 failed += 1;
                 errors.push(format!("{:?}: {}", path, error));
             }
+            ParseResult::Cancelled => {
+                // 기존 함수에서는 취소 없음
+            }
         }
     }
 
@@ -115,6 +143,168 @@ pub fn index_folder(
     })
 }
 
+/// 폴더 인덱싱 (진행률 콜백 + 취소 지원)
+pub fn index_folder_with_progress(
+    conn: &Connection,
+    folder_path: &Path,
+    embedder: Option<&Arc<Mutex<Embedder>>>,
+    vector_index: Option<&Arc<VectorIndex>>,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<FolderIndexResult, IndexError> {
+    let folder_str = folder_path.to_string_lossy().to_string();
+
+    // 진행률 전송 헬퍼
+    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>| {
+        if let Some(ref cb) = progress_callback {
+            cb(IndexingProgress {
+                phase: phase.to_string(),
+                total_files: total,
+                processed_files: processed,
+                current_file: current.map(|s| s.to_string()),
+                folder_path: folder_str.clone(),
+                error: None,
+            });
+        }
+    };
+
+    // 1. 파일 스캔
+    send_progress("scanning", 0, 0, None);
+    let file_paths = collect_files(folder_path, SUPPORTED_EXTENSIONS, recursive);
+    let total = file_paths.len();
+
+    tracing::info!("Found {} files to index in {:?}", total, folder_path);
+    send_progress("scanning", total, 0, None);
+
+    // 취소 확인
+    if cancel_flag.load(Ordering::Relaxed) {
+        send_progress("cancelled", total, 0, None);
+        return Ok(FolderIndexResult {
+            folder_path: folder_str,
+            indexed_count: 0,
+            failed_count: 0,
+            vectors_count: 0,
+            errors: vec!["Cancelled by user".to_string()],
+        });
+    }
+
+    // 2. 병렬 파싱 (진행률 포함)
+    let processed_count = Arc::new(AtomicUsize::new(0));
+    let cancel_flag_clone = cancel_flag.clone();
+    let current_file = Arc::new(Mutex::new(String::new()));
+
+    let parse_results: Vec<ParseResult> = file_paths
+        .par_iter()
+        .map(|path| {
+            // 취소 확인
+            if cancel_flag_clone.load(Ordering::Relaxed) {
+                return ParseResult::Cancelled;
+            }
+
+            // 현재 파일 업데이트
+            if let Ok(mut cf) = current_file.lock() {
+                *cf = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+            }
+
+            let result = match parse_file(path) {
+                Ok(doc) => ParseResult::Success {
+                    path: path.clone(),
+                    document: doc,
+                },
+                Err(e) => ParseResult::Failure {
+                    path: path.clone(),
+                    error: e.to_string(),
+                },
+            };
+
+            // 진행률 카운트 증가
+            processed_count.fetch_add(1, Ordering::Relaxed);
+            result
+        })
+        .collect();
+
+    // 취소 확인
+    if cancel_flag.load(Ordering::Relaxed) {
+        send_progress("cancelled", total, processed_count.load(Ordering::Relaxed), None);
+        return Ok(FolderIndexResult {
+            folder_path: folder_str,
+            indexed_count: 0,
+            failed_count: 0,
+            vectors_count: 0,
+            errors: vec!["Cancelled by user".to_string()],
+        });
+    }
+
+    // 3. 순차적 DB 저장 (진행률 포함)
+    let mut indexed = 0;
+    let mut failed = 0;
+    let mut vectors_total = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (i, result) in parse_results.into_iter().enumerate() {
+        // 취소 확인
+        if cancel_flag.load(Ordering::Relaxed) {
+            send_progress("cancelled", total, i, None);
+            errors.push("Cancelled by user".to_string());
+            break;
+        }
+
+        match result {
+            ParseResult::Success { path, document } => {
+                let file_name = path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+                send_progress("indexing", total, i + 1, Some(file_name));
+
+                match save_document_to_db(conn, &path, document, embedder, vector_index) {
+                    Ok((_chunks, vectors)) => {
+                        indexed += 1;
+                        vectors_total += vectors;
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        errors.push(format!("{:?}: {}", path, e));
+                    }
+                }
+            }
+            ParseResult::Failure { path, error } => {
+                failed += 1;
+                errors.push(format!("{:?}: {}", path, error));
+            }
+            ParseResult::Cancelled => {
+                // 이미 취소됨
+            }
+        }
+    }
+
+    // 벡터 인덱스 저장
+    if let Some(vi) = vector_index {
+        if let Err(e) = vi.save() {
+            tracing::warn!("Failed to save vector index: {}", e);
+        }
+    }
+
+    // 완료 진행률
+    let phase = if cancel_flag.load(Ordering::Relaxed) {
+        "cancelled"
+    } else {
+        "completed"
+    };
+    send_progress(phase, total, total, None);
+
+    Ok(FolderIndexResult {
+        folder_path: folder_str,
+        indexed_count: indexed,
+        failed_count: failed,
+        vectors_count: vectors_total,
+        errors,
+    })
+}
+
 /// 병렬 파싱 결과
 enum ParseResult {
     Success {
@@ -125,20 +315,52 @@ enum ParseResult {
         path: PathBuf,
         error: String,
     },
+    Cancelled,
 }
 
-/// 폴더 재귀 탐색으로 파일 경로 수집
-fn collect_files(dir: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+/// 폴더 탐색으로 파일 경로 수집
+fn collect_files(dir: &Path, extensions: &[&str], recursive: bool) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    let mut visited = std::collections::HashSet::new();
 
-    // 시작 디렉토리를 정규화하여 visited에 추가
-    if let Ok(canonical) = dir.canonicalize() {
-        visited.insert(canonical);
+    if recursive {
+        let mut visited = std::collections::HashSet::new();
+        // 시작 디렉토리를 정규화하여 visited에 추가
+        if let Ok(canonical) = dir.canonicalize() {
+            visited.insert(canonical);
+        }
+        collect_files_recursive(dir, extensions, &mut files, &mut visited);
+    } else {
+        // 현재 폴더만 탐색
+        collect_files_shallow(dir, extensions, &mut files);
     }
 
-    collect_files_recursive(dir, extensions, &mut files, &mut visited);
     files
+}
+
+/// 현재 폴더만 탐색 (하위폴더 제외)
+fn collect_files_shallow(dir: &Path, extensions: &[&str], files: &mut Vec<PathBuf>) {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("Failed to read dir {:?}: {}", dir, e);
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() {
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            if extensions.contains(&ext.as_str()) {
+                files.push(path);
+            }
+        }
+    }
 }
 
 fn collect_files_recursive(
@@ -175,8 +397,12 @@ fn collect_files_recursive(
                         tracing::debug!("Skipping already visited dir: {:?}", path);
                     }
                 } else {
-                    // canonicalize 실패 시에도 시도 (접근 권한 등)
-                    collect_files_recursive(&path, extensions, files, visited);
+                    // canonicalize 실패 시에도 원본 경로로 visited 체크 (무한 루프 방지)
+                    if visited.insert(path.clone()) {
+                        collect_files_recursive(&path, extensions, files, visited);
+                    } else {
+                        tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
+                    }
                 }
             }
         } else if path.is_file() {
