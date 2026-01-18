@@ -49,6 +49,9 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     return searchQuery.split(/\s+/).filter(k => k.length >= 2);
   }, [searchQuery]);
 
+  // 카드 ref (펼칠 때 스크롤 위치 유지용)
+  const cardRef = useRef<HTMLDivElement>(null);
+
   // 컴팩트 모드: 2개만, 기본: 3개, 펼치면 전체
   const defaultCount = isCompact ? 2 : 3;
   const displayChunks = isExpanded ? group.chunks : group.chunks.slice(0, defaultCount);
@@ -107,8 +110,32 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     onOpenFolder?.(folderPath);
   };
 
+  // 펼치기/접기 핸들러 (스크롤 위치 유지)
+  const handleToggleExpand = useCallback(() => {
+    if (!isExpanded && cardRef.current) {
+      // 펼치기 전 카드 상단 위치 저장
+      const rect = cardRef.current.getBoundingClientRect();
+      const scrollParent = cardRef.current.closest('[data-scroll-container]') as HTMLElement;
+
+      setIsExpanded(true);
+
+      // 다음 프레임에서 스크롤 위치 조정
+      requestAnimationFrame(() => {
+        if (cardRef.current && scrollParent) {
+          const newRect = cardRef.current.getBoundingClientRect();
+          // 카드가 화면 위로 벗어났으면 스크롤 조정
+          if (newRect.top < rect.top - 50) {
+            cardRef.current.scrollIntoView({ block: 'start', behavior: 'auto' });
+          }
+        }
+      });
+    } else {
+      setIsExpanded(false);
+    }
+  }, [isExpanded]);
+
   return (
-    <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }}>
+    <div ref={cardRef} className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }}>
       {/* 그룹 헤더 */}
       <div className={`flex items-center justify-between ${isCompact ? "mb-2" : "mb-3"}`}>
         <div
@@ -230,7 +257,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         {/* 더보기/접기 */}
         {hasMore && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={handleToggleExpand}
             className={`w-full text-xs rounded-md transition-colors ${isCompact ? "py-1" : "py-1.5"}`}
             style={{
               color: "var(--color-accent)",
