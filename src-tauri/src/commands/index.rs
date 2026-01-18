@@ -344,3 +344,120 @@ pub async fn toggle_favorite(
     tracing::info!("Toggled favorite for {}: {}", path, is_favorite);
     Ok(is_favorite)
 }
+
+/// 폴더 재인덱싱 (기존 데이터 삭제 후 다시 인덱싱)
+#[tauri::command]
+pub async fn reindex_folder(
+    path: String,
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> ApiResult<AddFolderResult> {
+    tracing::info!("Reindexing folder: {}", path);
+
+    let folder_path = Path::new(&path);
+    if !folder_path.exists() {
+        return Err(ApiError::PathNotFound(path));
+    }
+
+    // 경로 정규화
+    let canonical_path = folder_path
+        .canonicalize()
+        .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+
+    if !is_safe_path(&canonical_path) {
+        return Err(ApiError::AccessDenied(format!(
+            "'{}' is a protected system folder",
+            canonical_path.display()
+        )));
+    }
+
+    let folder_path = canonical_path.as_path();
+    let path = canonical_path.to_string_lossy().to_string();
+
+    // 1. 기존 데이터 삭제
+    let (db_path, vector_index, embedder, cancel_flag) = {
+        let state = state.lock()?;
+        state.reset_cancel_flag();
+        (
+            state.db_path.clone(),
+            state.get_vector_index().ok(),
+            state.get_embedder().ok(),
+            state.get_cancel_flag(),
+        )
+    };
+
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+
+    // 벡터 인덱스에서 해당 폴더의 청크 삭제
+    if let Some(vi) = vector_index.as_ref() {
+        let file_chunk_ids = db::get_file_and_chunk_ids_in_folder(&conn, &path)?;
+        for (_file_id, chunk_ids) in file_chunk_ids {
+            for chunk_id in chunk_ids {
+                let _ = vi.remove(chunk_id);
+            }
+        }
+    }
+
+    // DB에서 파일들 삭제 (FTS + chunks + files)
+    let deleted_count = db::delete_files_in_folder(&conn, &path)?;
+    tracing::info!("Deleted {} files for reindexing: {}", deleted_count, path);
+
+    // 2. 설정에서 하위폴더 포함 여부 확인
+    let app_data_dir = db_path.parent().map(|p| p.to_path_buf());
+    let include_subfolders = app_data_dir
+        .map(|dir| get_settings_sync(&dir).include_subfolders)
+        .unwrap_or(true);
+
+    // 3. 진행률 콜백 설정
+    let app_handle_clone = app_handle.clone();
+    let progress_callback: pipeline::ProgressCallback = Box::new(move |progress: IndexingProgress| {
+        if let Err(e) = app_handle_clone.emit("indexing-progress", &progress) {
+            tracing::warn!("Failed to emit progress: {}", e);
+        }
+    });
+
+    // 4. 다시 인덱싱
+    let folder_path_buf = folder_path.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || {
+        pipeline::index_folder_with_progress(
+            &conn,
+            &folder_path_buf,
+            embedder.as_ref(),
+            vector_index.as_ref(),
+            include_subfolders,
+            cancel_flag,
+            Some(progress_callback),
+        )
+    })
+    .await?
+    .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+
+    // 5. 벡터 인덱스 저장
+    {
+        let state = state.lock()?;
+        if let Ok(vi) = state.get_vector_index() {
+            let _ = vi.save();
+        }
+    }
+
+    let message = if result.errors.iter().any(|e| e.contains("Cancelled")) {
+        "재인덱싱이 취소되었습니다".to_string()
+    } else if result.vectors_count > 0 {
+        format!(
+            "재인덱싱 완료: {} 파일, {} 벡터",
+            result.indexed_count, result.vectors_count
+        )
+    } else {
+        format!("재인덱싱 완료: {} 파일", result.indexed_count)
+    };
+
+    Ok(AddFolderResult {
+        success: true,
+        indexed_count: result.indexed_count,
+        failed_count: result.failed_count,
+        vectors_count: result.vectors_count,
+        message,
+        errors: result.errors,
+    })
+}

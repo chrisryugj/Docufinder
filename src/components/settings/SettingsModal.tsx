@@ -258,6 +258,83 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
             </button>
           </div>
 
+          {/* 시스템 트레이 섹션 구분선 */}
+          <div
+            className="border-t pt-4"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3
+              className="text-sm font-medium mb-3"
+              style={{ color: "var(--color-text-primary)" }}
+            >
+              시스템 트레이
+            </h3>
+          </div>
+
+          {/* 윈도우 시작 시 자동 실행 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                Windows 시작 시 자동 실행
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                컴퓨터 부팅 시 자동으로 시작
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.auto_start ?? false}
+              onClick={() => handleChange("auto_start", !(settings.auto_start ?? false))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                (settings.auto_start ?? false)
+                  ? "bg-blue-500"
+                  : "bg-gray-600"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  (settings.auto_start ?? false) ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* 시작 시 최소화 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                시작 시 트레이로 최소화
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                앱 시작 시 트레이 아이콘으로 숨김
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.start_minimized ?? false}
+              onClick={() => handleChange("start_minimized", !(settings.start_minimized ?? false))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                (settings.start_minimized ?? false)
+                  ? "bg-blue-500"
+                  : "bg-gray-600"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  (settings.start_minimized ?? false) ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
           {/* 버튼 */}
           <div
             className="flex justify-end gap-3 pt-4 border-t"
