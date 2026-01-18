@@ -206,6 +206,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(|app| {
             // Initialize app data directory
             let app_data_dir = app
