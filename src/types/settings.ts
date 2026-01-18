@@ -12,4 +12,6 @@ export interface Settings {
   min_confidence: number;
   view_density: ViewDensity;
   include_subfolders: boolean;
+  auto_start: boolean;
+  start_minimized: boolean;
 }

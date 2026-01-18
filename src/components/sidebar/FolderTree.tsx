@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
@@ -7,12 +7,20 @@ interface FolderTreeProps {
   folders: string[];
   onRemoveFolder?: (path: string) => void;
   onFoldersChange?: () => void; // 폴더 목록 갱신 콜백
+  onReindexStart?: () => void; // 재인덱싱 시작 콜백
+}
+
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  folderPath: string;
 }
 
 /**
  * 인덱싱된 폴더 목록 표시
  */
-export function FolderTree({ folders, onRemoveFolder, onFoldersChange }: FolderTreeProps) {
+export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart }: FolderTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
   );
@@ -22,6 +30,13 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange }: FolderT
   const [folderInfo, setFolderInfo] = useState<Record<string, WatchedFolderInfo>>(
     {}
   );
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    folderPath: "",
+  });
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // 폴더 정보 조회 (즐겨찾기 포함)
   const fetchFolderInfo = useCallback(async () => {
@@ -71,6 +86,51 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange }: FolderT
       console.error("Failed to toggle favorite:", err);
     }
   };
+
+  // 컨텍스트 메뉴 열기
+  const handleContextMenu = (e: React.MouseEvent, folderPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      folderPath,
+    });
+  };
+
+  // 컨텍스트 메뉴 닫기
+  const closeContextMenu = () => {
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  // 재인덱싱 실행
+  const handleReindex = async () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
+    onReindexStart?.();
+    try {
+      await invoke("reindex_folder", { path });
+      onFoldersChange?.();
+    } catch (err) {
+      console.error("Failed to reindex folder:", err);
+    }
+  };
+
+  // 외부 클릭 시 메뉴 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        closeContextMenu();
+      }
+    };
+    if (contextMenu.isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [contextMenu.isOpen]);
 
   // 폴더 정렬: 즐겨찾기 먼저
   const sortedFolders = [...folders].sort((a, b) => {
@@ -125,6 +185,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange }: FolderT
             <div
               className="group flex items-center gap-2 px-3 py-2 mx-2 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/10 text-slate-400 hover:text-white"
               onClick={() => toggleExpand(folder)}
+              onContextMenu={(e) => handleContextMenu(e, folder)}
             >
               {/* 즐겨찾기 버튼 */}
               <button
@@ -208,6 +269,46 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange }: FolderT
           </li>
         );
       })}
+
+      {/* 컨텍스트 메뉴 */}
+      {contextMenu.isOpen && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[140px] py-1 rounded-lg shadow-xl border"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            backgroundColor: "var(--color-bg-secondary)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <button
+            onClick={handleReindex}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-white/10 transition-colors"
+            style={{ color: "var(--color-text-primary)" }}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            재인덱싱
+          </button>
+          {onRemoveFolder && (
+            <button
+              onClick={() => {
+                const path = contextMenu.folderPath;
+                closeContextMenu();
+                onRemoveFolder(path);
+              }}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-red-500/20 transition-colors text-red-400"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              폴더 제거
+            </button>
+          )}
+        </div>
+      )}
     </ul>
   );
 }

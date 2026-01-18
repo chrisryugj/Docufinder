@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -19,6 +20,10 @@ pub struct Settings {
     pub view_density: ViewDensity,
     #[serde(default = "default_include_subfolders")]
     pub include_subfolders: bool,
+    #[serde(default)]
+    pub auto_start: bool,
+    #[serde(default)]
+    pub start_minimized: bool,
 }
 
 fn default_include_subfolders() -> bool {
@@ -61,6 +66,8 @@ impl Default for Settings {
             min_confidence: 0,
             view_density: ViewDensity::Normal,
             include_subfolders: true,
+            auto_start: false,
+            start_minimized: false,
         }
     }
 }
@@ -124,6 +131,7 @@ pub fn get_settings_sync(app_data_dir: &PathBuf) -> Settings {
 /// 설정 업데이트
 #[tauri::command]
 pub async fn update_settings(
+    app: AppHandle,
     settings: Settings,
     state: State<'_, Mutex<AppState>>,
 ) -> ApiResult<()> {
@@ -137,6 +145,18 @@ pub async fn update_settings(
     let Some(app_data_dir) = app_data_dir else {
         return Err(ApiError::SettingsSave("앱 데이터 디렉토리를 찾을 수 없습니다".to_string()));
     };
+
+    // 자동 시작 설정 변경
+    let autostart_manager = app.autolaunch();
+    if settings.auto_start {
+        if let Err(e) = autostart_manager.enable() {
+            tracing::warn!("Failed to enable autostart: {}", e);
+        }
+    } else {
+        if let Err(e) = autostart_manager.disable() {
+            tracing::warn!("Failed to disable autostart: {}", e);
+        }
+    }
 
     let settings_path = get_settings_path(&app_data_dir);
     let content = serde_json::to_string_pretty(&settings)

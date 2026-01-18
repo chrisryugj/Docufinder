@@ -19,6 +19,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 type SharedEmbedder = Arc<Mutex<Embedder>>;
 use tauri::Manager;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{Menu, MenuItem};
+use tauri_plugin_autostart::MacosLauncher;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
@@ -202,6 +205,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .setup(|app| {
             // Initialize app data directory
             let app_data_dir = app
@@ -266,20 +270,83 @@ pub fn run() {
                 window.open_devtools();
             }
 
+            // 시스템 트레이 설정
+            let show_item = MenuItem::with_id(app, "show", "열기", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .tooltip("DocuFinder")
+                .on_menu_event(|app, event| {
+                    match event.id.as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            tracing::info!("System tray initialized");
+
+            // 시작 시 최소화 처리 (--minimized 인자 또는 설정)
+            let args: Vec<String> = std::env::args().collect();
+            let minimized_arg = args.iter().any(|a| a == "--minimized");
+            let settings = commands::settings::get_settings_sync(&app_data_dir);
+
+            if minimized_arg || settings.start_minimized {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                    tracing::info!("Started minimized to tray");
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| {
-            // 앱 종료 시 벡터 인덱스 저장
-            if let tauri::WindowEvent::Destroyed = event {
-                if let Some(state) = window.try_state::<Mutex<AppState>>() {
-                    if let Ok(state) = state.lock() {
-                        if let Ok(vi) = state.get_vector_index() {
-                            if let Err(e) = vi.save() {
-                                tracing::error!("Failed to save vector index: {}", e);
+            match event {
+                // X 버튼 클릭 시 트레이로 최소화
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    tracing::debug!("Window hidden to tray");
+                }
+                // 앱 종료 시 벡터 인덱스 저장
+                tauri::WindowEvent::Destroyed => {
+                    if let Some(state) = window.try_state::<Mutex<AppState>>() {
+                        if let Ok(state) = state.lock() {
+                            if let Ok(vi) = state.get_vector_index() {
+                                if let Err(e) = vi.save() {
+                                    tracing::error!("Failed to save vector index: {}", e);
+                                }
                             }
                         }
                     }
                 }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -294,6 +361,7 @@ pub fn run() {
             commands::index::get_folders_with_info,
             commands::index::toggle_favorite,
             commands::index::cancel_indexing,
+            commands::index::reindex_folder,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,

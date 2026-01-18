@@ -11,6 +11,7 @@ import { Header, StatusBar, ErrorBanner } from "./components/layout";
 import { SearchBar, SearchFilters, SearchResultList } from "./components/search";
 import { Sidebar } from "./components/sidebar";
 import { SettingsModal } from "./components/settings/SettingsModal";
+import { HelpModal } from "./components/help/HelpModal";
 import { ToastContainer } from "./components/ui/Toast";
 
 function App() {
@@ -20,6 +21,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [minConfidence, setMinConfidence] = useState(0);
   const [viewDensity, setViewDensity] = useState<ViewDensity>("normal");
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -334,6 +336,7 @@ function App() {
           <Header
             onAddFolder={addFolder}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenHelp={() => setHelpOpen(true)}
             isIndexing={isIndexing}
             isSidebarOpen={sidebarOpen}
           />
@@ -422,6 +425,9 @@ function App() {
           setViewDensity(settings.view_density ?? "normal");
         }}
       />
+
+      {/* Help Modal */}
+      <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
