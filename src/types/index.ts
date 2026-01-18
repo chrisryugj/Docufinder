@@ -30,7 +30,7 @@ export interface WatchedFolderInfo {
   added_at: number | null;
 }
 
-/** 인덱싱 진행률 이벤트 */
+/** 인덱싱 진행률 이벤트 (1단계: FTS) */
 export interface IndexingProgress {
   /** 현재 진행 단계 */
   phase: "scanning" | "parsing" | "indexing" | "completed" | "cancelled";
@@ -44,4 +44,21 @@ export interface IndexingProgress {
   folder_path: string;
   /** 에러 메시지 (실패 시) */
   error: string | null;
+}
+
+/** 벡터 인덱싱 상태 (2단계: 시맨틱) */
+export interface VectorIndexingStatus {
+  is_running: boolean;
+  total_chunks: number;
+  processed_chunks: number;
+  current_file: string | null;
+  error: string | null;
+}
+
+/** 벡터 인덱싱 진행률 이벤트 */
+export interface VectorIndexingProgress {
+  total_chunks: number;
+  processed_chunks: number;
+  current_file: string | null;
+  is_complete: boolean;
 }

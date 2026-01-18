@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
+import { HighlightedFilename } from "./HighlightedFilename";
 import { cleanPath } from "../../utils/cleanPath";
+import { Badge } from "../ui/Badge";
 
 interface SearchResultListProps {
   results: SearchResult[];
@@ -11,6 +13,7 @@ interface SearchResultListProps {
   filenameResults?: SearchResult[];
   groupedResults?: GroupedSearchResult[];
   viewMode?: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
   viewDensity?: ViewDensity;
   onViewDensityChange?: (density: ViewDensity) => void;
   query: string;
@@ -23,13 +26,25 @@ interface SearchResultListProps {
   onCopyAll?: () => void;
   /** 결과 내 검색 키워드 (추가 하이라이트용) */
   refineKeywords?: string[];
+  /** 필터 적용 후 결과 수 */
+  resultCount?: number;
+  /** 필터 적용 전 전체 결과 수 */
+  totalResultCount?: number;
+  /** 최소 신뢰도 설정값 (%) */
+  minConfidence?: number;
+  /** 검색 소요 시간 (ms) */
+  searchTime?: number | null;
 }
+
+// 점진적 로딩: 한 번에 표시할 결과 수
+const PAGE_SIZE = 50;
 
 export function SearchResultList({
   results,
   filenameResults = [],
   groupedResults = [],
   viewMode = "flat",
+  onViewModeChange,
   viewDensity = "normal",
   onViewDensityChange,
   query,
@@ -41,9 +56,35 @@ export function SearchResultList({
   onExportCSV,
   onCopyAll,
   refineKeywords,
+  resultCount,
+  totalResultCount,
+  minConfidence = 0,
+  searchTime,
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [isFilenameCollapsed, setIsFilenameCollapsed] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const isCompact = viewDensity === "compact";
+
+  // 표시할 결과 (점진적 로딩)
+  const visibleResults = results.slice(0, visibleCount);
+  const hasMore = visibleCount < results.length;
+
+  // 검색 결과 변경 시 visibleCount 초기화
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+    setExpandedIndex(null);
+  }, [results]);
+
+  // 더 보기 핸들러
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, results.length));
+  }, [results.length]);
+
+  // 확장 토글 핸들러
+  const handleToggleExpand = useCallback((index: number) => {
+    setExpandedIndex((prev) => (prev === index ? null : index));
+  }, []);
 
   // 전체 결과 (파일명 + 내용)
   const hasResults = results.length > 0 || filenameResults.length > 0;
@@ -52,49 +93,71 @@ export function SearchResultList({
   if (hasResults) {
     return (
       <div className="space-y-3">
-        {/* 툴바: 보기 모드 토글 + 내보내기 */}
-        <div className="flex justify-between items-center mb-2">
-          {/* 보기 밀도 토글 */}
-          {onViewDensityChange && (
-            <div className="flex items-center gap-1 p-0.5 rounded-md" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
-              <button
-                onClick={() => onViewDensityChange("normal")}
-                className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-all ${!isCompact ? "font-medium" : ""}`}
-                style={{
-                  backgroundColor: !isCompact ? "var(--color-bg-primary)" : "transparent",
-                  color: !isCompact ? "var(--color-text-primary)" : "var(--color-text-muted)",
-                  boxShadow: !isCompact ? "var(--shadow-sm)" : "none",
-                }}
-                title="기본 보기"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                기본
-              </button>
-              <button
-                onClick={() => onViewDensityChange("compact")}
-                className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-all ${isCompact ? "font-medium" : ""}`}
-                style={{
-                  backgroundColor: isCompact ? "var(--color-bg-primary)" : "transparent",
-                  color: isCompact ? "var(--color-text-primary)" : "var(--color-text-muted)",
-                  boxShadow: isCompact ? "var(--shadow-sm)" : "none",
-                }}
-                title="컴팩트 보기"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                </svg>
-                컴팩트
-              </button>
-            </div>
-          )}
+        {/* 툴바: 뷰 모드 + 결과 수 (좌측) | 복사/CSV (우측) */}
+        <div className="flex items-center gap-3 mb-2">
+          {/* 좌측: 뷰 모드 토글 + 결과 수 */}
+          <div className="flex items-center gap-2">
+            {/* 뷰 모드 토글 */}
+            {onViewModeChange && (
+              <div className="flex items-center gap-0.5 border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>
+                <button
+                  onClick={() => onViewModeChange("flat")}
+                  className="p-1 rounded-sm transition-colors"
+                  style={{
+                    backgroundColor: viewMode === "flat" ? "var(--color-bg-secondary)" : "transparent",
+                    color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
+                    boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                  }}
+                  title="목록 보기"
+                  aria-label="목록 보기"
+                  aria-pressed={viewMode === "flat"}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => onViewModeChange("grouped")}
+                  className="p-1 rounded-sm transition-colors"
+                  style={{
+                    backgroundColor: viewMode === "grouped" ? "var(--color-bg-secondary)" : "transparent",
+                    color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
+                    boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+                  }}
+                  title="파일별 그룹 보기"
+                  aria-label="파일별 그룹 보기"
+                  aria-pressed={viewMode === "grouped"}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </button>
+              </div>
+            )}
 
-          {/* 내보내기 버튼 */}
+            {/* 결과 수 + 신뢰도 + 검색 시간 배지 */}
+            {resultCount !== undefined && resultCount > 0 && (
+              <div className="flex items-center gap-0.5">
+                <Badge variant="secondary">
+                  {totalResultCount !== undefined && totalResultCount !== resultCount
+                    ? `${totalResultCount}개 중 ${resultCount}개`
+                    : `${resultCount}개`}
+                </Badge>
+                {minConfidence > 0 && (
+                  <Badge variant="primary">{minConfidence}%↑</Badge>
+                )}
+                {searchTime !== null && searchTime !== undefined && (
+                  <Badge variant="secondary">{searchTime}ms</Badge>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 우측: 복사/CSV */}
           <div className="flex gap-2 ml-auto">
             <button
               onClick={onCopyAll}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors border font-medium"
               style={{
                 backgroundColor: "var(--color-bg-secondary)",
                 borderColor: "var(--color-border)",
@@ -120,7 +183,7 @@ export function SearchResultList({
             </button>
             <button
               onClick={onExportCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors border font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors border font-medium"
               style={{
                 backgroundColor: "var(--color-bg-secondary)",
                 borderColor: "var(--color-border)",
@@ -147,13 +210,29 @@ export function SearchResultList({
           </div>
         </div>
 
-        {/* 파일명 매치 섹션 (통합 모드) */}
+        {/* 파일명 매치 섹션 (토글 가능) */}
         {filenameResults.length > 0 && (
           <div className="mb-4">
-            <div
-              className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2"
+            <button
+              type="button"
+              onClick={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2 w-full text-left transition-colors"
               style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-bg-subtle)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+              }}
             >
+              <svg
+                className={`w-4 h-4 transition-transform ${isFilenameCollapsed ? "" : "rotate-90"}`}
+                style={{ color: "var(--color-text-muted)" }}
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+              </svg>
               <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
@@ -163,41 +242,48 @@ export function SearchResultList({
               <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-accent-light)", color: "var(--color-accent)" }}>
                 {filenameResults.length}
               </span>
-            </div>
-            <div className={isCompact ? "space-y-1" : "space-y-2"}>
-              {filenameResults.map((result, index) => (
-                <div
-                  key={`filename-${result.file_path}-${index}`}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors"
-                  style={{ backgroundColor: "var(--color-bg-secondary)" }}
-                  onClick={() => onOpenFile(result.file_path)}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-                  }}
-                >
-                  <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
-                      {result.file_name}
-                    </div>
-                    <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
-                      {cleanPath(result.file_path)}
-                    </div>
-                  </div>
+              {isFilenameCollapsed && (
+                <span className="text-xs ml-auto" style={{ color: "var(--color-text-muted)" }}>
+                  클릭하여 펼치기
+                </span>
+              )}
+            </button>
+            {!isFilenameCollapsed && (
+              <div className={isCompact ? "space-y-1" : "space-y-2"}>
+                {filenameResults.map((result, index) => (
                   <div
-                    className="text-xs px-2 py-0.5 rounded"
-                    style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}
+                    key={`filename-${result.file_path}-${index}`}
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                    style={{ backgroundColor: "var(--color-bg-secondary)" }}
+                    onClick={() => onOpenFile(result.file_path)}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+                    }}
                   >
-                    {result.location_hint || result.file_path.split('.').pop()?.toUpperCase()}
+                    <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
+                        <HighlightedFilename filename={result.file_name} query={query} />
+                      </div>
+                      <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+                        {cleanPath(result.file_path)}
+                      </div>
+                    </div>
+                    <div
+                      className="text-xs px-2 py-0.5 rounded"
+                      style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}
+                    >
+                      {result.location_hint || result.file_path.split('.').pop()?.toUpperCase()}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -221,10 +307,10 @@ export function SearchResultList({
 
         {/* 결과 목록 */}
         {results.length > 0 && (
-          <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
-            {viewMode === "grouped" && groupedResults.length > 0 ? (
-              // 그룹 뷰
-              groupedResults.map((group) => (
+          viewMode === "grouped" && groupedResults.length > 0 ? (
+            // 그룹 뷰 (가상화 미적용)
+            <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+              {groupedResults.map((group) => (
                 <GroupedSearchResultItem
                   key={group.file_path}
                   group={group}
@@ -233,29 +319,62 @@ export function SearchResultList({
                   onOpenFolder={onOpenFolder}
                   isCompact={isCompact}
                 />
-              ))
-            ) : (
-              // 플랫 뷰
-              results.map((result, index) => (
-                <div key={`${result.file_path}-${result.chunk_index}-${index}`} className="group">
-                  <SearchResultItem
-                    result={result}
-                    index={index}
-                    isExpanded={expandedIndex === index}
-                    isSelected={selectedIndex === index}
-                    isCompact={isCompact}
-                    onToggleExpand={() =>
-                      setExpandedIndex(expandedIndex === index ? null : index)
-                    }
-                    onOpenFile={onOpenFile}
-                    onCopyPath={onCopyPath}
-                    onOpenFolder={onOpenFolder}
-                    refineKeywords={refineKeywords}
-                  />
+              ))}
+            </div>
+          ) : (
+            // 플랫 뷰 (점진적 로딩)
+            <>
+              <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+                {visibleResults.map((result, index) => (
+                  <div
+                    key={`${result.file_path}-${result.chunk_index}-${index}`}
+                    className="group"
+                    style={{ contain: "layout style" }}
+                  >
+                    <SearchResultItem
+                      result={result}
+                      index={index}
+                      isExpanded={expandedIndex === index}
+                      isSelected={selectedIndex === index}
+                      isCompact={isCompact}
+                      onToggleExpand={() => handleToggleExpand(index)}
+                      onOpenFile={onOpenFile}
+                      onCopyPath={onCopyPath}
+                      onOpenFolder={onOpenFolder}
+                      refineKeywords={refineKeywords}
+                      query={query}
+                    />
+                  </div>
+                ))}
+              </div>
+              {/* 더 보기 버튼 */}
+              {hasMore && (
+                <div className="flex justify-center mt-4">
+                  <button
+                    onClick={handleLoadMore}
+                    className="px-6 py-2 text-sm font-medium rounded-lg transition-colors"
+                    style={{
+                      backgroundColor: "var(--color-bg-tertiary)",
+                      color: "var(--color-text-secondary)",
+                      border: "1px solid var(--color-border)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+                      e.currentTarget.style.color = "var(--color-accent)";
+                      e.currentTarget.style.borderColor = "var(--color-accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                      e.currentTarget.style.color = "var(--color-text-secondary)";
+                      e.currentTarget.style.borderColor = "var(--color-border)";
+                    }}
+                  >
+                    더 보기 ({visibleCount} / {results.length})
+                  </button>
                 </div>
-              ))
-            )}
-          </div>
+              )}
+            </>
+          )
         )}
       </div>
     );

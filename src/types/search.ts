@@ -86,8 +86,8 @@ export interface SearchFilters {
   fileType: FileTypeFilter;
   dateRange: DateRangeFilter;
   keywordOnly: boolean;
-  /** 파일명 결과만 표시 (통합 모드) */
-  filenameOnly: boolean;
+  /** 파일명 검색 결과 제외 */
+  excludeFilename: boolean;
 }
 
 /** 기본 필터 값 */
@@ -96,7 +96,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
   fileType: "all",
   dateRange: "all",
   keywordOnly: false,
-  filenameOnly: false,
+  excludeFilename: false,
 };
 
 /** 정렬 옵션 목록 */

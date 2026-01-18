@@ -1,11 +1,54 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
+
+/// PDF 파싱 타임아웃 (초) - 대부분 5초 내 완료, hang 감지용
+const PDF_PARSE_TIMEOUT_SECS: u64 = 10;
 
 /// PDF 파일 파싱
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
+/// catch_unwind + 타임아웃으로 panic/hang 방어
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
-    let raw_text = pdf_extract::extract_text(path)
-        .map_err(|e| ParseError::ParseError(format!("PDF extraction failed: {}", e)))?;
+    // pdf-extract가 일부 PDF에서 내부 스레드 panic 발생 → 메인 스레드 hang
+    // 별도 스레드 + 타임아웃으로 방어
+    let path_owned = path.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let result = catch_unwind(AssertUnwindSafe(|| pdf_extract::extract_text(&path_owned)));
+        let _ = tx.send(result);
+    });
+
+    // 타임아웃 대기
+    let raw_text = match rx.recv_timeout(Duration::from_secs(PDF_PARSE_TIMEOUT_SECS)) {
+        Ok(Ok(Ok(text))) => text,
+        Ok(Ok(Err(e))) => {
+            return Err(ParseError::ParseError(format!("PDF extraction failed: {}", e)));
+        }
+        Ok(Err(_)) => {
+            return Err(ParseError::ParseError(
+                "PDF parser panicked (unsupported font encoding)".to_string(),
+            ));
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            // 타임아웃 - 스레드는 버림 (detach)
+            drop(handle);
+            return Err(ParseError::ParseError(format!(
+                "PDF parsing timed out after {}s",
+                PDF_PARSE_TIMEOUT_SECS
+            )));
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return Err(ParseError::ParseError(
+                "PDF parser thread crashed".to_string(),
+            ));
+        }
+    };
+
+    // 스레드 정상 종료 대기 (이미 완료됨)
+    let _ = handle.join();
 
     // 페이지별 분리 (form feed 문자 \x0c 기준)
     let pages: Vec<&str> = raw_text.split('\x0c').collect();

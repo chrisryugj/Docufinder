@@ -11,6 +11,7 @@ pub use error::{ApiError, ApiResult};
 
 use embedder::Embedder;
 use indexer::manager::{IndexContext, WatchManager};
+use indexer::vector_worker::VectorWorker;
 use search::vector::VectorIndex;
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
@@ -41,6 +42,8 @@ pub struct AppState {
     watch_manager: OnceCell<RwLock<WatchManager>>,
     /// 현재 인덱싱 작업 취소 플래그
     indexing_cancel_flag: Arc<AtomicBool>,
+    /// 벡터 인덱싱 워커 (2단계 백그라운드 인덱싱)
+    vector_worker: RwLock<VectorWorker>,
 }
 
 impl AppState {
@@ -58,6 +61,7 @@ impl AppState {
             vector_index: OnceCell::new(),
             watch_manager: OnceCell::new(),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
+            vector_worker: RwLock::new(VectorWorker::new()),
         }
     }
 
@@ -144,6 +148,11 @@ impl AppState {
                     .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
             })
     }
+
+    /// 벡터 워커 가져오기
+    pub fn get_vector_worker(&self) -> &RwLock<VectorWorker> {
+        &self.vector_worker
+    }
 }
 
 /// 로깅 초기화 (파일 + 콘솔)
@@ -199,6 +208,9 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // tokenizers 병렬 처리 비활성화 (rayon과의 데드락 방지)
+    std::env::set_var("TOKENIZERS_PARALLELISM", "false");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -363,6 +375,9 @@ pub fn run() {
             commands::index::toggle_favorite,
             commands::index::cancel_indexing,
             commands::index::reindex_folder,
+            commands::index::get_vector_indexing_status,
+            commands::index::cancel_vector_indexing,
+            commands::index::get_db_debug_info,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,

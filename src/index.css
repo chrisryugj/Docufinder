@@ -85,7 +85,7 @@
   --color-error: #EF4444;
   --color-info: #0EA5E9;
 
-  /* Highlighting */
+  /* Highlighting - Content */
   --color-highlight-bg: #fde047;
   /* Yellow-300 */
   --color-highlight-text: #0f172a;
@@ -93,6 +93,12 @@
   --color-highlight-refine-bg: #86efac;
   /* Green-300 */
   --color-highlight-refine-text: #0f172a;
+  /* Slate-900 */
+
+  /* Highlighting - Filename */
+  --color-highlight-filename-bg: #fbbf24;
+  /* Amber-400 */
+  --color-highlight-filename-text: #0f172a;
   /* Slate-900 */
 
   /* File Type Colors (More saturated) */
@@ -170,13 +176,19 @@
   --color-accent-light: rgba(59, 130, 246, 0.2);
   --color-accent-glow: rgba(96, 165, 250, 0.4);
 
-  /* Highlighting */
+  /* Highlighting - Content */
   --color-highlight-bg: #854d0e;
   --color-highlight-text: #fef08a;
   --color-highlight-refine-bg: #166534;
   /* Green-800 */
   --color-highlight-refine-text: #bbf7d0;
   /* Green-200 */
+
+  /* Highlighting - Filename */
+  --color-highlight-filename-bg: #b45309;
+  /* Amber-700 */
+  --color-highlight-filename-text: #fef3c7;
+  /* Amber-100 */
 
   /* File Type Colors (Brighter for dark mode) */
   --color-file-hwpx: #A78BFA;

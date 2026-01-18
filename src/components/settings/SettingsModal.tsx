@@ -30,6 +30,8 @@ const MAX_RESULTS_OPTIONS = [
   { value: "50", label: "50개 (기본)" },
   { value: "100", label: "100개" },
   { value: "200", label: "200개" },
+  { value: "500", label: "500개" },
+  { value: "1000", label: "1000개" },
 ];
 
 const VIEW_DENSITY_OPTIONS = [
@@ -38,6 +40,18 @@ const VIEW_DENSITY_OPTIONS = [
 ];
 
 const CONFIDENCE_STEP = 5;
+
+// 하이라이트 색상 프리셋 (라이트/다크 모드 각각)
+const HIGHLIGHT_COLOR_PRESETS = [
+  { value: "", label: "기본", light: "#fde047", dark: "#854d0e" },
+  { value: "#fbbf24", label: "앰버", light: "#fbbf24", dark: "#b45309" },
+  { value: "#fb923c", label: "오렌지", light: "#fb923c", dark: "#c2410c" },
+  { value: "#f87171", label: "레드", light: "#f87171", dark: "#b91c1c" },
+  { value: "#c084fc", label: "퍼플", light: "#c084fc", dark: "#7c3aed" },
+  { value: "#60a5fa", label: "블루", light: "#60a5fa", dark: "#1d4ed8" },
+  { value: "#34d399", label: "그린", light: "#34d399", dark: "#059669" },
+  { value: "#2dd4bf", label: "틸", light: "#2dd4bf", dark: "#0d9488" },
+];
 
 export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -333,6 +347,91 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
                 }`}
               />
             </button>
+          </div>
+
+          {/* 하이라이트 색상 섹션 */}
+          <div
+            className="border-t pt-4"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3
+              className="text-sm font-medium mb-3"
+              style={{ color: "var(--color-text-primary)" }}
+            >
+              하이라이트 색상
+            </h3>
+          </div>
+
+          {/* 파일명 하이라이트 색상 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              파일명 하이라이트
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {HIGHLIGHT_COLOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.value || "default"}
+                  type="button"
+                  onClick={() => handleChange("highlight_filename_color", preset.value || undefined)}
+                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                    (settings.highlight_filename_color || "") === preset.value
+                      ? "ring-2 ring-offset-2"
+                      : ""
+                  }`}
+                  style={{
+                    backgroundColor: preset.light,
+                    borderColor: (settings.highlight_filename_color || "") === preset.value
+                      ? "var(--color-accent)"
+                      : "var(--color-border)",
+                    ringColor: "var(--color-accent)",
+                  }}
+                  title={preset.label}
+                  aria-label={`${preset.label} 색상 선택`}
+                />
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              파일명 검색 결과에서 매칭된 글자 강조 색상
+            </p>
+          </div>
+
+          {/* 문서 내용 하이라이트 색상 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              문서 내용 하이라이트
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {HIGHLIGHT_COLOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.value || "default"}
+                  type="button"
+                  onClick={() => handleChange("highlight_content_color", preset.value || undefined)}
+                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
+                    (settings.highlight_content_color || "") === preset.value
+                      ? "ring-2 ring-offset-2"
+                      : ""
+                  }`}
+                  style={{
+                    backgroundColor: preset.light,
+                    borderColor: (settings.highlight_content_color || "") === preset.value
+                      ? "var(--color-accent)"
+                      : "var(--color-border)",
+                    ringColor: "var(--color-accent)",
+                  }}
+                  title={preset.label}
+                  aria-label={`${preset.label} 색상 선택`}
+                />
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              문서 검색 결과에서 매칭된 키워드 강조 색상
+            </p>
           </div>
 
           {/* 버튼 */}

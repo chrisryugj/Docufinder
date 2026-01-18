@@ -32,29 +32,51 @@ function findKeywordRanges(text: string, keywords: string[]): [number, number][]
 }
 
 function parseSnippetHighlights(snippet: string): { text: string; ranges: [number, number][] } {
+  // 세그먼트별로 분리 후 하이라이트 포함 세그먼트 우선 정렬
+  const segments = snippet.split('...');
+
+  // 하이라이트 포함 여부로 분류
+  const withHighlight: string[] = [];
+  const withoutHighlight: string[] = [];
+
+  for (const seg of segments) {
+    const trimmed = seg.trim();
+    if (!trimmed) continue;
+    if (trimmed.includes('[[HL]]')) {
+      withHighlight.push(trimmed);
+    } else {
+      withoutHighlight.push(trimmed);
+    }
+  }
+
+  // 하이라이트 있는 세그먼트 먼저, 그 다음 나머지
+  const reordered = [...withHighlight, ...withoutHighlight];
+  const joinedSnippet = reordered.join('...');
+
+  // 기존 파싱 로직
   const ranges: [number, number][] = [];
   let text = '';
   let i = 0;
 
-  while (i < snippet.length) {
-    if (snippet.slice(i, i + 6) === '[[HL]]') {
+  while (i < joinedSnippet.length) {
+    if (joinedSnippet.slice(i, i + 6) === '[[HL]]') {
       const start = text.length;
       i += 6; // [[HL]] 건너뛰기
 
       // [[/HL]] 찾기
-      const endMarker = snippet.indexOf('[[/HL]]', i);
+      const endMarker = joinedSnippet.indexOf('[[/HL]]', i);
       if (endMarker !== -1) {
-        text += snippet.slice(i, endMarker);
+        text += joinedSnippet.slice(i, endMarker);
         ranges.push([start, text.length]);
         i = endMarker + 7; // [[/HL]] 건너뛰기
       } else {
         // 닫는 마커 없으면 나머지 전부 하이라이트
-        text += snippet.slice(i);
+        text += joinedSnippet.slice(i);
         ranges.push([start, text.length]);
         break;
       }
     } else {
-      text += snippet[i];
+      text += joinedSnippet[i];
       i++;
     }
   }

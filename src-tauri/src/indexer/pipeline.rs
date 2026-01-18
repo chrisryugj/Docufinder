@@ -8,27 +8,18 @@ use crate::db;
 use crate::embedder::Embedder;
 use crate::parsers::{parse_file, ParsedDocument};
 use crate::search::vector::VectorIndex;
+use crossbeam_channel::{bounded, RecvTimeoutError};
 use rayon::prelude::*;
 use rusqlite::Connection;
 use std::fs;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
-/// 인덱싱 진행률 정보
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct IndexingProgress {
-    pub phase: String,
-    pub total_files: usize,
-    pub processed_files: usize,
-    pub current_file: Option<String>,
-    pub folder_path: String,
-    pub error: Option<String>,
-}
-
-/// 진행률 콜백 타입
-pub type ProgressCallback = Box<dyn Fn(IndexingProgress) + Send + Sync>;
+/// 스트리밍 파이프라인 채널 버퍼 크기
+const CHANNEL_BUFFER_SIZE: usize = 16;
 
 /// 단일 파일 인덱싱 (FTS + 벡터)
 pub fn index_file(
@@ -53,169 +44,7 @@ pub fn index_file(
     })
 }
 
-/// 폴더 인덱싱 (진행률 콜백 + 취소 지원)
-pub fn index_folder_with_progress(
-    conn: &Connection,
-    folder_path: &Path,
-    embedder: Option<&Arc<Mutex<Embedder>>>,
-    vector_index: Option<&Arc<VectorIndex>>,
-    recursive: bool,
-    cancel_flag: Arc<AtomicBool>,
-    progress_callback: Option<ProgressCallback>,
-) -> Result<FolderIndexResult, IndexError> {
-    let folder_str = folder_path.to_string_lossy().to_string();
-
-    // 진행률 전송 헬퍼
-    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>| {
-        if let Some(ref cb) = progress_callback {
-            cb(IndexingProgress {
-                phase: phase.to_string(),
-                total_files: total,
-                processed_files: processed,
-                current_file: current.map(|s| s.to_string()),
-                folder_path: folder_str.clone(),
-                error: None,
-            });
-        }
-    };
-
-    // 1. 파일 스캔
-    send_progress("scanning", 0, 0, None);
-    let file_paths = collect_files(folder_path, SUPPORTED_EXTENSIONS, recursive);
-    let total = file_paths.len();
-
-    tracing::info!("Found {} files to index in {:?}", total, folder_path);
-    send_progress("scanning", total, 0, None);
-
-    // 취소 확인
-    if cancel_flag.load(Ordering::Relaxed) {
-        send_progress("cancelled", total, 0, None);
-        return Ok(FolderIndexResult {
-            folder_path: folder_str,
-            indexed_count: 0,
-            failed_count: 0,
-            vectors_count: 0,
-            errors: vec!["Cancelled by user".to_string()],
-        });
-    }
-
-    // 2. 병렬 파싱 (진행률 포함)
-    let processed_count = Arc::new(AtomicUsize::new(0));
-    let cancel_flag_clone = cancel_flag.clone();
-    let current_file = Arc::new(Mutex::new(String::new()));
-
-    let parse_results: Vec<ParseResult> = file_paths
-        .par_iter()
-        .map(|path| {
-            // 취소 확인
-            if cancel_flag_clone.load(Ordering::Relaxed) {
-                return ParseResult::Cancelled;
-            }
-
-            // 현재 파일 업데이트
-            if let Ok(mut cf) = current_file.lock() {
-                *cf = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-            }
-
-            let result = match parse_file(path) {
-                Ok(doc) => ParseResult::Success {
-                    path: path.clone(),
-                    document: doc,
-                },
-                Err(e) => ParseResult::Failure {
-                    path: path.clone(),
-                    error: e.to_string(),
-                },
-            };
-
-            // 진행률 카운트 증가
-            processed_count.fetch_add(1, Ordering::Relaxed);
-            result
-        })
-        .collect();
-
-    // 취소 확인
-    if cancel_flag.load(Ordering::Relaxed) {
-        send_progress("cancelled", total, processed_count.load(Ordering::Relaxed), None);
-        return Ok(FolderIndexResult {
-            folder_path: folder_str,
-            indexed_count: 0,
-            failed_count: 0,
-            vectors_count: 0,
-            errors: vec!["Cancelled by user".to_string()],
-        });
-    }
-
-    // 3. 순차적 DB 저장 (진행률 포함)
-    let mut indexed = 0;
-    let mut failed = 0;
-    let mut vectors_total = 0;
-    let mut errors: Vec<String> = Vec::new();
-
-    for (i, result) in parse_results.into_iter().enumerate() {
-        // 취소 확인
-        if cancel_flag.load(Ordering::Relaxed) {
-            send_progress("cancelled", total, i, None);
-            errors.push("Cancelled by user".to_string());
-            break;
-        }
-
-        match result {
-            ParseResult::Success { path, document } => {
-                let file_name = path.file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("unknown");
-                send_progress("indexing", total, i + 1, Some(file_name));
-
-                match save_document_to_db(conn, &path, document, embedder, vector_index) {
-                    Ok((_chunks, vectors)) => {
-                        indexed += 1;
-                        vectors_total += vectors;
-                    }
-                    Err(e) => {
-                        failed += 1;
-                        errors.push(format!("{:?}: {}", path, e));
-                    }
-                }
-            }
-            ParseResult::Failure { path, error } => {
-                failed += 1;
-                errors.push(format!("{:?}: {}", path, error));
-            }
-            ParseResult::Cancelled => {
-                // 이미 취소됨
-            }
-        }
-    }
-
-    // 벡터 인덱스 저장
-    if let Some(vi) = vector_index {
-        if let Err(e) = vi.save() {
-            tracing::warn!("Failed to save vector index: {}", e);
-        }
-    }
-
-    // 완료 진행률
-    let phase = if cancel_flag.load(Ordering::Relaxed) {
-        "cancelled"
-    } else {
-        "completed"
-    };
-    send_progress(phase, total, total, None);
-
-    Ok(FolderIndexResult {
-        folder_path: folder_str,
-        indexed_count: indexed,
-        failed_count: failed,
-        vectors_count: vectors_total,
-        errors,
-    })
-}
-
-/// 병렬 파싱 결과
+/// 파싱 결과 (스트리밍 파이프라인용)
 enum ParseResult {
     Success {
         path: PathBuf,
@@ -225,12 +54,20 @@ enum ParseResult {
         path: PathBuf,
         error: String,
     },
-    Cancelled,
 }
 
 /// 폴더 탐색으로 파일 경로 수집
-fn collect_files(dir: &Path, extensions: &[&str], recursive: bool) -> Vec<PathBuf> {
+fn collect_files(
+    dir: &Path,
+    extensions: &[&str],
+    recursive: bool,
+    cancel_flag: &AtomicBool,
+) -> Vec<PathBuf> {
     let mut files = Vec::new();
+
+    if cancel_flag.load(Ordering::Relaxed) {
+        return files;
+    }
 
     if recursive {
         let mut visited = std::collections::HashSet::new();
@@ -238,17 +75,22 @@ fn collect_files(dir: &Path, extensions: &[&str], recursive: bool) -> Vec<PathBu
         if let Ok(canonical) = dir.canonicalize() {
             visited.insert(canonical);
         }
-        collect_files_recursive(dir, extensions, &mut files, &mut visited);
+        collect_files_recursive(dir, extensions, &mut files, &mut visited, cancel_flag);
     } else {
         // 현재 폴더만 탐색
-        collect_files_shallow(dir, extensions, &mut files);
+        collect_files_shallow(dir, extensions, &mut files, cancel_flag);
     }
 
     files
 }
 
 /// 현재 폴더만 탐색 (하위폴더 제외)
-fn collect_files_shallow(dir: &Path, extensions: &[&str], files: &mut Vec<PathBuf>) {
+fn collect_files_shallow(
+    dir: &Path,
+    extensions: &[&str],
+    files: &mut Vec<PathBuf>,
+    cancel_flag: &AtomicBool,
+) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) => {
@@ -258,6 +100,10 @@ fn collect_files_shallow(dir: &Path, extensions: &[&str], files: &mut Vec<PathBu
     };
 
     for entry in entries.flatten() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
         let path = entry.path();
         if path.is_file() {
             let ext = path
@@ -278,7 +124,12 @@ fn collect_files_recursive(
     extensions: &[&str],
     files: &mut Vec<PathBuf>,
     visited: &mut std::collections::HashSet<PathBuf>,
+    cancel_flag: &AtomicBool,
 ) {
+    if cancel_flag.load(Ordering::Relaxed) {
+        return;
+    }
+
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) => {
@@ -288,6 +139,10 @@ fn collect_files_recursive(
     };
 
     for entry in entries.flatten() {
+        if cancel_flag.load(Ordering::Relaxed) {
+            break;
+        }
+
         let path = entry.path();
 
         if path.is_dir() {
@@ -302,14 +157,14 @@ fn collect_files_recursive(
                 if let Ok(canonical) = path.canonicalize() {
                     if visited.insert(canonical) {
                         // 새로 추가된 경우에만 재귀 호출
-                        collect_files_recursive(&path, extensions, files, visited);
+                        collect_files_recursive(&path, extensions, files, visited, cancel_flag);
                     } else {
                         tracing::debug!("Skipping already visited dir: {:?}", path);
                     }
                 } else {
                     // canonicalize 실패 시에도 원본 경로로 visited 체크 (무한 루프 방지)
                     if visited.insert(path.clone()) {
-                        collect_files_recursive(&path, extensions, files, visited);
+                        collect_files_recursive(&path, extensions, files, visited, cancel_flag);
                     } else {
                         tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
                     }
@@ -327,6 +182,35 @@ fn collect_files_recursive(
             }
         }
     }
+}
+
+/// 파싱 실패 시 파일 메타데이터만 저장 (파일명 검색용)
+fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexError> {
+    let path_str = path.to_string_lossy().to_string();
+
+    let metadata = fs::metadata(path).map_err(|e| IndexError::IoError(e.to_string()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let file_type = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let size = metadata.len() as i64;
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    Ok(())
 }
 
 /// 파싱된 문서를 DB에 저장 (FTS + 벡터) - 공통 로직
@@ -360,13 +244,58 @@ fn save_document_to_db(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // 파일 정보 DB 저장
-    let file_id = db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
+    conn.execute_batch("BEGIN")
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    // 기존 청크/벡터 삭제
-    let old_chunk_ids = db::get_chunk_ids_for_file(conn, file_id)
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let result = (|| {
+        // 파일 정보 DB 저장
+        let file_id = db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+        // 기존 청크 조회
+        let old_chunk_ids = db::get_chunk_ids_for_file(conn, file_id)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+        db::delete_chunks_for_file(conn, file_id)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+        // 청크 저장 + FTS 인덱싱
+        let chunks_count = document.chunks.len();
+        let mut chunk_ids: Vec<i64> = Vec::with_capacity(chunks_count);
+        let mut chunk_contents: Vec<String> = Vec::with_capacity(chunks_count);
+
+        for (idx, chunk) in document.chunks.iter().enumerate() {
+            let chunk_id = db::insert_chunk(
+                conn,
+                file_id,
+                idx,
+                &chunk.content,
+                chunk.start_offset,
+                chunk.end_offset,
+                chunk.page_number,
+                chunk.location_hint.as_deref(),
+            )
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+            chunk_ids.push(chunk_id);
+            chunk_contents.push(chunk.content.clone());
+        }
+
+        Ok((old_chunk_ids, chunk_ids, chunk_contents, chunks_count))
+    })();
+
+    let (old_chunk_ids, chunk_ids, chunk_contents, chunks_count) = match result {
+        Ok(data) => data,
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(err);
+        }
+    };
+
+    if let Err(e) = conn.execute_batch("COMMIT") {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(IndexError::DbError(e.to_string()));
+    }
 
     if let Some(vi) = vector_index {
         for chunk_id in &old_chunk_ids {
@@ -374,63 +303,33 @@ fn save_document_to_db(
         }
     }
 
-    db::delete_chunks_for_file(conn, file_id).map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    // 청크 저장 + FTS 인덱싱
-    let chunks_count = document.chunks.len();
-    let mut chunk_ids: Vec<i64> = Vec::new();
-    let mut chunk_contents: Vec<String> = Vec::new();
-
-    for (idx, chunk) in document.chunks.iter().enumerate() {
-        let chunk_id = db::insert_chunk(
-            conn,
-            file_id,
-            idx,
-            &chunk.content,
-            chunk.start_offset,
-            chunk.end_offset,
-            chunk.page_number,
-            chunk.location_hint.as_deref(),
-        )
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-        chunk_ids.push(chunk_id);
-        chunk_contents.push(chunk.content.clone());
-    }
-
     // 벡터 인덱싱
     let vectors_count = if let (Some(emb), Some(vi)) = (embedder, vector_index) {
-        tracing::info!("Starting vector indexing for {} ({} chunks)", path_str, chunk_contents.len());
         match emb.lock() {
-            Ok(mut emb_guard) => {
-                tracing::info!("Embedder locked, calling embed_batch...");
-                match emb_guard.embed_batch(&chunk_contents) {
-                    Ok(embeddings) => {
-                        tracing::info!("embed_batch succeeded, {} embeddings", embeddings.len());
-                        for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
-                            if let Err(e) = vi.add(*chunk_id, embedding) {
-                                tracing::warn!("Failed to add vector for chunk {}: {}", chunk_id, e);
-                            }
+            Ok(mut emb_guard) => match emb_guard.embed_batch(&chunk_contents) {
+                Ok(embeddings) => {
+                    for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
+                        if let Err(e) = vi.add(*chunk_id, embedding) {
+                            tracing::warn!("Failed to add vector for chunk {}: {}", chunk_id, e);
                         }
-                        chunk_ids.len()
                     }
-                    Err(e) => {
-                        tracing::warn!("Failed to embed chunks for {}: {}", path_str, e);
-                        0
-                    }
+                    chunk_ids.len()
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("Failed to embed chunks for {}: {}", path_str, e);
+                    0
+                }
+            },
             Err(e) => {
                 tracing::warn!("Failed to lock embedder for {}: {}", path_str, e);
                 0
             }
         }
     } else {
-        tracing::debug!("No embedder/vector_index available, skipping vector indexing");
         0
     };
 
-    tracing::info!(
+    tracing::debug!(
         "Indexed: {} ({} chunks, {} vectors)",
         path_str,
         chunks_count,
@@ -438,6 +337,242 @@ fn save_document_to_db(
     );
 
     Ok((chunks_count, vectors_count))
+}
+
+// ==================== 2단계 인덱싱: FTS 전용 ====================
+
+/// FTS 인덱싱 진행률 정보
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FtsIndexingProgress {
+    pub phase: String,
+    pub total_files: usize,
+    pub processed_files: usize,
+    pub current_file: Option<String>,
+    pub folder_path: String,
+}
+
+/// FTS 진행률 콜백 타입
+pub type FtsProgressCallback = Box<dyn Fn(FtsIndexingProgress) + Send + Sync>;
+
+/// 폴더 인덱싱 - FTS만 (1단계, 벡터 제외)
+pub fn index_folder_fts_only(
+    conn: &Connection,
+    folder_path: &Path,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<FtsProgressCallback>,
+) -> Result<FolderIndexResult, IndexError> {
+    let folder_str = folder_path.to_string_lossy().to_string();
+
+    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>| {
+        if let Some(ref cb) = progress_callback {
+            cb(FtsIndexingProgress {
+                phase: phase.to_string(),
+                total_files: total,
+                processed_files: processed,
+                current_file: current.map(|s| s.to_string()),
+                folder_path: folder_str.clone(),
+            });
+        }
+    };
+
+    // 1. 파일 스캔
+    send_progress("scanning", 0, 0, None);
+    let file_paths = collect_files(
+        folder_path,
+        SUPPORTED_EXTENSIONS,
+        recursive,
+        cancel_flag.as_ref(),
+    );
+    let total = file_paths.len();
+
+    tracing::info!("[FTS] Found {} files in {:?}", total, folder_path);
+    send_progress("scanning", total, 0, None);
+
+    if cancel_flag.load(Ordering::Relaxed) {
+        send_progress("cancelled", total, 0, None);
+        return Ok(FolderIndexResult {
+            folder_path: folder_str,
+            indexed_count: 0,
+            failed_count: 0,
+            vectors_count: 0,
+            errors: vec!["Cancelled by user".to_string()],
+        });
+    }
+
+    // 2. 스트리밍 파이프라인
+    let (sender, receiver) = bounded::<ParseResult>(CHANNEL_BUFFER_SIZE);
+    let cancel_flag_producer = cancel_flag.clone();
+
+    let producer_handle = std::thread::spawn(move || {
+        let _ = file_paths.par_iter().try_for_each(|path| {
+            if cancel_flag_producer.load(Ordering::Relaxed) {
+                return Err(());
+            }
+
+            let path_clone = path.clone();
+            let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
+                Ok(Ok(doc)) => ParseResult::Success {
+                    path: path.clone(),
+                    document: doc,
+                },
+                Ok(Err(e)) => ParseResult::Failure {
+                    path: path.clone(),
+                    error: e.to_string(),
+                },
+                Err(_) => ParseResult::Failure {
+                    path: path.clone(),
+                    error: "Parser panicked".to_string(),
+                },
+            };
+
+            sender.send(result).map_err(|_| ())
+        });
+    });
+
+    // 3. Consumer: FTS만 저장 (벡터 제외)
+    let mut indexed = 0;
+    let mut failed = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut processed = 0;
+    let mut was_cancelled = false;
+
+    let recv_timeout = Duration::from_millis(100);
+
+    {
+        loop {
+            if cancel_flag.load(Ordering::Relaxed) {
+                send_progress("cancelled", total, processed, None);
+                errors.push("Cancelled by user".to_string());
+                was_cancelled = true;
+                break;
+            }
+
+            match receiver.recv_timeout(recv_timeout) {
+                Ok(result) => {
+                    processed += 1;
+
+                    match result {
+                        ParseResult::Success { path, document } => {
+                            let file_name = path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("unknown");
+                            send_progress("indexing", total, processed, Some(file_name));
+
+                            match save_document_to_db_fts_only(conn, &path, document) {
+                                Ok(_) => indexed += 1,
+                                Err(e) => {
+                                    failed += 1;
+                                    errors.push(format!("{:?}: {}", path, e));
+                                }
+                            }
+                        }
+                        ParseResult::Failure { path, error } => {
+                            if let Err(e) = save_file_metadata_only(conn, &path) {
+                                tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
+                            }
+                            failed += 1;
+                            errors.push(format!("{:?}: {}", path, error));
+                            send_progress("indexing", total, processed, None);
+                        }
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    }
+
+    if !was_cancelled {
+        let _ = producer_handle.join();
+    }
+
+    let phase = if was_cancelled { "cancelled" } else { "completed" };
+    send_progress(phase, total, processed, None);
+
+    Ok(FolderIndexResult {
+        folder_path: folder_str,
+        indexed_count: indexed,
+        failed_count: failed,
+        vectors_count: 0, // FTS만이므로 0
+        errors,
+    })
+}
+
+/// 문서를 DB에 저장 - FTS만 (벡터 제외)
+fn save_document_to_db_fts_only(
+    conn: &Connection,
+    path: &Path,
+    document: ParsedDocument,
+) -> Result<usize, IndexError> {
+    let path_str = path.to_string_lossy().to_string();
+
+    let metadata = fs::metadata(path).map_err(|e| IndexError::IoError(e.to_string()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let file_type = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let size = metadata.len() as i64;
+    let modified_at = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    conn.execute_batch("BEGIN")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    let result = (|| {
+        // upsert_file_fts_only 사용 (vector_indexed_at = NULL)
+        let file_id = db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+        db::delete_chunks_for_file(conn, file_id)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+        let chunks_count = document.chunks.len();
+
+        for (idx, chunk) in document.chunks.iter().enumerate() {
+            db::insert_chunk(
+                conn,
+                file_id,
+                idx,
+                &chunk.content,
+                chunk.start_offset,
+                chunk.end_offset,
+                chunk.page_number,
+                chunk.location_hint.as_deref(),
+            )
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+        }
+
+        Ok(chunks_count)
+    })();
+
+    let chunks_count = match result {
+        Ok(count) => count,
+        Err(err) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(err);
+        }
+    };
+
+    if let Err(e) = conn.execute_batch("COMMIT") {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(IndexError::DbError(e.to_string()));
+    }
+
+    tracing::debug!("[FTS] Indexed: {} ({} chunks)", path_str, chunks_count);
+
+    Ok(chunks_count)
 }
 
 #[derive(Debug)]

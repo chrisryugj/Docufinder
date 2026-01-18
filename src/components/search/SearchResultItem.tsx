@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, memo } from "react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
+import { HighlightedFilename } from "./HighlightedFilename";
 import { getMatchTypeBadge } from "./matchType";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -18,9 +19,11 @@ interface SearchResultItemProps {
   onOpenFolder?: (path: string) => void;
   /** 결과 내 검색 키워드 (추가 하이라이트용) */
   refineKeywords?: string[];
+  /** 검색어 (파일명 하이라이트용) */
+  query?: string;
 }
 
-export function SearchResultItem({
+export const SearchResultItem = memo(function SearchResultItem({
   result,
   index,
   isExpanded,
@@ -31,6 +34,7 @@ export function SearchResultItem({
   onCopyPath,
   onOpenFolder,
   refineKeywords,
+  query = "",
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
 
@@ -72,7 +76,7 @@ export function SearchResultItem({
       className="search-result-item result-card"
       style={{
         "--item-index": index,
-        padding: isCompact ? "0.5rem 0.75rem" : "1.25rem 1.5rem",
+        padding: isCompact ? "0.375rem 0.5rem" : "0.75rem 1rem",
         ...(isSelected && {
           borderColor: "var(--color-accent)",
           backgroundColor: "var(--color-accent-light)",
@@ -102,7 +106,7 @@ export function SearchResultItem({
             className="truncate"
             style={{ fontSize: isCompact ? "0.9375rem" : "1.125rem", fontWeight: 600 }}
           >
-            {result.file_name}
+            <HighlightedFilename filename={result.file_name} query={query} />
           </span>
           <svg
             className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
@@ -201,9 +205,9 @@ export function SearchResultItem({
             className={isCompact ? "text-xs" : "text-sm"}
             style={{
               color: "var(--color-text-secondary)",
-              lineHeight: isCompact ? "1.4" : "var(--leading-relaxed)",
+              lineHeight: isCompact ? "1.5" : "1.6",
               letterSpacing: "0.3px",
-              ...(isCompact && !isExpanded && {
+              ...(!isExpanded && {
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical" as const,
@@ -218,11 +222,6 @@ export function SearchResultItem({
               refineKeywords={refineKeywords}
             />
           </p>
-          {!isExpanded && result.full_content.length > result.content_preview.length && (
-            <span className="text-xs mt-0.5 inline-block" style={{ color: "var(--color-accent)" }}>
-              더보기
-            </span>
-          )}
         </div>
       </div>
 
@@ -257,7 +256,7 @@ export function SearchResultItem({
       )}
     </div>
   );
-}
+});
 
 /** 경로를 배열로 변환 (Windows 스타일) */
 function formatPathToBadges(path: string): string[] {
@@ -267,7 +266,8 @@ function formatPathToBadges(path: string): string[] {
   return cleanPath.split(/[/\\]/).filter(Boolean);
 }
 
-const EXPANDED_CONTEXT_BEFORE_CHARS = 120;
+const EXPANDED_CONTEXT_BEFORE_CHARS = 300;
+const EXPANDED_CONTEXT_AFTER_CHARS = 300;
 
 function buildExpandedContext(
   fullText: string,
@@ -279,24 +279,39 @@ function buildExpandedContext(
     : findFirstRangeAnchor(ranges);
   const effectiveAnchor = anchor ?? findFirstRangeAnchor(ranges);
   if (!effectiveAnchor) {
-    return { text: fullText, ranges };
+    // 하이라이트 없으면 앞부분만 제한
+    const limitedText = fullText.slice(0, 600);
+    return {
+      text: limitedText + (fullText.length > 600 ? "..." : ""),
+      ranges,
+    };
   }
 
+  // 하이라이트 전후로 컨텍스트 제한
   const startOffset = Math.max(0, effectiveAnchor.start - EXPANDED_CONTEXT_BEFORE_CHARS);
-  if (startOffset === 0) {
-    return { text: fullText, ranges };
-  }
+  const endOffset = Math.min(fullText.length, effectiveAnchor.end + EXPANDED_CONTEXT_AFTER_CHARS);
 
-  const trimmedText = fullText.slice(startOffset);
+  const trimmedText = fullText.slice(startOffset, endOffset);
   const trimmedRanges = ranges
-    .filter(([, end]) => end > startOffset)
+    .filter(([start, end]) => end > startOffset && start < endOffset)
     .map(([start, end]) => {
       const clippedStart = Math.max(0, start - startOffset);
-      const clippedEnd = Math.max(0, end - startOffset);
+      const clippedEnd = Math.min(trimmedText.length, end - startOffset);
       return [clippedStart, clippedEnd] as [number, number];
     });
 
-  return { text: trimmedText, ranges: trimmedRanges };
+  // 앞뒤 생략 표시
+  const prefix = startOffset > 0 ? "..." : "";
+  const suffix = endOffset < fullText.length ? "..." : "";
+  const finalText = prefix + trimmedText + suffix;
+
+  // prefix로 인한 range offset 조정
+  const offsetAdjust = prefix.length;
+  const adjustedRanges = trimmedRanges.map(
+    ([start, end]) => [start + offsetAdjust, end + offsetAdjust] as [number, number]
+  );
+
+  return { text: finalText, ranges: adjustedRanges };
 }
 
 function findSnippetAnchor(

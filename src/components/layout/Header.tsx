@@ -11,27 +11,23 @@ interface HeaderProps {
 export function Header({ onAddFolder, onOpenSettings, onOpenHelp, isIndexing, isSidebarOpen }: HeaderProps) {
   return (
     <header
-      className={`py-4 flex justify-between items-center bg-transparent transition-all duration-300 ${isSidebarOpen ? "px-6" : "pl-20 pr-6"
+      className={`py-2 flex justify-between items-center bg-transparent transition-all duration-300 ${isSidebarOpen ? "px-6" : "pl-20 pr-6"
         }`}
     >
-      <div className="flex items-center gap-4">
-
-        <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* App Icon */}
           <img
             src="/icon.png"
             alt="DocuFinder"
-            className="w-8 h-8 flex-shrink-0"
+            className="w-7 h-7 flex-shrink-0"
           />
 
           {/* Title Container */}
           <div>
-            <h1 className="text-xl font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+            <h1 className="text-lg font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
               DocuFinder
             </h1>
-            <p className="text-xs font-medium tracking-wide" style={{ color: 'var(--color-text-muted)' }}>
-              로컬 문서 검색 시스템
-            </p>
           </div>
         </div>
       </div>

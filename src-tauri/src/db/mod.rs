@@ -107,6 +107,22 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         [],
     );
 
+    // 2단계 인덱싱 지원: fts_indexed_at, vector_indexed_at 컬럼 추가
+    let _ = conn.execute(
+        "ALTER TABLE files ADD COLUMN fts_indexed_at INTEGER",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE files ADD COLUMN vector_indexed_at INTEGER",
+        [],
+    );
+
+    // 기존 데이터 마이그레이션: indexed_at 값을 fts_indexed_at으로 복사
+    let _ = conn.execute(
+        "UPDATE files SET fts_indexed_at = indexed_at WHERE fts_indexed_at IS NULL AND indexed_at IS NOT NULL",
+        [],
+    );
+
     // 인덱스 생성
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
@@ -492,4 +508,154 @@ pub struct ChunkInfo {
     pub file_path: String,
     pub file_name: String,
     pub content: String,
+}
+
+// ==================== 2단계 인덱싱 ====================
+
+/// 파일 저장 (FTS만, 벡터 인덱싱 대기 상태)
+pub fn upsert_file_fts_only(
+    conn: &Connection,
+    path: &str,
+    name: &str,
+    file_type: &str,
+    size: i64,
+    modified_at: i64,
+) -> Result<i64> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    conn.execute(
+        "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at, fts_indexed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           name = excluded.name,
+           file_type = excluded.file_type,
+           size = excluded.size,
+           modified_at = excluded.modified_at,
+           indexed_at = excluded.indexed_at,
+           fts_indexed_at = excluded.fts_indexed_at,
+           vector_indexed_at = NULL",
+        params![path, name, file_type, size, modified_at, now, now],
+    )?;
+
+    // 파일 ID 조회
+    let file_id: i64 = conn.query_row(
+        "SELECT id FROM files WHERE path = ?",
+        params![path],
+        |row| row.get(0),
+    )?;
+
+    // files_fts 인덱스 갱신
+    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
+    conn.execute(
+        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
+        params![file_id, name],
+    )?;
+
+    Ok(file_id)
+}
+
+/// 벡터 인덱싱 대기 중인 청크 조회
+#[derive(Debug, Clone)]
+pub struct PendingChunk {
+    pub chunk_id: i64,
+    pub file_id: i64,
+    pub content: String,
+    pub file_path: String,
+}
+
+/// 벡터 인덱싱 대기 중인 청크 조회 (limit 개수)
+pub fn get_pending_vector_chunks(conn: &Connection, limit: usize) -> Result<Vec<PendingChunk>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.file_id, fts.content, f.path
+         FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         JOIN chunks_fts fts ON fts.rowid = c.id
+         WHERE f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL
+         ORDER BY f.id, c.chunk_index
+         LIMIT ?"
+    )?;
+
+    let results = stmt.query_map(params![limit as i64], |row| {
+        Ok(PendingChunk {
+            chunk_id: row.get(0)?,
+            file_id: row.get(1)?,
+            content: row.get(2)?,
+            file_path: row.get(3)?,
+        })
+    })?;
+
+    results.collect()
+}
+
+/// 파일의 벡터 인덱싱 완료 표시
+pub fn mark_file_vector_indexed(conn: &Connection, file_id: i64) -> Result<()> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    conn.execute(
+        "UPDATE files SET vector_indexed_at = ? WHERE id = ?",
+        params![now, file_id],
+    )?;
+
+    Ok(())
+}
+
+/// 벡터 인덱싱 통계
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VectorIndexingStats {
+    pub total_files: usize,
+    pub fts_only_files: usize,
+    pub vector_indexed_files: usize,
+    pub pending_chunks: usize,
+}
+
+/// 벡터 인덱싱 통계 조회
+pub fn get_vector_indexing_stats(conn: &Connection) -> Result<VectorIndexingStats> {
+    let total_files: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM files",
+        [],
+        |row| row.get(0),
+    )?;
+
+    let fts_only_files: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM files WHERE fts_indexed_at IS NOT NULL AND vector_indexed_at IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
+
+    let vector_indexed_files: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM files WHERE vector_indexed_at IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )?;
+
+    let pending_chunks: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         WHERE f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
+
+    Ok(VectorIndexingStats {
+        total_files: total_files as usize,
+        fts_only_files: fts_only_files as usize,
+        vector_indexed_files: vector_indexed_files as usize,
+        pending_chunks: pending_chunks as usize,
+    })
+}
+
+/// 벡터 인덱싱 대기 중인 파일 ID 목록 조회
+pub fn get_pending_vector_file_ids(conn: &Connection) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT id FROM files WHERE fts_indexed_at IS NOT NULL AND vector_indexed_at IS NULL ORDER BY id"
+    )?;
+
+    let results = stmt.query_map([], |row| row.get(0))?;
+    results.collect()
 }

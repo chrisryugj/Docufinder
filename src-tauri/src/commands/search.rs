@@ -78,6 +78,11 @@ pub async fn search_keyword(
     let conn = db::get_connection(&db_path)
         .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
+    // 디버그: DB 상태 확인
+    let chunks_count: usize = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap_or(0);
+    let fts_count: usize = conn.query_row("SELECT COUNT(*) FROM chunks_fts", [], |r| r.get(0)).unwrap_or(0);
+    tracing::info!("DB state: chunks={}, chunks_fts={}", chunks_count, fts_count);
+
     // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
     let fts_results = fts::search(&conn, &query, max_results)
         .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
@@ -157,6 +162,18 @@ pub async fn search_filename(
 
     let conn = db::get_connection(&db_path)
         .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+
+    // 디버그: files vs files_fts 카운트
+    let files_count: usize = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap_or(0);
+    let files_fts_count: usize = conn.query_row("SELECT COUNT(*) FROM files_fts", [], |r| r.get(0)).unwrap_or(0);
+    // LIKE 검색으로 실제 매칭 수 확인
+    let like_pattern = format!("%{}%", query);
+    let like_count: usize = conn.query_row(
+        "SELECT COUNT(*) FROM files WHERE name LIKE ?",
+        [&like_pattern],
+        |r| r.get(0)
+    ).unwrap_or(0);
+    tracing::info!("Filename search DB: files={}, files_fts={}, LIKE match={}", files_count, files_fts_count, like_count);
 
     // 파일명 FTS5 검색 실행
     let filename_results = filename::search(&conn, &query, max_results)
