@@ -193,5 +193,17 @@ pnpm tauri:dev
    - CSP: `default-src 'self'; style-src 'self' 'unsafe-inline'...`
    - Pretendard 폰트 로컬 번들링 (~2MB)
 
+## 🔍 결과내검색 기능 (2026-01-18)
+
+| 기능 | 파일 | 설명 |
+|------|------|------|
+| 결과내검색 필터 | `useSearch.ts:178-186` | 2글자 이상 키워드만 필터링 |
+| 필터 UI | `SearchFilters.tsx` | refineQuery 입력 + 클리어 버튼 |
+| 필터바 유지 | `App.tsx:381` | 원본 결과 기준으로 필터바 표시 |
+| IME 초기화 | `App.tsx:102-117` | 앱 시작 시 blur-focus 사이클 |
+| CSS 수정 | `index.css:1-5` | @import 순서 수정 (HMR 오류 방지) |
+
+**Known Issue**: 앱 최초 시작 시 IME 팝업창 뜸 (다른 창 갔다오면 해결)
+
 ## 마지막 업데이트
-2026-01-18 (코드 리팩토링 완료 - Critical/High 이슈 6건)
+2026-01-18 (결과내검색 기능 + IME 안정화)
