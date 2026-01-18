@@ -24,6 +24,12 @@ pub struct Settings {
     pub auto_start: bool,
     #[serde(default)]
     pub start_minimized: bool,
+    /// 파일명 하이라이트 색상 (hex)
+    #[serde(default)]
+    pub highlight_filename_color: Option<String>,
+    /// 문서 내용 하이라이트 색상 (hex)
+    #[serde(default)]
+    pub highlight_content_color: Option<String>,
 }
 
 fn default_include_subfolders() -> bool {
@@ -68,6 +74,8 @@ impl Default for Settings {
             include_subfolders: true,
             auto_start: false,
             start_minimized: false,
+            highlight_filename_color: None,
+            highlight_content_color: None,
         }
     }
 }

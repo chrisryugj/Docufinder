@@ -115,3 +115,38 @@
 **이유**: 사용자 설정이 실제로 반영되어야 함
 **영향**:
 - `src-tauri/src/commands/search.rs` (search_keyword, search_filename, search_semantic, search_hybrid)
+
+## 2026-01-18 - 2단계 인덱싱 시스템 아키텍처
+
+**상황**: 2,000개 파일 인덱싱 시 10분+ 소요, ONNX 임베딩이 99% 병목
+**결정**: 1단계(FTS) + 2단계(벡터 백그라운드) 분리 아키텍처
+**대안 검토**:
+- Option A: 현행 유지 + 배치 최적화 → 근본적 해결 안 됨
+- Option B: 2단계 분리 (선택) → 즉시 검색 가능 + 백그라운드 완료
+- Option C: 벡터 인덱싱 비활성화 옵션 → 시맨틱 검색 UX 저하
+**이유**:
+- 사용자는 FTS 완료 즉시 검색 시작 가능 (~30초)
+- 시맨틱 검색은 백그라운드 완료 후 점진적 활성화
+- 앱 재시작 시에도 이어서 진행 가능
+**영향**:
+- `src-tauri/src/db/mod.rs` (fts_indexed_at, vector_indexed_at 컬럼)
+- `src-tauri/src/indexer/pipeline.rs` (FTS 전용 함수 분리)
+- `src-tauri/src/indexer/vector_worker.rs` (신규 - 백그라운드 워커)
+- `src/components/ui/VectorIndexingFAB.tsx` (신규 - 진행률 FAB)
+- `src/hooks/useVectorIndexing.ts` (신규 - 상태 훅)
+
+## 2026-01-18 - VectorWorker 설계 (별도 스레드)
+
+**상황**: 2단계 벡터 인덱싱을 어떻게 백그라운드에서 실행할지
+**결정**: `VectorWorker` 구조체 + 별도 `std::thread::spawn`
+**대안 검토**:
+- Option A: tokio::spawn → async 런타임 복잡도, 임베딩은 CPU 바운드
+- Option B: std::thread (선택) → 단순함, CPU 바운드 작업에 적합
+- Option C: rayon 스레드 풀 → 이미 파싱에 사용 중, 충돌 우려
+**이유**:
+- 임베딩은 CPU 집약적 작업으로 async 이점 없음
+- 별도 스레드로 메인 스레드 블로킹 없음
+- `Arc<AtomicBool>`로 안전한 취소 지원
+**영향**:
+- `src-tauri/src/indexer/vector_worker.rs` (VectorWorker, start, cancel, get_status)
+- `src-tauri/src/lib.rs:44-45` (AppState에 vector_worker: RwLock<VectorWorker>)

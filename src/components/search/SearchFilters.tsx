@@ -3,7 +3,6 @@ import type {
   SortOption,
   FileTypeFilter,
   DateRangeFilter,
-  ViewMode,
   SearchMode,
 } from "../../types/search";
 import {
@@ -16,11 +15,8 @@ import {
 interface SearchFiltersProps {
   filters: FiltersType;
   onFiltersChange: (filters: FiltersType) => void;
-  resultCount?: number;
-  /** 필터 적용 전 전체 결과 수 (결과 내 검색 시 "N개 중 M개" 표시용) */
-  totalResultCount?: number;
-  viewMode?: ViewMode;
-  onViewModeChange?: (mode: ViewMode) => void;
+  /** 결과 내 검색 표시 여부 (결과가 있을 때만 표시) */
+  showRefineSearch?: boolean;
   searchMode?: SearchMode;
   /** 결과 내 검색 쿼리 */
   refineQuery?: string;
@@ -34,10 +30,7 @@ interface SearchFiltersProps {
 export function SearchFilters({
   filters,
   onFiltersChange,
-  resultCount,
-  totalResultCount,
-  viewMode = "flat",
-  onViewModeChange,
+  showRefineSearch = false,
   searchMode,
   refineQuery = "",
   onRefineQueryChange,
@@ -64,15 +57,15 @@ export function SearchFilters({
     filters.fileType !== "all" ||
     filters.dateRange !== "all" ||
     filters.keywordOnly ||
-    filters.filenameOnly;
+    filters.excludeFilename;
 
   const showKeywordOnlyToggle = searchMode === "hybrid";
-  // 파일명 모드가 아닐 때만 "파일명만" 필터 표시
-  const showFilenameOnlyToggle = searchMode !== "filename";
+  // 파일명 모드가 아닐 때만 "파일명 제외" 필터 표시
+  const showExcludeFilenameToggle = searchMode !== "filename";
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 py-3 text-sm"
+      className="flex flex-wrap items-center gap-1.5 py-1 text-xs"
       role="toolbar"
       aria-label="검색 필터"
     >
@@ -102,7 +95,7 @@ export function SearchFilters({
 
       {showKeywordOnlyToggle && (
         <label
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
           style={{
             borderColor: filters.keywordOnly ? "var(--color-accent)" : "var(--color-border)",
             backgroundColor: filters.keywordOnly ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
@@ -113,41 +106,41 @@ export function SearchFilters({
             type="checkbox"
             checked={filters.keywordOnly}
             onChange={(e) => onFiltersChange({ ...filters, keywordOnly: e.target.checked })}
-            className="accent-blue-500"
+            className="accent-blue-500 w-3 h-3"
             aria-label="키워드 포함 결과만 보기"
           />
           키워드 포함만
         </label>
       )}
 
-      {showFilenameOnlyToggle && (
+      {showExcludeFilenameToggle && (
         <label
-          className="flex items-center gap-2 px-3 py-1.5 rounded-md border cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
           style={{
-            borderColor: filters.filenameOnly ? "var(--color-accent)" : "var(--color-border)",
-            backgroundColor: filters.filenameOnly ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
-            color: filters.filenameOnly ? "var(--color-accent)" : "var(--color-text-muted)",
+            borderColor: filters.excludeFilename ? "var(--color-accent)" : "var(--color-border)",
+            backgroundColor: filters.excludeFilename ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+            color: filters.excludeFilename ? "var(--color-accent)" : "var(--color-text-muted)",
           }}
         >
           <input
             type="checkbox"
-            checked={filters.filenameOnly}
-            onChange={(e) => onFiltersChange({ ...filters, filenameOnly: e.target.checked })}
-            className="accent-blue-500"
-            aria-label="파일명 매치만 보기"
+            checked={filters.excludeFilename}
+            onChange={(e) => onFiltersChange({ ...filters, excludeFilename: e.target.checked })}
+            className="accent-blue-500 w-3 h-3"
+            aria-label="파일명 검색 결과 제외"
           />
-          파일명만
+          파일명 제외
         </label>
       )}
 
       {/* 결과 내 검색 */}
-      {onRefineQueryChange && totalResultCount !== undefined && totalResultCount > 0 && (
+      {onRefineQueryChange && showRefineSearch && (
         <div className="relative flex items-center">
           <div
-            className="absolute left-2.5 top-1/2 -translate-y-1/2"
+            className="absolute left-2 top-1/2 -translate-y-1/2"
             style={{ color: refineQuery ? "var(--color-accent)" : "var(--color-text-muted)" }}
           >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
@@ -156,9 +149,9 @@ export function SearchFilters({
             value={refineQuery}
             onChange={(e) => onRefineQueryChange(e.target.value)}
             placeholder="결과 내 검색..."
-            className="pl-8 pr-7 py-1.5 rounded-md border text-sm transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+            className="pl-6 pr-6 py-1 rounded border transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
             style={{
-              width: "140px",
+              width: "120px",
               backgroundColor: "var(--color-bg-secondary)",
               borderColor: refineQuery ? "var(--color-accent)" : "var(--color-border)",
               color: "var(--color-text-primary)",
@@ -184,7 +177,7 @@ export function SearchFilters({
       {hasActiveFilters && (
         <button
           onClick={handleReset}
-          className="px-3 py-1.5 transition-colors border border-transparent rounded-md font-medium"
+          className="px-2 py-1 transition-colors border border-transparent rounded-md text-xs font-medium"
           style={{
             color: "var(--color-text-muted)",
           }}
@@ -200,55 +193,6 @@ export function SearchFilters({
         >
           초기화
         </button>
-      )}
-
-      {/* 뷰 모드 토글 */}
-      {onViewModeChange && (
-        <div className="flex items-center gap-0.5 ml-auto border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>
-          <button
-            onClick={() => onViewModeChange("flat")}
-            className="p-1.5 rounded-sm transition-colors"
-            style={{
-              backgroundColor: viewMode === "flat" ? "var(--color-bg-secondary)" : "transparent",
-              color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
-              boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-            }}
-            title="목록 보기"
-            aria-label="목록 보기"
-            aria-pressed={viewMode === "flat"}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <button
-            onClick={() => onViewModeChange("grouped")}
-            className="p-1.5 rounded-sm transition-colors"
-            style={{
-              backgroundColor: viewMode === "grouped" ? "var(--color-bg-secondary)" : "transparent",
-              color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
-              boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-            }}
-            title="파일별 그룹 보기"
-            aria-label="파일별 그룹 보기"
-            aria-pressed={viewMode === "grouped"}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {/* 결과 수 */}
-      {resultCount !== undefined && resultCount > 0 && (
-        <span className="font-medium" style={{ color: "var(--color-text-secondary)" }}>
-          {totalResultCount !== undefined && totalResultCount !== resultCount ? (
-            <>{totalResultCount}개 중 <span style={{ color: "var(--color-accent)" }}>{resultCount}개</span></>
-          ) : (
-            <>{resultCount}개 결과</>
-          )}
-        </span>
       )}
     </div>
   );
@@ -275,13 +219,12 @@ function FilterDropdown<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="appearance-none pl-3 pr-8 py-1.5 rounded-md border cursor-pointer font-medium
+        className="appearance-none pl-2 pr-6 py-1 rounded border cursor-pointer font-medium
           transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
         style={{
           backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
           borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
           color: isDefault ? "var(--color-text-secondary)" : "var(--color-accent)",
-          fontSize: "0.875rem",
         }}
         aria-label={`${label} 필터`}
       >
@@ -293,7 +236,7 @@ function FilterDropdown<T extends string>({
       </select>
       {/* 드롭다운 아이콘 */}
       <svg
-        className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
         style={{ color: isDefault ? "var(--color-text-muted)" : "var(--color-accent)" }}
         fill="none"
         stroke="currentColor"

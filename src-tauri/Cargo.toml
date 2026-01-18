@@ -55,6 +55,7 @@ chrono = "0.4"
 
 # Parallel processing
 rayon = "1.10"
+crossbeam-channel = "0.5"
 
 [features]
 default = ["custom-protocol"]

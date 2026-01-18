@@ -237,5 +237,68 @@ dead_code warning 26개 → 0개 정리:
 - 필요하지만 미사용 필드는 `#[allow(dead_code)]` 추가
 - 미사용 import 제거
 
+## ✅ 2단계 인덱싱 시스템 구현 완료 (2026-01-18)
+
+### 배경
+- 인덱싱 속도 병목: ONNX 임베딩이 99% 시간 소비
+- 2,000개 파일 인덱싱 시 10분+ 소요
+- 취소 버튼 반응 느림
+
+### 해결된 이슈 (Codex + Claude)
+| 이슈 | 해결 | 파일 |
+|------|------|------|
+| tokenizers 데드락 | `TOKENIZERS_PARALLELISM=false` | `lib.rs:202-203` |
+| 파싱 실패 시 파일명 검색 불가 | `save_file_metadata_only()` 추가 | `pipeline.rs:387-413` |
+| 스캔 중 취소 불가 | collect_files에 cancel_flag 전달 | `pipeline.rs:260-285` |
+| 채널 대기 중 취소 불가 | recv_timeout 100ms | `pipeline.rs:167,180-218` |
+| DB 락 병목 | 파일당 트랜잭션 (BEGIN/COMMIT) | `pipeline.rs:447-498` |
+
+### 구현 완료
+
+**계획 문서**: `.claude/plans/binary-crafting-curry.md`
+
+**아키텍처**:
+```
+[폴더 추가]
+    ↓
+1단계: FTS 인덱싱 (동기, ~30초)
+    - 메타데이터 + 파싱 + FTS5 저장
+    → 완료 즉시 파일명/키워드 검색 가능
+    ↓
+2단계: 벡터 인덱싱 (백그라운드)
+    - 별도 스레드, 32청크씩 배치
+    - FAB로 진행률 표시
+    → 완료 시 "시맨틱 검색 준비 완료!" 토스트
+```
+
+### ✅ 완료된 작업
+| Phase | 작업 | 파일 | 상태 |
+|-------|------|------|------|
+| 1-1 | DB 스키마 변경 | `db/mod.rs:110-124` (fts_indexed_at, vector_indexed_at) | ✅ |
+| 1-2 | DB 조회/업데이트 함수 | `db/mod.rs:497-645` (upsert_file_fts_only, get_pending_vector_chunks 등) | ✅ |
+| 1-3 | pipeline.rs FTS 분리 | `pipeline.rs:542-776` (index_folder_fts_only) | ✅ |
+| 1-4 | vector_worker.rs | `indexer/vector_worker.rs` (VectorWorker 백그라운드 워커) | ✅ **신규** |
+| 2-1 | AppState 확장 | `lib.rs:44-45,61,148-151` (vector_worker 필드) | ✅ |
+| 2-2 | add_folder 수정 | `commands/index.rs:50-183` (FTS→벡터 2단계) | ✅ |
+| 2-3 | 새 커맨드 | `commands/index.rs:470-495` (get_vector_indexing_status, cancel_vector_indexing) | ✅ |
+| 3-1 | 타입 확장 | `types/index.ts:49-64` (VectorIndexingStatus, VectorIndexingProgress) | ✅ |
+| 3-2 | useVectorIndexing | `hooks/useVectorIndexing.ts` | ✅ **신규** |
+| 3-3 | VectorIndexingFAB | `components/ui/VectorIndexingFAB.tsx` | ✅ **신규** |
+| 3-4 | App.tsx 통합 | `App.tsx:93-108,478-487` (FAB + 완료 토스트) | ✅ |
+
+### 핵심 파일
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/src/db/mod.rs` | 2단계 인덱싱 DB 함수 |
+| `src-tauri/src/indexer/pipeline.rs` | FTS 전용 인덱싱 |
+| `src-tauri/src/indexer/vector_worker.rs` | 백그라운드 벡터 워커 |
+| `src-tauri/src/commands/index.rs` | 2단계 커맨드 |
+| `src/hooks/useVectorIndexing.ts` | 벡터 인덱싱 상태 훅 |
+| `src/components/ui/VectorIndexingFAB.tsx` | 원형 진행률 FAB |
+
+### 📋 다음 할 일
+- [ ] 실제 테스트 (pnpm tauri:dev)
+- [ ] Phase 4: 앱 재시작 시 미완료 벡터 인덱싱 자동 재개
+
 ## 마지막 업데이트
-2026-01-18 (앱 아이콘 교체 + Rust warning 정리)
+2026-01-18 (2단계 인덱싱 시스템 구현 완료)

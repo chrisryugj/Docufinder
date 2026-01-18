@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -28,11 +28,23 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
     },
     ref
   ) => {
-    // 내부 ref가 없을 경우를 대비해 로컬 ref 생성 (forwardRef와 병합 필요하지만 여기선 간단히 처리)
-    // 실제로는 forwardedRef가 함수일 수도 있어 복잡하지만, 이 컴포넌트는 App에서 객체 ref를 넘김을 가정
-    // 안전을 위해 innerRef 도입
     const innerRef = useRef<HTMLInputElement>(null);
     const hasInitializedIME = useRef(false);
+    const [showModeDropdown, setShowModeDropdown] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // 드롭다운 외부 클릭 시 닫기
+    useEffect(() => {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+          setShowModeDropdown(false);
+        }
+      };
+      if (showModeDropdown) {
+        document.addEventListener("mousedown", handleClickOutside);
+      }
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showModeDropdown]);
 
     // 첫 포커스 시 IME 초기화 (Windows 한영전환 문제 해결)
     const handleFocus = useCallback(() => {
@@ -70,8 +82,10 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       }
     }, [ref]);
 
+    const currentMode = SEARCH_MODES.find((m) => m.value === searchMode);
+
     return (
-      <div className="max-w-3xl mx-auto w-full">
+      <div className="max-w-4xl mx-auto w-full">
         {/* 검색 입력 */}
         <div
           className="flex items-center px-4 py-3 rounded-xl transition-shadow duration-200 focus-within:ring-2 focus-within:ring-blue-500/30"
@@ -113,47 +127,81 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
               style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-accent)" }}
             />
           )}
-        </div>
 
-        {/* 하단 컨트롤 */}
-        <div className="flex items-center justify-between mt-3 px-1">
-          {/* 검색 모드 */}
-          <div
-            className="flex gap-1 p-1 rounded-lg"
-            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
-          >
-            {SEARCH_MODES.map((mode) => {
-              const needsSemantic = mode.value === "semantic" || mode.value === "hybrid";
-              const disabled = needsSemantic && !status?.semantic_available;
-              const isActive = searchMode === mode.value;
+          {/* 검색 모드 배지 + 드롭다운 */}
+          <div ref={dropdownRef} className="relative ml-2 flex-shrink-0">
+            <button
+              onClick={() => setShowModeDropdown(!showModeDropdown)}
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors"
+              style={{
+                backgroundColor: "var(--color-bg-tertiary)",
+                color: "var(--color-text-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+              title={currentMode?.desc}
+            >
+              {currentMode?.label}
+              <svg
+                className={`w-3 h-3 transition-transform ${showModeDropdown ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
 
-              return (
-                <button
-                  key={mode.value}
-                  onClick={() => !disabled && onSearchModeChange(mode.value)}
-                  disabled={disabled}
-                  className={`
-                    px-3 py-1.5 text-sm rounded-md transition-colors
-                    ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer hover:opacity-80"}
-                  `}
-                  style={{
-                    backgroundColor: isActive ? "var(--color-bg-secondary)" : "transparent",
-                    color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
-                  }}
-                  title={disabled ? "모델 파일 필요" : mode.desc}
-                >
-                  {mode.label}
-                </button>
-              );
-            })}
+            {showModeDropdown && (
+              <div
+                className="absolute top-full right-0 mt-1 py-1 rounded-lg shadow-lg z-50 min-w-[140px]"
+                style={{
+                  backgroundColor: "var(--color-bg-secondary)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {SEARCH_MODES.map((mode) => {
+                  const needsSemantic = mode.value === "semantic" || mode.value === "hybrid";
+                  const disabled = needsSemantic && !status?.semantic_available;
+                  const isActive = searchMode === mode.value;
+
+                  return (
+                    <button
+                      key={mode.value}
+                      onClick={() => {
+                        if (!disabled) {
+                          onSearchModeChange(mode.value);
+                          setShowModeDropdown(false);
+                        }
+                      }}
+                      disabled={disabled}
+                      className={`
+                        w-full px-3 py-1.5 text-xs text-left transition-colors
+                        ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
+                      `}
+                      style={{
+                        backgroundColor: isActive ? "var(--color-accent-light)" : "transparent",
+                        color: isActive ? "var(--color-accent)" : "var(--color-text-secondary)",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!disabled && !isActive) {
+                          e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isActive) {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        }
+                      }}
+                      title={disabled ? "모델 파일 필요" : mode.desc}
+                    >
+                      <div className="font-medium">{mode.label}</div>
+                      <div className="text-[10px] opacity-70">{mode.desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-
-          {/* 검색 결과 */}
-          {searchTime !== null && resultCount !== undefined && resultCount > 0 && (
-            <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {resultCount}건 · {searchTime}ms
-            </span>
-          )}
         </div>
       </div>
     );

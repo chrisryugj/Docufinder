@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   SearchResult,
@@ -59,12 +59,33 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
-  const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
+  const [filters, setFiltersInternal] = useState<SearchFilters>(() => {
+    // localStorage에서 excludeFilename 복원
+    try {
+      const saved = localStorage.getItem("docufinder_exclude_filename");
+      if (saved !== null) {
+        return { ...DEFAULT_FILTERS, excludeFilename: JSON.parse(saved) };
+      }
+    } catch {}
+    return DEFAULT_FILTERS;
+  });
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
   const [refineQuery, setRefineQuery] = useState("");
 
   const clearError = useCallback(() => setError(null), []);
   const clearRefine = useCallback(() => setRefineQuery(""), []);
+
+  // excludeFilename 변경 시 localStorage 저장
+  const prevExcludeFilename = useRef(filters.excludeFilename);
+  const setFilters = useCallback((newFilters: SearchFilters) => {
+    setFiltersInternal(newFilters);
+    if (newFilters.excludeFilename !== prevExcludeFilename.current) {
+      prevExcludeFilename.current = newFilters.excludeFilename;
+      try {
+        localStorage.setItem("docufinder_exclude_filename", JSON.stringify(newFilters.excludeFilename));
+      } catch {}
+    }
+  }, []);
 
   // 검색 실행 함수
   const executeSearch = useCallback(

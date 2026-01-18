@@ -14,4 +14,8 @@ export interface Settings {
   include_subfolders: boolean;
   auto_start: boolean;
   start_minimized: boolean;
+  /** 파일명 하이라이트 색상 (hex) */
+  highlight_filename_color?: string;
+  /** 문서 내용 하이라이트 색상 (hex) */
+  highlight_content_color?: string;
 }

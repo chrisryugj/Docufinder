@@ -986,6 +986,7 @@ version = "0.1.0"
 dependencies = [
  "calamine",
  "chrono",
+ "crossbeam-channel",
  "ndarray 0.16.1",
  "notify",
  "once_cell",

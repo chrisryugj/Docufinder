@@ -1,3 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "Skill(memory-end)",
+      "Skill(memory-end:*)"
+    ]
+  },
   "outputStyle": "chris-v3"
 }
