@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useRef } from "react";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -32,6 +32,22 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
     // 실제로는 forwardedRef가 함수일 수도 있어 복잡하지만, 이 컴포넌트는 App에서 객체 ref를 넘김을 가정
     // 안전을 위해 innerRef 도입
     const innerRef = useRef<HTMLInputElement>(null);
+    const hasInitializedIME = useRef(false);
+
+    // 첫 포커스 시 IME 초기화 (Windows 한영전환 문제 해결)
+    const handleFocus = useCallback(() => {
+      if (hasInitializedIME.current) return;
+      hasInitializedIME.current = true;
+
+      const input = innerRef.current;
+      if (!input) return;
+
+      // blur 후 충분한 딜레이를 주고 다시 focus (Windows IME 리셋)
+      input.blur();
+      setTimeout(() => {
+        input.focus();
+      }, 100);
+    }, []);
 
     useEffect(() => {
       // 외부에서 query prop이 바뀌면 (예: 최근검색 클릭, 클리어 등) input 값 동기화
@@ -81,6 +97,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             type="text"
             defaultValue={query}
             onChange={(e) => onQueryChange(e.target.value)}
+            onFocus={handleFocus}
             placeholder="검색어 입력..."
             className="flex-1 bg-transparent border-none text-base focus:outline-none ml-3"
             style={{ color: "var(--color-text-primary)" }}

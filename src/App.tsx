@@ -99,22 +99,8 @@ function App() {
     loadSettings();
   }, [setSearchMode]);
 
-  // 앱 최초 마운트 시 IME 초기화 (blur-focus 사이클)
-  useEffect(() => {
-    const input = searchInputRef.current;
-    if (!input) return;
-
-    // 딜레이 후 blur-focus로 IME 상태 초기화 (Windows IME 안정화)
-    // 앱 완전히 로드된 후 실행해야 IME가 정상 작동
-    const timer = setTimeout(() => {
-      input.blur();
-      setTimeout(() => {
-        input.focus();
-      }, 100);
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, []);
+  // 초기 자동 포커스 제거 - 사용자가 클릭할 때만 포커스
+  // (자동 포커스 시 Windows IME 팝업 문제 발생)
 
   // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
   useEffect(() => {

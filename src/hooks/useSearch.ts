@@ -175,9 +175,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         break;
     }
 
-    // 결과 내 검색 필터링 (2글자 이상 키워드만 적용)
-    const refineKeywords = refineQuery.trim().toLowerCase().split(/\s+/).filter((kw) => kw.length >= 2);
-    if (refineKeywords.length > 0) {
+    // 결과 내 검색 필터링
+    if (refineQuery.trim()) {
+      const refineKeywords = refineQuery.trim().toLowerCase().split(/\s+/);
       filtered = filtered.filter((r) => {
         const content = r.full_content.toLowerCase();
         // 모든 키워드가 포함되어야 함 (AND 조건)
@@ -188,12 +188,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     return filtered;
   }, [results, filters, minConfidence, refineQuery]);
 
-  // 파일명 검색 결과도 결과 내 검색 필터링 (2글자 이상)
+  // 파일명 검색 결과도 결과 내 검색 필터링
   const filteredFilenameResults = useMemo(() => {
-    const keywords = refineQuery.trim().toLowerCase().split(/\s+/).filter((kw) => kw.length >= 2);
-    if (keywords.length === 0) {
+    if (!refineQuery.trim()) {
       return filenameResults;
     }
+    const keywords = refineQuery.trim().toLowerCase().split(/\s+/);
     return filenameResults.filter((r) => {
       const fileName = r.file_name.toLowerCase();
       // 파일명에서 키워드 검색
