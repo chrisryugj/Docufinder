@@ -15,6 +15,10 @@ interface GroupedSearchResultItemProps {
   isCompact?: boolean;
   /** 검색어 - snippet 없을 때 클라이언트 하이라이트용 */
   searchQuery?: string;
+  /** 펼침 상태 (부모에서 관리) */
+  isExpanded?: boolean;
+  /** 펼침 토글 콜백 */
+  onToggleExpand?: () => void;
 }
 
 interface ContextMenuState {
@@ -37,8 +41,9 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   onOpenFolder,
   isCompact = false,
   searchQuery,
+  isExpanded = false,
+  onToggleExpand,
 }: GroupedSearchResultItemProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
 
@@ -107,10 +112,6 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     onOpenFolder?.(folderPath);
   };
 
-  // 펼치기/접기 핸들러 (스크롤 위치 유지)
-  const handleToggleExpand = useCallback(() => {
-    setIsExpanded(prev => !prev);
-  }, []);
 
   return (
     <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }}>
@@ -233,9 +234,9 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         })}
 
         {/* 더보기/접기 */}
-        {hasMore && (
+        {hasMore && onToggleExpand && (
           <button
-            onClick={handleToggleExpand}
+            onClick={onToggleExpand}
             className={`w-full text-xs rounded-md transition-colors ${isCompact ? "py-1" : "py-1.5"}`}
             style={{
               color: "var(--color-accent)",

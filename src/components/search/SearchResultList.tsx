@@ -67,7 +67,22 @@ export function SearchResultList({
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [isFilenameCollapsed, setIsFilenameCollapsed] = useState(false);
+  // 그룹 뷰 펼침 상태 (file_path로 관리)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const isCompact = viewDensity === "compact";
+
+  // 그룹 펼침 토글
+  const handleToggleGroupExpand = useCallback((filePath: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  }, []);
 
   // 아이템 높이 추정 (컴팩트 vs 기본)
   const estimatedItemHeight = isCompact ? 80 : 120;
@@ -330,6 +345,8 @@ export function SearchResultList({
                   onOpenFolder={onOpenFolder}
                   isCompact={isCompact}
                   searchQuery={query}
+                  isExpanded={expandedGroups.has(group.file_path)}
+                  onToggleExpand={() => handleToggleGroupExpand(group.file_path)}
                 />
               ))}
             </div>
