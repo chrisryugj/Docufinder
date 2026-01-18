@@ -38,30 +38,12 @@ const getVariantStyles = (variant: ButtonVariant): CSSProperties => {
   }
 };
 
-const getHoverStyles = (variant: ButtonVariant): CSSProperties => {
-  switch (variant) {
-    case "primary":
-      return {
-        backgroundColor: "var(--color-accent-hover)",
-        borderColor: "var(--color-accent-hover)",
-      };
-    case "secondary":
-      return {
-        backgroundColor: "var(--color-bg-tertiary)",
-        borderColor: "var(--color-border-hover)",
-        color: "var(--color-text-primary)",
-      };
-    case "ghost":
-      return {
-        backgroundColor: "var(--color-bg-tertiary)",
-        color: "var(--color-text-primary)",
-      };
-    case "danger":
-      return {
-        backgroundColor: "#991B1B",
-        borderColor: "#991B1B",
-      };
-  }
+/** variant별 hover CSS 클래스 */
+const variantHoverClasses: Record<ButtonVariant, string> = {
+  primary: "hover-btn-primary",
+  secondary: "hover-btn-secondary",
+  ghost: "hover-btn-ghost",
+  danger: "hover-btn-danger",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -80,38 +62,26 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className = "",
       children,
       style,
-      onMouseEnter,
-      onMouseLeave,
       ...props
     },
     ref
   ) => {
     const baseStyles = getVariantStyles(variant);
-    const hoverStyles = getHoverStyles(variant);
 
     return (
       <button
         ref={ref}
         disabled={disabled || isLoading}
         className={`
-          rounded-md font-medium transition-colors duration-100
+          rounded-md font-medium
           disabled:cursor-not-allowed disabled:opacity-50
           ${sizeStyles[size]}
+          ${variantHoverClasses[variant]}
           ${className}
         `}
         style={{
           ...baseStyles,
           ...style,
-        }}
-        onMouseEnter={(e) => {
-          if (!disabled && !isLoading) {
-            Object.assign(e.currentTarget.style, hoverStyles);
-          }
-          onMouseEnter?.(e);
-        }}
-        onMouseLeave={(e) => {
-          Object.assign(e.currentTarget.style, baseStyles);
-          onMouseLeave?.(e);
         }}
         {...props}
       >

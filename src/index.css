@@ -427,3 +427,225 @@ body,
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   background: var(--color-bg-secondary);
 }
+
+/* ============================================
+   Hover Utility Classes (DOM 조작 대체용)
+   ============================================ */
+
+/* Primary Button Hover */
+.hover-btn-primary {
+  transition: all var(--transition-fast);
+}
+.hover-btn-primary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+.hover-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Secondary Button Hover */
+.hover-btn-secondary {
+  transition: all var(--transition-fast);
+}
+.hover-btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
+  color: var(--color-text-primary);
+}
+.hover-btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Ghost Button Hover */
+.hover-btn-ghost {
+  transition: all var(--transition-fast);
+}
+.hover-btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+.hover-btn-ghost:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Danger Button Hover */
+.hover-btn-danger {
+  transition: all var(--transition-fast);
+}
+.hover-btn-danger:hover:not(:disabled) {
+  background-color: #991B1B;
+  border-color: #991B1B;
+}
+.hover-btn-danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Icon Button Hover */
+.hover-icon-btn {
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+.hover-icon-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Icon Button Accent Hover */
+.hover-icon-accent {
+  transition: color var(--transition-fast);
+}
+.hover-icon-accent:hover {
+  color: var(--color-accent);
+}
+
+/* Danger Action Hover (삭제 버튼 등) */
+.hover-action-danger {
+  transition: all var(--transition-fast);
+}
+.hover-action-danger:hover {
+  color: var(--color-error);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Dropdown Option Hover */
+.hover-dropdown-option {
+  transition: background-color var(--transition-fast);
+}
+.hover-dropdown-option:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Content Area Hover (확장 영역 등) */
+.hover-content-area {
+  transition: background-color var(--transition-fast);
+}
+.hover-content-area:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* ============================================
+   Micro Interactions (마이크로 인터랙션)
+   ============================================ */
+
+/* Button Press Effect */
+@keyframes btn-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.micro-press:active {
+  animation: btn-press 0.15s ease-out;
+}
+
+/* Card Hover Lift Effect */
+.micro-lift {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.micro-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Subtle Scale on Hover */
+.micro-scale {
+  transition: transform var(--transition-fast);
+}
+.micro-scale:hover {
+  transform: scale(1.02);
+}
+.micro-scale:active {
+  transform: scale(0.98);
+}
+
+/* Checkbox/Toggle Bounce */
+@keyframes bounce-check {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.15); }
+  50% { transform: scale(0.95); }
+  70% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.micro-bounce {
+  animation: bounce-check 0.3s ease-out;
+}
+
+/* Focus Glow Effect */
+.micro-focus-glow:focus {
+  box-shadow: 0 0 0 3px var(--color-accent-subtle), 0 0 15px -3px var(--color-accent-glow);
+  outline: none;
+}
+
+/* Subtle Pulse on Focus */
+@keyframes subtle-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+}
+
+.micro-pulse-focus:focus {
+  animation: subtle-pulse 1.5s ease-in-out infinite;
+}
+
+/* Ripple Effect (click) */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.micro-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.micro-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--color-accent-glow) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.micro-ripple:active::after {
+  animation: ripple 0.4s ease-out;
+}
+
+/* Smooth Entry Animation for Lists */
+@keyframes list-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.micro-list-enter {
+  animation: list-item-enter 0.2s ease-out forwards;
+}
+
+/* Icon Rotate on Hover */
+.micro-rotate-hover {
+  transition: transform var(--transition-fast);
+}
+.micro-rotate-hover:hover {
+  transform: rotate(15deg);
+}
+
+/* Color Shift on Hover */
+.micro-color-shift {
+  transition: color var(--transition-fast);
+}
+.micro-color-shift:hover {
+  color: var(--color-accent);
+}

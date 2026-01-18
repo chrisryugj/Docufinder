@@ -2,9 +2,12 @@ mod commands;
 mod constants;
 mod db;
 mod embedder;
+mod error;
 mod indexer;
 mod parsers;
 mod search;
+
+pub use error::{ApiError, ApiResult};
 
 use embedder::Embedder;
 use indexer::manager::{IndexContext, WatchManager};
@@ -71,7 +74,7 @@ impl AppState {
     }
 
     /// 임베더 가져오기 (필요시 로드)
-    pub fn get_embedder(&self) -> Result<SharedEmbedder, String> {
+    pub fn get_embedder(&self) -> ApiResult<SharedEmbedder> {
         self.embedder
             .get_or_try_init(|| {
                 let model_dir = self.models_dir.join("multilingual-e5-small");
@@ -80,10 +83,7 @@ impl AppState {
                 let dll_path = model_dir.join("onnxruntime.dll");
 
                 if !model_path.exists() {
-                    return Err(format!(
-                        "Model not found at {:?}. Please download the model first.",
-                        model_path
-                    ));
+                    return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
                 }
 
                 // ONNX Runtime DLL 경로 설정 (load-dynamic 모드)
@@ -96,7 +96,7 @@ impl AppState {
 
                 Embedder::new(&model_path, &tokenizer_path)
                     .map(|e| Arc::new(Mutex::new(e)))
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))
             })
             .cloned()
     }
@@ -104,21 +104,17 @@ impl AppState {
     /// 벡터 인덱스 가져오기 (필요시 생성/로드)
     ///
     /// 모델이 없으면 벡터 인덱스를 생성하지 않고 에러 반환
-    pub fn get_vector_index(&self) -> Result<Arc<VectorIndex>, String> {
-        // 모델 없으면 벡터 인덱스 비활성화 (명확한 에러 메시지)
+    pub fn get_vector_index(&self) -> ApiResult<Arc<VectorIndex>> {
+        // 모델 없으면 벡터 인덱스 비활성화
         if !self.is_semantic_available() {
-            return Err(
-                "시맨틱 검색 모델이 설치되지 않았습니다. \
-                 models/multilingual-e5-small 폴더에 모델을 다운로드해주세요."
-                    .to_string(),
-            );
+            return Err(ApiError::SemanticSearchDisabled);
         }
 
         self.vector_index
             .get_or_try_init(|| {
                 VectorIndex::new(&self.vector_index_path)
                     .map(Arc::new)
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| ApiError::SearchFailed(e.to_string()))
             })
             .cloned()
     }
@@ -130,7 +126,7 @@ impl AppState {
     }
 
     /// 파일 감시 매니저 가져오기 (필요시 생성)
-    pub fn get_watch_manager(&self) -> Result<&RwLock<WatchManager>, String> {
+    pub fn get_watch_manager(&self) -> ApiResult<&RwLock<WatchManager>> {
         self.watch_manager
             .get_or_try_init(|| {
                 // 시맨틱 검색 활성화 (ONNX Runtime 1.20.1)
@@ -142,7 +138,7 @@ impl AppState {
 
                 WatchManager::new(ctx)
                     .map(RwLock::new)
-                    .map_err(|e| format!("Failed to create WatchManager: {}", e))
+                    .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
             })
     }
 }

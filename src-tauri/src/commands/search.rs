@@ -1,5 +1,6 @@
 use crate::commands::settings::get_settings_sync;
 use crate::db;
+use crate::error::{ApiError, ApiResult};
 use crate::search::{filename, fts, hybrid};
 use crate::AppState;
 use serde::{Deserialize, Serialize};
@@ -52,7 +53,7 @@ pub struct SearchResponse {
 pub async fn search_keyword(
     query: String,
     state: State<'_, Mutex<AppState>>,
-) -> Result<SearchResponse, String> {
+) -> ApiResult<SearchResponse> {
     let start = Instant::now();
 
     if query.trim().is_empty() {
@@ -65,7 +66,7 @@ pub async fn search_keyword(
     }
 
     let (db_path, max_results) = {
-        let state = state.lock().map_err(|e| e.to_string())?;
+        let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
             .as_ref()
@@ -74,10 +75,12 @@ pub async fn search_keyword(
         (state.db_path.clone(), max_results)
     };
 
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
     // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
-    let fts_results = fts::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
+    let fts_results = fts::search(&conn, &query, max_results)
+        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
 
     // 스코어 정규화 (BM25 → 0-100 confidence)
     let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
@@ -130,7 +133,7 @@ pub async fn search_keyword(
 pub async fn search_filename(
     query: String,
     state: State<'_, Mutex<AppState>>,
-) -> Result<SearchResponse, String> {
+) -> ApiResult<SearchResponse> {
     let start = Instant::now();
 
     if query.trim().is_empty() {
@@ -143,7 +146,7 @@ pub async fn search_filename(
     }
 
     let (db_path, max_results) = {
-        let state = state.lock().map_err(|e| e.to_string())?;
+        let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
             .as_ref()
@@ -152,10 +155,12 @@ pub async fn search_filename(
         (state.db_path.clone(), max_results)
     };
 
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
     // 파일명 FTS5 검색 실행
-    let filename_results = filename::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
+    let filename_results = filename::search(&conn, &query, max_results)
+        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
 
     // 스코어 정규화 (BM25 → 0-100 confidence)
     let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
@@ -208,7 +213,7 @@ pub async fn search_filename(
 pub async fn search_semantic(
     query: String,
     state: State<'_, Mutex<AppState>>,
-) -> Result<SearchResponse, String> {
+) -> ApiResult<SearchResponse> {
     let start = Instant::now();
 
     if query.trim().is_empty() {
@@ -221,7 +226,7 @@ pub async fn search_semantic(
     }
 
     let (db_path, embedder, vector_index, max_results) = {
-        let state = state.lock().map_err(|e| e.to_string())?;
+        let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
             .as_ref()
@@ -246,32 +251,30 @@ pub async fn search_semantic(
     );
 
     if index_size == 0 {
-        return Err("시맨틱 검색 인덱스가 비어 있습니다. 폴더를 인덱싱해주세요.".to_string());
+        return Err(ApiError::VectorIndexEmpty);
     }
 
     if map_size == 0 {
-        return Err(
-            "시맨틱 검색 매핑이 손상되었습니다. 인덱스를 삭제하고 다시 인덱싱해주세요."
-                .to_string(),
-        );
+        return Err(ApiError::VectorIndexCorrupted);
     }
 
     // 1. 쿼리 임베딩
     let query_embedding = embedder
         .lock()
-        .map_err(|e| format!("Embedder lock error: {}", e))?
+        .map_err(|e| ApiError::LockFailed(format!("Embedder: {}", e)))?
         .embed(&query, true)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))?;
 
     // 2. 벡터 검색
     let vector_results = vector_index
         .search(&query_embedding, max_results)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
 
     // 3. chunk_id로 파일 정보 조회
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
     let chunk_ids: Vec<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
-    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids).map_err(|e| e.to_string())?;
+    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)?;
 
     // chunk_id를 키로 하는 맵 생성
     let chunk_map: HashMap<i64, db::ChunkInfo> = chunks
@@ -324,7 +327,7 @@ pub async fn search_semantic(
 pub async fn search_hybrid(
     query: String,
     state: State<'_, Mutex<AppState>>,
-) -> Result<SearchResponse, String> {
+) -> ApiResult<SearchResponse> {
     let start = Instant::now();
 
     if query.trim().is_empty() {
@@ -337,7 +340,7 @@ pub async fn search_hybrid(
     }
 
     let (db_path, embedder, vector_index, max_results) = {
-        let state = state.lock().map_err(|e| e.to_string())?;
+        let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
             .as_ref()
@@ -351,10 +354,12 @@ pub async fn search_hybrid(
         )
     };
 
-    let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
     // 1. FTS5 검색
-    let fts_results = fts::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
+    let fts_results = fts::search(&conn, &query, max_results)
+        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
 
     // 2. 벡터 검색 (가능한 경우)
     let vector_results = match (embedder.as_ref(), vector_index.as_ref()) {
@@ -381,7 +386,7 @@ pub async fn search_hybrid(
 
     // 4. chunk_id로 파일 정보 조회
     let chunk_ids: Vec<i64> = hybrid_results.iter().map(|r| r.chunk_id).collect();
-    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids).map_err(|e| e.to_string())?;
+    let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)?;
 
     // chunk_id를 키로 하는 맵 생성
     let chunk_map: HashMap<i64, db::ChunkInfo> = chunks
