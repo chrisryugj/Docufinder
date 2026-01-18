@@ -275,6 +275,7 @@ function App() {
     try {
       const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
       await invoke("open_folder", { path: cleanPath });
+      showToast("폴더를 열었습니다", "success");
     } catch (err) {
       console.error("Failed to open folder:", err);
       showToast("폴더 열기 실패", "error");

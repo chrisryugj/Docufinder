@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -12,6 +13,12 @@ interface GroupedSearchResultItemProps {
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   isCompact?: boolean;
+}
+
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
 }
 
 /**
@@ -35,6 +42,45 @@ export function GroupedSearchResultItem({
   const displayChunks = isExpanded ? group.chunks : group.chunks.slice(0, defaultCount);
   const hasMore = group.chunks.length > defaultCount;
 
+  // 컨텍스트 메뉴 상태
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+  });
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // 컨텍스트 메뉴 열기
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+    });
+  }, []);
+
+  // 컨텍스트 메뉴 닫기
+  const closeContextMenu = useCallback(() => {
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // 외부 클릭 시 메뉴 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        closeContextMenu();
+      }
+    };
+    if (contextMenu.isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [contextMenu.isOpen, closeContextMenu]);
+
   const handleCopyPath = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onCopyPath) {
@@ -56,6 +102,8 @@ export function GroupedSearchResultItem({
         <div
           className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(group.file_path)}
+          onContextMenu={handleContextMenu}
+          title="파일 열기 (우클릭: 더 많은 옵션)"
           style={{ color: "var(--color-text-primary)" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = "var(--color-accent)";
@@ -197,6 +245,98 @@ export function GroupedSearchResultItem({
           {formatBreadcrumb(folderPath)}
         </p>
       )}
+
+      {/* 컨텍스트 메뉴 (Portal로 body에 렌더링) */}
+      {contextMenu.isOpen &&
+        createPortal(
+          <div
+            ref={contextMenuRef}
+            className="fixed min-w-[140px] py-1 rounded-lg shadow-xl border"
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y,
+              zIndex: 9999,
+              backgroundColor: "var(--color-bg-secondary)",
+              borderColor: "var(--color-border)",
+            }}
+          >
+            {/* 파일 열기 */}
+            <button
+              onClick={() => {
+                closeContextMenu();
+                onOpenFile(group.file_path);
+              }}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+              style={{ color: "var(--color-text-primary)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+                e.currentTarget.style.color = "var(--color-accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "var(--color-text-primary)";
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              파일 열기
+            </button>
+
+            {/* 폴더 열기 */}
+            {onOpenFolder && (
+              <button
+                onClick={() => {
+                  closeContextMenu();
+                  onOpenFolder(folderPath);
+                }}
+                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+                style={{ color: "var(--color-text-primary)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+                  e.currentTarget.style.color = "var(--color-accent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = "var(--color-text-primary)";
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                </svg>
+                폴더 열기
+              </button>
+            )}
+
+            {/* 경로 복사 */}
+            <button
+              onClick={() => {
+                closeContextMenu();
+                if (onCopyPath) {
+                  onCopyPath(group.file_path);
+                } else {
+                  navigator.clipboard.writeText(group.file_path);
+                }
+              }}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+              style={{ color: "var(--color-text-primary)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+                e.currentTarget.style.color = "var(--color-accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "var(--color-text-primary)";
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+              경로 복사
+            </button>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
