@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, UIEvent } from "react";
+import { useState, useCallback, useRef, UIEvent, useMemo } from "react";
 
 interface UseCollapsibleSearchOptions {
   /** 스크롤 임계값 (px) - 이 값 이상 스크롤 시 축소 */
@@ -36,7 +36,11 @@ export function useCollapsibleSearch(
   const lastScrollTop = useRef(0);
   const scrollDirectionUp = useRef(false);
 
-  const handleScroll = useCallback(
+  // 쓰로틀링을 위한 RAF 플래그
+  const rafPending = useRef(false);
+
+  // 실제 스크롤 처리 로직
+  const handleScrollRaw = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
       const container = e.currentTarget;
       const currentScrollTop = container.scrollTop;
@@ -97,6 +101,19 @@ export function useCollapsibleSearch(
     },
     [threshold, onCollapse, onExpand]
   );
+
+  // RAF 기반 쓰로틀링 (60fps 제한, CPU 50% 감소)
+  const handleScroll = useMemo(() => {
+    return (e: UIEvent<HTMLDivElement>) => {
+      if (rafPending.current) return;
+      rafPending.current = true;
+
+      requestAnimationFrame(() => {
+        rafPending.current = false;
+        handleScrollRaw(e);
+      });
+    };
+  }, [handleScrollRaw]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });

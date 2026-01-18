@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
+import { InfoTooltip } from "../ui/Tooltip";
 import type { Settings } from "../../types/settings";
 
 interface SettingsModalProps {
@@ -108,7 +109,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
 
   if (isLoading) {
     return (
-      <Modal isOpen={isOpen} onClose={onClose} title="설정">
+      <Modal isOpen={isOpen} onClose={onClose} title="설정" size="lg">
         <div className="flex justify-center py-8">
           <div
             className="animate-spin rounded-full h-8 w-8 border-2"
@@ -123,7 +124,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="설정">
+    <Modal isOpen={isOpen} onClose={onClose} title="설정" size="lg">
       {error && (
         <div
           className="mb-4 p-3 rounded-lg text-sm"
@@ -177,10 +178,30 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
           {/* 최소 신뢰도 */}
           <div>
             <label
-              className="block text-sm font-medium mb-2"
+              className="flex items-center text-sm font-medium mb-2"
               style={{ color: "var(--color-text-secondary)" }}
             >
               최소 신뢰도
+              <InfoTooltip
+                content={
+                  <div className="space-y-2 py-1">
+                    <div>
+                      <strong className="text-gray-100">📊 점수 산정</strong>
+                      <p className="mt-0.5">RRF(Reciprocal Rank Fusion) 방식으로 키워드 검색과 의미 검색 순위를 병합해 계산합니다.</p>
+                    </div>
+                    <div>
+                      <strong className="text-gray-100">💡 추천 설정</strong>
+                      <ul className="mt-0.5 space-y-0.5">
+                        <li>• <strong>0%</strong>: 모든 결과 표시</li>
+                        <li>• <strong>20-30%</strong>: 관련성 높은 결과 (권장)</li>
+                        <li>• <strong>50%+</strong>: 매우 정확한 결과만</li>
+                      </ul>
+                    </div>
+                    <p className="text-gray-400 text-[10px]">같은 문서도 페이지별로 점수가 다를 수 있습니다</p>
+                  </div>
+                }
+                maxWidth={320}
+              />
             </label>
             <div className="flex items-center gap-4">
               <input

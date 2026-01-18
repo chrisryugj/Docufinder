@@ -5,6 +5,7 @@ interface TooltipProps {
   children: ReactNode;
   position?: "top" | "bottom" | "left" | "right";
   delay?: number;
+  maxWidth?: number;
 }
 
 const positionStyles = {
@@ -28,6 +29,7 @@ export function Tooltip({
   children,
   position = "top",
   delay = 300,
+  maxWidth,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,7 +47,7 @@ export function Tooltip({
 
   return (
     <div
-      className="relative inline-block"
+      className="relative inline-block overflow-visible"
       onMouseEnter={showTooltip}
       onMouseLeave={hideTooltip}
       onFocus={showTooltip}
@@ -58,9 +60,11 @@ export function Tooltip({
           className={`
             absolute z-50 px-2 py-1
             bg-gray-700 text-gray-200 text-xs rounded shadow-lg
-            whitespace-nowrap pointer-events-none
+            pointer-events-none
+            ${maxWidth ? "" : "whitespace-nowrap"}
             ${positionStyles[position]}
           `}
+          style={maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" } : undefined}
           role="tooltip"
         >
           {content}
@@ -72,6 +76,33 @@ export function Tooltip({
         </div>
       )}
     </div>
+  );
+}
+
+// 정보 아이콘 + 툴팁 조합
+export function InfoTooltip({
+  content,
+  position = "right",
+  maxWidth = 280,
+}: {
+  content: ReactNode;
+  position?: "top" | "bottom" | "left" | "right";
+  maxWidth?: number;
+}) {
+  return (
+    <Tooltip content={content} position={position} maxWidth={maxWidth} delay={200}>
+      <button
+        type="button"
+        className="inline-flex items-center justify-center w-4 h-4 ml-1.5 rounded-full text-[10px] font-medium transition-colors"
+        style={{
+          backgroundColor: "var(--color-bg-tertiary)",
+          color: "var(--color-text-muted)",
+        }}
+        aria-label="도움말"
+      >
+        ?
+      </button>
+    </Tooltip>
   );
 }
 

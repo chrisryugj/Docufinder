@@ -17,8 +17,8 @@ use std::thread::JoinHandle;
 /// 벡터 인덱싱 배치 크기
 const EMBEDDING_BATCH_SIZE: usize = 32;
 
-/// 벡터 인덱스 저장 주기 (청크 수)
-const SAVE_INTERVAL: usize = 100;
+/// 벡터 인덱스 저장 주기 (청크 수) - I/O 최적화를 위해 500으로 증가
+const SAVE_INTERVAL: usize = 500;
 
 /// 벡터 인덱싱 상태
 #[derive(Debug, Clone, serde::Serialize)]

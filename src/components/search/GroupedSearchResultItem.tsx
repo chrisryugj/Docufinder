@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
 import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
@@ -25,8 +25,10 @@ interface ContextMenuState {
  * 파일별로 그룹핑된 검색 결과 아이템
  * - 접혀있을 때: 파일명 + 매칭 수 + 최고 신뢰도
  * - 펼쳐졌을 때: 각 청크 미리보기
+ *
+ * memo() 적용: 불필요한 리렌더링 방지
  */
-export function GroupedSearchResultItem({
+export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   group,
   onOpenFile,
   onCopyPath,
@@ -339,7 +341,7 @@ export function GroupedSearchResultItem({
         )}
     </div>
   );
-}
+});
 
 function formatBreadcrumb(path: string): string {
   let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");

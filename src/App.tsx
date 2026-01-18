@@ -517,6 +517,7 @@ function App() {
                 totalResultCount={results.length}
                 minConfidence={minConfidence}
                 searchTime={searchTime}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
           </main>

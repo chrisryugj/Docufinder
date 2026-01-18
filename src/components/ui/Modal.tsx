@@ -5,9 +5,16 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  size?: "sm" | "md" | "lg";
 }
 
-export function Modal({ isOpen, onClose, title, children }: ModalProps) {
+const sizeClasses = {
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-xl",
+};
+
+export function Modal({ isOpen, onClose, title, children, size = "md" }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   // ESC 키로 닫기
@@ -50,7 +57,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     >
       <div
         ref={modalRef}
-        className="w-full max-w-lg mx-4 animate-modal-enter rounded-lg max-h-[85vh] flex flex-col"
+        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-lg max-h-[85vh] flex flex-col`}
         style={{
           backgroundColor: "var(--color-bg-secondary)",
           boxShadow: "var(--shadow-lg)",

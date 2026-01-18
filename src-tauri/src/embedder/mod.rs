@@ -47,10 +47,17 @@ impl Embedder {
             ));
         }
 
+        // 동적 스레드 수 감지 (최대 8개, 최소 4개)
+        let num_threads = std::thread::available_parallelism()
+            .map(|p| p.get().clamp(4, 8))
+            .unwrap_or(4);
+
+        tracing::debug!("Embedder using {} intra-op threads", num_threads);
+
         // ONNX 세션 생성
         let session = Session::builder()
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .with_intra_threads(4)
+            .with_intra_threads(num_threads)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .commit_from_file(model_path)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;

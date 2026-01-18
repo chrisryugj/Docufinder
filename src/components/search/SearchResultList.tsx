@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -34,6 +35,8 @@ interface SearchResultListProps {
   minConfidence?: number;
   /** 검색 소요 시간 (ms) */
   searchTime?: number | null;
+  /** 외부 스크롤 컨테이너 ref (가상화용) */
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // 점진적 로딩: 한 번에 표시할 결과 수
@@ -60,26 +63,34 @@ export function SearchResultList({
   totalResultCount,
   minConfidence = 0,
   searchTime,
+  scrollContainerRef,
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [isFilenameCollapsed, setIsFilenameCollapsed] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const isCompact = viewDensity === "compact";
 
-  // 표시할 결과 (점진적 로딩)
-  const visibleResults = results.slice(0, visibleCount);
-  const hasMore = visibleCount < results.length;
+  // 아이템 높이 추정 (컴팩트 vs 기본)
+  const estimatedItemHeight = isCompact ? 80 : 120;
 
-  // 검색 결과 변경 시 visibleCount 초기화
+  // 가상화 설정 (100개 이상 + 외부 스크롤 컨테이너 있을 때만 적용)
+  const shouldVirtualize = results.length > 100 && scrollContainerRef?.current != null;
+
+  const virtualizer = useVirtualizer({
+    count: results.length,
+    getScrollElement: () => scrollContainerRef?.current ?? null,
+    estimateSize: () => estimatedItemHeight,
+    overscan: 10, // 버퍼 아이템 수 증가
+    enabled: shouldVirtualize,
+  });
+
+  // 검색 결과 변경 시 상태 초기화
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
     setExpandedIndex(null);
-  }, [results]);
-
-  // 더 보기 핸들러
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, results.length));
-  }, [results.length]);
+    // 스크롤 위치 리셋 (외부 컨테이너 사용)
+    if (scrollContainerRef?.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [results, scrollContainerRef]);
 
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
@@ -321,15 +332,34 @@ export function SearchResultList({
                 />
               ))}
             </div>
-          ) : (
-            // 플랫 뷰 (점진적 로딩)
-            <>
-              <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
-                {visibleResults.map((result, index) => (
+          ) : shouldVirtualize ? (
+            // 플랫 뷰 + 가상화 (100개 이상: 외부 스크롤 컨테이너 사용)
+            <div
+              role="listbox"
+              aria-label="검색 결과"
+              style={{
+                height: `${virtualizer.getTotalSize()}px`,
+                width: "100%",
+                position: "relative",
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualItem) => {
+                const result = results[virtualItem.index];
+                const index = virtualItem.index;
+                return (
                   <div
                     key={`${result.file_path}-${result.chunk_index}-${index}`}
+                    data-index={index}
+                    ref={virtualizer.measureElement}
                     className="group"
-                    style={{ contain: "layout style" }}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.start}px)`,
+                      paddingBottom: isCompact ? "4px" : "12px",
+                    }}
                   >
                     <SearchResultItem
                       result={result}
@@ -345,35 +375,34 @@ export function SearchResultList({
                       query={query}
                     />
                   </div>
-                ))}
-              </div>
-              {/* 더 보기 버튼 */}
-              {hasMore && (
-                <div className="flex justify-center mt-4">
-                  <button
-                    onClick={handleLoadMore}
-                    className="px-6 py-2 text-sm font-medium rounded-lg transition-colors"
-                    style={{
-                      backgroundColor: "var(--color-bg-tertiary)",
-                      color: "var(--color-text-secondary)",
-                      border: "1px solid var(--color-border)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-                      e.currentTarget.style.color = "var(--color-accent)";
-                      e.currentTarget.style.borderColor = "var(--color-accent)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                      e.currentTarget.style.color = "var(--color-text-secondary)";
-                      e.currentTarget.style.borderColor = "var(--color-border)";
-                    }}
-                  >
-                    더 보기 ({visibleCount} / {results.length})
-                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            // 플랫 뷰 (100개 이하: 일반 렌더링)
+            <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+              {results.map((result, index) => (
+                <div
+                  key={`${result.file_path}-${result.chunk_index}-${index}`}
+                  className="group"
+                  style={{ contain: "layout style" }}
+                >
+                  <SearchResultItem
+                    result={result}
+                    index={index}
+                    isExpanded={expandedIndex === index}
+                    isSelected={selectedIndex === index}
+                    isCompact={isCompact}
+                    onToggleExpand={() => handleToggleExpand(index)}
+                    onOpenFile={onOpenFile}
+                    onCopyPath={onCopyPath}
+                    onOpenFolder={onOpenFolder}
+                    refineKeywords={refineKeywords}
+                    query={query}
+                  />
                 </div>
-              )}
-            </>
+              ))}
+            </div>
           )
         )}
       </div>
