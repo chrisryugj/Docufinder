@@ -219,5 +219,23 @@ pnpm tauri:dev
 - `auto_start`: Windows 시작 시 자동 실행
 - `start_minimized`: 시작 시 트레이로 최소화
 
+## 🎨 앱 아이콘 교체 (2026-01-18)
+
+| 작업 | 파일 | 설명 |
+|------|------|------|
+| 앱 아이콘 | `src-tauri/icons/*` | 새 디자인 (폴더+돋보기) |
+| 헤더 아이콘 | `Header.tsx:21-25` | SVG → 이미지로 변경 |
+| 트레이 아이콘 | `lib.rs:280` | default_window_icon() 사용 |
+| 아이콘 생성 | `scripts/generate-icons.mjs` | sharp + png-to-ico |
+
+**주의**: 작업표시줄 고정 아이콘은 고정 해제 → 재고정 필요
+
+## 🧹 Rust 코드 정리 (2026-01-18)
+
+dead_code warning 26개 → 0개 정리:
+- 미사용 상수/함수/struct 삭제
+- 필요하지만 미사용 필드는 `#[allow(dead_code)]` 추가
+- 미사용 import 제거
+
 ## 마지막 업데이트
-2026-01-18 (시스템 트레이 + 자동 시작 + 재인덱싱)
+2026-01-18 (앱 아이콘 교체 + Rust warning 정리)
