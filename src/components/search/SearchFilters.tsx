@@ -17,9 +17,15 @@ interface SearchFiltersProps {
   filters: FiltersType;
   onFiltersChange: (filters: FiltersType) => void;
   resultCount?: number;
+  /** 필터 적용 전 전체 결과 수 (결과 내 검색 시 "N개 중 M개" 표시용) */
+  totalResultCount?: number;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   searchMode?: SearchMode;
+  /** 결과 내 검색 쿼리 */
+  refineQuery?: string;
+  onRefineQueryChange?: (query: string) => void;
+  onRefineQueryClear?: () => void;
 }
 
 /**
@@ -29,9 +35,13 @@ export function SearchFilters({
   filters,
   onFiltersChange,
   resultCount,
+  totalResultCount,
   viewMode = "flat",
   onViewModeChange,
   searchMode,
+  refineQuery = "",
+  onRefineQueryChange,
+  onRefineQueryClear,
 }: SearchFiltersProps) {
   const handleSortChange = (sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
@@ -130,6 +140,46 @@ export function SearchFilters({
         </label>
       )}
 
+      {/* 결과 내 검색 */}
+      {onRefineQueryChange && totalResultCount !== undefined && totalResultCount > 0 && (
+        <div className="relative flex items-center">
+          <div
+            className="absolute left-2.5 top-1/2 -translate-y-1/2"
+            style={{ color: refineQuery ? "var(--color-accent)" : "var(--color-text-muted)" }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <input
+            type="text"
+            value={refineQuery}
+            onChange={(e) => onRefineQueryChange(e.target.value)}
+            placeholder="결과 내 검색..."
+            className="pl-8 pr-7 py-1.5 rounded-md border text-sm transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+            style={{
+              width: "140px",
+              backgroundColor: "var(--color-bg-secondary)",
+              borderColor: refineQuery ? "var(--color-accent)" : "var(--color-border)",
+              color: "var(--color-text-primary)",
+            }}
+            aria-label="결과 내 검색"
+          />
+          {refineQuery && onRefineQueryClear && (
+            <button
+              onClick={onRefineQueryClear}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-gray-600"
+              style={{ color: "var(--color-text-muted)" }}
+              aria-label="결과 내 검색 초기화"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 초기화 버튼 */}
       {hasActiveFilters && (
         <button
@@ -193,7 +243,11 @@ export function SearchFilters({
       {/* 결과 수 */}
       {resultCount !== undefined && resultCount > 0 && (
         <span className="font-medium" style={{ color: "var(--color-text-secondary)" }}>
-          {resultCount}개 결과
+          {totalResultCount !== undefined && totalResultCount !== resultCount ? (
+            <>{totalResultCount}개 중 <span style={{ color: "var(--color-accent)" }}>{resultCount}개</span></>
+          ) : (
+            <>{resultCount}개 결과</>
+          )}
         </span>
       )}
     </div>

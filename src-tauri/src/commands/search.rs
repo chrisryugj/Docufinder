@@ -1,3 +1,4 @@
+use crate::commands::settings::get_settings_sync;
 use crate::db;
 use crate::search::{filename, fts, hybrid};
 use crate::AppState;
@@ -63,15 +64,20 @@ pub async fn search_keyword(
         });
     }
 
-    let db_path = {
+    let (db_path, max_results) = {
         let state = state.lock().map_err(|e| e.to_string())?;
-        state.db_path.clone()
+        let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
+        let max_results = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir).max_results)
+            .unwrap_or(50);
+        (state.db_path.clone(), max_results)
     };
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
     // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
-    let fts_results = fts::search(&conn, &query, 50).map_err(|e| e.to_string())?;
+    let fts_results = fts::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
 
     // 스코어 정규화 (BM25 → 0-100 confidence)
     let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
@@ -136,15 +142,20 @@ pub async fn search_filename(
         });
     }
 
-    let db_path = {
+    let (db_path, max_results) = {
         let state = state.lock().map_err(|e| e.to_string())?;
-        state.db_path.clone()
+        let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
+        let max_results = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir).max_results)
+            .unwrap_or(50);
+        (state.db_path.clone(), max_results)
     };
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
     // 파일명 FTS5 검색 실행
-    let filename_results = filename::search(&conn, &query, 50).map_err(|e| e.to_string())?;
+    let filename_results = filename::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
 
     // 스코어 정규화 (BM25 → 0-100 confidence)
     let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
@@ -209,12 +220,18 @@ pub async fn search_semantic(
         });
     }
 
-    let (db_path, embedder, vector_index) = {
+    let (db_path, embedder, vector_index, max_results) = {
         let state = state.lock().map_err(|e| e.to_string())?;
+        let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
+        let max_results = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir).max_results)
+            .unwrap_or(50);
         (
             state.db_path.clone(),
             state.get_embedder()?,
             state.get_vector_index()?,
+            max_results,
         )
     };
 
@@ -248,7 +265,7 @@ pub async fn search_semantic(
 
     // 2. 벡터 검색
     let vector_results = vector_index
-        .search(&query_embedding, 50)
+        .search(&query_embedding, max_results)
         .map_err(|e| e.to_string())?;
 
     // 3. chunk_id로 파일 정보 조회
@@ -319,26 +336,32 @@ pub async fn search_hybrid(
         });
     }
 
-    let (db_path, embedder, vector_index) = {
+    let (db_path, embedder, vector_index, max_results) = {
         let state = state.lock().map_err(|e| e.to_string())?;
+        let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
+        let max_results = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir).max_results)
+            .unwrap_or(50);
         (
             state.db_path.clone(),
             state.get_embedder().ok(),
             state.get_vector_index().ok(),
+            max_results,
         )
     };
 
     let conn = db::get_connection(&db_path).map_err(|e| e.to_string())?;
 
     // 1. FTS5 검색
-    let fts_results = fts::search(&conn, &query, 50).map_err(|e| e.to_string())?;
+    let fts_results = fts::search(&conn, &query, max_results).map_err(|e| e.to_string())?;
 
     // 2. 벡터 검색 (가능한 경우)
     let vector_results = match (embedder.as_ref(), vector_index.as_ref()) {
         (Some(emb), Some(vi)) => {
             match emb.lock() {
                 Ok(mut emb_guard) => match emb_guard.embed(&query, true) {
-                    Ok(query_embedding) => vi.search(&query_embedding, 50).unwrap_or_default(),
+                    Ok(query_embedding) => vi.search(&query_embedding, max_results).unwrap_or_default(),
                     Err(e) => {
                         tracing::warn!("Failed to embed query: {}", e);
                         vec![]

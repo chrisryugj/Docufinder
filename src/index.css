@@ -1,15 +1,13 @@
+/* All @import statements must come first */
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 /* ============================================
    DocuFinder Premium Design System
    "Government Elegance" - Trustworthy yet State-of-the-Art
    ============================================ */
-
-/* Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
-/* For headings/numbers */
 
 @theme {
   --font-sans: 'Pretendard', system-ui, sans-serif;
@@ -92,6 +90,10 @@
   /* Yellow-300 */
   --color-highlight-text: #0f172a;
   /* Slate-900 */
+  --color-highlight-refine-bg: #86efac;
+  /* Green-300 */
+  --color-highlight-refine-text: #0f172a;
+  /* Slate-900 */
 
   /* File Type Colors (More saturated) */
   --color-file-hwpx: #7C3AED;
@@ -171,6 +173,10 @@
   /* Highlighting */
   --color-highlight-bg: #854d0e;
   --color-highlight-text: #fef08a;
+  --color-highlight-refine-bg: #166534;
+  /* Green-800 */
+  --color-highlight-refine-text: #bbf7d0;
+  /* Green-200 */
 
   /* File Type Colors (Brighter for dark mode) */
   --color-file-hwpx: #A78BFA;

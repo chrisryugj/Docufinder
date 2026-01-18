@@ -1,0 +1,17 @@
+/* Pretendard Variable Font - 로컬 번들 */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('./PretendardVariable.woff2') format('woff2-variations');
+}
+
+/* Pretendard alias */
+@font-face {
+  font-family: 'Pretendard';
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url('./PretendardVariable.woff2') format('woff2-variations');
+}

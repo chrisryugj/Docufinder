@@ -41,6 +41,7 @@ pub struct AddFolderResult {
     pub failed_count: usize,
     pub vectors_count: usize,
     pub message: String,
+    pub errors: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -170,12 +171,24 @@ pub async fn add_folder(
         format!("Indexed {} files (semantic search disabled)", result.indexed_count)
     };
 
+    // 에러 로그 출력 (디버깅용)
+    if !result.errors.is_empty() {
+        tracing::warn!("Indexing errors ({}):", result.errors.len());
+        for (i, err) in result.errors.iter().take(10).enumerate() {
+            tracing::warn!("  {}: {}", i + 1, err);
+        }
+        if result.errors.len() > 10 {
+            tracing::warn!("  ... and {} more errors", result.errors.len() - 10);
+        }
+    }
+
     Ok(AddFolderResult {
         success: true,
         indexed_count: result.indexed_count,
         failed_count: result.failed_count,
         vectors_count: result.vectors_count,
         message,
+        errors: result.errors,
     })
 }
 

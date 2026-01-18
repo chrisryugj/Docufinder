@@ -12,7 +12,9 @@ export interface AddFolderResult {
   success: boolean;
   indexed_count: number;
   failed_count: number;
+  vectors_count: number;
   message: string;
+  errors: string[];
 }
 
 /** 폴더별 인덱싱 통계 */

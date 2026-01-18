@@ -16,6 +16,8 @@ interface SearchResultItemProps {
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  /** 결과 내 검색 키워드 (추가 하이라이트용) */
+  refineKeywords?: string[];
 }
 
 export function SearchResultItem({
@@ -28,6 +30,7 @@ export function SearchResultItem({
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  refineKeywords,
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
 
@@ -212,6 +215,7 @@ export function SearchResultItem({
               text={displayText}
               ranges={displayRanges}
               snippet={!isExpanded ? result.snippet : undefined}
+              refineKeywords={refineKeywords}
             />
           </p>
           {!isExpanded && result.full_content.length > result.content_preview.length && (

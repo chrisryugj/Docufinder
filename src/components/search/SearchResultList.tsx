@@ -21,6 +21,8 @@ interface SearchResultListProps {
   onOpenFolder?: (path: string) => void;
   onExportCSV?: () => void;
   onCopyAll?: () => void;
+  /** 결과 내 검색 키워드 (추가 하이라이트용) */
+  refineKeywords?: string[];
 }
 
 export function SearchResultList({
@@ -38,6 +40,7 @@ export function SearchResultList({
   onOpenFolder,
   onExportCSV,
   onCopyAll,
+  refineKeywords,
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const isCompact = viewDensity === "compact";
@@ -247,6 +250,7 @@ export function SearchResultList({
                     onOpenFile={onOpenFile}
                     onCopyPath={onCopyPath}
                     onOpenFolder={onOpenFolder}
+                    refineKeywords={refineKeywords}
                   />
                 </div>
               ))

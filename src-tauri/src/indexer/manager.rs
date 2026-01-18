@@ -116,14 +116,8 @@ impl WatchManager {
 
     /// 이벤트에서 처리할 파일 수집
     fn collect_files_from_event(event: &Event, pending: &mut HashSet<PathBuf>) {
-
         for path in &event.paths {
-            // 파일만 처리 (디렉토리 제외)
-            if !path.is_file() {
-                continue;
-            }
-
-            // 지원 확장자 확인
+            // 지원 확장자 확인 (삭제된 파일도 확장자로 판단 가능)
             let ext = path
                 .extension()
                 .and_then(|e| e.to_str())
@@ -145,15 +139,17 @@ impl WatchManager {
             }
 
             match &event.kind {
-                EventKind::Create(_) | EventKind::Modify(_) => {
-                    tracing::debug!("File changed: {:?}", path);
+                EventKind::Remove(_) => {
+                    // 삭제 이벤트: is_file() 체크 불필요 (파일이 이미 없음)
+                    tracing::debug!("File removed: {:?}", path);
                     pending.insert(path.clone());
                 }
-                EventKind::Remove(_) => {
-                    tracing::debug!("File removed: {:?}", path);
-                    // 삭제된 파일도 pending에 추가하여 process_pending_files에서 처리
-                    // (path.exists() == false이면 DB에서 삭제됨)
-                    pending.insert(path.clone());
+                EventKind::Create(_) | EventKind::Modify(_) => {
+                    // 생성/수정 이벤트: 파일 존재 확인 (디렉토리 제외)
+                    if path.is_file() {
+                        tracing::debug!("File changed: {:?}", path);
+                        pending.insert(path.clone());
+                    }
                 }
                 _ => {}
             }

@@ -14,6 +14,10 @@ fn escape_like_pattern(s: &str) -> String {
 pub fn get_connection(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
+    // foreign_keys 활성화: ON DELETE CASCADE 작동 필수
+    // 주의: 다른 PRAGMA보다 먼저 설정해야 함
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+
     // WAL 모드: 읽기/쓰기 동시 허용, 인덱싱 중 검색 가능
     conn.pragma_update(None, "journal_mode", "WAL")?;
 
@@ -226,18 +230,19 @@ pub fn upsert_file(
     )?;
 
     // files_fts 인덱스 갱신 (파일명 검색용)
+    // FTS5는 UPSERT 미지원 → DELETE 후 INSERT
+    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
     conn.execute(
-        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)
-         ON CONFLICT(rowid) DO UPDATE SET name = excluded.name",
+        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
         params![file_id, name],
     )?;
 
     Ok(file_id)
 }
 
-/// 파일 삭제 (청크도 CASCADE로 삭제됨)
+/// 파일 삭제 (청크 + FTS 인덱스 포함)
 pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
-    // chunks_fts에서 삭제
+    // 1. chunks_fts에서 삭제
     conn.execute(
         "DELETE FROM chunks_fts WHERE rowid IN (
             SELECT c.id FROM chunks c
@@ -247,7 +252,15 @@ pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
         params![path],
     )?;
 
-    // files_fts에서 삭제 (파일명 검색 인덱스)
+    // 2. chunks 명시적 삭제 (foreign_keys 미활성화 환경 대비)
+    conn.execute(
+        "DELETE FROM chunks WHERE file_id IN (
+            SELECT id FROM files WHERE path = ?
+        )",
+        params![path],
+    )?;
+
+    // 3. files_fts에서 삭제 (파일명 검색 인덱스)
     conn.execute(
         "DELETE FROM files_fts WHERE rowid IN (
             SELECT id FROM files WHERE path = ?
@@ -255,6 +268,7 @@ pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
         params![path],
     )?;
 
+    // 4. files 삭제
     conn.execute("DELETE FROM files WHERE path = ?", params![path])
 }
 

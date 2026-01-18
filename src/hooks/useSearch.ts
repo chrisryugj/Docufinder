@@ -35,6 +35,13 @@ interface UseSearchReturn {
   setFilters: (filters: SearchFilters) => void;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
+  /** 결과 내 검색 쿼리 */
+  refineQuery: string;
+  setRefineQuery: (query: string) => void;
+  /** 결과 내 검색 초기화 */
+  clearRefine: () => void;
+  /** 결과 내 검색 활성화 여부 */
+  isRefineActive: boolean;
 }
 
 /**
@@ -54,8 +61,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [filters, setFilters] = useState<SearchFilters>(DEFAULT_FILTERS);
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
+  const [refineQuery, setRefineQuery] = useState("");
 
   const clearError = useCallback(() => setError(null), []);
+  const clearRefine = useCallback(() => setRefineQuery(""), []);
 
   // 검색 실행 함수
   const executeSearch = useCallback(
@@ -166,8 +175,31 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         break;
     }
 
+    // 결과 내 검색 필터링 (2글자 이상 키워드만 적용)
+    const refineKeywords = refineQuery.trim().toLowerCase().split(/\s+/).filter((kw) => kw.length >= 2);
+    if (refineKeywords.length > 0) {
+      filtered = filtered.filter((r) => {
+        const content = r.full_content.toLowerCase();
+        // 모든 키워드가 포함되어야 함 (AND 조건)
+        return refineKeywords.every((kw) => content.includes(kw));
+      });
+    }
+
     return filtered;
-  }, [results, filters, minConfidence]);
+  }, [results, filters, minConfidence, refineQuery]);
+
+  // 파일명 검색 결과도 결과 내 검색 필터링 (2글자 이상)
+  const filteredFilenameResults = useMemo(() => {
+    const keywords = refineQuery.trim().toLowerCase().split(/\s+/).filter((kw) => kw.length >= 2);
+    if (keywords.length === 0) {
+      return filenameResults;
+    }
+    return filenameResults.filter((r) => {
+      const fileName = r.file_name.toLowerCase();
+      // 파일명에서 키워드 검색
+      return keywords.every((kw) => fileName.includes(kw));
+    });
+  }, [filenameResults, refineQuery]);
 
   // 파일별 그룹핑 결과
   const groupedResults = useMemo(() => {
@@ -200,7 +232,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     query,
     setQuery,
     results,
-    filenameResults,
+    filenameResults: filteredFilenameResults,
     filteredResults,
     groupedResults,
     searchTime,
@@ -213,5 +245,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     setFilters,
     viewMode,
     setViewMode,
+    refineQuery,
+    setRefineQuery,
+    clearRefine,
+    isRefineActive: refineQuery.trim().length > 0,
   };
 }

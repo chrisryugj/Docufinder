@@ -102,7 +102,18 @@ impl AppState {
     }
 
     /// 벡터 인덱스 가져오기 (필요시 생성/로드)
+    ///
+    /// 모델이 없으면 벡터 인덱스를 생성하지 않고 에러 반환
     pub fn get_vector_index(&self) -> Result<Arc<VectorIndex>, String> {
+        // 모델 없으면 벡터 인덱스 비활성화 (명확한 에러 메시지)
+        if !self.is_semantic_available() {
+            return Err(
+                "시맨틱 검색 모델이 설치되지 않았습니다. \
+                 models/multilingual-e5-small 폴더에 모델을 다운로드해주세요."
+                    .to_string(),
+            );
+        }
+
         self.vector_index
             .get_or_try_init(|| {
                 VectorIndex::new(&self.vector_index_path)

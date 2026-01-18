@@ -27,9 +27,12 @@ pub struct VectorResult {
 }
 
 /// 벡터 인덱스 (usearch 기반)
+///
+/// 스레드 안전성: 모든 필드가 RwLock으로 보호됨
 pub struct VectorIndex {
     path: PathBuf,
-    index: Index,
+    /// usearch 인덱스 (스레드 안전성을 위해 RwLock 사용)
+    index: RwLock<Index>,
     /// chunk_id -> usearch key 매핑
     id_map: RwLock<HashMap<i64, u64>>,
     /// usearch key -> chunk_id 역매핑
@@ -56,7 +59,7 @@ impl VectorIndex {
 
         let mut vector_index = Self {
             path: path.to_path_buf(),
-            index,
+            index: RwLock::new(index),
             id_map: RwLock::new(HashMap::new()),
             key_map: RwLock::new(HashMap::new()),
             next_key: RwLock::new(0),
@@ -71,7 +74,7 @@ impl VectorIndex {
         }
 
         // 초기화 상태 로그
-        let index_size = vector_index.index.size();
+        let index_size = vector_index.index.read().unwrap().size();
         let map_size = vector_index.id_map.read().unwrap().len();
         tracing::info!(
             "VectorIndex initialized: index_size={}, id_map_count={}",
@@ -113,20 +116,25 @@ impl VectorIndex {
             k
         };
 
-        // 용량 확보 (필요시 확장)
-        let current_size = self.index.size();
-        let current_capacity = self.index.capacity();
-        if current_size >= current_capacity {
-            let new_capacity = (current_capacity + 1).max(100).max(current_capacity * 2);
-            self.index
-                .reserve(new_capacity)
-                .map_err(|e| VectorError::IndexError(format!("Reserve failed: {:?}", e)))?;
-        }
+        // usearch 인덱스에 추가 (쓰기 락 필요)
+        {
+            let index = self.index.write().unwrap();
 
-        // usearch에 추가
-        self.index
-            .add(key, embedding)
-            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+            // 용량 확보 (필요시 확장)
+            let current_size = index.size();
+            let current_capacity = index.capacity();
+            if current_size >= current_capacity {
+                let new_capacity = (current_capacity + 1).max(100).max(current_capacity * 2);
+                index
+                    .reserve(new_capacity)
+                    .map_err(|e| VectorError::IndexError(format!("Reserve failed: {:?}", e)))?;
+            }
+
+            // usearch에 추가
+            index
+                .add(key, embedding)
+                .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+        }
 
         // 매핑 저장
         self.id_map.write().unwrap().insert(chunk_id, key);
@@ -145,6 +153,8 @@ impl VectorIndex {
         if let Some(key) = key {
             // usearch에서 삭제 (mark as removed)
             self.index
+                .write()
+                .unwrap()
                 .remove(key)
                 .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
@@ -158,14 +168,16 @@ impl VectorIndex {
 
     /// 유사도 검색
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<VectorResult>, VectorError> {
-        if self.index.size() == 0 {
-            return Ok(vec![]);
-        }
-
-        let results = self
-            .index
-            .search(query_embedding, limit)
-            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+        // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
+        let results = {
+            let index = self.index.read().unwrap();
+            if index.size() == 0 {
+                return Ok(vec![]);
+            }
+            index
+                .search(query_embedding, limit)
+                .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?
+        };
 
         let key_map = self.key_map.read().unwrap();
         let mut vector_results = Vec::with_capacity(results.keys.len());
@@ -186,9 +198,11 @@ impl VectorIndex {
 
     /// 인덱스 저장
     pub fn save(&self) -> Result<(), VectorError> {
-        // 인덱스 파일 저장
+        // 인덱스 파일 저장 (쓰기 락으로 동시 수정 방지)
         let path_str = self.path.to_string_lossy();
         self.index
+            .write()
+            .unwrap()
             .save(&path_str)
             .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
@@ -209,13 +223,14 @@ impl VectorIndex {
 
     /// 인덱스 로드
     fn load(&mut self) -> Result<(), VectorError> {
-        // 인덱스 파일 로드
+        // 인덱스 파일 로드 (초기화 시에만 호출, &mut self)
         let path_str = self.path.to_string_lossy();
-        self.index
+        let index = self.index.write().unwrap();
+        index
             .load(&path_str)
             .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
-        tracing::debug!("Loaded vector index file: {} vectors", self.index.size());
+        tracing::debug!("Loaded vector index file: {} vectors", index.size());
 
         // 매핑 파일 로드
         let map_path = self.path.with_extension("map");
@@ -258,7 +273,7 @@ impl VectorIndex {
 
     /// 인덱스 크기 (usearch에 저장된 벡터 수)
     pub fn size(&self) -> usize {
-        self.index.size()
+        self.index.read().unwrap().size()
     }
 
     /// 매핑 크기 (chunk_id 매핑 수)
@@ -268,9 +283,10 @@ impl VectorIndex {
 
     /// 인덱스 용량
     pub fn capacity(&self) -> usize {
-        self.index.capacity()
+        self.index.read().unwrap().capacity()
     }
 }
 
-unsafe impl Send for VectorIndex {}
-unsafe impl Sync for VectorIndex {}
+// RwLock<Index>가 Send + Sync를 자동으로 구현하므로
+// VectorIndex도 자동으로 Send + Sync를 구현함
+// (unsafe impl 불필요)

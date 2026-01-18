@@ -3,12 +3,34 @@ interface HighlightedTextProps {
   ranges: [number, number][];
   /** FTS5 snippet (마커 포함) - 있으면 ranges 대신 이걸로 파싱 */
   snippet?: string;
+  /** 결과 내 검색 키워드 (추가 하이라이트) */
+  refineKeywords?: string[];
 }
 
 /**
  * FTS5 snippet에서 하이라이트 마커 파싱 (JavaScript 문자열 인덱스 기준)
  * [[HL]]매칭[[/HL]] 형식 → { text, ranges }
  */
+/**
+ * 텍스트에서 키워드 위치 찾기 (대소문자 무시)
+ */
+function findKeywordRanges(text: string, keywords: string[]): [number, number][] {
+  const ranges: [number, number][] = [];
+  const lowerText = text.toLowerCase();
+
+  for (const keyword of keywords) {
+    const lowerKeyword = keyword.toLowerCase();
+    let index = 0;
+    while ((index = lowerText.indexOf(lowerKeyword, index)) !== -1) {
+      ranges.push([index, index + keyword.length]);
+      index += keyword.length;
+    }
+  }
+
+  // 시작 위치로 정렬
+  return ranges.sort((a, b) => a[0] - b[0]);
+}
+
 function parseSnippetHighlights(snippet: string): { text: string; ranges: [number, number][] } {
   const ranges: [number, number][] = [];
   let text = '';
@@ -78,11 +100,53 @@ function formatAndRender(text: string, keyPrefix: string): React.ReactNode[] {
 }
 
 /**
+ * 두 범위 배열 병합 (겹치는 부분은 타입 표시)
+ * 반환: { start, end, type: 'search' | 'refine' | 'both' }[]
+ */
+function mergeRanges(
+  searchRanges: [number, number][],
+  refineRanges: [number, number][]
+): { start: number; end: number; type: 'search' | 'refine' | 'both' }[] {
+  const events: { pos: number; delta: number; source: 'search' | 'refine' }[] = [];
+
+  for (const [s, e] of searchRanges) {
+    events.push({ pos: s, delta: 1, source: 'search' });
+    events.push({ pos: e, delta: -1, source: 'search' });
+  }
+  for (const [s, e] of refineRanges) {
+    events.push({ pos: s, delta: 1, source: 'refine' });
+    events.push({ pos: e, delta: -1, source: 'refine' });
+  }
+
+  // 위치순, 같으면 시작(delta=1)이 먼저
+  events.sort((a, b) => a.pos - b.pos || b.delta - a.delta);
+
+  const result: { start: number; end: number; type: 'search' | 'refine' | 'both' }[] = [];
+  let searchCount = 0;
+  let refineCount = 0;
+  let lastPos = 0;
+
+  for (const { pos, delta, source } of events) {
+    if (pos > lastPos && (searchCount > 0 || refineCount > 0)) {
+      const type = searchCount > 0 && refineCount > 0 ? 'both' :
+                   searchCount > 0 ? 'search' : 'refine';
+      result.push({ start: lastPos, end: pos, type });
+    }
+    if (source === 'search') searchCount += delta;
+    else refineCount += delta;
+    lastPos = pos;
+  }
+
+  return result;
+}
+
+/**
  * 하이라이트 범위가 적용된 텍스트 렌더링
  * - 가독성을 위한 줄바꿈 처리 포함
  * - snippet이 있으면 JavaScript에서 직접 파싱 (Rust 바이트 인덱스 버그 회피)
+ * - refineKeywords가 있으면 추가 하이라이트 (다른 색상)
  */
-export function HighlightedText({ text, ranges, snippet }: HighlightedTextProps) {
+export function HighlightedText({ text, ranges, snippet, refineKeywords }: HighlightedTextProps) {
   // snippet이 있으면 JavaScript에서 직접 파싱 (더 정확함)
   const { actualText, actualRanges } = snippet
     ? (() => {
@@ -91,28 +155,40 @@ export function HighlightedText({ text, ranges, snippet }: HighlightedTextProps)
       })()
     : { actualText: text, actualRanges: ranges };
 
+  // 결과 내 검색 키워드 범위 계산
+  const refineRanges = refineKeywords && refineKeywords.length > 0
+    ? findKeywordRanges(actualText, refineKeywords)
+    : [];
+
   // 하이라이트 없으면 포매팅만 적용
-  if (!actualRanges || actualRanges.length === 0) {
+  if ((!actualRanges || actualRanges.length === 0) && refineRanges.length === 0) {
     return <>{formatAndRender(actualText, "plain")}</>;
   }
 
-  // 범위 정렬 (시작 위치 기준)
-  const sortedRanges = [...actualRanges].sort((a, b) => a[0] - b[0]);
+  // 두 범위 병합
+  const mergedRanges = mergeRanges(actualRanges || [], refineRanges);
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
 
-  sortedRanges.forEach(([start, end], i) => {
+  mergedRanges.forEach(({ start, end, type }, i) => {
     // 하이라이트 전 텍스트 (포매팅 적용)
     if (start > lastIndex) {
       parts.push(...formatAndRender(actualText.slice(lastIndex, start), `pre-${i}`));
     }
-    // 하이라이트 텍스트 - CSS 변수 기반 테마 대응
+    // 하이라이트 텍스트 - 타입에 따라 색상 다르게
+    const bgColor = type === 'refine' || type === 'both'
+      ? "var(--color-highlight-refine-bg)"
+      : "var(--color-highlight-bg)";
+    const textColor = type === 'refine' || type === 'both'
+      ? "var(--color-highlight-refine-text)"
+      : "var(--color-highlight-text)";
+
     parts.push(
       <mark
         key={`mark-${i}`}
         style={{
-          backgroundColor: "var(--color-highlight-bg)",
-          color: "var(--color-highlight-text)",
+          backgroundColor: bgColor,
+          color: textColor,
           borderRadius: "2px",
           padding: "0 2px",
         }}

@@ -113,6 +113,18 @@ export function useIndexStatus(): UseIndexStatusReturn {
         });
 
         console.log("Indexing result:", result);
+
+        // 실패한 파일 에러 로그 출력
+        if (result.errors && result.errors.length > 0) {
+          console.warn(`Indexing errors (${result.errors.length}):`);
+          result.errors.slice(0, 20).forEach((err, i) => {
+            console.warn(`  ${i + 1}: ${err}`);
+          });
+          if (result.errors.length > 20) {
+            console.warn(`  ... and ${result.errors.length - 20} more errors`);
+          }
+        }
+
         await refreshStatus();
         setIsIndexing(false);
 

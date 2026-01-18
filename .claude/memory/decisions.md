@@ -63,3 +63,55 @@
 **이유**: 백엔드에서 경고하면 이미 폴더 등록됨, 프론트에서 사전 차단이 UX에 좋음
 **영향**:
 - `src/hooks/useIndexStatus.ts` (isDriveRoot 함수, ask 다이얼로그)
+
+## 2026-01-18 - Everything 스타일 파일명 검색
+
+**상황**: 내용 검색 외에 파일명으로만 빠르게 검색하고 싶은 요구
+**결정**: `files_fts` FTS5 테이블 + `search_filename` 커맨드 + 4번째 검색 모드
+**이유**: 기존 내용 FTS(`chunks_fts`)와 분리하여 파일명 전용 검색 최적화
+**영향**:
+- `src-tauri/src/db/mod.rs` (files_fts 테이블, 자동 마이그레이션)
+- `src-tauri/src/search/filename.rs` (신규)
+- `src-tauri/src/commands/search.rs` (search_filename 커맨드)
+- `src/types/search.ts` (SearchMode에 filename 추가)
+- `src/components/search/SearchBar.tsx` (파일명 모드 버튼)
+- `src/utils/cleanPath.ts` (Windows Long Path prefix 제거)
+
+## 2026-01-18 - VectorIndex 스레드 안전성 (RwLock 선택)
+
+**상황**: 코드 리뷰에서 `unsafe impl Send/Sync` + 보호되지 않은 `index: Index` 필드로 인한 데이터 레이스 위험 지적
+**결정**: `index: RwLock<Index>` 적용, unsafe impl 제거
+**대안 검토**:
+- Option A: 전체 VectorIndex를 Mutex로 감싸기 → 검색도 직렬화되어 성능 저하
+- Option B: index만 RwLock (선택) → 읽기 병렬, 쓰기 직렬
+- Option C: Actor 패턴 → 복잡도 높음
+**이유**: 데스크톱 앱 특성상 극단적 동시성 불필요, RwLock으로 충분한 성능/안전성 확보
+**영향**:
+- `src-tauri/src/search/vector.rs` (구조체 + 모든 메서드)
+
+## 2026-01-18 - 모델 부재 시 벡터 인덱스 비활성화
+
+**상황**: 모델 없을 때도 빈 벡터 인덱스 생성되어 사용자 혼동
+**결정**: `get_vector_index()`에서 모델 체크 후 명확한 에러 반환
+**이유**: 모델 없으면 시맨틱 검색 불가하므로 인덱스 생성 자체가 무의미
+**영향**:
+- `src-tauri/src/lib.rs:107-115` (모델 체크 + 에러 메시지)
+
+## 2026-01-18 - 폰트 로컬 번들링 + CSP 강화
+
+**상황**: 외부 CDN 폰트 + CSP null 설정은 보안 취약점
+**결정**: Pretendard Variable 폰트 로컬 번들링(~2MB) + 엄격한 CSP 설정
+**이유**: 오프라인 동작 보장 + XSS 공격 벡터 차단
+**영향**:
+- `src/assets/fonts/PretendardVariable.woff2` (신규)
+- `src/assets/fonts/pretendard.css` (신규)
+- `index.html` (CDN → 로컬 참조)
+- `src-tauri/tauri.conf.json` (CSP 설정)
+
+## 2026-01-18 - 설정값(max_results) 실제 반영
+
+**상황**: Settings에 max_results가 있지만 검색에서 50으로 하드코딩
+**결정**: 모든 검색 함수에서 `get_settings_sync()` 호출하여 설정값 사용
+**이유**: 사용자 설정이 실제로 반영되어야 함
+**영향**:
+- `src-tauri/src/commands/search.rs` (search_keyword, search_filename, search_semantic, search_hybrid)

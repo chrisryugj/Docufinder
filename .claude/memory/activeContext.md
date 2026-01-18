@@ -47,10 +47,13 @@
 | 검색 모드 | `App.tsx` | keyword/semantic/hybrid 선택 |
 | 파일 열기 | `App.tsx` | shell:open 연동 (기존) |
 
-## 다음 작업 (Phase 5)
-1. MSI 설치파일 생성
-2. 자동 업데이트 설정
-3. 사용자 가이드 문서
+## 다음 작업 (Phase 5: 배포)
+
+| 작업 | 설명 | 우선순위 |
+|------|------|----------|
+| MSI 설치파일 | `pnpm tauri:build` → MSI 생성 | P1 |
+| 자동 업데이트 | tauri-plugin-updater 설정 | P2 |
+| 사용자 테스트 | 파일명 검색 등 전체 기능 검증 | P1 |
 
 ## 핵심 파일
 | 파일 | 역할 |
@@ -132,12 +135,6 @@ pnpm tauri:dev
 - 내용 검색 시 파일명 매치도 함께 표시 (상단)
 - Windows Long Path prefix (`\\?\`) 자동 제거
 
-### 📋 다음 할 일
-
-- [ ] 실제 테스트 (파일명 검색)
-- [ ] MSI 설치파일 생성
-- [ ] 자동 업데이트 설정
-
 ### 이전 세션 작업
 - **보기 밀도 설정**: 기본/컴팩트 모드 전환 기능
 - **컴팩트 모드**: 세로 ~50% 축소 (line-clamp 2줄, 경로 숨김, 패딩/간격 축소)
@@ -166,5 +163,35 @@ pnpm tauri:dev
 | `src/components/layout/StatusBar.tsx` | 진행률 바 + 취소 버튼 UI |
 | `src/types/index.ts:31-45` | IndexingProgress 타입 |
 
+## 🔧 코드 리팩토링 (2026-01-18)
+
+코드 리뷰 기반 Critical/High 이슈 수정 완료:
+
+| Phase | 이슈 | 파일 | 상태 |
+|-------|------|------|------|
+| 1 | VectorIndex 스레드 안전성 | `search/vector.rs:35` - RwLock 적용 | ✅ |
+| 2 | 파일 삭제 이벤트 미처리 | `indexer/manager.rs:148` - Remove 분기 | ✅ |
+| 3 | foreign_keys PRAGMA | `db/mod.rs:19` + chunks 명시적 삭제 | ✅ |
+| 4 | 설정값(max_results) 미반영 | `commands/search.rs:71,144,217,327` | ✅ |
+| 5 | CSP + 폰트 로컬화 | `tauri.conf.json`, `index.html`, fonts/ | ✅ |
+| 6 | 모델 부재 시 에러 | `lib.rs:109-115` | ✅ |
+
+**계획 문서**: `.claude/plans/drifting-sauteeing-goblet.md`
+
+### 핵심 변경사항
+
+1. **VectorIndex 스레드 안전성**
+   - `index: Index` → `index: RwLock<Index>`
+   - `unsafe impl Send/Sync` 제거
+   - 검색은 read lock, 추가/삭제/저장은 write lock
+
+2. **데이터 무결성**
+   - foreign_keys PRAGMA ON
+   - 파일 삭제 시 chunks 명시적 삭제
+
+3. **보안 강화**
+   - CSP: `default-src 'self'; style-src 'self' 'unsafe-inline'...`
+   - Pretendard 폰트 로컬 번들링 (~2MB)
+
 ## 마지막 업데이트
-2026-01-18 (Sprint 4 완료 - 파일명 검색)
+2026-01-18 (코드 리팩토링 완료 - Critical/High 이슈 6건)

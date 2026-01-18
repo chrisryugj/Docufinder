@@ -31,6 +31,7 @@ function App() {
   const {
     query,
     setQuery,
+    results,
     filenameResults,
     filteredResults,
     groupedResults,
@@ -44,6 +45,9 @@ function App() {
     setFilters,
     viewMode,
     setViewMode,
+    refineQuery,
+    setRefineQuery,
+    clearRefine,
   } = useSearch({ debounceMs: 300, minConfidence });
 
   // 인덱스 상태
@@ -94,6 +98,23 @@ function App() {
 
     loadSettings();
   }, [setSearchMode]);
+
+  // 앱 최초 마운트 시 IME 초기화 (blur-focus 사이클)
+  useEffect(() => {
+    const input = searchInputRef.current;
+    if (!input) return;
+
+    // 딜레이 후 blur-focus로 IME 상태 초기화 (Windows IME 안정화)
+    // 앱 완전히 로드된 후 실행해야 IME가 정상 작동
+    const timer = setTimeout(() => {
+      input.blur();
+      setTimeout(() => {
+        input.focus();
+      }, 100);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
   useEffect(() => {
@@ -357,8 +378,8 @@ function App() {
             {error && <div className="mt-4"><ErrorBanner message={error} onDismiss={clearError} /></div>}
           </div>
 
-          {/* 필터 바 (결과가 있을 때만 표시) */}
-          {query && filteredResults.length > 0 && (
+          {/* 필터 바 (원본 결과가 있을 때 표시 - 결과내검색 중에도 유지) */}
+          {query && (results.length > 0 || filenameResults.length > 0) && (
             <div className="sticky top-0 z-10 px-6 py-2 bg-[var(--color-bg-primary)]/95 backdrop-blur border-y" style={{ borderColor: 'var(--color-border)' }}>
               <div className="max-w-4xl mx-auto">
               <SearchFilters
@@ -367,7 +388,11 @@ function App() {
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 resultCount={filteredResults.length}
+                totalResultCount={results.length}
                 searchMode={searchMode}
+                refineQuery={refineQuery}
+                onRefineQueryChange={setRefineQuery}
+                onRefineQueryClear={clearRefine}
               />
               </div>
             </div>
@@ -391,6 +416,7 @@ function App() {
                 onOpenFolder={handleOpenFolder}
                 onExportCSV={() => exportToCSV(filteredResults, query)}
                 onCopyAll={() => copyToClipboard(filteredResults, query)}
+                refineKeywords={refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined}
               />
             </div>
           </main>
