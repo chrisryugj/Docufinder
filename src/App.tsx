@@ -133,9 +133,8 @@ function App() {
     const setup = async () => {
       const window = getCurrentWindow();
       try {
-        if (await window.isFocused()) {
-          resetSearchFocus();
-        }
+        // 초기 로드 시에는 포커스 안 줌 (IME 팝업 위치 문제 방지)
+        // 창 복귀 시에만 포커스 재설정
         unlisten = await window.onFocusChanged(({ payload }) => {
           if (payload) {
             resetSearchFocus();

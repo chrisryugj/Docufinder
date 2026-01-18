@@ -42,11 +42,14 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       const input = innerRef.current;
       if (!input) return;
 
-      // blur 후 충분한 딜레이를 주고 다시 focus (Windows IME 리셋)
+      // blur 후 최소 딜레이로 다시 focus (Windows IME 리셋)
+      // requestAnimationFrame 2연속 ≈ 32ms (100ms보다 빠르고 안정적)
       input.blur();
-      setTimeout(() => {
-        input.focus();
-      }, 100);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          input.focus();
+        });
+      });
     }, []);
 
     useEffect(() => {
