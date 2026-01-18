@@ -4,7 +4,6 @@ use ndarray::Array2;
 use ort::session::Session;
 use ort::value::Value;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
@@ -94,7 +93,7 @@ impl Embedder {
         // 입력 텐서 생성 (owned arrays)
         let mut input_ids = Array2::<i64>::zeros((batch_size, seq_len));
         let mut attention_mask = Array2::<i64>::zeros((batch_size, seq_len));
-        let mut token_type_ids = Array2::<i64>::zeros((batch_size, seq_len));
+        let token_type_ids = Array2::<i64>::zeros((batch_size, seq_len));
 
         for (i, encoding) in encodings.iter().enumerate() {
             let ids = encoding.get_ids();
@@ -192,29 +191,3 @@ impl Embedder {
 
 unsafe impl Send for Embedder {}
 unsafe impl Sync for Embedder {}
-
-/// 글로벌 Embedder 인스턴스 (lazy 초기화)
-static EMBEDDER: once_cell::sync::OnceCell<Arc<Mutex<Embedder>>> = once_cell::sync::OnceCell::new();
-
-/// 글로벌 Embedder 초기화
-pub fn init_embedder(model_dir: &Path) -> Result<(), EmbedderError> {
-    let model_path = model_dir.join("model.onnx");
-    let tokenizer_path = model_dir.join("tokenizer.json");
-
-    let embedder = Embedder::new(&model_path, &tokenizer_path)?;
-    EMBEDDER
-        .set(Arc::new(Mutex::new(embedder)))
-        .map_err(|_| EmbedderError::OrtError("Embedder already initialized".to_string()))?;
-
-    Ok(())
-}
-
-/// 글로벌 Embedder 가져오기
-pub fn get_embedder() -> Option<Arc<Mutex<Embedder>>> {
-    EMBEDDER.get().cloned()
-}
-
-/// Embedder 사용 가능 여부
-pub fn is_embedder_available() -> bool {
-    EMBEDDER.get().is_some()
-}

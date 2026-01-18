@@ -61,6 +61,7 @@ fn sanitize_fts_query(query: &str) -> String {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct FilenameResult {
     pub file_id: i64,
     pub file_path: String,
