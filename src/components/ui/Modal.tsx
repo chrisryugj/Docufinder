@@ -50,7 +50,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
     >
       <div
         ref={modalRef}
-        className="w-full max-w-lg mx-4 animate-modal-enter rounded-lg"
+        className="w-full max-w-lg mx-4 animate-modal-enter rounded-lg max-h-[85vh] flex flex-col"
         style={{
           backgroundColor: "var(--color-bg-secondary)",
           boxShadow: "var(--shadow-lg)",
@@ -90,7 +90,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 overflow-y-auto flex-1">
           {children}
         </div>
       </div>
