@@ -75,9 +75,10 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     }
   }, [folders, fetchFolderInfo]);
 
-  // 즐겨찾기 토글
-  const handleToggleFavorite = async (path: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // 즐겨찾기 토글 (컨텍스트 메뉴용)
+  const handleToggleFavorite = async () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
     try {
       await invoke("toggle_favorite", { path });
       await fetchFolderInfo();
@@ -183,34 +184,27 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         return (
           <li key={folder} role="treeitem" aria-expanded={isExpanded}>
             <div
-              className="group flex items-center gap-2 px-3 py-2 mx-2 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/10 text-slate-400 hover:text-white"
+              className="group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/10 text-slate-400 hover:text-white"
               onClick={() => toggleExpand(folder)}
               onContextMenu={(e) => handleContextMenu(e, folder)}
             >
-              {/* 즐겨찾기 버튼 */}
-              <button
-                onClick={(e) => handleToggleFavorite(folder, e)}
-                className={`p-0.5 rounded transition-all ${
-                  isFavorite
-                    ? "text-yellow-400"
-                    : "text-slate-600 opacity-0 group-hover:opacity-100 hover:text-yellow-400"
-                }`}
-                aria-label={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
-              >
-                <svg className="w-3.5 h-3.5" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              {/* 즐겨찾기 + 폴더 아이콘 (하나로 통합) */}
+              <div className="relative flex-shrink-0">
+                <svg
+                  className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-90 text-yellow-500" : "text-slate-500 group-hover:text-yellow-400"}`}
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                >
+                  <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
                 </svg>
-              </button>
-
-              {/* 폴더 아이콘 */}
-              <svg
-                className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isExpanded ? "rotate-90 text-yellow-500" : "text-slate-500 group-hover:text-yellow-400"}`}
-                fill="currentColor"
-                viewBox="0 0 20 20"
-                aria-hidden="true"
-              >
-                <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-              </svg>
+                {/* 즐겨찾기 표시 (별) */}
+                {isFavorite && (
+                  <svg className="absolute -top-1 -right-1 w-2.5 h-2.5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                  </svg>
+                )}
+              </div>
 
               {/* 폴더 이름 */}
               <span
@@ -222,25 +216,9 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 파일 수 배지 */}
               {folderStats[folder] && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-slate-400">
+                <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-slate-400 flex-shrink-0">
                   {folderStats[folder].file_count}
                 </span>
-              )}
-
-              {/* 삭제 버튼 - Hover시 드러남 */}
-              {onRemoveFolder && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveFolder(folder);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-all duration-200"
-                  aria-label={`${getFolderName(folder)} 폴더 제거`}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
               )}
             </div>
 
@@ -282,6 +260,26 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             borderColor: "var(--color-border)",
           }}
         >
+          {/* 즐겨찾기 토글 */}
+          <button
+            onClick={handleToggleFavorite}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+            style={{ color: folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(250, 204, 21, 0.15)";
+              e.currentTarget.style.color = "#facc15";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)";
+            }}
+          >
+            <svg className="w-4 h-4" fill={folderInfo[contextMenu.folderPath]?.is_favorite ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+            {folderInfo[contextMenu.folderPath]?.is_favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+          </button>
+          {/* 재인덱싱 */}
           <button
             onClick={handleReindex}
             className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
