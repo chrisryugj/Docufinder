@@ -329,6 +329,7 @@ export function SearchResultList({
                   onCopyPath={onCopyPath}
                   onOpenFolder={onOpenFolder}
                   isCompact={isCompact}
+                  searchQuery={query}
                 />
               ))}
             </div>
