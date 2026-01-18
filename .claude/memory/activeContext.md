@@ -310,5 +310,14 @@ dead_code warning 26개 → 0개 정리:
 | 필터 구분선 | `App.tsx:472` | pb-3 border-b 추가 |
 | 깜박임 방지 | `App.tsx:53` | threshold 100→200px |
 
+## 🖱️ 우클릭 컨텍스트 메뉴 (2026-01-18)
+
+| 기능 | 파일 | 설명 |
+|------|------|------|
+| 검색 결과 우클릭 | `GroupedSearchResultItem.tsx`, `SearchResultItem.tsx` | 파일/폴더 열기, 경로 복사 |
+| Portal 렌더링 | createPortal → body | 스크롤/오버플로우 무관 |
+| 폴더 열기 토스트 | `App.tsx:278` | 성공 시 피드백 |
+| 컨텍스트 메뉴 스타일 | `FolderTree.tsx` | CSS 변수 + hover 일관성 |
+
 ## 마지막 업데이트
-2026-01-18 (스크롤 축소 검색바 + 필터 정렬 개선)
+2026-01-18 (우클릭 컨텍스트 메뉴 + UI 개선)
