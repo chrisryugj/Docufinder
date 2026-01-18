@@ -53,96 +53,6 @@ pub fn index_file(
     })
 }
 
-/// 폴더 내 모든 지원 파일 인덱싱 (rayon 병렬 처리)
-pub fn index_folder(
-    conn: &Connection,
-    folder_path: &Path,
-    embedder: Option<&Arc<Mutex<Embedder>>>,
-    vector_index: Option<&Arc<VectorIndex>>,
-) -> Result<FolderIndexResult, IndexError> {
-    index_folder_with_options(conn, folder_path, embedder, vector_index, true)
-}
-
-/// 폴더 내 파일 인덱싱 (recursive 옵션 지원)
-pub fn index_folder_with_options(
-    conn: &Connection,
-    folder_path: &Path,
-    embedder: Option<&Arc<Mutex<Embedder>>>,
-    vector_index: Option<&Arc<VectorIndex>>,
-    recursive: bool,
-) -> Result<FolderIndexResult, IndexError> {
-    // 1. 파일 경로 수집
-    let file_paths = collect_files(folder_path, SUPPORTED_EXTENSIONS, recursive);
-
-    tracing::info!(
-        "Found {} files to index in {:?}",
-        file_paths.len(),
-        folder_path
-    );
-
-    // 2. 병렬 파싱 (rayon)
-    let parse_results: Vec<ParseResult> = file_paths
-        .par_iter()
-        .map(|path| {
-            match parse_file(path) {
-                Ok(doc) => ParseResult::Success {
-                    path: path.clone(),
-                    document: doc,
-                },
-                Err(e) => ParseResult::Failure {
-                    path: path.clone(),
-                    error: e.to_string(),
-                },
-            }
-        })
-        .collect();
-
-    // 3. 순차적 DB 저장 (SQLite 쓰기는 단일 스레드)
-    let mut indexed = 0;
-    let mut failed = 0;
-    let mut vectors_total = 0;
-    let mut errors: Vec<String> = Vec::new();
-
-    for result in parse_results {
-        match result {
-            ParseResult::Success { path, document } => {
-                match save_document_to_db(conn, &path, document, embedder, vector_index) {
-                    Ok((_chunks, vectors)) => {
-                        indexed += 1;
-                        vectors_total += vectors;
-                    }
-                    Err(e) => {
-                        failed += 1;
-                        errors.push(format!("{:?}: {}", path, e));
-                    }
-                }
-            }
-            ParseResult::Failure { path, error } => {
-                failed += 1;
-                errors.push(format!("{:?}: {}", path, error));
-            }
-            ParseResult::Cancelled => {
-                // 기존 함수에서는 취소 없음
-            }
-        }
-    }
-
-    // 벡터 인덱스 저장
-    if let Some(vi) = vector_index {
-        if let Err(e) = vi.save() {
-            tracing::warn!("Failed to save vector index: {}", e);
-        }
-    }
-
-    Ok(FolderIndexResult {
-        folder_path: folder_path.to_string_lossy().to_string(),
-        indexed_count: indexed,
-        failed_count: failed,
-        vectors_count: vectors_total,
-        errors,
-    })
-}
-
 /// 폴더 인덱싱 (진행률 콜백 + 취소 지원)
 pub fn index_folder_with_progress(
     conn: &Connection,
@@ -531,6 +441,7 @@ fn save_document_to_db(
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct IndexResult {
     pub file_path: String,
     pub chunks_count: usize,
@@ -539,6 +450,7 @@ pub struct IndexResult {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct FolderIndexResult {
     pub folder_path: String,
     pub indexed_count: usize,
@@ -548,6 +460,7 @@ pub struct FolderIndexResult {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
 pub enum IndexError {
     #[error("IO error: {0}")]
     IoError(String),

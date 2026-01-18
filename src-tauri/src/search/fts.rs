@@ -76,6 +76,7 @@ fn sanitize_fts_query(query: &str) -> String {
 }
 
 /// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
+#[allow(dead_code)]
 pub fn find_highlight_ranges(content: &str, query: &str) -> Vec<(usize, usize)> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -147,6 +148,7 @@ pub fn find_highlight_ranges(content: &str, query: &str) -> Vec<(usize, usize)> 
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct FtsResult {
     pub chunk_id: i64,
     pub file_path: String,

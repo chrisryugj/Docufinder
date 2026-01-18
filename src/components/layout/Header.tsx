@@ -18,18 +18,11 @@ export function Header({ onAddFolder, onOpenSettings, onOpenHelp, isIndexing, is
 
         <div className="flex items-center gap-3">
           {/* App Icon */}
-          <div className="flex-shrink-0 text-blue-600">
-            <svg
-              className="w-8 h-8"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <rect x="4" y="4" width="16" height="16" rx="4" className="fill-blue-100" />
-              <path d="M15 15L19 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="10.5" cy="10.5" r="4.5" stroke="currentColor" strokeWidth="2.5" />
-            </svg>
-          </div>
+          <img
+            src="/icon.png"
+            alt="DocuFinder"
+            className="w-8 h-8 flex-shrink-0"
+          />
 
           {/* Title Container */}
           <div>

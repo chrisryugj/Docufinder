@@ -19,6 +19,7 @@ pub enum ParseError {
 
 /// 파싱 결과
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ParsedDocument {
     pub content: String,
     pub metadata: DocumentMetadata,
@@ -26,6 +27,7 @@ pub struct ParsedDocument {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct DocumentMetadata {
     pub title: Option<String>,
     pub author: Option<String>,

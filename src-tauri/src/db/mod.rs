@@ -393,39 +393,6 @@ pub fn insert_chunk(
 
 // ==================== 청크 조회 ====================
 
-/// chunk_id로 청크 정보 조회
-pub fn get_chunk_by_id(conn: &Connection, chunk_id: i64) -> Result<Option<ChunkInfo>> {
-    let mut stmt = conn.prepare(
-        "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.location_hint, f.path, f.name, fts.content
-         FROM chunks c
-         JOIN files f ON f.id = c.file_id
-         JOIN chunks_fts fts ON fts.rowid = c.id
-         WHERE c.id = ?"
-    )?;
-
-    let result = stmt.query_row(params![chunk_id], |row| {
-        Ok(ChunkInfo {
-            chunk_id: row.get(0)?,
-            file_id: row.get(1)?,
-            chunk_index: row.get(2)?,
-            start_offset: row.get(3)?,
-            end_offset: row.get(4)?,
-            page_number: row.get(5)?,
-            location_hint: row.get(6)?,
-            file_path: row.get(7)?,
-            file_name: row.get(8)?,
-            content: row.get(9)?,
-        })
-    });
-
-    match result {
-        Ok(info) => Ok(Some(info)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e),
-    }
-}
-
 /// 여러 chunk_id로 청크 정보 일괄 조회
 pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<ChunkInfo>> {
     if chunk_ids.is_empty() {
@@ -513,6 +480,7 @@ pub fn get_folder_stats(conn: &Connection, folder_path: &str) -> Result<FolderSt
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ChunkInfo {
     pub chunk_id: i64,
     pub file_id: i64,

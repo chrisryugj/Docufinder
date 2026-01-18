@@ -21,6 +21,8 @@
   "license": "MIT",
   "packageManager": "pnpm@10.20.0",
   "devDependencies": {
+    "sharp": "^0.33.5",
+    "png-to-ico": "^2.1.8",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2.9.6",
     "@types/react": "^19.2.8",

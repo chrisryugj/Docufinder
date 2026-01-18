@@ -54,6 +54,7 @@ impl Default for DefaultStyle {
 }
 
 /// 페이지 계산기
+#[allow(dead_code)]
 struct PageCalculator {
     /// 한 페이지에 들어가는 대략적인 글자 수
     chars_per_page: usize,
