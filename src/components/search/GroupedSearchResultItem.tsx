@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
@@ -13,6 +13,8 @@ interface GroupedSearchResultItemProps {
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   isCompact?: boolean;
+  /** 검색어 - snippet 없을 때 클라이언트 하이라이트용 */
+  searchQuery?: string;
 }
 
 interface ContextMenuState {
@@ -34,10 +36,18 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   onCopyPath,
   onOpenFolder,
   isCompact = false,
+  searchQuery,
 }: GroupedSearchResultItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
+
+  // 검색어를 키워드로 분리 (snippet 없을 때 폴백 하이라이트용)
+  const fallbackKeywords = useMemo(() => {
+    if (!searchQuery) return [];
+    // 공백으로 분리, 빈 문자열 제거, 2글자 이상만
+    return searchQuery.split(/\s+/).filter(k => k.length >= 2);
+  }, [searchQuery]);
 
   // 컴팩트 모드: 2개만, 기본: 3개, 펼치면 전체
   const defaultCount = isCompact ? 2 : 3;
@@ -206,6 +216,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
                   text={chunk.content_preview}
                   ranges={chunk.highlight_ranges}
                   snippet={chunk.snippet}
+                  refineKeywords={!chunk.snippet ? fallbackKeywords : undefined}
                 />
               </p>
             </div>
