@@ -439,7 +439,7 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.location_hint, f.path, f.name, fts.content
+                c.location_hint, f.path, f.name, fts.content, f.modified_at
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
@@ -462,6 +462,7 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
             file_path: row.get(7)?,
             file_name: row.get(8)?,
             content: row.get(9)?,
+            modified_at: row.get(10)?,
         })
     })?;
 
@@ -529,6 +530,7 @@ pub struct ChunkInfo {
     pub file_path: String,
     pub file_name: String,
     pub content: String,
+    pub modified_at: Option<i64>,
 }
 
 // ==================== 2단계 인덱싱 ====================
