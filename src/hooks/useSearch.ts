@@ -185,11 +185,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         filtered.sort((a, b) => b.confidence - a.confidence);
         break;
       case "date_desc":
-        // 파일 수정일이 없으므로 현재는 변경 없음
-        // TODO: 백엔드에서 수정일 추가 시 정렬 구현
+        // 최신순 (수정일 내림차순)
+        filtered.sort((a, b) => (b.modified_at ?? 0) - (a.modified_at ?? 0));
         break;
       case "date_asc":
-        // TODO: 수정일 역순
+        // 오래된순 (수정일 오름차순)
+        filtered.sort((a, b) => (a.modified_at ?? 0) - (b.modified_at ?? 0));
         break;
       case "name":
         filtered.sort((a, b) => a.file_name.localeCompare(b.file_name, "ko"));

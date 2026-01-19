@@ -38,6 +38,8 @@ pub struct SearchResult {
     /// FTS5 snippet - 매칭 컨텍스트 (하이라이트 마커 포함)
     /// [[HL]]매칭[[/HL]] 형식
     pub snippet: Option<String>,
+    /// 파일 수정 시간 (Unix timestamp, 초)
+    pub modified_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -111,6 +113,7 @@ pub async fn search_keyword(
                 start_offset: r.start_offset,
                 location_hint: r.location_hint,
                 snippet: Some(r.snippet),
+                modified_at: r.modified_at,
             }
         })
         .collect();
@@ -203,6 +206,7 @@ pub async fn search_filename(
                 start_offset: 0,
                 location_hint: Some(r.file_type),
                 snippet: None,
+                modified_at: r.modified_at,
             }
         })
         .collect();
@@ -317,6 +321,7 @@ pub async fn search_semantic(
                 start_offset: chunk.start_offset,
                 location_hint: chunk.location_hint.clone(),
                 snippet: None, // 시맨틱 검색은 snippet 없음
+                modified_at: chunk.modified_at,
             })
         })
         .collect();
@@ -463,6 +468,7 @@ pub async fn search_hybrid(
                     start_offset: chunk.start_offset,
                     location_hint: chunk.location_hint.clone(),
                     snippet,
+                    modified_at: chunk.modified_at,
                 }
             })
         })
