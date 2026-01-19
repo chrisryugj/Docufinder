@@ -25,7 +25,8 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             c.page_number,
             c.location_hint,
             snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet,
-            highlight(chunks_fts, 0, '[[HL]]', '[[/HL]]') as highlight
+            highlight(chunks_fts, 0, '[[HL]]', '[[/HL]]') as highlight,
+            f.modified_at
          FROM chunks_fts fts
          JOIN chunks c ON c.id = fts.rowid
          JOIN files f ON f.id = c.file_id
@@ -48,6 +49,7 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
             location_hint: row.get(9)?,
             snippet: row.get(10)?,
             highlight: row.get(11)?,
+            modified_at: row.get(12)?,
         })
     })?;
 
@@ -168,4 +170,6 @@ pub struct FtsResult {
     /// FTS5 highlight() - 전체 컨텐츠에 하이라이트 마커 포함
     /// [[HL]]매칭[[/HL]] 형식
     pub highlight: String,
+    /// 파일 수정 시간 (Unix timestamp, 초)
+    pub modified_at: Option<i64>,
 }

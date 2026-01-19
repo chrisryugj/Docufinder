@@ -17,6 +17,8 @@ export interface SearchResult {
   location_hint: string | null;
   /** FTS5 snippet (하이라이트 마커 포함) */
   snippet?: string;
+  /** 파일 수정 시간 (Unix timestamp, 초) */
+  modified_at: number | null;
 }
 
 /** 검색 매칭 타입 */
