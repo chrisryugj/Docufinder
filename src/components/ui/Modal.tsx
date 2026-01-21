@@ -6,6 +6,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: "sm" | "md" | "lg";
+  closable?: boolean; // ESC/배경 클릭/X 버튼으로 닫기 허용 여부
 }
 
 const sizeClasses = {
@@ -14,13 +15,13 @@ const sizeClasses = {
   lg: "max-w-xl",
 };
 
-export function Modal({ isOpen, onClose, title, children, size = "md" }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = "md", closable = true }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // ESC 키로 닫기
+  // ESC 키로 닫기 (closable일 때만)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && closable) {
         onClose();
       }
     };
@@ -35,11 +36,11 @@ export function Modal({ isOpen, onClose, title, children, size = "md" }: ModalPr
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closable]);
 
-  // 배경 클릭으로 닫기
+  // 배경 클릭으로 닫기 (closable일 때만)
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && closable) {
       onClose();
     }
   };
@@ -76,24 +77,26 @@ export function Modal({ isOpen, onClose, title, children, size = "md" }: ModalPr
           >
             {title}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md transition-all duration-200"
-            style={{ color: "var(--color-text-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-              e.currentTarget.style.color = "var(--color-text-primary)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--color-text-muted)";
-            }}
-            aria-label="닫기"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          {closable && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-md transition-all duration-200"
+              style={{ color: "var(--color-text-muted)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                e.currentTarget.style.color = "var(--color-text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "var(--color-text-muted)";
+              }}
+              aria-label="닫기"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Content */}

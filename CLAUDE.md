@@ -1,4 +1,4 @@
-# DocuFinder 프로젝트
+# Anything 프로젝트
 
 로컬 문서 검색 앱 - HWPX, Office, PDF 지원 (Tauri + React)
 
@@ -18,7 +18,7 @@ pnpm tauri:build
 ## 프로젝트 구조
 
 ```
-Docufinder/
+Anything/
 ├── src-tauri/              # Rust 백엔드
 │   ├── src/
 │   │   ├── main.rs         # 앱 진입점

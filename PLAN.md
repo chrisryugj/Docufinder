@@ -1,4 +1,4 @@
-# 로컬 문서 검색 앱 설계 계획
+# Anything - 로컬 문서 검색 앱 설계 계획
 
 > 폴더 내 HWPX/Office 문서를 인덱싱하고, 키워드 + AI 시맨틱 검색을 지원하는 데스크톱 앱
 
@@ -112,7 +112,7 @@ CREATE VIRTUAL TABLE chunks_fts USING fts5(
 ## 📁 프로젝트 구조
 
 ```
-Docufinder/
+Anything/
 ├── src-tauri/              # Rust 백엔드
 │   ├── src/
 │   │   ├── main.rs

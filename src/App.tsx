@@ -20,6 +20,7 @@ function isLightColor(hex: string): boolean {
 
 // Hooks
 import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch } from "./hooks";
+import { useFirstRun } from "./hooks/useFirstRun";
 
 // Components
 import { Header, StatusBar, ErrorBanner } from "./components/layout";
@@ -29,6 +30,7 @@ import { SettingsModal } from "./components/settings/SettingsModal";
 import { HelpModal } from "./components/help/HelpModal";
 import { ToastContainer } from "./components/ui/Toast";
 import { VectorIndexingFAB } from "./components/ui/VectorIndexingFAB";
+import { DisclaimerModal, OnboardingModal } from "./components/onboarding";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -59,6 +61,16 @@ function App() {
 
   // 테마
   const { setTheme } = useTheme();
+
+  // 첫 실행 (면책 조항 + 온보딩)
+  const {
+    showDisclaimer,
+    showOnboarding,
+    acceptDisclaimer,
+    completeOnboarding,
+    skipOnboarding,
+    exitApp,
+  } = useFirstRun();
 
   // 검색 상태
   const {
@@ -542,6 +554,20 @@ function App() {
 
       {/* Help Modal */}
       <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {/* Disclaimer Modal (첫 실행 시) */}
+      <DisclaimerModal
+        isOpen={showDisclaimer}
+        onAccept={acceptDisclaimer}
+        onExit={exitApp}
+      />
+
+      {/* Onboarding Modal (동의 후) */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onComplete={completeOnboarding}
+        onSkip={skipOnboarding}
+      />
 
       {/* Toast Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

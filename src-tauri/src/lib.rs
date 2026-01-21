@@ -487,8 +487,6 @@ pub fn run() {
             commands::index::get_db_debug_info,
             commands::settings::get_settings,
             commands::settings::update_settings,
-            commands::settings::reset_vector_index,
-            commands::settings::reset_all_data,
             commands::file::open_file,
             commands::file::open_folder,
         ])
