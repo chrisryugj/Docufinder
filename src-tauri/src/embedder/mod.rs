@@ -4,6 +4,7 @@ use ndarray::Array2;
 use ort::session::Session;
 use ort::value::Value;
 use std::path::Path;
+use std::sync::Mutex;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
@@ -23,11 +24,17 @@ pub enum EmbedderError {
 
     #[error("Invalid embedding dimension")]
     InvalidDimension,
+
+    #[error("Lock failed")]
+    LockFailed,
 }
 
 /// 텍스트 임베딩 생성기
+///
+/// Session은 &mut self를 필요로 하므로 내부 Mutex 사용
+/// 토큰화는 병렬 가능, ONNX 추론만 직렬화
 pub struct Embedder {
-    session: Session,
+    session: Mutex<Session>,
     tokenizer: Tokenizer,
 }
 
@@ -54,10 +61,14 @@ impl Embedder {
 
         tracing::debug!("Embedder using {} intra-op threads", num_threads);
 
-        // ONNX 세션 생성
+        // ONNX 세션 생성 (최적화 적용)
         let session = Session::builder()
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
+            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .with_intra_threads(num_threads)
+            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
+            .with_parallel_execution(true)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .commit_from_file(model_path)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
@@ -66,11 +77,14 @@ impl Embedder {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| EmbedderError::TokenizerError(e.to_string()))?;
 
-        Ok(Self { session, tokenizer })
+        Ok(Self {
+            session: Mutex::new(session),
+            tokenizer,
+        })
     }
 
     /// 단일 텍스트 임베딩
-    pub fn embed(&mut self, text: &str, is_query: bool) -> Result<Vec<f32>, EmbedderError> {
+    pub fn embed(&self, text: &str, is_query: bool) -> Result<Vec<f32>, EmbedderError> {
         let embeddings = self.embed_batch(&[self.prepare_text(text, is_query)])?;
         embeddings
             .into_iter()
@@ -78,8 +92,8 @@ impl Embedder {
             .ok_or(EmbedderError::InvalidDimension)
     }
 
-    /// 배치 임베딩
-    pub fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbedderError> {
+    /// 배치 임베딩 (불변 참조 - 락 없이 병렬 호출 가능)
+    pub fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbedderError> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
@@ -119,7 +133,8 @@ impl Embedder {
         let attention_mask_vec: Vec<i64> = attention_mask.iter().copied().collect();
         let token_type_ids_vec: Vec<i64> = token_type_ids.iter().copied().collect();
 
-        // ONNX 추론
+        // ONNX 추론 (Session은 &mut self 필요 → Mutex 사용)
+        // SessionOutputs가 session 참조를 유지하므로 락 안에서 모든 처리 완료
         let input_ids_value = Value::from_array((shape, input_ids_vec))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
         let attention_mask_value = Value::from_array((shape, attention_mask_vec))
@@ -127,61 +142,63 @@ impl Embedder {
         let token_type_ids_value = Value::from_array((shape, token_type_ids_vec))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
-        let outputs = self
-            .session
-            .run(ort::inputs![
-                "input_ids" => input_ids_value,
-                "attention_mask" => attention_mask_value,
-                "token_type_ids" => token_type_ids_value,
-            ])
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+        let embeddings = {
+            let mut session = self.session.lock().map_err(|_| EmbedderError::LockFailed)?;
+            let outputs = session
+                .run(ort::inputs![
+                    "input_ids" => input_ids_value,
+                    "attention_mask" => attention_mask_value,
+                    "token_type_ids" => token_type_ids_value,
+                ])
+                .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
-        // 출력에서 임베딩 추출
-        let output = outputs
-            .get("last_hidden_state")
-            .ok_or_else(|| EmbedderError::OrtError("No last_hidden_state output".to_string()))?;
+            // 출력에서 임베딩 추출
+            let output = outputs
+                .get("last_hidden_state")
+                .ok_or_else(|| EmbedderError::OrtError("No last_hidden_state output".to_string()))?;
 
-        let (out_shape, out_data) = output
-            .try_extract_tensor::<f32>()
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+            let (out_shape, out_data) = output
+                .try_extract_tensor::<f32>()
+                .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
-        // shape: [batch, seq_len, hidden_dim]
-        // Shape implements Deref<Target=[i64]>
-        let hidden_dim = out_shape.get(2).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
+            // shape: [batch, seq_len, hidden_dim]
+            let hidden_dim = out_shape.get(2).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
 
-        // Mean pooling with attention mask
-        let mut embeddings = Vec::with_capacity(batch_size);
-        for i in 0..batch_size {
-            let mut sum = vec![0.0f32; EMBEDDING_DIM];
-            let mut count = 0.0f32;
+            // Mean pooling with attention mask
+            let mut embeddings = Vec::with_capacity(batch_size);
+            for i in 0..batch_size {
+                let mut sum = vec![0.0f32; EMBEDDING_DIM];
+                let mut count = 0.0f32;
 
-            for j in 0..seq_len {
-                if attention_mask[[i, j]] == 1 {
-                    let offset = i * seq_len * hidden_dim + j * hidden_dim;
-                    for k in 0..EMBEDDING_DIM.min(hidden_dim) {
-                        sum[k] += out_data[offset + k];
+                for j in 0..seq_len {
+                    if attention_mask[[i, j]] == 1 {
+                        let offset = i * seq_len * hidden_dim + j * hidden_dim;
+                        for k in 0..EMBEDDING_DIM.min(hidden_dim) {
+                            sum[k] += out_data[offset + k];
+                        }
+                        count += 1.0;
                     }
-                    count += 1.0;
                 }
-            }
 
-            // Average
-            if count > 0.0 {
-                for v in &mut sum {
-                    *v /= count;
+                // Average
+                if count > 0.0 {
+                    for v in &mut sum {
+                        *v /= count;
+                    }
                 }
-            }
 
-            // L2 normalize
-            let norm: f32 = sum.iter().map(|x| x * x).sum::<f32>().sqrt();
-            if norm > 0.0 {
-                for v in &mut sum {
-                    *v /= norm;
+                // L2 normalize
+                let norm: f32 = sum.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if norm > 0.0 {
+                    for v in &mut sum {
+                        *v /= norm;
+                    }
                 }
-            }
 
-            embeddings.push(sum);
-        }
+                embeddings.push(sum);
+            }
+            embeddings
+        };
 
         Ok(embeddings)
     }

@@ -66,7 +66,7 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
 
         const timestamp = new Date().toISOString().slice(0, 10);
         const safeQuery = query.replace(/[^a-zA-Z0-9가-힣]/g, "_").slice(0, 20);
-        link.download = `DocuFinder_${safeQuery}_${timestamp}.csv`;
+        link.download = `Anything_${safeQuery}_${timestamp}.csv`;
 
         document.body.appendChild(link);
         link.click();
@@ -98,7 +98,7 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
 
       try {
         const lines: string[] = [
-          "[DocuFinder 검색 결과]",
+          "[Anything 검색 결과]",
           `검색어: "${query}"`,
           `결과: ${results.length}건`,
           "",

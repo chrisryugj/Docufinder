@@ -19,15 +19,18 @@ export function Header({ onAddFolder, onOpenSettings, onOpenHelp, isIndexing, is
           {/* App Icon */}
           <img
             src="/icon.png"
-            alt="DocuFinder"
-            className="w-7 h-7 flex-shrink-0"
+            alt="Anything"
+            className="w-7 h-7 flex-shrink-0 object-contain"
           />
 
           {/* Title Container */}
-          <div>
+          <div className="flex items-baseline gap-2">
             <h1 className="text-lg font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
-              DocuFinder
+              Anything
             </h1>
+            <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              AI 문서 검색
+            </span>
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { ReactNode, CSSProperties } from "react";
 type BadgeVariant =
   | "default"
   | "primary"
+  | "secondary"
   | "success"
   | "warning"
   | "danger"
@@ -53,6 +54,11 @@ const getVariantStyle = (variant: BadgeVariant): CSSProperties => {
       return {
         backgroundColor: "var(--color-accent-light)",
         color: "var(--color-accent)",
+      };
+    case "secondary":
+      return {
+        backgroundColor: "var(--color-bg-tertiary)",
+        color: "var(--color-text-secondary)",
       };
     case "success":
       return {

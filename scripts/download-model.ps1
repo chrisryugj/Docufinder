@@ -3,9 +3,10 @@
 
 $ErrorActionPreference = "Stop"
 
-$MODEL_DIR = Join-Path $PSScriptRoot "..\models"
-$MODEL_URL = "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/onnx/model.onnx"
-$TOKENIZER_URL = "https://huggingface.co/intfloat/multilingual-e5-small/resolve/main/tokenizer.json"
+$MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\multilingual-e5-small"
+# INT8 quantized 버전 (118MB, AVX2 호환)
+$MODEL_URL = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/onnx/model_int8.onnx"
+$TOKENIZER_URL = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/tokenizer.json"
 $ONNX_RUNTIME_URL = "https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-win-x64-1.19.2.zip"
 
 # models 폴더 생성

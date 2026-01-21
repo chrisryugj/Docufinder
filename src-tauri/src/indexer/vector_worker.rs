@@ -1,24 +1,36 @@
 //! 2단계 벡터 인덱싱 워커
 //!
 //! FTS 인덱싱 완료 후 백그라운드에서 벡터 임베딩 수행
-//! - 별도 스레드에서 실행
-//! - 32청크씩 배치 임베딩
+//! - 파이프라인 병렬화: DB 프리페치 + 임베딩 동시 진행
+//! - 128청크씩 배치 임베딩 (SIMD 효율 극대화)
 //! - 주기적 진행률 이벤트 emit
 //! - 취소 지원
 
-use crate::db;
+use crate::db::{self, PendingChunk};
 use crate::embedder::Embedder;
 use crate::search::vector::VectorIndex;
+use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
-/// 벡터 인덱싱 배치 크기
-const EMBEDDING_BATCH_SIZE: usize = 32;
+/// 벡터 인덱싱 배치 크기 (128로 증가하여 ONNX SIMD 효율 극대화)
+const EMBEDDING_BATCH_SIZE: usize = 128;
 
-/// 벡터 인덱스 저장 주기 (청크 수) - I/O 최적화를 위해 500으로 증가
-const SAVE_INTERVAL: usize = 500;
+/// 벡터 인덱스 저장 주기 (청크 수) - I/O 최적화를 위해 1000으로 증가
+const SAVE_INTERVAL: usize = 1000;
+
+/// 프리페치 버퍼 크기 (배치 4개 분량)
+const PREFETCH_BUFFER_SIZE: usize = 4;
+
+/// 프리페치된 배치 데이터
+struct PrefetchedBatch {
+    file_id: i64,
+    file_path: String,
+    chunks: Vec<PendingChunk>,
+}
 
 /// 벡터 인덱싱 상태
 #[derive(Debug, Clone, serde::Serialize)]
@@ -75,7 +87,7 @@ impl VectorWorker {
     pub fn start(
         &mut self,
         db_path: PathBuf,
-        embedder: Arc<Mutex<Embedder>>,
+        embedder: Arc<Embedder>,
         vector_index: Arc<VectorIndex>,
         progress_callback: Option<VectorProgressCallback>,
     ) -> Result<(), String> {
@@ -160,10 +172,13 @@ impl Default for VectorWorker {
     }
 }
 
-/// 벡터 인덱싱 실행 (내부 함수)
+/// 벡터 인덱싱 실행 (파이프라인 병렬화)
+///
+/// 구조: [DB 프리페치 스레드] --배치--> [메인 스레드: 임베딩 + 저장]
+/// DB I/O와 임베딩이 병렬로 진행되어 처리량 향상
 fn run_vector_indexing(
     db_path: &PathBuf,
-    embedder: &Arc<Mutex<Embedder>>,
+    embedder: &Arc<Embedder>,
     vector_index: &Arc<VectorIndex>,
     cancel_flag: &Arc<AtomicBool>,
     status: &Arc<RwLock<VectorIndexingStatus>>,
@@ -178,7 +193,7 @@ fn run_vector_indexing(
 
     let total_chunks = stats.pending_chunks;
 
-    tracing::info!("[VectorWorker] Starting. {} chunks pending", total_chunks);
+    tracing::info!("[VectorWorker] Starting pipeline. {} chunks pending", total_chunks);
 
     // 상태 업데이트
     if let Ok(mut s) = status.write() {
@@ -197,97 +212,97 @@ fn run_vector_indexing(
         }
     };
 
+    // 파이프라인 채널 생성
+    let (batch_tx, batch_rx) = bounded::<PrefetchedBatch>(PREFETCH_BUFFER_SIZE);
+
+    // 프리페치 스레드용 DB 경로 복사
+    let prefetch_db_path = db_path.clone();
+    let prefetch_cancel = cancel_flag.clone();
+
+    // 프리페치 스레드 시작
+    let prefetch_handle = std::thread::spawn(move || {
+        run_prefetch_thread(prefetch_db_path, batch_tx, prefetch_cancel);
+    });
+
+    // 메인 루프: 임베딩 + 저장
     let mut processed = 0;
     let mut last_save = 0;
+    let recv_timeout = Duration::from_millis(100);
 
-    // 파일 단위로 처리 (벡터 완료 표시를 위해)
-    let pending_file_ids = db::get_pending_vector_file_ids(&conn)
-        .map_err(|e| format!("Failed to get pending files: {}", e))?;
-
-    for file_id in pending_file_ids {
+    loop {
         // 취소 확인
         if cancel_flag.load(Ordering::Relaxed) {
             tracing::info!("[VectorWorker] Cancelled");
             send_progress(processed, None, false);
-            return Ok(());
+            break;
         }
 
-        // 해당 파일의 청크 조회
-        let chunks = db::get_pending_vector_chunks(&conn, EMBEDDING_BATCH_SIZE * 10)
-            .map_err(|e| format!("Failed to get chunks: {}", e))?;
+        match batch_rx.recv_timeout(recv_timeout) {
+            Ok(prefetched) => {
+                let current_file = Some(prefetched.file_path.as_str());
 
-        // 해당 파일의 청크만 필터링
-        let file_chunks: Vec<_> = chunks.into_iter().filter(|c| c.file_id == file_id).collect();
+                // 상태 업데이트
+                if let Ok(mut s) = status.write() {
+                    s.current_file = Some(prefetched.file_path.clone());
+                    s.processed_chunks = processed;
+                }
 
-        if file_chunks.is_empty() {
-            continue;
-        }
+                send_progress(processed, current_file, false);
 
-        let current_file = file_chunks.first().map(|c| c.file_path.as_str());
-
-        // 상태 업데이트
-        if let Ok(mut s) = status.write() {
-            s.current_file = current_file.map(|s| s.to_string());
-            s.processed_chunks = processed;
-        }
-
-        send_progress(processed, current_file, false);
-
-        // 배치 단위로 임베딩
-        for batch in file_chunks.chunks(EMBEDDING_BATCH_SIZE) {
-            // 취소 확인
-            if cancel_flag.load(Ordering::Relaxed) {
-                tracing::info!("[VectorWorker] Cancelled during batch");
-                send_progress(processed, None, false);
-                return Ok(());
-            }
-
-            let contents: Vec<String> = batch.iter().map(|c| c.content.clone()).collect();
-            let chunk_ids: Vec<i64> = batch.iter().map(|c| c.chunk_id).collect();
-
-            // 임베딩 생성
-            let embeddings = match embedder.lock() {
-                Ok(mut emb) => match emb.embed_batch(&contents) {
-                    Ok(emb) => emb,
-                    Err(e) => {
-                        tracing::warn!("[VectorWorker] Embedding failed: {}", e);
-                        continue;
+                // 배치 단위로 임베딩
+                for batch in prefetched.chunks.chunks(EMBEDDING_BATCH_SIZE) {
+                    // 취소 확인
+                    if cancel_flag.load(Ordering::Relaxed) {
+                        break;
                     }
-                },
-                Err(e) => {
-                    tracing::warn!("[VectorWorker] Embedder lock failed: {}", e);
-                    continue;
-                }
-            };
 
-            // 벡터 인덱스에 추가
-            for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
-                if let Err(e) = vector_index.add(*chunk_id, embedding) {
-                    tracing::warn!("[VectorWorker] Failed to add vector {}: {}", chunk_id, e);
+                    let contents: Vec<String> = batch.iter().map(|c| c.content.clone()).collect();
+                    let chunk_ids: Vec<i64> = batch.iter().map(|c| c.chunk_id).collect();
+
+                    // 임베딩 생성
+                    let embeddings = match embedder.embed_batch(&contents) {
+                        Ok(emb) => emb,
+                        Err(e) => {
+                            tracing::warn!("[VectorWorker] Embedding failed: {}", e);
+                            continue;
+                        }
+                    };
+
+                    // 벡터 인덱스에 추가
+                    for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
+                        if let Err(e) = vector_index.add(*chunk_id, embedding) {
+                            tracing::warn!("[VectorWorker] Failed to add vector {}: {}", chunk_id, e);
+                        }
+                    }
+
+                    processed += batch.len();
+
+                    // 상태 업데이트
+                    if let Ok(mut s) = status.write() {
+                        s.processed_chunks = processed;
+                    }
+
+                    // 주기적 저장
+                    if processed - last_save >= SAVE_INTERVAL {
+                        if let Err(e) = vector_index.save() {
+                            tracing::warn!("[VectorWorker] Failed to save index: {}", e);
+                        }
+                        last_save = processed;
+                    }
+                }
+
+                // 파일 완료 표시
+                if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
+                    tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
                 }
             }
-
-            processed += batch.len();
-
-            // 상태 업데이트
-            if let Ok(mut s) = status.write() {
-                s.processed_chunks = processed;
-            }
-
-            // 주기적 저장
-            if processed - last_save >= SAVE_INTERVAL {
-                if let Err(e) = vector_index.save() {
-                    tracing::warn!("[VectorWorker] Failed to save index: {}", e);
-                }
-                last_save = processed;
-            }
-        }
-
-        // 파일 완료 표시
-        if let Err(e) = db::mark_file_vector_indexed(&conn, file_id) {
-            tracing::warn!("[VectorWorker] Failed to mark file {}: {}", file_id, e);
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
+
+    // 프리페치 스레드 종료 대기
+    let _ = prefetch_handle.join();
 
     // 최종 저장
     if let Err(e) = vector_index.save() {
@@ -305,4 +320,72 @@ fn run_vector_indexing(
     send_progress(processed, None, true);
 
     Ok(())
+}
+
+/// 프리페치 스레드: DB에서 청크를 미리 로드하여 채널로 전송
+fn run_prefetch_thread(
+    db_path: PathBuf,
+    batch_tx: crossbeam_channel::Sender<PrefetchedBatch>,
+    cancel_flag: Arc<AtomicBool>,
+) {
+    let conn = match db::get_connection(&db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("[Prefetch] DB connection failed: {}", e);
+            return;
+        }
+    };
+
+    // 대기 중인 파일 ID 목록
+    let pending_file_ids = match db::get_pending_vector_file_ids(&conn) {
+        Ok(ids) => ids,
+        Err(e) => {
+            tracing::error!("[Prefetch] Failed to get pending files: {}", e);
+            return;
+        }
+    };
+
+    for file_id in pending_file_ids {
+        // 취소 확인
+        if cancel_flag.load(Ordering::Relaxed) {
+            tracing::debug!("[Prefetch] Cancelled");
+            break;
+        }
+
+        // 해당 파일의 청크 로드
+        let chunks = match db::get_pending_vector_chunks(&conn, EMBEDDING_BATCH_SIZE * 10) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("[Prefetch] Failed to get chunks: {}", e);
+                continue;
+            }
+        };
+
+        // 해당 파일의 청크만 필터링
+        let file_chunks: Vec<_> = chunks.into_iter().filter(|c| c.file_id == file_id).collect();
+
+        if file_chunks.is_empty() {
+            continue;
+        }
+
+        let file_path = file_chunks
+            .first()
+            .map(|c| c.file_path.clone())
+            .unwrap_or_default();
+
+        // 배치 전송
+        let batch = PrefetchedBatch {
+            file_id,
+            file_path,
+            chunks: file_chunks,
+        };
+
+        if batch_tx.send(batch).is_err() {
+            // 수신자가 종료됨
+            tracing::debug!("[Prefetch] Receiver dropped, stopping");
+            break;
+        }
+    }
+
+    tracing::debug!("[Prefetch] Thread completed");
 }

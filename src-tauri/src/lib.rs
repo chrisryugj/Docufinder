@@ -1,9 +1,12 @@
+mod application;      // 클린 아키텍처: Application Layer
 mod commands;
 mod constants;
 mod db;
+mod domain;           // 클린 아키텍처: Domain Layer
 mod embedder;
 mod error;
 mod indexer;
+mod infrastructure;   // 클린 아키텍처: Infrastructure Layer
 mod parsers;
 mod search;
 
@@ -18,8 +21,9 @@ use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-type SharedEmbedder = Arc<Mutex<Embedder>>;
-use tauri::Manager;
+/// Embedder는 이제 불변 참조로 사용 가능 (락 불필요)
+type SharedEmbedder = Arc<Embedder>;
+use tauri::{Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_autostart::MacosLauncher;
@@ -102,7 +106,7 @@ impl AppState {
                 }
 
                 Embedder::new(&model_path, &tokenizer_path)
-                    .map(|e| Arc::new(Mutex::new(e)))
+                    .map(Arc::new)
                     .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))
             })
             .cloned()
@@ -235,6 +239,33 @@ pub fn run() {
             let models_dir = app_data_dir.join("models");
             std::fs::create_dir_all(&models_dir).ok();
 
+            // 번들된 모델 리소스를 app_data로 복사 (최초 1회)
+            let model_target = models_dir.join("multilingual-e5-small");
+            let model_marker = model_target.join("model.onnx");
+            if !model_marker.exists() {
+                if let Ok(resource_dir) = app.path().resource_dir() {
+                    let resource_model = resource_dir.join("models").join("multilingual-e5-small");
+                    if resource_model.exists() {
+                        tracing::info!("Copying bundled model from {:?} to {:?}", resource_model, model_target);
+                        std::fs::create_dir_all(&model_target).ok();
+
+                        // 모델 파일들 복사
+                        for entry in std::fs::read_dir(&resource_model).into_iter().flatten() {
+                            if let Ok(entry) = entry {
+                                let src = entry.path();
+                                let dest = model_target.join(entry.file_name());
+                                if src.is_file() {
+                                    if let Err(e) = std::fs::copy(&src, &dest) {
+                                        tracing::warn!("Failed to copy {:?}: {}", src, e);
+                                    }
+                                }
+                            }
+                        }
+                        tracing::info!("Model files copied successfully");
+                    }
+                }
+            }
+
             // Initialize database
             let state = AppState::new(&app_data_dir);
             db::init_database(&state.db_path)
@@ -277,6 +308,39 @@ pub fn run() {
             // Store app state
             app.manage(Mutex::new(state));
 
+            // 미완료 벡터 인덱싱 자동 재개
+            if let Some(state) = app.try_state::<Mutex<AppState>>() {
+                if let Ok(state) = state.lock() {
+                    if state.is_semantic_available() {
+                        if let Ok(conn) = db::get_connection(&state.db_path) {
+                            if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
+                                if stats.pending_chunks > 0 {
+                                    tracing::info!(
+                                        "Found {} pending vector chunks. Starting background indexing.",
+                                        stats.pending_chunks
+                                    );
+                                    if let (Ok(embedder), Ok(vector_index)) =
+                                        (state.get_embedder(), state.get_vector_index())
+                                    {
+                                        if let Ok(mut worker) = state.get_vector_worker().write() {
+                                            let app_handle = app.handle().clone();
+                                            let _ = worker.start(
+                                                state.db_path.clone(),
+                                                embedder,
+                                                vector_index,
+                                                Some(Arc::new(move |progress| {
+                                                    let _ = app_handle.emit("vector-indexing-progress", &progress);
+                                                })),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 개발 모드에서 DevTools 열기
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -292,7 +356,7 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .tooltip("DocuFinder")
+                .tooltip("Anything")
                 .on_menu_event(|app, event| {
                     match event.id.as_ref() {
                         "show" => {

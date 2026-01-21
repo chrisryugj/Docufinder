@@ -1,0 +1,225 @@
+//! IndexService - 인덱싱 비즈니스 로직
+//!
+//! 파일 인덱싱 (FTS, 벡터), 진행률 관리, 취소 처리 등
+
+use crate::application::dto::indexing::{IndexStatus, VectorIndexingStatus};
+use crate::application::errors::{AppError, AppResult};
+use crate::constants::BLOCKED_PATH_PATTERNS;
+use crate::db;
+use crate::indexer::pipeline::{self, FolderIndexResult, FtsProgressCallback};
+use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
+use crate::search::vector::VectorIndex;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+
+/// 인덱싱 서비스
+pub struct IndexService {
+    db_path: PathBuf,
+    embedder: Option<Arc<crate::embedder::Embedder>>,
+    vector_index: Option<Arc<VectorIndex>>,
+    vector_worker: Arc<RwLock<VectorWorker>>,
+    cancel_flag: Arc<AtomicBool>,
+}
+
+impl IndexService {
+    /// 새 IndexService 생성
+    pub fn new(
+        db_path: PathBuf,
+        embedder: Option<Arc<crate::embedder::Embedder>>,
+        vector_index: Option<Arc<VectorIndex>>,
+        vector_worker: Arc<RwLock<VectorWorker>>,
+        cancel_flag: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            db_path,
+            embedder,
+            vector_index,
+            vector_worker,
+            cancel_flag,
+        }
+    }
+
+    /// 폴더 FTS 인덱싱 (1단계)
+    pub async fn index_folder_fts(
+        &self,
+        path: &Path,
+        include_subfolders: bool,
+        progress_callback: Option<FtsProgressCallback>,
+    ) -> AppResult<FolderIndexResult> {
+        // 경로 유효성 검증
+        self.validate_path(path)?;
+
+        // 취소 플래그 리셋
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
+        let conn = self.get_connection()?;
+        let path_buf = path.to_path_buf();
+        let cancel_flag = self.cancel_flag.clone();
+
+        // blocking 작업으로 실행
+        let result = tokio::task::spawn_blocking(move || {
+            pipeline::index_folder_fts_only(
+                &conn,
+                &path_buf,
+                include_subfolders,
+                cancel_flag,
+                progress_callback,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Task join failed: {}", e)))?
+        .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+
+        Ok(result)
+    }
+
+    /// 벡터 인덱싱 시작 (2단계, 백그라운드)
+    pub fn start_vector_indexing(
+        &self,
+        progress_callback: Option<VectorProgressCallback>,
+    ) -> AppResult<()> {
+        let embedder = self.embedder.as_ref()
+            .ok_or(AppError::SemanticSearchDisabled)?;
+        let vector_index = self.vector_index.as_ref()
+            .ok_or(AppError::SemanticSearchDisabled)?;
+
+        let mut worker = self.vector_worker.write()
+            .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
+
+        if !worker.is_running() {
+            worker.start(
+                self.db_path.clone(),
+                embedder.clone(),
+                vector_index.clone(),
+                progress_callback,
+            )
+            .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
+    /// 인덱싱 취소
+    pub fn cancel_indexing(&self) {
+        self.cancel_flag.store(true, Ordering::Relaxed);
+        tracing::info!("Indexing cancelled");
+    }
+
+    /// 벡터 인덱싱 취소
+    pub fn cancel_vector_indexing(&self) -> AppResult<()> {
+        let worker = self.vector_worker.read()
+            .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
+        worker.cancel();
+        tracing::info!("Vector indexing cancelled");
+        Ok(())
+    }
+
+    /// 인덱스 상태 조회
+    pub async fn get_status(&self) -> AppResult<IndexStatus> {
+        let conn = self.get_connection()?;
+
+        let total_files = db::get_file_count(&conn)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let watched_folders = db::get_watched_folders(&conn)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let vectors_count = self.vector_index
+            .as_ref()
+            .map(|vi| vi.size())
+            .unwrap_or(0);
+        let semantic_available = self.embedder.is_some();
+
+        Ok(IndexStatus {
+            total_files,
+            indexed_files: total_files,
+            watched_folders,
+            vectors_count,
+            semantic_available,
+        })
+    }
+
+    /// 벡터 인덱싱 상태 조회
+    pub fn get_vector_status(&self) -> AppResult<VectorIndexingStatus> {
+        let worker = self.vector_worker.read()
+            .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
+        let status = worker.get_status();
+
+        Ok(VectorIndexingStatus {
+            is_running: status.is_running,
+            total_chunks: status.total_chunks,
+            processed_chunks: status.processed_chunks,
+        })
+    }
+
+    /// 폴더 재인덱싱 (기존 데이터 삭제 후 다시)
+    pub async fn reindex_folder(
+        &self,
+        path: &Path,
+        include_subfolders: bool,
+        progress_callback: Option<FtsProgressCallback>,
+    ) -> AppResult<FolderIndexResult> {
+        // 경로 유효성 검증
+        self.validate_path(path)?;
+        let path_str = path.to_string_lossy().to_string();
+
+        // 1. 벡터 인덱스에서 삭제
+        if let Some(vi) = self.vector_index.as_ref() {
+            let conn = self.get_connection()?;
+            let file_chunk_ids = db::get_file_and_chunk_ids_in_folder(&conn, &path_str)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+
+            for (_file_id, chunk_ids) in file_chunk_ids {
+                for chunk_id in chunk_ids {
+                    let _ = vi.remove(chunk_id);
+                }
+            }
+            let _ = vi.save();
+        }
+
+        // 2. DB에서 삭제
+        {
+            let conn = self.get_connection()?;
+            let deleted = db::delete_files_in_folder(&conn, &path_str)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            tracing::info!("Deleted {} files for reindexing: {}", deleted, path_str);
+        }
+
+        // 3. FTS 재인덱싱
+        self.index_folder_fts(path, include_subfolders, progress_callback).await
+    }
+
+    /// 시맨틱 검색 사용 가능 여부
+    pub fn is_semantic_available(&self) -> bool {
+        self.embedder.is_some() && self.vector_index.is_some()
+    }
+
+    // ============================================
+    // Private Helpers
+    // ============================================
+
+    fn get_connection(&self) -> AppResult<rusqlite::Connection> {
+        db::get_connection(&self.db_path)
+            .map_err(|e| AppError::Internal(format!("DB connection failed: {}", e)))
+    }
+
+    fn validate_path(&self, path: &Path) -> AppResult<()> {
+        if !path.exists() {
+            return Err(AppError::PathNotFound(path.display().to_string()));
+        }
+
+        // 경로 정규화 (심볼릭 링크 해결)
+        let canonical = path.canonicalize()
+            .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
+
+        // 시스템 폴더 블랙리스트 검증
+        let path_str = canonical.to_string_lossy().to_lowercase();
+        if BLOCKED_PATH_PATTERNS.iter().any(|b| path_str.contains(b)) {
+            return Err(AppError::AccessDenied(format!(
+                "'{}' is a protected system folder",
+                canonical.display()
+            )));
+        }
+
+        Ok(())
+    }
+}

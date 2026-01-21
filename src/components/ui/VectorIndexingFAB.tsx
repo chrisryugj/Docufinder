@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Brain } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 
 interface VectorIndexingFABProps {
   /** 진행률 (0-100) */
@@ -16,9 +16,9 @@ interface VectorIndexingFABProps {
 
 /**
  * 벡터 인덱싱 진행률 FAB (Floating Action Button)
- * - 원형 진행률 표시
+ * - 글래스모피즘 디자인
+ * - 원형 진행률 + 글로우 효과
  * - 호버 시 상세 정보
- * - 취소 버튼
  */
 export function VectorIndexingFAB({
   progress,
@@ -30,7 +30,7 @@ export function VectorIndexingFAB({
   const [isHovered, setIsHovered] = useState(false);
 
   // SVG 원형 진행률 계산
-  const radius = 20;
+  const radius = 22;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
@@ -41,40 +41,101 @@ export function VectorIndexingFAB({
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-50"
+      className="fixed bottom-20 right-5 z-50"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* 호버 시 상세 정보 */}
-      {isHovered && (
-        <div className="absolute bottom-full right-0 mb-2 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg">
+      {/* 호버 시 상세 정보 패널 */}
+      <div
+        className={`
+          absolute bottom-full right-0 mb-3 w-56
+          transition-all duration-200 ease-out origin-bottom-right
+          ${isHovered
+            ? "opacity-100 scale-100 translate-y-0"
+            : "opacity-0 scale-95 translate-y-2 pointer-events-none"
+          }
+        `}
+      >
+        <div
+          className="p-3 rounded-xl border shadow-xl backdrop-blur-xl"
+          style={{
+            background: "linear-gradient(135deg, rgba(var(--color-primary-rgb, 99, 102, 241), 0.08), rgba(var(--color-primary-rgb, 99, 102, 241), 0.02))",
+            borderColor: "rgba(var(--color-primary-rgb, 99, 102, 241), 0.2)",
+          }}
+        >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">시맨틱 검색 준비 중</span>
+            <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              시맨틱 인덱싱
+            </span>
             <button
-              onClick={onCancel}
-              className="p-1 hover:bg-muted rounded transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCancel();
+              }}
+              className="p-1.5 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 group"
               title="취소"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5 transition-transform group-hover:rotate-90" />
             </button>
           </div>
-          <div className="text-xs text-muted-foreground space-y-1">
-            <div>
-              진행률: {processedChunks.toLocaleString()} / {totalChunks.toLocaleString()} 청크
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              <span>진행률</span>
+              <span className="font-mono">{processedChunks.toLocaleString()} / {totalChunks.toLocaleString()}</span>
             </div>
+
+            {/* 미니 진행률 바 */}
+            <div
+              className="h-1 rounded-full overflow-hidden"
+              style={{ background: "rgba(var(--color-primary-rgb, 99, 102, 241), 0.15)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-500 ease-out"
+                style={{
+                  width: `${progress}%`,
+                  background: "linear-gradient(90deg, var(--color-primary), var(--color-primary-light, #818cf8))",
+                }}
+              />
+            </div>
+
             {fileName && (
-              <div className="truncate" title={currentFile || undefined}>
-                현재: {fileName}
+              <div
+                className="text-xs truncate pt-1"
+                style={{ color: "var(--color-text-muted)" }}
+                title={currentFile || undefined}
+              >
+                {fileName}
               </div>
             )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* FAB 버튼 */}
-      <div className="relative w-14 h-14 cursor-pointer">
-        {/* 배경 원 */}
-        <div className="absolute inset-0 rounded-full bg-primary/10 backdrop-blur-sm border border-primary/20" />
+      <div
+        className={`
+          relative w-14 h-14 cursor-pointer
+          transition-transform duration-200 ease-out
+          ${isHovered ? "scale-110" : "scale-100"}
+        `}
+      >
+        {/* 글로우 효과 */}
+        <div
+          className="absolute -inset-1 rounded-full blur-lg opacity-40 animate-pulse"
+          style={{
+            background: "linear-gradient(135deg, var(--color-primary), var(--color-primary-light, #818cf8))"
+          }}
+        />
+
+        {/* 메인 배경 */}
+        <div
+          className="absolute inset-0 rounded-full backdrop-blur-xl border shadow-lg"
+          style={{
+            background: "linear-gradient(135deg, rgba(var(--color-primary-rgb, 99, 102, 241), 0.15), rgba(255, 255, 255, 0.05))",
+            borderColor: "rgba(var(--color-primary-rgb, 99, 102, 241), 0.3)",
+          }}
+        />
 
         {/* SVG 진행률 원 */}
         <svg className="absolute inset-0 w-full h-full -rotate-90">
@@ -85,8 +146,8 @@ export function VectorIndexingFAB({
             r={radius}
             fill="none"
             stroke="currentColor"
-            strokeWidth="3"
-            className="text-primary/20"
+            strokeWidth="2.5"
+            className="text-primary/15"
           />
           {/* 진행률 */}
           <circle
@@ -94,19 +155,37 @@ export function VectorIndexingFAB({
             cy="28"
             r={radius}
             fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
+            stroke="url(#progressGradient)"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            className="text-primary transition-all duration-300"
+            className="transition-all duration-500 ease-out"
+            style={{
+              filter: "drop-shadow(0 0 4px var(--color-primary))",
+            }}
           />
+          {/* 그라데이션 정의 */}
+          <defs>
+            <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="var(--color-primary)" />
+              <stop offset="100%" stopColor="var(--color-primary-light, #818cf8)" />
+            </linearGradient>
+          </defs>
         </svg>
 
-        {/* 중앙 아이콘 + 퍼센트 */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <Brain className="w-4 h-4 text-primary animate-pulse" />
-          <span className="text-[10px] font-medium text-primary">{progress}%</span>
+        {/* 중앙 콘텐츠 */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+          <Sparkles
+            className="w-4 h-4 animate-pulse"
+            style={{ color: "var(--color-primary)" }}
+          />
+          <span
+            className="text-[10px] font-semibold tabular-nums"
+            style={{ color: "var(--color-primary)" }}
+          >
+            {progress}%
+          </span>
         </div>
       </div>
     </div>

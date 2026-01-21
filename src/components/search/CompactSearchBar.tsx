@@ -167,7 +167,7 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
           className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
           aria-label="검색 영역 확장"
         >
-          <img src="/icon.png" alt="DocuFinder" className="w-6 h-6" />
+          <img src="/icon.png" alt="Anything" className="w-6 h-6 object-contain" />
         </button>
 
         {/* 검색 입력 */}

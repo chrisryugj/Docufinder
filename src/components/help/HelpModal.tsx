@@ -20,7 +20,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
   ];
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="📖 DocuFinder 사용 가이드">
+    <Modal isOpen={isOpen} onClose={onClose} title="📖 Anything 사용 가이드">
       <div className="flex gap-4 min-h-[400px]">
         {/* 사이드 탭 */}
         <nav className="flex flex-col gap-1 w-32 flex-shrink-0 border-r pr-3" style={{ borderColor: "var(--color-border)" }}>
@@ -124,9 +124,9 @@ function ShortcutRow({ keys, description }: { keys: string; description: string 
 function StartSection() {
   return (
     <div>
-      <SectionTitle>DocuFinder에 오신 것을 환영합니다!</SectionTitle>
+      <SectionTitle>Anything에 오신 것을 환영합니다!</SectionTitle>
       <Paragraph>
-        DocuFinder는 컴퓨터에 저장된 문서를 빠르게 찾아주는 앱이에요.
+        Anything는 컴퓨터에 저장된 문서를 빠르게 찾아주는 앱이에요.
         한글(HWPX), 워드(DOCX), 엑셀(XLSX), PDF, TXT 파일을 모두 검색할 수 있어요.
       </Paragraph>
 

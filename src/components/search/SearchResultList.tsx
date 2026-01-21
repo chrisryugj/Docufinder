@@ -39,9 +39,6 @@ interface SearchResultListProps {
   scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-// 점진적 로딩: 한 번에 표시할 결과 수
-const PAGE_SIZE = 50;
-
 export function SearchResultList({
   results,
   filenameResults = [],
@@ -49,7 +46,7 @@ export function SearchResultList({
   viewMode = "flat",
   onViewModeChange,
   viewDensity = "normal",
-  onViewDensityChange,
+  onViewDensityChange: _onViewDensityChange,
   query,
   isLoading,
   selectedIndex,
@@ -471,35 +468,22 @@ export function SearchResultList({
   // 초기 상태 - 온보딩 가이드
   return (
     <div className="text-center py-16">
-      <div
-        className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
-        style={{ backgroundColor: "var(--color-accent-light)" }}
-      >
-        <svg
-          className="w-10 h-10"
-          style={{ color: "var(--color-accent)" }}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-          />
-        </svg>
-      </div>
+      <img
+        src="/icon.png"
+        alt="Anything"
+        className="w-16 h-16 mx-auto mb-6 object-contain"
+      />
       <h3
-        className="text-lg font-semibold mb-2"
+        className="text-xl font-semibold mb-4"
         style={{ color: "var(--color-text-primary)" }}
       >
-        검색을 시작하세요
+        무엇이든 찾아드려요
       </h3>
-      <p style={{ color: "var(--color-text-muted)" }}>
-        폴더를 선택하고 검색어를 입력하면 문서를 찾을 수 있습니다
-      </p>
+      <div className="space-y-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
+        <p>📄 한글, 워드, 엑셀, PDF 문서 내용 검색</p>
+        <p>🧠 AI가 의미까지 파악하는 시맨틱 검색</p>
+        <p>⚡ 폴더 추가하면 자동으로 변경사항 반영</p>
+      </div>
     </div>
   );
 }

@@ -33,8 +33,9 @@ src-tauri/target/
 *.db
 *.db-journal
 
-# Models (large files)
+# Models (large files - ~140MB)
 models/
+src-tauri/models/
 
 # Test
 coverage/

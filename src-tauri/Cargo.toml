@@ -45,6 +45,9 @@ usearch = "2.23"
 tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
 ndarray = "0.16"
 
+# Async traits
+async-trait = "0.1"
+
 # Utilities
 thiserror = "2"
 tracing = "0.1"

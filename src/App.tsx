@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect, UIEvent } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Settings, ViewDensity } from "./types/settings";

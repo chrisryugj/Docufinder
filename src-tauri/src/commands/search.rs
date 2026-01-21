@@ -279,10 +279,8 @@ pub async fn search_semantic(
         return Err(ApiError::VectorIndexCorrupted);
     }
 
-    // 1. 쿼리 임베딩
+    // 1. 쿼리 임베딩 (락 불필요 - 내부 Mutex 사용)
     let query_embedding = embedder
-        .lock()
-        .map_err(|e| ApiError::LockFailed(format!("Embedder: {}", e)))?
         .embed(&query, true)
         .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))?;
 
@@ -383,19 +381,13 @@ pub async fn search_hybrid(
     let fts_results = fts::search(&conn, &query, max_results)
         .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
 
-    // 2. 벡터 검색 (가능한 경우)
+    // 2. 벡터 검색 (가능한 경우, 락 불필요 - 내부 Mutex 사용)
     let vector_results = match (embedder.as_ref(), vector_index.as_ref()) {
         (Some(emb), Some(vi)) => {
-            match emb.lock() {
-                Ok(mut emb_guard) => match emb_guard.embed(&query, true) {
-                    Ok(query_embedding) => vi.search(&query_embedding, max_results).unwrap_or_default(),
-                    Err(e) => {
-                        tracing::warn!("Failed to embed query: {}", e);
-                        vec![]
-                    }
-                },
+            match emb.embed(&query, true) {
+                Ok(query_embedding) => vi.search(&query_embedding, max_results).unwrap_or_default(),
                 Err(e) => {
-                    tracing::warn!("Failed to lock embedder: {}", e);
+                    tracing::warn!("Failed to embed query: {}", e);
                     vec![]
                 }
             }

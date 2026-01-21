@@ -1,6 +1,8 @@
 //! 파일 감시 + 증분 인덱싱 매니저
 //!
 //! FileWatcher 이벤트를 받아서 증분 인덱싱 수행
+//!
+//! 🔴 Critical 버그 수정: 앱 종료 시 worker thread 정상 종료
 
 use crate::constants::SUPPORTED_EXTENSIONS;
 use crate::db;
@@ -11,8 +13,8 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 /// 파일 감시 + 인덱싱 매니저
@@ -20,12 +22,14 @@ pub struct WatchManager {
     watcher: RecommendedWatcher,
     stop_tx: Sender<()>,
     watched_folders: HashSet<PathBuf>,
+    /// 🔴 Critical 버그 수정: worker thread handle 저장
+    worker_thread: Option<JoinHandle<()>>,
 }
 
 /// 인덱싱에 필요한 컨텍스트
 pub struct IndexContext {
     pub db_path: PathBuf,
-    pub embedder: Option<Arc<Mutex<Embedder>>>,
+    pub embedder: Option<Arc<Embedder>>,
     pub vector_index: Option<Arc<VectorIndex>>,
 }
 
@@ -45,8 +49,8 @@ impl WatchManager {
             Config::default().with_poll_interval(Duration::from_secs(2)),
         )?;
 
-        // 백그라운드 이벤트 처리 스레드
-        thread::spawn(move || {
+        // 백그라운드 이벤트 처리 스레드 (handle 저장)
+        let worker_thread = thread::spawn(move || {
             Self::event_loop(event_rx, stop_rx, ctx);
         });
 
@@ -54,6 +58,7 @@ impl WatchManager {
             watcher,
             stop_tx,
             watched_folders: HashSet::new(),
+            worker_thread: Some(worker_thread),
         })
     }
 
@@ -76,6 +81,26 @@ impl WatchManager {
     /// 현재 감시 중인 폴더 목록
     pub fn watched_folders(&self) -> Vec<PathBuf> {
         self.watched_folders.iter().cloned().collect()
+    }
+
+    /// 🔴 Critical 버그 수정: 명시적 종료 메서드
+    ///
+    /// stop 신호 전송 후 worker thread가 종료될 때까지 대기
+    pub fn shutdown(&mut self) {
+        tracing::info!("WatchManager shutdown requested");
+
+        // stop 신호 전송
+        let _ = self.stop_tx.send(());
+
+        // worker thread 종료 대기
+        if let Some(handle) = self.worker_thread.take() {
+            tracing::debug!("Waiting for worker thread to finish...");
+            if let Err(e) = handle.join() {
+                tracing::warn!("Worker thread panicked: {:?}", e);
+            } else {
+                tracing::info!("Worker thread finished");
+            }
+        }
     }
 
     /// 이벤트 처리 루프
@@ -128,13 +153,9 @@ impl WatchManager {
                 continue;
             }
 
-            // 숨김 파일 제외
-            if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.starts_with('.'))
-                .unwrap_or(false)
-            {
+            // 숨김 파일 및 Office 임시 파일 (~$) 제외
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if file_name.starts_with('.') || file_name.starts_with("~$") {
                 continue;
             }
 
@@ -229,6 +250,7 @@ impl WatchManager {
 
 impl Drop for WatchManager {
     fn drop(&mut self) {
-        let _ = self.stop_tx.send(());
+        // 🔴 Critical 버그 수정: Drop에서 shutdown 호출하여 thread join
+        self.shutdown();
     }
 }

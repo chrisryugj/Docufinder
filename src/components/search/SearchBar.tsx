@@ -23,8 +23,8 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       onSearchModeChange,
       isLoading,
       status,
-      resultCount,
-      searchTime,
+      resultCount: _resultCount,
+      searchTime: _searchTime,
     },
     ref
   ) => {

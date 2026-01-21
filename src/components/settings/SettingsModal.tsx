@@ -407,7 +407,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
                     borderColor: (settings.highlight_filename_color || "") === preset.value
                       ? "var(--color-accent)"
                       : "var(--color-border)",
-                    ringColor: "var(--color-accent)",
                   }}
                   title={preset.label}
                   aria-label={`${preset.label} 색상 선택`}
@@ -443,7 +442,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
                     borderColor: (settings.highlight_content_color || "") === preset.value
                       ? "var(--color-accent)"
                       : "var(--color-border)",
-                    ringColor: "var(--color-accent)",
                   }}
                   title={preset.label}
                   aria-label={`${preset.label} 색상 선택`}
