@@ -682,3 +682,14 @@ pub fn get_pending_vector_file_ids(conn: &Connection) -> Result<Vec<i64>> {
     let results = stmt.query_map([], |row| row.get(0))?;
     results.collect()
 }
+
+/// 모든 파일의 vector_indexed_at을 NULL로 리셋
+///
+/// 벡터 인덱스 파일이 손실됐을 때 DB와 동기화하기 위해 사용
+pub fn reset_all_vector_indexed(conn: &Connection) -> Result<usize> {
+    let affected = conn.execute(
+        "UPDATE files SET vector_indexed_at = NULL WHERE vector_indexed_at IS NOT NULL",
+        [],
+    )?;
+    Ok(affected)
+}

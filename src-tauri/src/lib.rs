@@ -305,6 +305,29 @@ pub fn run() {
                 }
             }
 
+            // 벡터 인덱스 파일 검증 - DB와 불일치 시 리셋
+            let vector_file = state.vector_index_path.clone();
+            let map_file = state.vector_index_path.with_extension("map");
+            let vector_file_exists = vector_file.exists();
+            let map_file_exists = map_file.exists();
+
+            if state.is_semantic_available() {
+                if let Ok(conn) = db::get_connection(&state.db_path) {
+                    if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
+                        // DB에는 벡터 인덱싱 완료된 파일이 있는데 인덱스 파일이 없으면 리셋
+                        if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
+                            tracing::warn!(
+                                "Vector index file missing (usearch={}, map={}), but DB has {} indexed files. Resetting DB.",
+                                vector_file_exists, map_file_exists, stats.vector_indexed_files
+                            );
+                            if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
+                                tracing::info!("Reset vector_indexed_at for {} files", reset_count);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Store app state
             app.manage(Mutex::new(state));
 
@@ -366,6 +389,26 @@ pub fn run() {
                             }
                         }
                         "quit" => {
+                            // 벡터 워커 정리 + 인덱스 저장
+                            if let Some(state) = app.try_state::<Mutex<AppState>>() {
+                                if let Ok(state) = state.lock() {
+                                    // 벡터 워커 취소 + 대기
+                                    if let Ok(mut worker) = state.get_vector_worker().write() {
+                                        if worker.is_running() {
+                                            tracing::info!("Stopping vector worker before exit...");
+                                            worker.cancel();
+                                            worker.join();
+                                        }
+                                    }
+                                    // 벡터 인덱스 저장
+                                    if let Ok(vi) = state.get_vector_index() {
+                                        tracing::info!("Saving vector index before exit...");
+                                        if let Err(e) = vi.save() {
+                                            tracing::error!("Failed to save vector index: {}", e);
+                                        }
+                                    }
+                                }
+                            }
                             app.exit(0);
                         }
                         _ => {}
@@ -444,6 +487,8 @@ pub fn run() {
             commands::index::get_db_debug_info,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::reset_vector_index,
+            commands::settings::reset_all_data,
             commands::file::open_file,
             commands::file::open_folder,
         ])
