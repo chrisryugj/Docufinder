@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "download-model": "powershell -ExecutionPolicy Bypass -File scripts/download-model.ps1",
+    "tauri:build": "pnpm run download-model && tauri build"
   },
   "keywords": [
     "document",
