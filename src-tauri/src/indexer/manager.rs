@@ -83,6 +83,15 @@ impl WatchManager {
         self.watched_folders.iter().cloned().collect()
     }
 
+    /// 모든 폴더 감시 중지
+    pub fn unwatch_all(&mut self) {
+        for path in self.watched_folders.drain() {
+            let _ = self.watcher.unwatch(&path);
+            tracing::debug!("Stopped watching: {:?}", path);
+        }
+        tracing::info!("All watchers stopped");
+    }
+
     /// 🔴 Critical 버그 수정: 명시적 종료 메서드
     ///
     /// stop 신호 전송 후 worker thread가 종료될 때까지 대기

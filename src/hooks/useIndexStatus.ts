@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
+import type { IndexStatus, AddFolderResult, IndexingProgress, VectorIndexingProgress } from "../types/index";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 
 /**
@@ -19,12 +19,14 @@ interface UseIndexStatusReturn {
   status: IndexStatus | null;
   isIndexing: boolean;
   progress: IndexingProgress | null;
+  vectorProgress: VectorIndexingProgress | null;
   error: string | null;
   clearError: () => void;
   refreshStatus: () => Promise<void>;
   addFolder: () => Promise<AddFolderResult | null>;
   removeFolder: (path: string) => Promise<void>;
   cancelIndexing: () => Promise<void>;
+  cancelVectorIndexing: () => Promise<void>;
 }
 
 /**
@@ -34,6 +36,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [isIndexing, setIsIndexing] = useState(false);
   const [progress, setProgress] = useState<IndexingProgress | null>(null);
+  const [vectorProgress, setVectorProgress] = useState<VectorIndexingProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
@@ -62,6 +65,29 @@ export function useIndexStatus(): UseIndexStatusReturn {
           setIsIndexing(false);
           // 잠시 후 진행률 초기화
           setTimeout(() => setProgress(null), 2000);
+        }
+      });
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // 벡터 인덱싱 진행률 이벤트 리스너
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+
+    const setupListener = async () => {
+      unlisten = await listen<VectorIndexingProgress>("vector-indexing-progress", (event) => {
+        const p = event.payload;
+        setVectorProgress(p);
+
+        // 완료 시 잠시 후 초기화
+        if (p.is_complete) {
+          setTimeout(() => setVectorProgress(null), 2000);
         }
       });
     };
@@ -154,7 +180,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, [refreshStatus]);
 
-  // 인덱싱 취소
+  // 인덱싱 취소 (FTS)
   const cancelIndexing = useCallback(async (): Promise<void> => {
     try {
       await invoke("cancel_indexing");
@@ -163,15 +189,26 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, []);
 
+  // 벡터 인덱싱 취소
+  const cancelVectorIndexing = useCallback(async (): Promise<void> => {
+    try {
+      await invoke("cancel_vector_indexing");
+    } catch (err) {
+      console.error("Failed to cancel vector indexing:", err);
+    }
+  }, []);
+
   return {
     status,
     isIndexing,
     progress,
+    vectorProgress,
     error,
     clearError,
     refreshStatus,
     addFolder,
     removeFolder,
     cancelIndexing,
+    cancelVectorIndexing,
   };
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
@@ -11,6 +12,7 @@ interface SettingsModalProps {
   onClose: () => void;
   onThemeChange?: (theme: Settings["theme"]) => void;
   onSettingsSaved?: (settings: Settings) => void;
+  onClearData?: () => Promise<void>;
 }
 
 const SEARCH_MODE_OPTIONS = [
@@ -54,10 +56,11 @@ const HIGHLIGHT_COLOR_PRESETS = [
   { value: "#2dd4bf", label: "틸", light: "#2dd4bf", dark: "#0d9488" },
 ];
 
-export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 설정 로드
@@ -451,6 +454,65 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved 
             <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
               문서 검색 결과에서 매칭된 키워드 강조 색상
             </p>
+          </div>
+
+          {/* 데이터 관리 섹션 */}
+          <div
+            className="border-t pt-4"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3
+              className="text-sm font-medium mb-3"
+              style={{ color: "var(--color-text-primary)" }}
+            >
+              데이터 관리
+            </h3>
+          </div>
+
+          {/* 모든 데이터 초기화 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                모든 데이터 초기화
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                인덱싱된 문서, 벡터 임베딩, 등록 폴더 모두 삭제
+              </p>
+            </div>
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={isClearing}
+              disabled={isClearing}
+              onClick={async () => {
+                const confirmed = await ask(
+                  "모든 인덱싱 데이터와 등록된 폴더가 삭제됩니다.\n원본 파일은 영향 없습니다.\n\n계속하시겠습니까?",
+                  {
+                    title: "데이터 초기화",
+                    kind: "warning",
+                    okLabel: "초기화",
+                    cancelLabel: "취소",
+                  }
+                );
+
+                if (confirmed && onClearData) {
+                  setIsClearing(true);
+                  try {
+                    await onClearData();
+                    onClose();
+                  } catch (err) {
+                    setError(`초기화 실패: ${err}`);
+                  } finally {
+                    setIsClearing(false);
+                  }
+                }
+              }}
+            >
+              초기화
+            </Button>
           </div>
 
           {/* 버튼 */}

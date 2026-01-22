@@ -561,6 +561,7 @@ pub fn run() {
             commands::index::get_vector_indexing_status,
             commands::index::cancel_vector_indexing,
             commands::index::get_db_debug_info,
+            commands::index::clear_all_data,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,

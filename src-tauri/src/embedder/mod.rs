@@ -114,7 +114,6 @@ impl Embedder {
         // 입력 텐서 생성 (owned arrays)
         let mut input_ids = Array2::<i64>::zeros((batch_size, seq_len));
         let mut attention_mask = Array2::<i64>::zeros((batch_size, seq_len));
-        let token_type_ids = Array2::<i64>::zeros((batch_size, seq_len));
 
         for (i, encoding) in encodings.iter().enumerate() {
             let ids = encoding.get_ids();
@@ -131,31 +130,44 @@ impl Embedder {
         let shape = [batch_size as i64, seq_len as i64];
         let input_ids_vec: Vec<i64> = input_ids.iter().copied().collect();
         let attention_mask_vec: Vec<i64> = attention_mask.iter().copied().collect();
-        let token_type_ids_vec: Vec<i64> = token_type_ids.iter().copied().collect();
 
         // ONNX 추론 (Session은 &mut self 필요 → Mutex 사용)
-        // SessionOutputs가 session 참조를 유지하므로 락 안에서 모든 처리 완료
+        // e5-small INT8 모델은 input_ids, attention_mask 2개 입력만 필요
         let input_ids_value = Value::from_array((shape, input_ids_vec))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
         let attention_mask_value = Value::from_array((shape, attention_mask_vec))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
-        let token_type_ids_value = Value::from_array((shape, token_type_ids_vec))
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
         let embeddings = {
             let mut session = self.session.lock().map_err(|_| EmbedderError::LockFailed)?;
+
+            // 먼저 출력 이름들 수집 (borrow 충돌 방지)
+            let output_names: Vec<String> = session
+                .outputs()
+                .iter()
+                .map(|o| o.name().to_string())
+                .collect();
+
             let outputs = session
                 .run(ort::inputs![
                     "input_ids" => input_ids_value,
                     "attention_mask" => attention_mask_value,
-                    "token_type_ids" => token_type_ids_value,
                 ])
                 .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
-            // 출력에서 임베딩 추출
+            // 출력에서 임베딩 추출 (모델에 따라 출력 이름이 다를 수 있음)
             let output = outputs
                 .get("last_hidden_state")
-                .ok_or_else(|| EmbedderError::OrtError("No last_hidden_state output".to_string()))?;
+                .or_else(|| outputs.get("output"))
+                .or_else(|| outputs.get("sentence_embedding"))
+                .or_else(|| outputs.get("token_embeddings"))
+                .or_else(|| {
+                    // 첫 번째 출력 사용 (fallback)
+                    output_names.first().and_then(|name| outputs.get(name.as_str()))
+                })
+                .ok_or_else(|| {
+                    EmbedderError::OrtError(format!("No embedding output found. Available: {:?}", output_names))
+                })?;
 
             let (out_shape, out_data) = output
                 .try_extract_tensor::<f32>()

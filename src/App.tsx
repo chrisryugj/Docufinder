@@ -100,11 +100,13 @@ function App() {
     status,
     isIndexing,
     progress,
+    vectorProgress,
     error: indexError,
     clearError: clearIndexError,
     addFolder,
     removeFolder,
     cancelIndexing,
+    cancelVectorIndexing,
   } = useIndexStatus();
 
   // 최근 검색
@@ -536,7 +538,13 @@ function App() {
         </div>
 
         {/* Status Bar (Fixed at bottom) */}
-        <StatusBar status={status} progress={progress} onCancelIndexing={cancelIndexing} />
+        <StatusBar
+          status={status}
+          progress={progress}
+          vectorProgress={vectorProgress}
+          onCancelIndexing={cancelIndexing}
+          onCancelVectorIndexing={cancelVectorIndexing}
+        />
       </div>
 
       {/* Settings Modal */}
