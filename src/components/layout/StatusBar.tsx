@@ -1,9 +1,9 @@
-import type { IndexStatus, IndexingProgress, VectorIndexingProgress } from "../../types/index";
+import type { IndexStatus, IndexingProgress, VectorIndexingStatus } from "../../types/index";
 
 interface StatusBarProps {
   status: IndexStatus | null;
   progress: IndexingProgress | null;
-  vectorProgress: VectorIndexingProgress | null;
+  vectorStatus: VectorIndexingStatus | null;
   onCancelIndexing?: () => void;
   onCancelVectorIndexing?: () => void;
 }
@@ -16,14 +16,14 @@ const phaseLabels: Record<string, string> = {
   cancelled: "취소됨",
 };
 
-export function StatusBar({ status, progress, vectorProgress, onCancelIndexing, onCancelVectorIndexing }: StatusBarProps) {
+export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing }: StatusBarProps) {
   const isIndexing = progress && progress.phase !== "completed" && progress.phase !== "cancelled";
-  const isVectorIndexing = vectorProgress && !vectorProgress.is_complete && vectorProgress.total_chunks > 0;
+  const isVectorIndexing = vectorStatus && vectorStatus.is_running && vectorStatus.total_chunks > 0;
   const percent = progress && progress.total_files > 0
     ? Math.round((progress.processed_files / progress.total_files) * 100)
     : 0;
-  const vectorPercent = vectorProgress && vectorProgress.total_chunks > 0
-    ? Math.round((vectorProgress.processed_chunks / vectorProgress.total_chunks) * 100)
+  const vectorPercent = vectorStatus && vectorStatus.total_chunks > 0
+    ? Math.round((vectorStatus.processed_chunks / vectorStatus.total_chunks) * 100)
     : 0;
 
   return (
@@ -107,7 +107,7 @@ export function StatusBar({ status, progress, vectorProgress, onCancelIndexing, 
                 시맨틱 인덱싱 중
               </span>
               <span style={{ color: "var(--color-text-muted)" }}>
-                {vectorProgress.processed_chunks} / {vectorProgress.total_chunks}
+                {vectorStatus.processed_chunks} / {vectorStatus.total_chunks}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -150,13 +150,13 @@ export function StatusBar({ status, progress, vectorProgress, onCancelIndexing, 
           </div>
 
           {/* 현재 파일명 */}
-          {vectorProgress.current_file && (
+          {vectorStatus.current_file && (
             <div
               className="text-xs truncate"
               style={{ color: "var(--color-text-muted)" }}
-              title={vectorProgress.current_file}
+              title={vectorStatus.current_file}
             >
-              {vectorProgress.current_file}
+              {vectorStatus.current_file}
             </div>
           )}
         </div>

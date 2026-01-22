@@ -100,13 +100,12 @@ function App() {
     status,
     isIndexing,
     progress,
-    vectorProgress,
     error: indexError,
     clearError: clearIndexError,
+    refreshStatus,
     addFolder,
     removeFolder,
     cancelIndexing,
-    cancelVectorIndexing,
   } = useIndexStatus();
 
   // 최근 검색
@@ -541,7 +540,7 @@ function App() {
         <StatusBar
           status={status}
           progress={progress}
-          vectorProgress={vectorProgress}
+          vectorStatus={vectorStatus}
           onCancelIndexing={cancelIndexing}
           onCancelVectorIndexing={cancelVectorIndexing}
         />
@@ -557,6 +556,10 @@ function App() {
           setMinConfidence(settings.min_confidence ?? 0);
           setViewDensity(settings.view_density ?? "compact");
           applyHighlightColors(settings);
+        }}
+        onClearData={async () => {
+          await invoke("clear_all_data");
+          await refreshStatus();
         }}
       />
 
