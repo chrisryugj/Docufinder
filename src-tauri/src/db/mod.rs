@@ -376,6 +376,24 @@ pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<us
     )
 }
 
+/// 모든 데이터 초기화 (files, chunks, FTS, watched_folders)
+pub fn clear_all_data(conn: &Connection) -> Result<()> {
+    // FTS 먼저 삭제
+    conn.execute("DELETE FROM chunks_fts", [])?;
+    conn.execute("DELETE FROM files_fts", [])?;
+
+    // chunks (CASCADE로 자동 삭제되지만 명시적 삭제)
+    conn.execute("DELETE FROM chunks", [])?;
+
+    // files
+    conn.execute("DELETE FROM files", [])?;
+
+    // watched_folders
+    conn.execute("DELETE FROM watched_folders", [])?;
+
+    Ok(())
+}
+
 // ==================== 청크 ====================
 
 /// 파일의 기존 청크 삭제

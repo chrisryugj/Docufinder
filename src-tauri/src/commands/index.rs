@@ -558,6 +558,53 @@ pub async fn cancel_vector_indexing(
     Ok(())
 }
 
+/// 모든 데이터 초기화 (DB + 벡터 인덱스)
+#[tauri::command]
+pub async fn clear_all_data(
+    state: State<'_, Mutex<AppState>>,
+) -> ApiResult<()> {
+    tracing::info!("Clearing all data...");
+
+    // 1. 벡터 워커 중지 + 벡터 인덱스 클리어 + 파일 감시 중지
+    let db_path = {
+        let state = state.lock()?;
+
+        // 벡터 워커 중지
+        if let Ok(vw) = state.get_vector_worker().read() {
+            vw.cancel();
+        }
+
+        // 벡터 인덱스 클리어
+        if let Ok(vi) = state.get_vector_index() {
+            vi.clear();
+            let _ = vi.save();
+            tracing::info!("Vector index cleared");
+        }
+
+        // 파일 감시 모두 중지
+        if let Ok(wm) = state.get_watch_manager() {
+            if let Ok(mut wm) = wm.write() {
+                wm.unwatch_all();
+                tracing::info!("All watchers stopped");
+            }
+        }
+
+        state.db_path.clone()
+    };
+
+    // 잠시 대기 (워커 중지)
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // 4. DB 클리어
+    let conn = db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+
+    db::clear_all_data(&conn)?;
+    tracing::info!("Database cleared");
+
+    Ok(())
+}
+
 /// DB 디버그 정보 (chunks, chunks_fts count)
 #[derive(Debug, Serialize)]
 pub struct DbDebugInfo {

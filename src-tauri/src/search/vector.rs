@@ -285,6 +285,31 @@ impl VectorIndex {
     pub fn capacity(&self) -> usize {
         self.index.read().unwrap().capacity()
     }
+
+    /// 인덱스 초기화 (모든 데이터 삭제)
+    pub fn clear(&self) {
+        // 매핑 초기화
+        self.id_map.write().unwrap().clear();
+        self.key_map.write().unwrap().clear();
+        *self.next_key.write().unwrap() = 0;
+
+        // 새 인덱스로 교체
+        let options = IndexOptions {
+            dimensions: EMBEDDING_DIM,
+            metric: MetricKind::Cos,
+            quantization: ScalarKind::F32,
+            connectivity: 16,
+            expansion_add: 128,
+            expansion_search: 64,
+            multi: false,
+        };
+
+        if let Ok(new_index) = Index::new(&options) {
+            *self.index.write().unwrap() = new_index;
+        }
+
+        tracing::info!("Vector index cleared");
+    }
 }
 
 // RwLock<Index>가 Send + Sync를 자동으로 구현하므로
