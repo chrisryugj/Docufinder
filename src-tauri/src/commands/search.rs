@@ -67,14 +67,16 @@ pub async fn search_keyword(
         });
     }
 
-    let (db_path, max_results) = {
+    let (db_path, max_results, tokenizer) = {
         let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
             .as_ref()
             .map(|dir| get_settings_sync(dir).max_results)
             .unwrap_or(50);
-        (state.db_path.clone(), max_results)
+        // 형태소 분석기 가져오기 (실패 시 None)
+        let tokenizer = state.get_tokenizer().ok();
+        (state.db_path.clone(), max_results, tokenizer)
     };
 
     let conn = db::get_connection(&db_path)
@@ -85,9 +87,13 @@ pub async fn search_keyword(
     let fts_count: usize = conn.query_row("SELECT COUNT(*) FROM chunks_fts", [], |r| r.get(0)).unwrap_or(0);
     tracing::info!("DB state: chunks={}, chunks_fts={}", chunks_count, fts_count);
 
-    // FTS5 검색 실행 (page_number, location_hint 포함 - N+1 쿼리 제거)
-    let fts_results = fts::search(&conn, &query, max_results)
-        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
+    // FTS5 검색 실행 (한국어 형태소 분석 포함)
+    let fts_results = match tokenizer.as_ref() {
+        Some(tok) => fts::search_with_tokenizer(&conn, &query, max_results, tok.as_ref())
+            .map_err(|e| ApiError::SearchFailed(e.to_string()))?,
+        None => fts::search(&conn, &query, max_results)
+            .map_err(|e| ApiError::SearchFailed(e.to_string()))?,
+    };
 
     // 스코어 정규화 (BM25 → 0-100 confidence)
     let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
@@ -359,7 +365,7 @@ pub async fn search_hybrid(
         });
     }
 
-    let (db_path, embedder, vector_index, max_results) = {
+    let (db_path, embedder, vector_index, max_results, tokenizer, reranker) = {
         let state = state.lock()?;
         let app_data_dir = state.db_path.parent().map(|p| p.to_path_buf());
         let max_results = app_data_dir
@@ -371,15 +377,21 @@ pub async fn search_hybrid(
             state.get_embedder().ok(),
             state.get_vector_index().ok(),
             max_results,
+            state.get_tokenizer().ok(),
+            state.get_reranker().ok(), // Cross-Encoder Reranker
         )
     };
 
     let conn = db::get_connection(&db_path)
         .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
-    // 1. FTS5 검색
-    let fts_results = fts::search(&conn, &query, max_results)
-        .map_err(|e| ApiError::SearchFailed(e.to_string()))?;
+    // 1. FTS5 검색 (한국어 형태소 분석 포함)
+    let fts_results = match tokenizer.as_ref() {
+        Some(tok) => fts::search_with_tokenizer(&conn, &query, max_results, tok.as_ref())
+            .map_err(|e| ApiError::SearchFailed(e.to_string()))?,
+        None => fts::search(&conn, &query, max_results)
+            .map_err(|e| ApiError::SearchFailed(e.to_string()))?,
+    };
 
     // 2. 벡터 검색 (가능한 경우, 락 불필요 - 내부 Mutex 사용)
     let vector_results = match (embedder.as_ref(), vector_index.as_ref()) {
@@ -396,9 +408,54 @@ pub async fn search_hybrid(
     };
 
     // 3. RRF 병합
-    let hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), 60.0);
+    let mut hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), 60.0);
 
-    // 4. chunk_id로 파일 정보 조회
+    // 4. Cross-Encoder Reranking (상위 20개만)
+    const RERANK_TOP_K: usize = 20;
+    if let Some(rr) = reranker.as_ref() {
+        if hybrid_results.len() > 1 {
+            // chunk_id로 콘텐츠 조회
+            let rerank_chunk_ids: Vec<i64> = hybrid_results
+                .iter()
+                .take(RERANK_TOP_K)
+                .map(|r| r.chunk_id)
+                .collect();
+            let rerank_chunks = db::get_chunks_by_ids(&conn, &rerank_chunk_ids)?;
+            let rerank_chunk_map: HashMap<i64, db::ChunkInfo> = rerank_chunks
+                .into_iter()
+                .map(|c| (c.chunk_id, c))
+                .collect();
+
+            // Reranking 대상 문서 추출
+            let documents: Vec<&str> = hybrid_results
+                .iter()
+                .take(RERANK_TOP_K)
+                .filter_map(|r| rerank_chunk_map.get(&r.chunk_id).map(|c| c.content.as_str()))
+                .collect();
+
+            if !documents.is_empty() {
+                match rr.rerank(&query, &documents, documents.len()) {
+                    Ok(reranked_indices) => {
+                        // 상위 K개만 재정렬
+                        let top_results: Vec<_> = hybrid_results.drain(..documents.len().min(RERANK_TOP_K)).collect();
+                        let mut reranked: Vec<_> = reranked_indices
+                            .into_iter()
+                            .filter_map(|idx| top_results.get(idx).cloned())
+                            .collect();
+                        // 재정렬된 결과 + 나머지 결과
+                        reranked.extend(hybrid_results);
+                        hybrid_results = reranked;
+                        tracing::debug!("Reranked top {} results", RERANK_TOP_K);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Reranking failed: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. chunk_id로 파일 정보 조회
     let chunk_ids: Vec<i64> = hybrid_results.iter().map(|r| r.chunk_id).collect();
     let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)?;
 

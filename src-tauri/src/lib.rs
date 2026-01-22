@@ -7,15 +7,20 @@ mod embedder;
 mod error;
 mod indexer;
 mod infrastructure;   // 클린 아키텍처: Infrastructure Layer
+mod model_downloader; // 모델 자동 다운로드
 mod parsers;
+mod reranker;         // Cross-Encoder Reranking (Phase 5)
 mod search;
+mod tokenizer;        // 한국어 형태소 분석 (Phase 5)
 
 pub use error::{ApiError, ApiResult};
 
 use embedder::Embedder;
 use indexer::manager::{IndexContext, WatchManager};
 use indexer::vector_worker::VectorWorker;
+use reranker::Reranker;
 use search::vector::VectorIndex;
+use tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use std::path::PathBuf;
 use once_cell::sync::OnceCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,6 +34,12 @@ use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+
+/// 한국어 형태소 분석기 공유 타입
+type SharedTokenizer = Arc<dyn TextTokenizer>;
+
+/// Cross-Encoder Reranker 공유 타입
+type SharedReranker = Arc<Reranker>;
 
 /// 앱 전역 상태
 pub struct AppState {
@@ -48,6 +59,10 @@ pub struct AppState {
     indexing_cancel_flag: Arc<AtomicBool>,
     /// 벡터 인덱싱 워커 (2단계 백그라운드 인덱싱)
     vector_worker: RwLock<VectorWorker>,
+    /// 한국어 형태소 분석기 (lazy load)
+    tokenizer: OnceCell<SharedTokenizer>,
+    /// Cross-Encoder Reranker (lazy load)
+    reranker: OnceCell<SharedReranker>,
 }
 
 impl AppState {
@@ -66,6 +81,8 @@ impl AppState {
             watch_manager: OnceCell::new(),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             vector_worker: RwLock::new(VectorWorker::new()),
+            tokenizer: OnceCell::new(),
+            reranker: OnceCell::new(),
         }
     }
 
@@ -156,6 +173,45 @@ impl AppState {
     /// 벡터 워커 가져오기
     pub fn get_vector_worker(&self) -> &RwLock<VectorWorker> {
         &self.vector_worker
+    }
+
+    /// 한국어 형태소 분석기 가져오기 (필요시 생성)
+    pub fn get_tokenizer(&self) -> ApiResult<SharedTokenizer> {
+        self.tokenizer
+            .get_or_try_init(|| {
+                LinderaKoTokenizer::new()
+                    .map(|t| Arc::new(t) as SharedTokenizer)
+                    .map_err(|e| ApiError::IndexingFailed(format!("토크나이저 초기화 실패: {}", e)))
+            })
+            .cloned()
+    }
+
+    /// Cross-Encoder Reranker 가져오기 (필요시 생성)
+    pub fn get_reranker(&self) -> ApiResult<SharedReranker> {
+        self.reranker
+            .get_or_try_init(|| {
+                let model_dir = self.models_dir.join("ms-marco-MiniLM-L6-v2");
+                let model_path = model_dir.join("model.onnx");
+                let tokenizer_path = model_dir.join("tokenizer.json");
+
+                if !model_path.exists() {
+                    return Err(ApiError::ModelNotFound(format!(
+                        "Reranker 모델을 찾을 수 없습니다: {:?}",
+                        model_path
+                    )));
+                }
+
+                Reranker::new(&model_path, &tokenizer_path)
+                    .map(Arc::new)
+                    .map_err(|e| ApiError::IndexingFailed(format!("Reranker 초기화 실패: {}", e)))
+            })
+            .cloned()
+    }
+
+    /// Reranker 모델 사용 가능 여부 확인
+    pub fn is_reranker_available(&self) -> bool {
+        let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+        model_path.exists()
     }
 }
 
@@ -262,6 +318,26 @@ pub fn run() {
                             }
                         }
                         tracing::info!("Model files copied successfully");
+                    }
+                }
+            }
+
+            // 모델이 없으면 자동 다운로드
+            let model_marker = models_dir.join("multilingual-e5-small").join("model.onnx");
+            if !model_marker.exists() {
+                tracing::info!("모델 파일이 없습니다. 자동 다운로드를 시작합니다...");
+                match model_downloader::ensure_models(&models_dir) {
+                    Ok(result) => {
+                        if result.onnx_runtime_downloaded || result.model_downloaded || result.tokenizer_downloaded {
+                            tracing::info!("모델 다운로드 완료: ONNX Runtime={}, Model={}, Tokenizer={}",
+                                result.onnx_runtime_downloaded,
+                                result.model_downloaded,
+                                result.tokenizer_downloaded
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("모델 다운로드 실패: {}. 시맨틱 검색이 비활성화됩니다.", e);
                     }
                 }
             }

@@ -8,6 +8,7 @@
     "shell:allow-open",
     "dialog:allow-open",
     "dialog:allow-save",
+    "dialog:allow-ask",
     "fs:allow-read",
     "fs:allow-write",
     "fs:allow-exists",

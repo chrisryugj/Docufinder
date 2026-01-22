@@ -34,7 +34,7 @@ pub fn merge_results(
     results
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HybridResult {
     pub chunk_id: i64,
     pub score: f32,

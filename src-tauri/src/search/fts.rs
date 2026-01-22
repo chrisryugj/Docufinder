@@ -1,10 +1,42 @@
+use crate::tokenizer::TextTokenizer;
 use rusqlite::{Connection, params};
 
 /// FTS5 키워드 검색 (파일 정보 포함)
 /// snippet()으로 매칭 컨텍스트 자동 추출
 pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
-    // FTS5 쿼리 전처리 (특수문자 이스케이프)
-    let safe_query = sanitize_fts_query(query);
+    // FTS5 쿼리 전처리 (특수문자 이스케이프, 토크나이저 미사용)
+    let safe_query = sanitize_fts_query(query, None);
+
+    if safe_query.is_empty() {
+        return Ok(vec![]);
+    }
+
+    search_internal(conn, &safe_query, limit)
+}
+
+/// FTS5 키워드 검색 (한국어 형태소 분석 포함)
+///
+/// 토크나이저를 사용하여 검색어를 형태소 분석 후 검색합니다.
+/// 예: "사용했습니다" → "사용"* "했"* "습니다"*
+pub fn search_with_tokenizer(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    tokenizer: &dyn TextTokenizer,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    // FTS5 쿼리 전처리 (형태소 분석 포함)
+    let safe_query = sanitize_fts_query(query, Some(tokenizer));
+
+    if safe_query.is_empty() {
+        return Ok(vec![]);
+    }
+
+    search_internal(conn, &safe_query, limit)
+}
+
+/// FTS5 검색 내부 구현
+fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    let safe_query = safe_query;
 
     if safe_query.is_empty() {
         return Ok(vec![]);
@@ -57,14 +89,21 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsRes
 }
 
 /// FTS5 쿼리 전처리 (특수문자 처리 + prefix match)
-fn sanitize_fts_query(query: &str) -> String {
+///
+/// tokenizer가 Some이면 한국어 형태소 분석을 수행합니다.
+fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> String {
     // 빈 쿼리 처리
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return String::new();
     }
 
-    // 각 단어를 쌍따옴표로 감싸고 와일드카드 추가 (prefix match)
+    // 토크나이저가 있으면 형태소 분석 사용
+    if let Some(tok) = tokenizer {
+        return tok.tokenize_query(trimmed);
+    }
+
+    // 기본 처리: 각 단어를 쌍따옴표로 감싸고 와일드카드 추가 (prefix match)
     // "분장"* → "분장", "분장을", "분장이" 등 모두 매칭
     let terms: Vec<String> = trimmed
         .split_whitespace()
