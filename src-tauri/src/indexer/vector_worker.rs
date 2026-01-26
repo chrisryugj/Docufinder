@@ -9,7 +9,7 @@
 use crate::db::{self, PendingChunk};
 use crate::embedder::Embedder;
 use crate::search::vector::VectorIndex;
-use crossbeam_channel::{bounded, Receiver, RecvTimeoutError};
+use crossbeam_channel::{bounded, RecvTimeoutError};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};

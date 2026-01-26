@@ -147,6 +147,14 @@ impl Reranker {
 
         let scores = {
             let mut session = self.session.lock().map_err(|_| RerankerError::LockFailed)?;
+
+            // 출력 이름 수집 (borrow 충돌 방지)
+            let output_names: Vec<String> = session
+                .outputs()
+                .iter()
+                .map(|o| o.name().to_string())
+                .collect();
+
             let outputs = session
                 .run(ort::inputs![
                     "input_ids" => input_ids_value,
@@ -155,11 +163,19 @@ impl Reranker {
                 ])
                 .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
 
-            // 출력에서 logits 추출
+            // 출력에서 logits 추출 (모델에 따라 출력 이름이 다를 수 있음)
             // Cross-Encoder 출력: [batch_size, 1] 또는 [batch_size]
             let output = outputs
                 .get("logits")
-                .ok_or_else(|| RerankerError::OrtError("No logits output".to_string()))?;
+                .or_else(|| outputs.get("output"))
+                .or_else(|| outputs.get("scores"))
+                .or_else(|| {
+                    // 첫 번째 출력 사용 (fallback)
+                    output_names.first().and_then(|name| outputs.get(name.as_str()))
+                })
+                .ok_or_else(|| {
+                    RerankerError::OrtError(format!("No score output found. Available: {:?}", output_names))
+                })?;
 
             let (_, out_data) = output
                 .try_extract_tensor::<f32>()

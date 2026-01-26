@@ -5,6 +5,18 @@ interface HighlightedTextProps {
   snippet?: string;
   /** 결과 내 검색 키워드 (추가 하이라이트) */
   refineKeywords?: string[];
+  /** 검색 쿼리 (snippet 없을 때 폴백 하이라이트) */
+  searchQuery?: string;
+}
+
+/**
+ * 검색 쿼리에서 키워드 추출 (공백 분리, 빈 문자열 제외)
+ */
+function extractSearchKeywords(query: string): string[] {
+  return query
+    .split(/\s+/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
 }
 
 /**
@@ -29,6 +41,31 @@ function findKeywordRanges(text: string, keywords: string[]): [number, number][]
 
   // 시작 위치로 정렬
   return ranges.sort((a, b) => a[0] - b[0]);
+}
+
+/**
+ * 겹치는 범위 병합 (FTS 마커 + searchQuery 결과 병합용)
+ */
+function mergeOverlappingRanges(ranges: [number, number][]): [number, number][] {
+  if (ranges.length === 0) return [];
+
+  // 시작 위치로 정렬
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [sorted[0]];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const last = merged[merged.length - 1];
+    const current = sorted[i];
+
+    // 겹치거나 인접하면 병합
+    if (current[0] <= last[1]) {
+      last[1] = Math.max(last[1], current[1]);
+    } else {
+      merged.push(current);
+    }
+  }
+
+  return merged;
 }
 
 function parseSnippetHighlights(snippet: string): { text: string; ranges: [number, number][] } {
@@ -168,7 +205,7 @@ function mergeRanges(
  * - snippet이 있으면 JavaScript에서 직접 파싱 (Rust 바이트 인덱스 버그 회피)
  * - refineKeywords가 있으면 추가 하이라이트 (다른 색상)
  */
-export function HighlightedText({ text, ranges, snippet, refineKeywords }: HighlightedTextProps) {
+export function HighlightedText({ text, ranges, snippet, refineKeywords, searchQuery }: HighlightedTextProps) {
   // snippet이 있으면 JavaScript에서 직접 파싱 (더 정확함)
   const { actualText, actualRanges } = snippet
     ? (() => {
@@ -177,18 +214,27 @@ export function HighlightedText({ text, ranges, snippet, refineKeywords }: Highl
       })()
     : { actualText: text, actualRanges: ranges };
 
+  // searchQuery로 추가 하이라이트 범위 계산
+  // FTS5 snippet 마커가 누락될 수 있으므로 항상 searchQuery로도 찾기
+  const searchQueryRanges = searchQuery
+    ? findKeywordRanges(actualText, extractSearchKeywords(searchQuery))
+    : [];
+
   // 결과 내 검색 키워드 범위 계산
   const refineRanges = refineKeywords && refineKeywords.length > 0
     ? findKeywordRanges(actualText, refineKeywords)
     : [];
 
+  // 검색 하이라이트 = FTS ranges + searchQuery 병합 (FTS 마커 누락 보완)
+  const effectiveSearchRanges = mergeOverlappingRanges([...actualRanges, ...searchQueryRanges]);
+
   // 하이라이트 없으면 포매팅만 적용
-  if ((!actualRanges || actualRanges.length === 0) && refineRanges.length === 0) {
+  if (effectiveSearchRanges.length === 0 && refineRanges.length === 0) {
     return <>{formatAndRender(actualText, "plain")}</>;
   }
 
   // 두 범위 병합
-  const mergedRanges = mergeRanges(actualRanges || [], refineRanges);
+  const mergedRanges = mergeRanges(effectiveSearchRanges, refineRanges);
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
 

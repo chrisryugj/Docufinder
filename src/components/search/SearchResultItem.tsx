@@ -267,6 +267,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               ranges={displayRanges}
               snippet={!isExpanded ? result.snippet : undefined}
               refineKeywords={refineKeywords}
+              searchQuery={query}
             />
           </p>
         </div>

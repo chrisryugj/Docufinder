@@ -223,6 +223,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
                   ranges={chunk.highlight_ranges}
                   snippet={chunk.snippet}
                   refineKeywords={!chunk.snippet ? fallbackKeywords : undefined}
+                  searchQuery={searchQuery}
                 />
               </p>
             </div>

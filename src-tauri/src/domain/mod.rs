@@ -7,6 +7,9 @@
 //! - **Value Objects**: 불변, 동등성으로 비교되는 값 객체 (FileId, ChunkId, Embedding)
 //! - **Repository Traits**: 데이터 접근 추상화 (DIP 적용)
 //! - **Domain Errors**: 비즈니스 규칙 위반 에러
+//!
+//! NOTE: Phase 2에서 Clean Architecture 전환 시 활용 예정
+#![allow(dead_code)]
 
 pub mod entities;
 pub mod errors;
@@ -14,9 +17,4 @@ pub mod repositories;
 pub mod value_objects;
 
 // Re-exports for convenience
-pub use entities::{Chunk, File, FileType, WatchedFolder};
 pub use errors::DomainError;
-pub use repositories::{
-    ChunkRepository, EmbedderPort, FileRepository, VectorRepository, VectorSearchResult,
-};
-pub use value_objects::{ChunkId, Embedding, FileId, EMBEDDING_DIM};

@@ -12,12 +12,3 @@ pub mod container;
 pub mod dto;
 pub mod errors;
 pub mod services;
-
-// Re-exports
-pub use container::AppContainer;
-pub use dto::{
-    search::{MatchType, SearchMode, SearchQuery, SearchResponse, SearchResult},
-    indexing::{AddFolderResult, FolderStats, IndexStatus, WatchedFolderInfo},
-};
-pub use errors::{AppError, AppResult};
-pub use services::{SearchService, IndexService, FolderService};

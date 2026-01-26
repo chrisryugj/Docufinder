@@ -71,6 +71,8 @@ pub struct SearchResult {
     pub location_hint: Option<String>,
     /// FTS5 snippet (하이라이트 마커 포함)
     pub snippet: Option<String>,
+    /// 파일 수정 시간 (Unix timestamp, 초)
+    pub modified_at: Option<i64>,
 }
 
 /// 검색 응답 DTO

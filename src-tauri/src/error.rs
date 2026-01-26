@@ -114,3 +114,22 @@ impl From<tokio::task::JoinError> for ApiError {
         ApiError::TaskJoinError(e.to_string())
     }
 }
+
+impl From<crate::application::errors::AppError> for ApiError {
+    fn from(e: crate::application::errors::AppError) -> Self {
+        use crate::application::errors::AppError;
+        match e {
+            AppError::Domain(d) => ApiError::InvalidPath(d.to_string()),
+            AppError::EmptyQuery => ApiError::SearchFailed("검색어가 비어있습니다".to_string()),
+            AppError::PathNotFound(p) => ApiError::PathNotFound(p),
+            AppError::InvalidPath(p) => ApiError::InvalidPath(p),
+            AppError::AccessDenied(p) => ApiError::AccessDenied(p),
+            AppError::IndexingFailed(e) => ApiError::IndexingFailed(e),
+            AppError::SearchFailed(e) => ApiError::SearchFailed(e),
+            AppError::EmbeddingFailed(e) => ApiError::EmbeddingFailed(e),
+            AppError::VectorIndexEmpty => ApiError::VectorIndexEmpty,
+            AppError::SemanticSearchDisabled => ApiError::SemanticSearchDisabled,
+            AppError::Internal(e) => ApiError::LockFailed(e),
+        }
+    }
+}

@@ -7,15 +7,15 @@ use crate::application::services::{FolderService, IndexService, SearchService};
 use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager};
 use crate::indexer::vector_worker::VectorWorker;
+use crate::reranker::Reranker;
 use crate::search::vector::VectorIndex;
+use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use crate::ApiError;
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-/// Embedder는 이제 불변 참조로 사용 가능 (락 불필요)
-type SharedEmbedder = Arc<Embedder>;
 
 /// DI 컨테이너 - 앱 전역 의존성 관리
 pub struct AppContainer {
@@ -32,10 +32,13 @@ pub struct AppContainer {
     // ============================================
     // Infrastructure (Lazy Load)
     // ============================================
-    embedder: OnceCell<SharedEmbedder>,
+    embedder: OnceCell<Arc<Embedder>>,
     vector_index: OnceCell<Arc<VectorIndex>>,
     watch_manager: OnceCell<Arc<RwLock<WatchManager>>>,
-    vector_worker: RwLock<VectorWorker>,
+    /// 벡터 워커 - Arc로 공유하여 IndexService에서 동일 인스턴스 사용
+    vector_worker: Arc<RwLock<VectorWorker>>,
+    tokenizer: OnceCell<Arc<dyn TextTokenizer>>,
+    reranker: OnceCell<Arc<Reranker>>,
 
     // ============================================
     // Shared State
@@ -57,7 +60,9 @@ impl AppContainer {
             embedder: OnceCell::new(),
             vector_index: OnceCell::new(),
             watch_manager: OnceCell::new(),
-            vector_worker: RwLock::new(VectorWorker::new()),
+            vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
+            tokenizer: OnceCell::new(),
+            reranker: OnceCell::new(),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -72,27 +77,29 @@ impl AppContainer {
             self.db_path.clone(),
             self.get_embedder().ok(),
             self.get_vector_index().ok(),
+            self.get_tokenizer().ok(),
+            self.get_reranker().ok(),
         )
     }
 
-    /// IndexService 생성
-    pub fn index_service(&self) -> Result<IndexService, ApiError> {
-        Ok(IndexService::new(
+    /// IndexService 생성 - 공유된 vector_worker 사용
+    pub fn index_service(&self) -> IndexService {
+        IndexService::new(
             self.db_path.clone(),
             self.get_embedder().ok(),
             self.get_vector_index().ok(),
-            Arc::new(RwLock::new(VectorWorker::new())), // TODO: share instance
+            self.vector_worker.clone(), // 공유 인스턴스
             self.indexing_cancel_flag.clone(),
-        ))
+        )
     }
 
     /// FolderService 생성
-    pub fn folder_service(&self) -> Result<FolderService, ApiError> {
-        Ok(FolderService::new(
+    pub fn folder_service(&self) -> FolderService {
+        FolderService::new(
             self.db_path.clone(),
-            self.get_watch_manager().ok().map(|wm| Arc::new(wm)),
+            self.get_watch_manager().ok(),
             self.get_vector_index().ok(),
-        ))
+        )
     }
 
     // ============================================
@@ -115,7 +122,7 @@ impl AppContainer {
     }
 
     /// 임베더 가져오기 (lazy load)
-    pub fn get_embedder(&self) -> Result<SharedEmbedder, ApiError> {
+    pub fn get_embedder(&self) -> Result<Arc<Embedder>, ApiError> {
         self.embedder
             .get_or_try_init(|| {
                 let model_dir = self.models_dir.join("multilingual-e5-small");
@@ -161,21 +168,64 @@ impl AppContainer {
         model_path.exists()
     }
 
-    /// 파일 감시 매니저 가져오기 (lazy load)
-    pub fn get_watch_manager(&self) -> Result<RwLock<WatchManager>, ApiError> {
-        let ctx = IndexContext {
-            db_path: self.db_path.clone(),
-            embedder: self.get_embedder().ok(),
-            vector_index: self.get_vector_index().ok(),
-        };
+    /// 파일 감시 매니저 가져오기 (lazy load) - Arc 참조 반환
+    pub fn get_watch_manager(&self) -> Result<Arc<RwLock<WatchManager>>, ApiError> {
+        self.watch_manager
+            .get_or_try_init(|| {
+                let ctx = IndexContext {
+                    db_path: self.db_path.clone(),
+                    embedder: self.get_embedder().ok(),
+                    vector_index: self.get_vector_index().ok(),
+                };
 
-        WatchManager::new(ctx)
-            .map(RwLock::new)
-            .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
+                WatchManager::new(ctx)
+                    .map(|wm| Arc::new(RwLock::new(wm)))
+                    .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
+            })
+            .cloned()
     }
 
-    /// 벡터 워커 가져오기
-    pub fn get_vector_worker(&self) -> &RwLock<VectorWorker> {
-        &self.vector_worker
+    /// 벡터 워커 가져오기 - Arc 공유
+    pub fn get_vector_worker(&self) -> Arc<RwLock<VectorWorker>> {
+        self.vector_worker.clone()
+    }
+
+    /// 한국어 형태소 분석기 가져오기 (lazy load)
+    pub fn get_tokenizer(&self) -> Result<Arc<dyn TextTokenizer>, ApiError> {
+        self.tokenizer
+            .get_or_try_init(|| {
+                LinderaKoTokenizer::new()
+                    .map(|t| Arc::new(t) as Arc<dyn TextTokenizer>)
+                    .map_err(|e| ApiError::IndexingFailed(format!("토크나이저 초기화 실패: {}", e)))
+            })
+            .cloned()
+    }
+
+    /// Cross-Encoder Reranker 가져오기 (lazy load)
+    pub fn get_reranker(&self) -> Result<Arc<Reranker>, ApiError> {
+        self.reranker
+            .get_or_try_init(|| {
+                let model_dir = self.models_dir.join("ms-marco-MiniLM-L6-v2");
+                let model_path = model_dir.join("model.onnx");
+                let tokenizer_path = model_dir.join("tokenizer.json");
+
+                if !model_path.exists() {
+                    return Err(ApiError::ModelNotFound(format!(
+                        "Reranker 모델을 찾을 수 없습니다: {:?}",
+                        model_path
+                    )));
+                }
+
+                Reranker::new(&model_path, &tokenizer_path)
+                    .map(Arc::new)
+                    .map_err(|e| ApiError::IndexingFailed(format!("Reranker 초기화 실패: {}", e)))
+            })
+            .cloned()
+    }
+
+    /// Reranker 모델 사용 가능 여부 확인
+    pub fn is_reranker_available(&self) -> bool {
+        let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+        model_path.exists()
     }
 }

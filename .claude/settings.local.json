@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Skill(memory-end)",
-      "Skill(memory-end:*)"
+      "Skill(memory-end:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   },
   "outputStyle": "chris-v3"

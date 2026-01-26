@@ -6,7 +6,9 @@
 use crate::application::dto::search::{MatchType, SearchQuery, SearchResponse, SearchResult, SearchMode};
 use crate::application::errors::{AppError, AppResult};
 use crate::db::{self, ChunkInfo};
+use crate::reranker::Reranker;
 use crate::search::{filename, fts, hybrid};
+use crate::tokenizer::TextTokenizer;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -18,6 +20,8 @@ pub struct SearchService {
     db_path: PathBuf,
     embedder: Option<Arc<crate::embedder::Embedder>>,
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
+    tokenizer: Option<Arc<dyn TextTokenizer>>,
+    reranker: Option<Arc<Reranker>>,
 }
 
 impl SearchService {
@@ -26,11 +30,15 @@ impl SearchService {
         db_path: PathBuf,
         embedder: Option<Arc<crate::embedder::Embedder>>,
         vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
+        tokenizer: Option<Arc<dyn TextTokenizer>>,
+        reranker: Option<Arc<Reranker>>,
     ) -> Self {
         Self {
             db_path,
             embedder,
             vector_index,
+            tokenizer,
+            reranker,
         }
     }
 
@@ -54,9 +62,14 @@ impl SearchService {
 
         let conn = self.get_connection()?;
 
-        // FTS5 검색 실행
-        let fts_results = fts::search(&conn, query, max_results)
-            .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+        // FTS5 검색 실행 (한국어 형태소 분석 포함)
+        let use_tokenizer = self.tokenizer.is_some();
+        let fts_results = match self.tokenizer.as_ref() {
+            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref())
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            None => fts::search(&conn, query, max_results)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+        };
 
         // 스코어 정규화
         let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
@@ -82,6 +95,7 @@ impl SearchService {
                     start_offset: r.start_offset,
                     location_hint: r.location_hint,
                     snippet: Some(r.snippet),
+                    modified_at: r.modified_at,
                 }
             })
             .collect();
@@ -90,8 +104,8 @@ impl SearchService {
         let search_time_ms = start.elapsed().as_millis() as u64;
 
         tracing::info!(
-            "Keyword search '{}': {} results in {}ms",
-            query, total_count, search_time_ms
+            "Keyword search '{}': {} results in {}ms (tokenizer={})",
+            query, total_count, search_time_ms, use_tokenizer
         );
 
         Ok(SearchResponse {
@@ -136,6 +150,7 @@ impl SearchService {
                     start_offset: 0,
                     location_hint: Some(r.file_type),
                     snippet: None,
+                    modified_at: r.modified_at,
                 }
             })
             .collect();
@@ -209,6 +224,7 @@ impl SearchService {
                     start_offset: chunk.start_offset,
                     location_hint: chunk.location_hint.clone(),
                     snippet: None,
+                    modified_at: chunk.modified_at,
                 })
             })
             .collect();
@@ -229,15 +245,21 @@ impl SearchService {
         })
     }
 
-    /// 하이브리드 검색 (FTS + 벡터 + RRF)
+    /// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
     pub async fn search_hybrid(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
         let start = Instant::now();
+        let use_tokenizer = self.tokenizer.is_some();
+        let use_reranker = self.reranker.is_some();
 
         let conn = self.get_connection()?;
 
-        // 1. FTS5 검색
-        let fts_results = fts::search(&conn, query, max_results)
-            .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+        // 1. FTS5 검색 (한국어 형태소 분석 포함)
+        let fts_results = match self.tokenizer.as_ref() {
+            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref())
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            None => fts::search(&conn, query, max_results)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+        };
 
         // 2. 벡터 검색 (가능한 경우, 락 불필요)
         let vector_results = match (self.embedder.as_ref(), self.vector_index.as_ref()) {
@@ -255,9 +277,55 @@ impl SearchService {
 
         // 3. RRF 병합
         const RRF_K: f32 = 60.0;
-        let hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), RRF_K);
+        let mut hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), RRF_K);
 
-        // 4. chunk_id로 파일 정보 조회
+        // 4. Cross-Encoder Reranking (상위 20개만)
+        const RERANK_TOP_K: usize = 20;
+        if let Some(rr) = self.reranker.as_ref() {
+            if hybrid_results.len() > 1 {
+                // chunk_id로 콘텐츠 조회
+                let rerank_chunk_ids: Vec<i64> = hybrid_results
+                    .iter()
+                    .take(RERANK_TOP_K)
+                    .map(|r| r.chunk_id)
+                    .collect();
+                let rerank_chunks = db::get_chunks_by_ids(&conn, &rerank_chunk_ids)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+                let rerank_chunk_map: HashMap<i64, ChunkInfo> = rerank_chunks
+                    .into_iter()
+                    .map(|c| (c.chunk_id, c))
+                    .collect();
+
+                // Reranking 대상 문서 추출
+                let documents: Vec<&str> = hybrid_results
+                    .iter()
+                    .take(RERANK_TOP_K)
+                    .filter_map(|r| rerank_chunk_map.get(&r.chunk_id).map(|c| c.content.as_str()))
+                    .collect();
+
+                if !documents.is_empty() {
+                    match rr.rerank(query, &documents, documents.len()) {
+                        Ok(reranked_indices) => {
+                            // 상위 K개만 재정렬
+                            let top_results: Vec<_> = hybrid_results.drain(..documents.len().min(RERANK_TOP_K)).collect();
+                            let mut reranked: Vec<_> = reranked_indices
+                                .into_iter()
+                                .filter_map(|idx| top_results.get(idx).cloned())
+                                .collect();
+                            // 재정렬된 결과 + 나머지 결과
+                            reranked.extend(hybrid_results);
+                            hybrid_results = reranked;
+                            tracing::debug!("Reranked top {} results", RERANK_TOP_K);
+                        }
+                        Err(e) => {
+                            tracing::warn!("Reranking failed: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. chunk_id로 파일 정보 조회
         let chunk_ids: Vec<i64> = hybrid_results.iter().map(|r| r.chunk_id).collect();
         let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
@@ -317,6 +385,7 @@ impl SearchService {
                         start_offset: chunk.start_offset,
                         location_hint: chunk.location_hint.clone(),
                         snippet,
+                        modified_at: chunk.modified_at,
                     }
                 })
             })
@@ -326,8 +395,8 @@ impl SearchService {
         let search_time_ms = start.elapsed().as_millis() as u64;
 
         tracing::info!(
-            "Hybrid search '{}': {} results in {}ms",
-            query, total_count, search_time_ms
+            "Hybrid search '{}': {} results in {}ms (tokenizer={}, reranker={})",
+            query, total_count, search_time_ms, use_tokenizer, use_reranker
         );
 
         Ok(SearchResponse {
