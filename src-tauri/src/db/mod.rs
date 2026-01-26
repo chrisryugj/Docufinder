@@ -160,12 +160,17 @@ pub fn init_database(db_path: &Path) -> Result<()> {
 
 // ==================== 감시 폴더 ====================
 
+/// 현재 시간을 Unix timestamp로 반환 (패닉 방지)
+fn current_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 /// 감시 폴더 추가
 pub fn add_watched_folder(conn: &Connection, path: &str) -> Result<i64> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = current_timestamp();
 
     conn.execute(
         "INSERT OR IGNORE INTO watched_folders (path, added_at) VALUES (?, ?)",
@@ -242,10 +247,7 @@ pub fn upsert_file(
     size: i64,
     modified_at: i64,
 ) -> Result<i64> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = current_timestamp();
 
     conn.execute(
         "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at)
@@ -562,10 +564,7 @@ pub fn upsert_file_fts_only(
     size: i64,
     modified_at: i64,
 ) -> Result<i64> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = current_timestamp();
 
     conn.execute(
         "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at, fts_indexed_at)
@@ -633,10 +632,7 @@ pub fn get_pending_vector_chunks(conn: &Connection, limit: usize) -> Result<Vec<
 
 /// 파일의 벡터 인덱싱 완료 표시
 pub fn mark_file_vector_indexed(conn: &Connection, file_id: i64) -> Result<()> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
+    let now = current_timestamp();
 
     conn.execute(
         "UPDATE files SET vector_indexed_at = ? WHERE id = ?",

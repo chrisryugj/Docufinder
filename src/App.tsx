@@ -244,11 +244,13 @@ function App() {
     };
   }, [settingsOpen]);
 
+  // searchMode 변경 시 keywordOnly 필터 리셋 (무한 루프 방지)
   useEffect(() => {
     if (searchMode !== "hybrid" && filters.keywordOnly) {
-      setFilters({ ...filters, keywordOnly: false });
+      setFilters((prev) => ({ ...prev, keywordOnly: false }));
     }
-  }, [searchMode, filters, setFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchMode]); // filters 제외하여 무한 루프 방지
 
   // 파일 열기 (검색 결과 클릭 시 최근 검색에 저장)
   const handleOpenFile = useCallback(
@@ -381,14 +383,16 @@ function App() {
     searchInputRef
   );
 
-  // 결과가 변경되면 선택 초기화
+  // 결과가 변경되면 선택 초기화 (useEffect로 이동하여 렌더 중 setState 방지)
   const prevResultsLength = useRef(filteredResults.length);
-  if (prevResultsLength.current !== filteredResults.length) {
-    prevResultsLength.current = filteredResults.length;
-    if (selectedIndex >= filteredResults.length) {
-      setSelectedIndex(filteredResults.length > 0 ? 0 : -1);
+  useEffect(() => {
+    if (prevResultsLength.current !== filteredResults.length) {
+      prevResultsLength.current = filteredResults.length;
+      if (selectedIndex >= filteredResults.length) {
+        setSelectedIndex(filteredResults.length > 0 ? 0 : -1);
+      }
     }
-  }
+  }, [filteredResults.length, selectedIndex]);
 
   // 검색 영역 확장 핸들러
   const handleExpand = useCallback(() => {

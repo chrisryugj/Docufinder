@@ -254,5 +254,9 @@ impl Embedder {
     }
 }
 
+// SAFETY: ort 2.0+ Session은 내부적으로 thread-safe (Session::run이 &self 사용).
+// - Session: Mutex로 감싸서 동시 접근 직렬화
+// - Tokenizer: tokenizers 크레이트에서 Send+Sync 구현
+// 참조: https://github.com/pykeio/ort - Session is thread-safe in ort 2.0+
 unsafe impl Send for Embedder {}
 unsafe impl Sync for Embedder {}
