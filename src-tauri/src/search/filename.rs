@@ -1,5 +1,12 @@
 use rusqlite::Connection;
 
+/// LIKE 패턴 특수문자 이스케이프 (%, _, \ 처리)
+fn escape_like_pattern(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 /// 파일명 검색 (LIKE 기반 - 부분문자열 매칭 지원)
 /// FTS5 unicode61은 한글 부분문자열 매칭이 안 되므로 LIKE 사용
 pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FilenameResult>, rusqlite::Error> {
@@ -16,10 +23,11 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Filena
     }
 
     // 동적으로 WHERE 절 생성 (모든 검색어가 파일명에 포함되어야 함)
+    // ESCAPE 절 추가로 특수문자 처리
     let where_clauses: Vec<String> = terms
         .iter()
         .enumerate()
-        .map(|(i, _)| format!("name LIKE ?{}", i + 1))
+        .map(|(i, _)| format!("name LIKE ?{} ESCAPE '\\'", i + 1))
         .collect();
 
     let sql = format!(
@@ -39,10 +47,10 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Filena
 
     let mut stmt = conn.prepare(&sql)?;
 
-    // 파라미터 바인딩 (LIKE 패턴 + limit)
+    // 파라미터 바인딩 (LIKE 패턴 이스케이프 + limit)
     let like_patterns: Vec<String> = terms
         .iter()
-        .map(|term| format!("%{}%", term))
+        .map(|term| format!("%{}%", escape_like_pattern(term)))
         .collect();
 
     let limit_i64 = limit as i64;

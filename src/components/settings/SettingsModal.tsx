@@ -63,25 +63,25 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 설정 로드
+  // 설정 로드 (useEffect 내부에 함수 정의하여 의존성 문제 해결)
   useEffect(() => {
-    if (isOpen) {
-      loadSettings();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
 
-  const loadSettings = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const result = await invoke<Settings>("get_settings");
-      setSettings(result);
-    } catch (err) {
-      setError(`설정 로드 실패: ${err}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const loadSettings = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const result = await invoke<Settings>("get_settings");
+        setSettings(result);
+      } catch (err) {
+        setError(`설정 로드 실패: ${err}`);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, [isOpen]);
 
   const saveSettings = async () => {
     if (!settings) return;
