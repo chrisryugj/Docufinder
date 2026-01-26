@@ -6,12 +6,10 @@
 //! - **persistence**: SQLite 리포지토리 구현체 (SqliteFileRepository, SqliteChunkRepository)
 //! - **vector**: usearch 벡터 인덱스 어댑터 (UsearchVectorRepository)
 //! - **embedding**: ONNX 임베딩 어댑터 (OnnxEmbedderAdapter)
+//!
+//! NOTE: Phase 2에서 Clean Architecture 전환 시 활용 예정
+#![allow(dead_code)]
 
 pub mod embedding;
 pub mod persistence;
 pub mod vector;
-
-// Re-exports
-pub use embedding::OnnxEmbedderAdapter;
-pub use persistence::{SqliteChunkRepository, SqliteFileRepository};
-pub use vector::UsearchVectorRepository;

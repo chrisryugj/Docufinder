@@ -173,43 +173,72 @@ impl Embedder {
                 .try_extract_tensor::<f32>()
                 .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
-            // shape: [batch, seq_len, hidden_dim]
-            let hidden_dim = out_shape.get(2).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
+            let dims = out_shape.len();
 
-            // Mean pooling with attention mask
-            let mut embeddings = Vec::with_capacity(batch_size);
-            for i in 0..batch_size {
-                let mut sum = vec![0.0f32; EMBEDDING_DIM];
-                let mut count = 0.0f32;
+            if dims == 2 {
+                // 2D: [batch, hidden_dim] - 이미 pooling된 sentence embedding
+                let hidden_dim = out_shape.get(1).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
+                let mut embeddings = Vec::with_capacity(batch_size);
 
-                for j in 0..seq_len {
-                    if attention_mask[[i, j]] == 1 {
-                        let offset = i * seq_len * hidden_dim + j * hidden_dim;
-                        for k in 0..EMBEDDING_DIM.min(hidden_dim) {
-                            sum[k] += out_data[offset + k];
+                for i in 0..batch_size {
+                    let mut emb = vec![0.0f32; EMBEDDING_DIM];
+                    let offset = i * hidden_dim;
+                    for k in 0..EMBEDDING_DIM.min(hidden_dim) {
+                        if offset + k < out_data.len() {
+                            emb[k] = out_data[offset + k];
                         }
-                        count += 1.0;
                     }
-                }
-
-                // Average
-                if count > 0.0 {
-                    for v in &mut sum {
-                        *v /= count;
+                    // L2 normalize
+                    let norm: f32 = emb.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    if norm > 0.0 {
+                        for v in &mut emb {
+                            *v /= norm;
+                        }
                     }
+                    embeddings.push(emb);
                 }
+                embeddings
+            } else {
+                // 3D: [batch, seq_len, hidden_dim] - mean pooling 필요
+                let model_seq_len = out_shape.get(1).map(|&d| d as usize).unwrap_or(seq_len);
+                let hidden_dim = out_shape.get(2).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
 
-                // L2 normalize
-                let norm: f32 = sum.iter().map(|x| x * x).sum::<f32>().sqrt();
-                if norm > 0.0 {
-                    for v in &mut sum {
-                        *v /= norm;
+                let mut embeddings = Vec::with_capacity(batch_size);
+                for i in 0..batch_size {
+                    let mut sum = vec![0.0f32; EMBEDDING_DIM];
+                    let mut count = 0.0f32;
+
+                    for j in 0..model_seq_len.min(seq_len) {
+                        if j < seq_len && attention_mask[[i, j]] == 1 {
+                            let offset = i * model_seq_len * hidden_dim + j * hidden_dim;
+                            for k in 0..EMBEDDING_DIM.min(hidden_dim) {
+                                if offset + k < out_data.len() {
+                                    sum[k] += out_data[offset + k];
+                                }
+                            }
+                            count += 1.0;
+                        }
                     }
-                }
 
-                embeddings.push(sum);
+                    // Average
+                    if count > 0.0 {
+                        for v in &mut sum {
+                            *v /= count;
+                        }
+                    }
+
+                    // L2 normalize
+                    let norm: f32 = sum.iter().map(|x| x * x).sum::<f32>().sqrt();
+                    if norm > 0.0 {
+                        for v in &mut sum {
+                            *v /= norm;
+                        }
+                    }
+
+                    embeddings.push(sum);
+                }
+                embeddings
             }
-            embeddings
         };
 
         Ok(embeddings)

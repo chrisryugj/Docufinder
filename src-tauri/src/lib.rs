@@ -14,206 +14,17 @@ mod search;
 mod tokenizer;        // 한국어 형태소 분석 (Phase 5)
 
 pub use error::{ApiError, ApiResult};
+pub use application::container::AppContainer;
 
-use embedder::Embedder;
-use indexer::manager::{IndexContext, WatchManager};
-use indexer::vector_worker::VectorWorker;
-use reranker::Reranker;
-use search::vector::VectorIndex;
-use tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use std::path::PathBuf;
-use once_cell::sync::OnceCell;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
-/// Embedder는 이제 불변 참조로 사용 가능 (락 불필요)
-type SharedEmbedder = Arc<Embedder>;
 use tauri::{Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-
-/// 한국어 형태소 분석기 공유 타입
-type SharedTokenizer = Arc<dyn TextTokenizer>;
-
-/// Cross-Encoder Reranker 공유 타입
-type SharedReranker = Arc<Reranker>;
-
-/// 앱 전역 상태
-pub struct AppState {
-    /// 데이터베이스 경로
-    pub db_path: PathBuf,
-    /// 벡터 인덱스 경로
-    pub vector_index_path: PathBuf,
-    /// 모델 디렉토리 경로
-    pub models_dir: PathBuf,
-    /// 임베더 (lazy load)
-    embedder: OnceCell<SharedEmbedder>,
-    /// 벡터 인덱스 (lazy load)
-    vector_index: OnceCell<Arc<VectorIndex>>,
-    /// 파일 감시 매니저 (lazy load)
-    watch_manager: OnceCell<RwLock<WatchManager>>,
-    /// 현재 인덱싱 작업 취소 플래그
-    indexing_cancel_flag: Arc<AtomicBool>,
-    /// 벡터 인덱싱 워커 (2단계 백그라운드 인덱싱)
-    vector_worker: RwLock<VectorWorker>,
-    /// 한국어 형태소 분석기 (lazy load)
-    tokenizer: OnceCell<SharedTokenizer>,
-    /// Cross-Encoder Reranker (lazy load)
-    reranker: OnceCell<SharedReranker>,
-}
-
-impl AppState {
-    /// 새 AppState 생성
-    pub fn new(app_data_dir: &PathBuf) -> Self {
-        let db_path = app_data_dir.join("docufinder.db");
-        let vector_index_path = app_data_dir.join("vectors.usearch");
-        let models_dir = app_data_dir.join("models");
-
-        Self {
-            db_path,
-            vector_index_path,
-            models_dir,
-            embedder: OnceCell::new(),
-            vector_index: OnceCell::new(),
-            watch_manager: OnceCell::new(),
-            indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
-            vector_worker: RwLock::new(VectorWorker::new()),
-            tokenizer: OnceCell::new(),
-            reranker: OnceCell::new(),
-        }
-    }
-
-    /// 인덱싱 취소 플래그 가져오기 (새 작업 시작 시 리셋됨)
-    pub fn get_cancel_flag(&self) -> Arc<AtomicBool> {
-        self.indexing_cancel_flag.clone()
-    }
-
-    /// 인덱싱 취소 플래그 리셋
-    pub fn reset_cancel_flag(&self) {
-        self.indexing_cancel_flag.store(false, Ordering::Relaxed);
-    }
-
-    /// 인덱싱 취소 요청
-    pub fn cancel_indexing(&self) {
-        self.indexing_cancel_flag.store(true, Ordering::Relaxed);
-    }
-
-    /// 임베더 가져오기 (필요시 로드)
-    pub fn get_embedder(&self) -> ApiResult<SharedEmbedder> {
-        self.embedder
-            .get_or_try_init(|| {
-                let model_dir = self.models_dir.join("multilingual-e5-small");
-                let model_path = model_dir.join("model.onnx");
-                let tokenizer_path = model_dir.join("tokenizer.json");
-                let dll_path = model_dir.join("onnxruntime.dll");
-
-                if !model_path.exists() {
-                    return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
-                }
-
-                // ONNX Runtime DLL 경로 설정 (load-dynamic 모드)
-                if dll_path.exists() {
-                    std::env::set_var("ORT_DYLIB_PATH", &dll_path);
-                    tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
-                } else {
-                    tracing::warn!("onnxruntime.dll not found at {:?}", dll_path);
-                }
-
-                Embedder::new(&model_path, &tokenizer_path)
-                    .map(Arc::new)
-                    .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))
-            })
-            .cloned()
-    }
-
-    /// 벡터 인덱스 가져오기 (필요시 생성/로드)
-    ///
-    /// 모델이 없으면 벡터 인덱스를 생성하지 않고 에러 반환
-    pub fn get_vector_index(&self) -> ApiResult<Arc<VectorIndex>> {
-        // 모델 없으면 벡터 인덱스 비활성화
-        if !self.is_semantic_available() {
-            return Err(ApiError::SemanticSearchDisabled);
-        }
-
-        self.vector_index
-            .get_or_try_init(|| {
-                VectorIndex::new(&self.vector_index_path)
-                    .map(Arc::new)
-                    .map_err(|e| ApiError::SearchFailed(e.to_string()))
-            })
-            .cloned()
-    }
-
-    /// 시맨틱 검색 가능 여부 확인
-    pub fn is_semantic_available(&self) -> bool {
-        let model_path = self.models_dir.join("multilingual-e5-small").join("model.onnx");
-        model_path.exists()
-    }
-
-    /// 파일 감시 매니저 가져오기 (필요시 생성)
-    pub fn get_watch_manager(&self) -> ApiResult<&RwLock<WatchManager>> {
-        self.watch_manager
-            .get_or_try_init(|| {
-                // 시맨틱 검색 활성화 (ONNX Runtime 1.20.1)
-                let ctx = IndexContext {
-                    db_path: self.db_path.clone(),
-                    embedder: self.get_embedder().ok(),
-                    vector_index: self.get_vector_index().ok(),
-                };
-
-                WatchManager::new(ctx)
-                    .map(RwLock::new)
-                    .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
-            })
-    }
-
-    /// 벡터 워커 가져오기
-    pub fn get_vector_worker(&self) -> &RwLock<VectorWorker> {
-        &self.vector_worker
-    }
-
-    /// 한국어 형태소 분석기 가져오기 (필요시 생성)
-    pub fn get_tokenizer(&self) -> ApiResult<SharedTokenizer> {
-        self.tokenizer
-            .get_or_try_init(|| {
-                LinderaKoTokenizer::new()
-                    .map(|t| Arc::new(t) as SharedTokenizer)
-                    .map_err(|e| ApiError::IndexingFailed(format!("토크나이저 초기화 실패: {}", e)))
-            })
-            .cloned()
-    }
-
-    /// Cross-Encoder Reranker 가져오기 (필요시 생성)
-    pub fn get_reranker(&self) -> ApiResult<SharedReranker> {
-        self.reranker
-            .get_or_try_init(|| {
-                let model_dir = self.models_dir.join("ms-marco-MiniLM-L6-v2");
-                let model_path = model_dir.join("model.onnx");
-                let tokenizer_path = model_dir.join("tokenizer.json");
-
-                if !model_path.exists() {
-                    return Err(ApiError::ModelNotFound(format!(
-                        "Reranker 모델을 찾을 수 없습니다: {:?}",
-                        model_path
-                    )));
-                }
-
-                Reranker::new(&model_path, &tokenizer_path)
-                    .map(Arc::new)
-                    .map_err(|e| ApiError::IndexingFailed(format!("Reranker 초기화 실패: {}", e)))
-            })
-            .cloned()
-    }
-
-    /// Reranker 모델 사용 가능 여부 확인
-    pub fn is_reranker_available(&self) -> bool {
-        let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
-        model_path.exists()
-    }
-}
 
 /// 로깅 초기화 (파일 + 콘솔)
 fn init_logging(app_data_dir: Option<&PathBuf>) {
@@ -322,48 +133,69 @@ pub fn run() {
                 }
             }
 
-            // 모델이 없으면 자동 다운로드
-            let model_marker = models_dir.join("multilingual-e5-small").join("model.onnx");
-            if !model_marker.exists() {
+            // 모델이 없으면 자동 다운로드 (E5 임베딩 + Reranker)
+            let e5_model = models_dir.join("multilingual-e5-small").join("model.onnx");
+            let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+
+            if !e5_model.exists() || !reranker_model.exists() {
                 tracing::info!("모델 파일이 없습니다. 자동 다운로드를 시작합니다...");
                 match model_downloader::ensure_models(&models_dir) {
                     Ok(result) => {
-                        if result.onnx_runtime_downloaded || result.model_downloaded || result.tokenizer_downloaded {
-                            tracing::info!("모델 다운로드 완료: ONNX Runtime={}, Model={}, Tokenizer={}",
+                        let any_downloaded = result.onnx_runtime_downloaded
+                            || result.model_downloaded
+                            || result.tokenizer_downloaded
+                            || result.reranker_model_downloaded
+                            || result.reranker_tokenizer_downloaded;
+
+                        if any_downloaded {
+                            tracing::info!(
+                                "모델 다운로드 완료: ONNX Runtime={}, E5 Model={}, E5 Tokenizer={}, Reranker Model={}, Reranker Tokenizer={}",
                                 result.onnx_runtime_downloaded,
                                 result.model_downloaded,
-                                result.tokenizer_downloaded
+                                result.tokenizer_downloaded,
+                                result.reranker_model_downloaded,
+                                result.reranker_tokenizer_downloaded
                             );
                         }
                     }
                     Err(e) => {
-                        tracing::error!("모델 다운로드 실패: {}. 시맨틱 검색이 비활성화됩니다.", e);
+                        tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
                     }
                 }
             }
 
-            // Initialize database
-            let state = AppState::new(&app_data_dir);
-            db::init_database(&state.db_path)
+            // Initialize database with AppContainer
+            let container = AppContainer::new(&app_data_dir);
+            db::init_database(&container.db_path)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
-            tracing::info!("DocuFinder initialized. DB: {:?}", state.db_path);
+            tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);
 
             // Check semantic search availability
-            if state.is_semantic_available() {
+            if container.is_semantic_available() {
                 tracing::info!("Semantic search: enabled");
             } else {
                 tracing::warn!(
                     "Semantic search: disabled (model not found at {:?})",
-                    state.models_dir.join("multilingual-e5-small")
+                    container.models_dir.join("multilingual-e5-small")
+                );
+            }
+
+            // Check reranker availability
+            if container.is_reranker_available() {
+                tracing::info!("Reranker: enabled (ms-marco-MiniLM-L6-v2)");
+            } else {
+                tracing::warn!(
+                    "Reranker: disabled (model not found at {:?})",
+                    container.models_dir.join("ms-marco-MiniLM-L6-v2")
                 );
             }
 
             // 기존 감시 폴더들 자동 감시 시작
-            if let Ok(conn) = db::get_connection(&state.db_path) {
+            if let Ok(conn) = db::get_connection(&container.db_path) {
                 if let Ok(folders) = db::get_watched_folders(&conn) {
                     if !folders.is_empty() {
-                        if let Ok(wm) = state.get_watch_manager() {
+                        if let Ok(wm) = container.get_watch_manager() {
                             if let Ok(mut wm) = wm.write() {
                                 for folder in folders {
                                     let path = std::path::Path::new(&folder);
@@ -382,13 +214,13 @@ pub fn run() {
             }
 
             // 벡터 인덱스 파일 검증 - DB와 불일치 시 리셋
-            let vector_file = state.vector_index_path.clone();
-            let map_file = state.vector_index_path.with_extension("map");
+            let vector_file = container.vector_index_path.clone();
+            let map_file = container.vector_index_path.with_extension("map");
             let vector_file_exists = vector_file.exists();
             let map_file_exists = map_file.exists();
 
-            if state.is_semantic_available() {
-                if let Ok(conn) = db::get_connection(&state.db_path) {
+            if container.is_semantic_available() {
+                if let Ok(conn) = db::get_connection(&container.db_path) {
                     if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
                         // DB에는 벡터 인덱싱 완료된 파일이 있는데 인덱스 파일이 없으면 리셋
                         if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
@@ -404,29 +236,32 @@ pub fn run() {
                 }
             }
 
-            // Store app state
-            app.manage(Mutex::new(state));
+            // Store app container
+            app.manage(Mutex::new(container));
 
             // 미완료 벡터 인덱싱 자동 재개
-            if let Some(state) = app.try_state::<Mutex<AppState>>() {
-                if let Ok(state) = state.lock() {
-                    if state.is_semantic_available() {
-                        if let Ok(conn) = db::get_connection(&state.db_path) {
+            if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
+                if let Ok(container) = container.lock() {
+                    if container.is_semantic_available() {
+                        if let Ok(conn) = db::get_connection(&container.db_path) {
                             if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
                                 if stats.pending_chunks > 0 {
                                     tracing::info!(
                                         "Found {} pending vector chunks. Starting background indexing.",
                                         stats.pending_chunks
                                     );
-                                    if let (Ok(embedder), Ok(vector_index)) =
-                                        (state.get_embedder(), state.get_vector_index())
-                                    {
-                                        if let Ok(mut worker) = state.get_vector_worker().write() {
+                                    let embedder = container.get_embedder();
+                                    let vector_index = container.get_vector_index();
+                                    let vector_worker = container.get_vector_worker();
+                                    let db_path = container.db_path.clone();
+
+                                    if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
+                                        if let Ok(mut worker) = vector_worker.write() {
                                             let app_handle = app.handle().clone();
                                             let _ = worker.start(
-                                                state.db_path.clone(),
-                                                embedder,
-                                                vector_index,
+                                                db_path,
+                                                emb,
+                                                vi,
                                                 Some(Arc::new(move |progress| {
                                                     let _ = app_handle.emit("vector-indexing-progress", &progress);
                                                 })),
@@ -466,10 +301,11 @@ pub fn run() {
                         }
                         "quit" => {
                             // 벡터 워커 정리 + 인덱스 저장
-                            if let Some(state) = app.try_state::<Mutex<AppState>>() {
-                                if let Ok(state) = state.lock() {
+                            if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
+                                if let Ok(container) = container.lock() {
                                     // 벡터 워커 취소 + 대기
-                                    if let Ok(mut worker) = state.get_vector_worker().write() {
+                                    let vector_worker = container.get_vector_worker();
+                                    if let Ok(mut worker) = vector_worker.write() {
                                         if worker.is_running() {
                                             tracing::info!("Stopping vector worker before exit...");
                                             worker.cancel();
@@ -477,7 +313,7 @@ pub fn run() {
                                         }
                                     }
                                     // 벡터 인덱스 저장
-                                    if let Ok(vi) = state.get_vector_index() {
+                                    if let Ok(vi) = container.get_vector_index() {
                                         tracing::info!("Saving vector index before exit...");
                                         if let Err(e) = vi.save() {
                                             tracing::error!("Failed to save vector index: {}", e);
@@ -532,9 +368,9 @@ pub fn run() {
                 }
                 // 앱 종료 시 벡터 인덱스 저장
                 tauri::WindowEvent::Destroyed => {
-                    if let Some(state) = window.try_state::<Mutex<AppState>>() {
-                        if let Ok(state) = state.lock() {
-                            if let Ok(vi) = state.get_vector_index() {
+                    if let Some(container) = window.try_state::<Mutex<AppContainer>>() {
+                        if let Ok(container) = container.lock() {
+                            if let Ok(vi) = container.get_vector_index() {
                                 if let Err(e) = vi.save() {
                                     tracing::error!("Failed to save vector index: {}", e);
                                 }

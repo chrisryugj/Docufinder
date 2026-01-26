@@ -323,7 +323,7 @@ impl VectorRepository for UsearchVectorRepository {
         Ok(())
     }
 
-    fn contains(&self, chunk_id: ChunkId) -> bool {
+    fn contains(&self, _chunk_id: ChunkId) -> bool {
         // 동기 함수 - blocking 방지
         false // 임시 - 실제로는 try_read 사용 권장
     }

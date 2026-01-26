@@ -535,6 +535,7 @@ pub fn index_folder_fts_only(
 }
 
 /// 문서를 DB에 저장 - FTS만 (벡터 제외)
+#[allow(dead_code)]
 fn save_document_to_db_fts_only(
     conn: &Connection,
     path: &Path,

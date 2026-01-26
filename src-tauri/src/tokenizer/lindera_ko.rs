@@ -127,6 +127,7 @@ impl Default for LinderaKoTokenizer {
 pub enum LinderaError {
     #[error("사전 로드 실패: {0}")]
     DictionaryLoad(String),
+    #[allow(dead_code)]
     #[error("토큰화 실패: {0}")]
     Tokenize(String),
 }

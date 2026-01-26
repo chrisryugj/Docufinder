@@ -2,12 +2,12 @@
 //!
 //! 파일 인덱싱 (FTS, 벡터), 진행률 관리, 취소 처리 등
 
-use crate::application::dto::indexing::{IndexStatus, VectorIndexingStatus};
+use crate::application::dto::indexing::IndexStatus;
 use crate::application::errors::{AppError, AppResult};
 use crate::constants::BLOCKED_PATH_PATTERNS;
 use crate::db;
 use crate::indexer::pipeline::{self, FolderIndexResult, FtsProgressCallback};
-use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
+use crate::indexer::vector_worker::{VectorIndexingStatus, VectorProgressCallback, VectorWorker};
 use crate::search::vector::VectorIndex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -142,13 +142,7 @@ impl IndexService {
     pub fn get_vector_status(&self) -> AppResult<VectorIndexingStatus> {
         let worker = self.vector_worker.read()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
-        let status = worker.get_status();
-
-        Ok(VectorIndexingStatus {
-            is_running: status.is_running,
-            total_chunks: status.total_chunks,
-            processed_chunks: status.processed_chunks,
-        })
+        Ok(worker.get_status())
     }
 
     /// 폴더 재인덱싱 (기존 데이터 삭제 후 다시)
@@ -191,6 +185,37 @@ impl IndexService {
     /// 시맨틱 검색 사용 가능 여부
     pub fn is_semantic_available(&self) -> bool {
         self.embedder.is_some() && self.vector_index.is_some()
+    }
+
+    /// 감시 폴더 등록 (DB)
+    pub fn add_watched_folder(&self, path: &str) -> AppResult<()> {
+        let conn = self.get_connection()?;
+        db::add_watched_folder(&conn, path)
+            .map(|_| ())
+            .map_err(|e| AppError::Internal(e.to_string()))
+    }
+
+    /// 모든 데이터 클리어 (벡터 + DB)
+    pub fn clear_all(&self) -> AppResult<()> {
+        // 1. 벡터 워커 중지
+        if let Ok(worker) = self.vector_worker.read() {
+            worker.cancel();
+        }
+
+        // 2. 벡터 인덱스 클리어
+        if let Some(vi) = self.vector_index.as_ref() {
+            vi.clear();
+            let _ = vi.save();
+            tracing::info!("Vector index cleared");
+        }
+
+        // 3. DB 클리어
+        let conn = self.get_connection()?;
+        db::clear_all_data(&conn)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        tracing::info!("Database cleared");
+
+        Ok(())
     }
 
     // ============================================

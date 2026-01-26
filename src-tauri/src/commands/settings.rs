@@ -1,5 +1,5 @@
 use crate::error::{ApiError, ApiResult};
-use crate::AppState;
+use crate::AppContainer;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -87,7 +87,7 @@ fn get_settings_path(app_data_dir: &PathBuf) -> PathBuf {
 
 /// 설정 조회
 #[tauri::command]
-pub async fn get_settings(state: State<'_, Mutex<AppState>>) -> ApiResult<Settings> {
+pub async fn get_settings(state: State<'_, Mutex<AppContainer>>) -> ApiResult<Settings> {
     let app_data_dir = {
         let state = state.lock()?;
         state.db_path.parent().map(|p| p.to_path_buf())
@@ -141,7 +141,7 @@ pub fn get_settings_sync(app_data_dir: &PathBuf) -> Settings {
 pub async fn update_settings(
     app: AppHandle,
     settings: Settings,
-    state: State<'_, Mutex<AppState>>,
+    state: State<'_, Mutex<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Updating settings: {:?}", settings);
 
@@ -176,3 +176,4 @@ pub async fn update_settings(
     tracing::info!("Settings saved to {:?}", settings_path);
     Ok(())
 }
+
