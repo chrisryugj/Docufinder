@@ -282,7 +282,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               role="switch"
               aria-checked={settings.include_subfolders ?? true}
               onClick={() => handleChange("include_subfolders", !(settings.include_subfolders ?? true))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                 (settings.include_subfolders ?? true)
                   ? "bg-blue-500"
                   : "bg-gray-600"
@@ -327,7 +327,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               role="switch"
               aria-checked={settings.auto_start ?? false}
               onClick={() => handleChange("auto_start", !(settings.auto_start ?? false))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                 (settings.auto_start ?? false)
                   ? "bg-blue-500"
                   : "bg-gray-600"
@@ -359,7 +359,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               role="switch"
               aria-checked={settings.start_minimized ?? false}
               onClick={() => handleChange("start_minimized", !(settings.start_minimized ?? false))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                 (settings.start_minimized ?? false)
                   ? "bg-blue-500"
                   : "bg-gray-600"

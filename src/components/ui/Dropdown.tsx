@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, ReactNode } from "react";
+import { useState, useRef, useEffect, ReactNode, useCallback } from "react";
 
 interface DropdownOption<T> {
   value: T;
@@ -26,9 +26,28 @@ export function Dropdown<T extends string | number>({
   renderTrigger,
 }: DropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const selected = options.find((opt) => opt.value === value);
+  const selectedIndex = options.findIndex((opt) => opt.value === value);
+
+  // 메뉴 열릴 때 선택된 항목으로 포커스 이동
+  useEffect(() => {
+    if (isOpen) {
+      setFocusedIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    } else {
+      setFocusedIndex(-1);
+    }
+  }, [isOpen, selectedIndex]);
+
+  // 포커스된 옵션으로 스크롤
+  useEffect(() => {
+    if (isOpen && focusedIndex >= 0 && optionRefs.current[focusedIndex]) {
+      optionRefs.current[focusedIndex]?.focus();
+    }
+  }, [isOpen, focusedIndex]);
 
   // 외부 클릭 시 닫기
   useEffect(() => {
@@ -46,34 +65,71 @@ export function Dropdown<T extends string | number>({
   }, []);
 
   // 키보드 네비게이션
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setIsOpen(false);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!isOpen) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setIsOpen(true);
+        }
+        return;
       }
-    }
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+      switch (e.key) {
+        case "Escape":
+          e.preventDefault();
+          setIsOpen(false);
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedIndex((prev) => (prev < options.length - 1 ? prev + 1 : 0));
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1));
+          break;
+        case "Home":
+          e.preventDefault();
+          setFocusedIndex(0);
+          break;
+        case "End":
+          e.preventDefault();
+          setFocusedIndex(options.length - 1);
+          break;
+        case "Enter":
+        case " ":
+          e.preventDefault();
+          if (focusedIndex >= 0 && focusedIndex < options.length) {
+            onChange(options[focusedIndex].value);
+            setIsOpen(false);
+          }
+          break;
+        case "Tab":
+          setIsOpen(false);
+          break;
+      }
+    },
+    [isOpen, focusedIndex, options, onChange]
+  );
 
   return (
-    <div ref={dropdownRef} className={`relative ${className}`}>
+    <div ref={dropdownRef} className={`relative ${className}`} onKeyDown={handleKeyDown}>
       {/* Trigger */}
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
         style={{
           backgroundColor: "var(--color-bg-tertiary)",
           border: `1px solid ${isOpen ? "var(--color-accent)" : "var(--color-border)"}`,
           boxShadow: isOpen ? "0 0 0 2px var(--color-accent-muted)" : undefined,
+          // @ts-expect-error CSS custom property for focus ring
+          "--tw-ring-color": "var(--color-accent)",
         }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        aria-activedescendant={focusedIndex >= 0 ? `dropdown-option-${focusedIndex}` : undefined}
       >
         {renderTrigger ? (
           renderTrigger(selected)
@@ -109,26 +165,25 @@ export function Dropdown<T extends string | number>({
           }}
           role="listbox"
         >
-          {options.map((option) => (
+          {options.map((option, index) => (
             <button
               key={String(option.value)}
+              ref={(el) => (optionRefs.current[index] = el)}
+              id={`dropdown-option-${index}`}
               type="button"
               onClick={() => {
                 onChange(option.value);
                 setIsOpen(false);
               }}
+              onMouseEnter={() => setFocusedIndex(index)}
               className="w-full text-left px-3 py-2 text-sm transition-colors focus:outline-none"
               style={{
                 color: option.value === value ? "var(--color-accent)" : "var(--color-text-primary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
+                backgroundColor: focusedIndex === index ? "var(--color-bg-tertiary)" : "transparent",
               }}
               role="option"
               aria-selected={option.value === value}
+              tabIndex={-1}
             >
               <div className="font-medium">{option.label}</div>
               {option.description && (

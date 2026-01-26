@@ -1,17 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/capabilities/2",
   "identifier": "default",
-  "description": "DocuFinder default capabilities",
+  "description": "DocuFinder default capabilities - 최소 권한 원칙",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "shell:allow-open",
     "dialog:allow-open",
-    "dialog:allow-save",
     "dialog:allow-ask",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-exists",
     "updater:default",
     "process:allow-restart",
     "process:allow-exit"

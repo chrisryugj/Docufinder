@@ -1,11 +1,21 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
 /// PDF 파싱 타임아웃 (초) - 대부분 5초 내 완료, hang 감지용
 const PDF_PARSE_TIMEOUT_SECS: u64 = 10;
+
+/// Detach된 PDF 파싱 스레드 카운터 (리소스 모니터링용)
+/// 이 값이 높으면 hang되는 PDF가 많다는 의미
+static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// 현재 detach된 PDF 스레드 수 조회
+pub fn detached_thread_count() -> usize {
+    DETACHED_THREAD_COUNT.load(Ordering::Relaxed)
+}
 
 /// PDF 파일 파싱
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
@@ -35,16 +45,24 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         Err(mpsc::RecvTimeoutError::Timeout) => {
             // 타임아웃 - JoinHandle drop 시 스레드는 detach되어 백그라운드에서 계속 실행됨
             // pdf_extract가 hang된 경우 스레드 리소스는 프로세스 종료 시까지 유지됨
-            // 주의: 대량의 hang PDF 처리 시 스레드 누적 가능
+            let count = DETACHED_THREAD_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
             tracing::warn!(
-                "PDF parsing timed out after {}s, thread detached: {:?}",
+                "PDF parsing timed out after {}s, thread detached (total: {}): {:?}",
                 PDF_PARSE_TIMEOUT_SECS,
+                count,
                 path
             );
+            if count >= 10 {
+                tracing::error!(
+                    "High number of detached PDF threads: {}. Consider restarting the app.",
+                    count
+                );
+            }
             std::mem::drop(handle); // 명시적 detach
             return Err(ParseError::ParseError(format!(
-                "PDF parsing timed out after {}s (thread detached)",
-                PDF_PARSE_TIMEOUT_SECS
+                "PDF parsing timed out after {}s (detached threads: {})",
+                PDF_PARSE_TIMEOUT_SECS,
+                count
             )));
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
