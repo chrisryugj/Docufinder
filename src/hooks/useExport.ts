@@ -19,11 +19,8 @@ interface UseExportReturn {
 export function useExport(options?: UseExportOptions): UseExportReturn {
   const [isExporting, setIsExporting] = useState(false);
 
-  // 외부 showToast가 없으면 console.log로 대체
-  const showToast = options?.showToast ?? ((msg: string) => {
-    console.log("[Export]", msg);
-    return "";
-  });
+  // 외부 showToast가 없으면 no-op (프로덕션에서 console.log 방지)
+  const showToast = options?.showToast ?? ((_msg: string) => "");
 
   /**
    * CSV 내보내기 (다운로드)

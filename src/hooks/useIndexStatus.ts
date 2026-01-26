@@ -112,7 +112,10 @@ export function useIndexStatus(): UseIndexStatusReturn {
           path: selected,
         });
 
-        console.log("Indexing result:", result);
+        // 개발 모드에서만 로깅
+        if (import.meta.env.DEV) {
+          console.log("Indexing result:", result);
+        }
 
         // 실패한 파일 에러 로그 출력
         if (result.errors && result.errors.length > 0) {

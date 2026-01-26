@@ -216,7 +216,9 @@ impl VectorIndex {
             "next_key": next_key,
         });
 
-        std::fs::write(&map_path, serde_json::to_string(&map_data).unwrap())?;
+        let json_str = serde_json::to_string(&map_data)
+            .map_err(|e| VectorError::IndexError(format!("JSON serialization failed: {}", e)))?;
+        std::fs::write(&map_path, json_str)?;
 
         Ok(())
     }
@@ -238,8 +240,13 @@ impl VectorIndex {
             tracing::debug!("Loading mapping file from {:?}", map_path);
 
             let map_content = std::fs::read_to_string(&map_path)?;
-            let map_data: serde_json::Value =
-                serde_json::from_str(&map_content).unwrap_or_default();
+            let map_data: serde_json::Value = match serde_json::from_str(&map_content) {
+                Ok(data) => data,
+                Err(e) => {
+                    tracing::warn!("Failed to parse mapping file, starting fresh: {}", e);
+                    serde_json::Value::default()
+                }
+            };
 
             if let Some(pairs) = map_data.get("id_map").and_then(|v| v.as_array()) {
                 let mut id_map = self.id_map.write().unwrap();

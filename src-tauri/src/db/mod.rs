@@ -111,27 +111,35 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         [],
     )?;
 
-    // 기존 테이블에 is_favorite 컬럼 추가 (마이그레이션)
-    let _ = conn.execute(
+    // 기존 테이블에 is_favorite 컬럼 추가 (마이그레이션 - 이미 존재하면 무시)
+    if let Err(e) = conn.execute(
         "ALTER TABLE watched_folders ADD COLUMN is_favorite INTEGER DEFAULT 0",
         [],
-    );
+    ) {
+        tracing::trace!("Migration: is_favorite column already exists or failed: {}", e);
+    }
 
     // 2단계 인덱싱 지원: fts_indexed_at, vector_indexed_at 컬럼 추가
-    let _ = conn.execute(
+    if let Err(e) = conn.execute(
         "ALTER TABLE files ADD COLUMN fts_indexed_at INTEGER",
         [],
-    );
-    let _ = conn.execute(
+    ) {
+        tracing::trace!("Migration: fts_indexed_at column already exists or failed: {}", e);
+    }
+    if let Err(e) = conn.execute(
         "ALTER TABLE files ADD COLUMN vector_indexed_at INTEGER",
         [],
-    );
+    ) {
+        tracing::trace!("Migration: vector_indexed_at column already exists or failed: {}", e);
+    }
 
     // 기존 데이터 마이그레이션: indexed_at 값을 fts_indexed_at으로 복사
-    let _ = conn.execute(
+    if let Err(e) = conn.execute(
         "UPDATE files SET fts_indexed_at = indexed_at WHERE fts_indexed_at IS NULL AND indexed_at IS NOT NULL",
         [],
-    );
+    ) {
+        tracing::warn!("Migration: failed to copy indexed_at to fts_indexed_at: {}", e);
+    }
 
     // 인덱스 생성
     conn.execute(
@@ -332,7 +340,13 @@ pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) ->
 
     let file_ids: Vec<i64> = stmt
         .query_map(params![pattern_unix, pattern_win], |row| row.get(0))?
-        .filter_map(|r| r.ok())
+        .filter_map(|r| match r {
+            Ok(id) => Some(id),
+            Err(e) => {
+                tracing::trace!("Skipping row in folder query: {}", e);
+                None
+            }
+        })
         .collect();
 
     let mut results = Vec::new();
