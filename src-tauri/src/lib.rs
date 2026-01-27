@@ -133,11 +133,12 @@ pub fn run() {
                 }
             }
 
-            // 모델이 없으면 자동 다운로드 (E5 임베딩 + Reranker)
+            // 모델이 없으면 자동 다운로드 (시맨틱 활성화 시에만)
+            let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
             let e5_model = models_dir.join("multilingual-e5-small").join("model.onnx");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-            if !e5_model.exists() || !reranker_model.exists() {
+            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !reranker_model.exists()) {
                 tracing::info!("모델 파일이 없습니다. 자동 다운로드를 시작합니다...");
                 match model_downloader::ensure_models(&models_dir) {
                     Ok(result) => {
@@ -239,10 +240,16 @@ pub fn run() {
             // Store app container
             app.manage(Mutex::new(container));
 
-            // 미완료 벡터 인덱싱 자동 재개
+            // 미완료 벡터 인덱싱 자동 재개 (시맨틱 활성화 + 자동 모드일 때만)
             if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
                 if let Ok(container) = container.lock() {
-                    if container.is_semantic_available() {
+                    let startup_settings = container.db_path.parent()
+                        .map(|dir| crate::commands::settings::get_settings_sync(&dir.to_path_buf()))
+                        .unwrap_or_default();
+                    let should_auto_resume = container.is_semantic_available()
+                        && startup_settings.semantic_search_enabled
+                        && startup_settings.vector_indexing_mode == crate::commands::settings::VectorIndexingMode::Auto;
+                    if should_auto_resume {
                         if let Ok(conn) = db::get_connection(&container.db_path) {
                             if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
                                 if stats.pending_chunks > 0 {
@@ -265,6 +272,7 @@ pub fn run() {
                                                 Some(Arc::new(move |progress| {
                                                     let _ = app_handle.emit("vector-indexing-progress", &progress);
                                                 })),
+                                                Some(startup_settings.indexing_intensity.clone()),
                                             );
                                         }
                                     }
@@ -396,6 +404,7 @@ pub fn run() {
             commands::index::reindex_folder,
             commands::index::get_vector_indexing_status,
             commands::index::cancel_vector_indexing,
+            commands::index::start_vector_indexing,
             commands::index::get_db_debug_info,
             commands::index::clear_all_data,
             commands::settings::get_settings,

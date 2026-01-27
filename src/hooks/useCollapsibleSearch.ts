@@ -18,8 +18,8 @@ interface UseCollapsibleSearchReturn {
   scrollToTop: () => void;
   /** 스크롤 컨테이너 ref */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
-  /** 현재 스크롤 위치 */
-  scrollTop: number;
+  /** 스크롤 위치가 FAB 표시 임계값 초과 */
+  showScrollTopButton: boolean;
   /** 수동 확장 */
   expand: () => void;
 }
@@ -30,7 +30,7 @@ export function useCollapsibleSearch(
   const { threshold = 100, onCollapse, onExpand } = options;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [scrollTop, setScrollTop] = useState(0);
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const prevCollapsed = useRef(false);
   const lastScrollTop = useRef(0);
@@ -61,7 +61,9 @@ export function useCollapsibleSearch(
           lastScrollTop.current = currentScrollTop;
         }
 
-        setScrollTop(currentScrollTop);
+        // FAB 버튼 표시 여부 (threshold 교차시에만 setState)
+        const shouldShowButton = currentScrollTop > 300;
+        setShowScrollTopButton(prev => prev !== shouldShowButton ? shouldShowButton : prev);
 
         // 스크롤 가능 영역이 충분한지 체크
         const scrollableHeight = container.scrollHeight - container.clientHeight;
@@ -122,7 +124,7 @@ export function useCollapsibleSearch(
     handleScroll,
     scrollToTop,
     scrollContainerRef,
-    scrollTop,
+    showScrollTopButton,
     expand,
   };
 }

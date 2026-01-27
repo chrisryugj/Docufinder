@@ -2,6 +2,8 @@ import type { Theme } from "../hooks/useTheme";
 import type { SearchMode } from "./search";
 
 export type ViewDensity = "normal" | "compact";
+export type VectorIndexingMode = "manual" | "auto";
+export type IndexingIntensity = "fast" | "balanced" | "background";
 
 export interface Settings {
   search_mode: SearchMode;
@@ -18,4 +20,12 @@ export interface Settings {
   highlight_filename_color?: string;
   /** 문서 내용 하이라이트 색상 (hex) */
   highlight_content_color?: string;
+  /** 시맨틱 검색 활성화 여부 */
+  semantic_search_enabled: boolean;
+  /** 벡터 인덱싱 모드 */
+  vector_indexing_mode: VectorIndexingMode;
+  /** 인덱싱 강도 */
+  indexing_intensity: IndexingIntensity;
+  /** 단일 파일 최대 크기 (MB). 초과 시 스킵 */
+  max_file_size_mb: number;
 }

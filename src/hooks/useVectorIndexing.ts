@@ -16,6 +16,10 @@ interface UseVectorIndexingReturn {
   refreshStatus: () => Promise<void>;
   /** 취소 */
   cancel: () => Promise<void>;
+  /** 수동 벡터 인덱싱 시작 */
+  startManual: () => Promise<void>;
+  /** 실행 중 여부 */
+  isRunning: boolean;
 }
 
 /**
@@ -53,6 +57,16 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
     }
   }, []);
 
+  // 수동 시작
+  const startManual = useCallback(async () => {
+    try {
+      await invoke("start_vector_indexing");
+      await refreshStatus();
+    } catch (err) {
+      console.error("Failed to start vector indexing:", err);
+    }
+  }, [refreshStatus]);
+
   // 진행률 이벤트 리스너
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
@@ -65,6 +79,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
           is_running: !p.is_complete,
           total_chunks: p.total_chunks,
           processed_chunks: p.processed_chunks,
+          pending_chunks: Math.max(p.total_chunks - p.processed_chunks, 0),
           current_file: p.current_file,
           error: null,
         });
@@ -88,6 +103,8 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
     refreshStatus();
   }, [refreshStatus]);
 
+  const isRunning = status?.is_running ?? false;
+
   return {
     status,
     progress,
@@ -95,5 +112,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
     clearCompleted,
     refreshStatus,
     cancel,
+    startManual,
+    isRunning,
   };
 }

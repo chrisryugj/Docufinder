@@ -13,7 +13,7 @@ interface SearchBarProps {
   resultCount?: number;
   searchTime?: number | null;
   onCompositionStart?: () => void;
-  onCompositionEnd?: () => void;
+  onCompositionEnd?: (finalValue: string) => void;
 }
 
 export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
@@ -34,6 +34,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
   ) => {
     const innerRef = useRef<HTMLInputElement>(null);
     const hasInitializedIME = useRef(false);
+    const isComposingRef = useRef(false);
     const [showModeDropdown, setShowModeDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -117,12 +118,43 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             ref={innerRef}
             type="text"
             defaultValue={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onCompositionStart={onCompositionStart}
+            onChange={(e) => {
+              const value = e.target.value;
+              const composing = (e.nativeEvent as InputEvent).isComposing === true;
+              if (composing && !isComposingRef.current) {
+                isComposingRef.current = true;
+                onCompositionStart?.();
+              } else if (!composing && isComposingRef.current) {
+                isComposingRef.current = false;
+                onCompositionEnd?.(value);
+              }
+              onQueryChange(value);
+            }}
+            onCompositionStart={() => {
+              if (!isComposingRef.current) {
+                isComposingRef.current = true;
+                onCompositionStart?.();
+              }
+            }}
             onCompositionEnd={(e) => {
-              onCompositionEnd?.();
-              // 조합 완료 후 최종 값으로 검색 트리거
-              onQueryChange((e.target as HTMLInputElement).value);
+              const finalValue = (e.target as HTMLInputElement).value;
+              if (isComposingRef.current) {
+                isComposingRef.current = false;
+              }
+              if (finalValue !== query) {
+                onQueryChange(finalValue);
+              }
+              onCompositionEnd?.(finalValue);
+            }}
+            onBlur={() => {
+              if (isComposingRef.current) {
+                isComposingRef.current = false;
+                const value = innerRef.current?.value ?? query;
+                if (value !== query) {
+                  onQueryChange(value);
+                }
+                onCompositionEnd?.(value);
+              }
             }}
             onFocus={handleFocus}
             placeholder="검색어 입력..."

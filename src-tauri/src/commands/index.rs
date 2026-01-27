@@ -7,7 +7,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::indexer::pipeline::FtsIndexingProgress;
 use crate::indexer::vector_worker::{VectorIndexingProgress, VectorIndexingStatus};
 use crate::AppContainer;
-use super::settings::get_settings_sync;
+use super::settings::{get_settings_sync, VectorIndexingMode};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -78,13 +78,22 @@ pub async fn add_folder(
     let path = canonical_path.to_string_lossy().to_string();
 
     // 설정 및 서비스 준비
-    let (service, include_subfolders, semantic_available) = {
+    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb) = {
         let container = state.lock()?;
         let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let include_subfolders = app_data_dir
-            .map(|dir| get_settings_sync(&dir).include_subfolders)
-            .unwrap_or(true);
-        (container.index_service(), include_subfolders, container.is_semantic_available())
+        let settings = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir))
+            .unwrap_or_default();
+        (
+            container.index_service(),
+            settings.include_subfolders,
+            container.is_semantic_available(),
+            settings.vector_indexing_mode.clone(),
+            settings.semantic_search_enabled,
+            settings.indexing_intensity.clone(),
+            settings.max_file_size_mb,
+        )
     };
 
     // 1. 감시 폴더 등록
@@ -93,22 +102,27 @@ pub async fn add_folder(
     // 2. FTS 인덱싱
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = service
-        .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback))
+        .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
         .map_err(ApiError::from)?;
 
     // 3. 파일 감시 시작
     start_file_watching(&state, &canonical_path)?;
 
-    // 4. 벡터 인덱싱 (백그라운드)
+    // 4. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
-    if semantic_available && !was_cancelled && result.indexed_count > 0 {
+    let auto_vector = semantic_enabled
+        && semantic_available
+        && vector_mode == VectorIndexingMode::Auto
+        && !was_cancelled
+        && result.indexed_count > 0;
+    if auto_vector {
         let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = service.start_vector_indexing(Some(vector_callback));
+        let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
     }
 
     // 결과 메시지 생성
-    let message = build_result_message(&result, was_cancelled, semantic_available, false);
+    let message = build_result_message(&result, was_cancelled, semantic_available && semantic_enabled, false);
     log_indexing_errors(&result.errors);
 
     Ok(AddFolderResult {
@@ -159,30 +173,44 @@ pub async fn reindex_folder(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (service, include_subfolders, semantic_available) = {
+    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb) = {
         let container = state.lock()?;
         let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let include_subfolders = app_data_dir
-            .map(|dir| get_settings_sync(&dir).include_subfolders)
-            .unwrap_or(true);
-        (container.index_service(), include_subfolders, container.is_semantic_available())
+        let settings = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir))
+            .unwrap_or_default();
+        (
+            container.index_service(),
+            settings.include_subfolders,
+            container.is_semantic_available(),
+            settings.vector_indexing_mode.clone(),
+            settings.semantic_search_enabled,
+            settings.indexing_intensity.clone(),
+            settings.max_file_size_mb,
+        )
     };
 
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = service
-        .reindex_folder(&canonical_path, include_subfolders, Some(progress_callback))
+        .reindex_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
         .map_err(ApiError::from)?;
 
-    // 벡터 인덱싱 (백그라운드)
+    // 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
-    if semantic_available && !was_cancelled && result.indexed_count > 0 {
+    let auto_vector = semantic_enabled
+        && semantic_available
+        && vector_mode == VectorIndexingMode::Auto
+        && !was_cancelled
+        && result.indexed_count > 0;
+    if auto_vector {
         let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = service.start_vector_indexing(Some(vector_callback));
+        let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
     }
 
-    let message = build_result_message(&result, was_cancelled, semantic_available, true);
+    let message = build_result_message(&result, was_cancelled, semantic_available && semantic_enabled, true);
 
     Ok(AddFolderResult {
         success: true,
@@ -218,6 +246,38 @@ pub async fn get_vector_indexing_status(
         container.index_service()
     };
     service.get_vector_status().map_err(ApiError::from)
+}
+
+// ============================================
+// Manual Vector Indexing
+// ============================================
+
+/// 수동 벡터 인덱싱 시작
+#[tauri::command]
+pub async fn start_vector_indexing(
+    app_handle: AppHandle,
+    state: State<'_, Mutex<AppContainer>>,
+) -> ApiResult<()> {
+    tracing::info!("Manual vector indexing requested");
+
+    let (service, semantic_enabled, intensity) = {
+        let container = state.lock()?;
+        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
+        let settings = app_data_dir
+            .as_ref()
+            .map(|dir| get_settings_sync(dir))
+            .unwrap_or_default();
+        (container.index_service(), settings.semantic_search_enabled, settings.indexing_intensity.clone())
+    };
+
+    if !semantic_enabled {
+        return Err(ApiError::SemanticSearchDisabled);
+    }
+
+    let vector_callback = create_vector_progress_callback(app_handle);
+    service
+        .start_vector_indexing(Some(vector_callback), Some(intensity))
+        .map_err(ApiError::from)
 }
 
 // ============================================

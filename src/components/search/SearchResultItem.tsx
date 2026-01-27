@@ -2,11 +2,13 @@ import { useCallback, memo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
+import { buildPreviewContext } from "./searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { getMatchTypeBadge } from "./matchType";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { ConfidenceBadge } from "../ui/ConfidenceBadge";
+
 
 interface SearchResultItemProps {
   result: SearchResult;
@@ -89,10 +91,21 @@ export const SearchResultItem = memo(function SearchResultItem({
   const expandedView = isExpanded
     ? buildExpandedContext(result.full_content, result.highlight_ranges, result.snippet)
     : null;
-  const displayText = isExpanded ? expandedView?.text ?? result.full_content : result.content_preview;
+  const previewView = !isExpanded
+    ? buildPreviewContext({
+        previewText: result.content_preview,
+        fullText: result.full_content,
+        highlightRanges: result.highlight_ranges,
+        snippet: result.snippet,
+        query,
+      })
+    : null;
+  const displayText = isExpanded
+    ? expandedView?.text ?? result.full_content
+    : previewView?.text ?? result.content_preview;
   const displayRanges = isExpanded
     ? expandedView?.ranges ?? result.highlight_ranges
-    : result.highlight_ranges;
+    : previewView?.ranges ?? [];
   const matchBadge = getMatchTypeBadge(result.match_type);
 
   // 경로 복사
@@ -265,9 +278,9 @@ export const SearchResultItem = memo(function SearchResultItem({
             <HighlightedText
               text={displayText}
               ranges={displayRanges}
-              snippet={!isExpanded ? result.snippet : undefined}
               refineKeywords={refineKeywords}
               searchQuery={query}
+              formatMode={isExpanded ? "full" : "preview"}
             />
           </p>
         </div>

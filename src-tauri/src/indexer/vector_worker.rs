@@ -6,6 +6,7 @@
 //! - 주기적 진행률 이벤트 emit
 //! - 취소 지원
 
+use crate::commands::settings::IndexingIntensity;
 use crate::db::{self, PendingChunk};
 use crate::embedder::Embedder;
 use crate::search::vector::VectorIndex;
@@ -38,6 +39,7 @@ pub struct VectorIndexingStatus {
     pub is_running: bool,
     pub total_chunks: usize,
     pub processed_chunks: usize,
+    pub pending_chunks: usize,
     pub current_file: Option<String>,
     pub error: Option<String>,
 }
@@ -48,6 +50,7 @@ impl Default for VectorIndexingStatus {
             is_running: false,
             total_chunks: 0,
             processed_chunks: 0,
+            pending_chunks: 0,
             current_file: None,
             error: None,
         }
@@ -90,6 +93,7 @@ impl VectorWorker {
         embedder: Arc<Embedder>,
         vector_index: Arc<VectorIndex>,
         progress_callback: Option<VectorProgressCallback>,
+        intensity: Option<IndexingIntensity>,
     ) -> Result<(), String> {
         // 이미 실행 중이면 에러
         if self.is_running() {
@@ -105,6 +109,7 @@ impl VectorWorker {
                 is_running: true,
                 total_chunks: 0,
                 processed_chunks: 0,
+                pending_chunks: 0,
                 current_file: None,
                 error: None,
             };
@@ -112,9 +117,14 @@ impl VectorWorker {
 
         let cancel_flag = self.cancel_flag.clone();
         let status = self.status.clone();
+        let intensity = intensity.unwrap_or(IndexingIntensity::Balanced);
 
         // 백그라운드 스레드 시작
         let handle = std::thread::spawn(move || {
+            // 스레드 우선순위 설정 (Windows)
+            #[cfg(target_os = "windows")]
+            set_thread_priority(&intensity);
+
             let result = run_vector_indexing(
                 &db_path,
                 &embedder,
@@ -122,6 +132,7 @@ impl VectorWorker {
                 &cancel_flag,
                 &status,
                 progress_callback,
+                &intensity,
             );
 
             // 완료/에러 상태 업데이트
@@ -183,6 +194,7 @@ fn run_vector_indexing(
     cancel_flag: &Arc<AtomicBool>,
     status: &Arc<RwLock<VectorIndexingStatus>>,
     progress_callback: Option<VectorProgressCallback>,
+    intensity: &IndexingIntensity,
 ) -> Result<(), String> {
     let conn = db::get_connection(db_path)
         .map_err(|e| format!("DB connection failed: {}", e))?;
@@ -198,6 +210,7 @@ fn run_vector_indexing(
     // 상태 업데이트
     if let Ok(mut s) = status.write() {
         s.total_chunks = total_chunks;
+        s.pending_chunks = total_chunks;
     }
 
     // 진행률 알림
@@ -245,6 +258,7 @@ fn run_vector_indexing(
                 if let Ok(mut s) = status.write() {
                     s.current_file = Some(prefetched.file_path.clone());
                     s.processed_chunks = processed;
+                    s.pending_chunks = total_chunks.saturating_sub(processed);
                 }
 
                 send_progress(processed, current_file, false);
@@ -277,9 +291,17 @@ fn run_vector_indexing(
 
                     processed += batch.len();
 
+                    // 인덱싱 강도에 따른 쓰로틀링
+                    match intensity {
+                        IndexingIntensity::Fast => {} // sleep 없음
+                        IndexingIntensity::Balanced => std::thread::sleep(Duration::from_millis(200)),
+                        IndexingIntensity::Background => std::thread::sleep(Duration::from_millis(500)),
+                    }
+
                     // 상태 업데이트
                     if let Ok(mut s) = status.write() {
                         s.processed_chunks = processed;
+                        s.pending_chunks = total_chunks.saturating_sub(processed);
                     }
 
                     // 주기적 저장
@@ -315,6 +337,7 @@ fn run_vector_indexing(
     if let Ok(mut s) = status.write() {
         s.processed_chunks = processed;
         s.current_file = None;
+        s.pending_chunks = 0;
     }
 
     send_progress(processed, None, true);
@@ -388,4 +411,28 @@ fn run_prefetch_thread(
     }
 
     tracing::debug!("[Prefetch] Thread completed");
+}
+
+/// Windows 스레드 우선순위 설정
+#[cfg(target_os = "windows")]
+fn set_thread_priority(intensity: &IndexingIntensity) {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority,
+        THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_IDLE, THREAD_PRIORITY_NORMAL,
+    };
+
+    let priority = match intensity {
+        IndexingIntensity::Fast => THREAD_PRIORITY_NORMAL,
+        IndexingIntensity::Balanced => THREAD_PRIORITY_BELOW_NORMAL,
+        IndexingIntensity::Background => THREAD_PRIORITY_IDLE,
+    };
+
+    unsafe {
+        let handle = GetCurrentThread();
+        if SetThreadPriority(handle, priority) == 0 {
+            tracing::warn!("[VectorWorker] Failed to set thread priority");
+        } else {
+            tracing::info!("[VectorWorker] Thread priority set to {:?}", intensity);
+        }
+    }
 }
