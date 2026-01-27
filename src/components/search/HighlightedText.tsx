@@ -1,3 +1,6 @@
+import { memo, useMemo } from "react";
+import { extractSearchKeywords, findKeywordRanges, parseSnippetHighlights } from "./searchTextUtils";
+
 interface HighlightedTextProps {
   text: string;
   ranges: [number, number][];
@@ -7,40 +10,8 @@ interface HighlightedTextProps {
   refineKeywords?: string[];
   /** 검색 쿼리 (snippet 없을 때 폴백 하이라이트) */
   searchQuery?: string;
-}
-
-/**
- * 검색 쿼리에서 키워드 추출 (공백 분리, 빈 문자열 제외)
- */
-function extractSearchKeywords(query: string): string[] {
-  return query
-    .split(/\s+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-}
-
-/**
- * FTS5 snippet에서 하이라이트 마커 파싱 (JavaScript 문자열 인덱스 기준)
- * [[HL]]매칭[[/HL]] 형식 → { text, ranges }
- */
-/**
- * 텍스트에서 키워드 위치 찾기 (대소문자 무시)
- */
-function findKeywordRanges(text: string, keywords: string[]): [number, number][] {
-  const ranges: [number, number][] = [];
-  const lowerText = text.toLowerCase();
-
-  for (const keyword of keywords) {
-    const lowerKeyword = keyword.toLowerCase();
-    let index = 0;
-    while ((index = lowerText.indexOf(lowerKeyword, index)) !== -1) {
-      ranges.push([index, index + keyword.length]);
-      index += keyword.length;
-    }
-  }
-
-  // 시작 위치로 정렬
-  return ranges.sort((a, b) => a[0] - b[0]);
+  /** 미리보기/확장 뷰에 따른 포맷 모드 */
+  formatMode?: "preview" | "full";
 }
 
 /**
@@ -68,79 +39,21 @@ function mergeOverlappingRanges(ranges: [number, number][]): [number, number][] 
   return merged;
 }
 
-function parseSnippetHighlights(snippet: string): { text: string; ranges: [number, number][] } {
-  // 세그먼트별로 분리 후 하이라이트 포함 세그먼트 우선 정렬
-  const segments = snippet.split('...');
-
-  // 하이라이트 포함 여부로 분류
-  const withHighlight: string[] = [];
-  const withoutHighlight: string[] = [];
-
-  for (const seg of segments) {
-    const trimmed = seg.trim();
-    if (!trimmed) continue;
-    if (trimmed.includes('[[HL]]')) {
-      withHighlight.push(trimmed);
-    } else {
-      withoutHighlight.push(trimmed);
-    }
-  }
-
-  // 하이라이트 있는 세그먼트 먼저, 그 다음 나머지
-  const reordered = [...withHighlight, ...withoutHighlight];
-  const joinedSnippet = reordered.join('...');
-
-  // 기존 파싱 로직
-  const ranges: [number, number][] = [];
-  let text = '';
-  let i = 0;
-
-  while (i < joinedSnippet.length) {
-    if (joinedSnippet.slice(i, i + 6) === '[[HL]]') {
-      const start = text.length;
-      i += 6; // [[HL]] 건너뛰기
-
-      // [[/HL]] 찾기
-      const endMarker = joinedSnippet.indexOf('[[/HL]]', i);
-      if (endMarker !== -1) {
-        text += joinedSnippet.slice(i, endMarker);
-        ranges.push([start, text.length]);
-        i = endMarker + 7; // [[/HL]] 건너뛰기
-      } else {
-        // 닫는 마커 없으면 나머지 전부 하이라이트
-        text += joinedSnippet.slice(i);
-        ranges.push([start, text.length]);
-        break;
-      }
-    } else {
-      text += joinedSnippet[i];
-      i++;
-    }
-  }
-
-  return { text, ranges };
-}
-
 /**
  * 텍스트를 가독성 좋게 줄바꿈 처리하여 React 노드로 변환
  * - `...` (FTS5 생략 기호)
  * - `. ` 뒤 한글/대문자 시작 (문장 끝)
  * - 목록 구분자 (○, ●)
  */
-function formatAndRender(text: string, keyPrefix: string): React.ReactNode[] {
-  // 줄바꿈 패턴 적용
-  const formatted = text
-    // FTS5 생략 기호
-    .replace(/\.{3}/g, "\n")
-    // 문장 끝: `. ` 뒤에 한글이나 대문자가 오면 줄바꿈
-    .replace(/\. +(?=[가-힣A-Z○●■□▶▷])/g, ".\n")
-    // 목록 구분자 앞에서 줄바꿈
-    .replace(/ ○ /g, "\n○ ")
-    .replace(/ ● /g, "\n● ")
-    // 괄호 닫고 화살표 패턴 (예: "예산) ->")
-    .replace(/\) *-> */g, ")\n→ ")
-    // 연속 공백 정리
-    .replace(/ {2,}/g, " ");
+function formatAndRender(text: string, keyPrefix: string, mode: "preview" | "full"): React.ReactNode[] {
+  const formatted = mode === "preview"
+    ? text
+    : text
+        // 문장 끝: `. ` 뒤에 한글/대문자 시작이면 줄바꿈 (길이 유지)
+        .replace(/\. +(?=[가-힣A-Z○●■□▶▷])/g, ".\n")
+        // 목록 구분자 앞에서 줄바꿈 (길이 유지)
+        .replace(/ ○ /g, "\n○ ")
+        .replace(/ ● /g, "\n● ");
 
   // 줄바꿈으로 분리하여 React 노드로 변환
   const lines = formatted.split("\n");
@@ -205,32 +118,43 @@ function mergeRanges(
  * - snippet이 있으면 JavaScript에서 직접 파싱 (Rust 바이트 인덱스 버그 회피)
  * - refineKeywords가 있으면 추가 하이라이트 (다른 색상)
  */
-export function HighlightedText({ text, ranges, snippet, refineKeywords, searchQuery }: HighlightedTextProps) {
-  // snippet이 있으면 JavaScript에서 직접 파싱 (더 정확함)
-  const { actualText, actualRanges } = snippet
-    ? (() => {
-        const parsed = parseSnippetHighlights(snippet);
-        return { actualText: parsed.text, actualRanges: parsed.ranges };
-      })()
-    : { actualText: text, actualRanges: ranges };
+export const HighlightedText = memo(function HighlightedText({
+  text,
+  ranges,
+  snippet,
+  refineKeywords,
+  searchQuery,
+  formatMode = "full",
+}: HighlightedTextProps) {
+  // snippet 파싱 + 범위 계산을 메모이제이션
+  const { actualText, effectiveSearchRanges, refineRanges } = useMemo(() => {
+    // snippet에 [[HL]] 마커가 있을 때만 snippet 파싱, 없으면 text 사용
+    const useSnippet = snippet && snippet.includes('[[HL]]');
+    const parsed = useSnippet
+      ? parseSnippetHighlights(snippet)
+      : { text: text ?? '', ranges: ranges ?? [] };
+    const at = parsed.text;
+    const ar = parsed.ranges;
 
-  // searchQuery로 추가 하이라이트 범위 계산
-  // FTS5 snippet 마커가 누락될 수 있으므로 항상 searchQuery로도 찾기
-  const searchQueryRanges = searchQuery
-    ? findKeywordRanges(actualText, extractSearchKeywords(searchQuery))
-    : [];
+    const keywords = searchQuery ? extractSearchKeywords(searchQuery) : [];
+    const searchQueryRanges = keywords.length > 0
+      ? findKeywordRanges(at, keywords)
+      : [];
 
-  // 결과 내 검색 키워드 범위 계산
-  const refineRanges = refineKeywords && refineKeywords.length > 0
-    ? findKeywordRanges(actualText, refineKeywords)
-    : [];
+    const rr = refineKeywords && refineKeywords.length > 0
+      ? findKeywordRanges(at, refineKeywords)
+      : [];
 
-  // 검색 하이라이트 = FTS ranges + searchQuery 병합 (FTS 마커 누락 보완)
-  const effectiveSearchRanges = mergeOverlappingRanges([...actualRanges, ...searchQueryRanges]);
+    const esr = searchQueryRanges.length > 0
+      ? mergeOverlappingRanges(searchQueryRanges)
+      : mergeOverlappingRanges(ar);
+
+    return { actualText: at, effectiveSearchRanges: esr, refineRanges: rr };
+  }, [text, ranges, snippet, refineKeywords, searchQuery]);
 
   // 하이라이트 없으면 포매팅만 적용
   if (effectiveSearchRanges.length === 0 && refineRanges.length === 0) {
-    return <>{formatAndRender(actualText, "plain")}</>;
+    return <>{formatAndRender(actualText, "plain", formatMode)}</>;
   }
 
   // 두 범위 병합
@@ -241,7 +165,7 @@ export function HighlightedText({ text, ranges, snippet, refineKeywords, searchQ
   mergedRanges.forEach(({ start, end, type }, i) => {
     // 하이라이트 전 텍스트 (포매팅 적용)
     if (start > lastIndex) {
-      parts.push(...formatAndRender(actualText.slice(lastIndex, start), `pre-${i}`));
+      parts.push(...formatAndRender(actualText.slice(lastIndex, start), `pre-${i}`, formatMode));
     }
     // 하이라이트 텍스트 - 타입에 따라 색상 다르게
     const bgColor = type === 'refine' || type === 'both'
@@ -269,8 +193,8 @@ export function HighlightedText({ text, ranges, snippet, refineKeywords, searchQ
 
   // 마지막 남은 텍스트 (포매팅 적용)
   if (lastIndex < actualText.length) {
-    parts.push(...formatAndRender(actualText.slice(lastIndex), "post"));
+    parts.push(...formatAndRender(actualText.slice(lastIndex), "post", formatMode));
   }
 
   return <>{parts}</>;
-}
+});

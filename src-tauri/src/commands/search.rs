@@ -89,16 +89,20 @@ pub async fn search_semantic(
         });
     }
 
-    let (service, max_results) = {
+    let (service, max_results, semantic_enabled) = {
         let container = state.lock()?;
         let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let max_results = app_data_dir
+        let settings = app_data_dir
             .as_ref()
-            .map(|dir| get_settings_sync(dir).max_results)
-            .unwrap_or(50);
+            .map(|dir| get_settings_sync(dir))
+            .unwrap_or_default();
 
-        (container.search_service(), max_results)
+        (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };
+
+    if !semantic_enabled {
+        return Err(ApiError::SemanticSearchDisabled);
+    }
 
     service
         .search_semantic(&query, max_results)
@@ -107,6 +111,7 @@ pub async fn search_semantic(
 }
 
 /// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
+/// 시맨틱 비활성화 시 키워드 검색으로 폴백
 #[tauri::command]
 pub async fn search_hybrid(
     query: String,
@@ -121,16 +126,24 @@ pub async fn search_hybrid(
         });
     }
 
-    let (service, max_results) = {
+    let (service, max_results, semantic_enabled) = {
         let container = state.lock()?;
         let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let max_results = app_data_dir
+        let settings = app_data_dir
             .as_ref()
-            .map(|dir| get_settings_sync(dir).max_results)
-            .unwrap_or(50);
+            .map(|dir| get_settings_sync(dir))
+            .unwrap_or_default();
 
-        (container.search_service(), max_results)
+        (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };
+
+    // 시맨틱 비활성화 시 키워드 검색으로 폴백
+    if !semantic_enabled {
+        return service
+            .search_keyword(&query, max_results)
+            .await
+            .map_err(ApiError::from);
+    }
 
     service
         .search_hybrid(&query, max_results)

@@ -51,6 +51,7 @@ export interface VectorIndexingStatus {
   is_running: boolean;
   total_chunks: number;
   processed_chunks: number;
+  pending_chunks: number;
   current_file: string | null;
   error: string | null;
 }

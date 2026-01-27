@@ -6,6 +6,8 @@ interface StatusBarProps {
   vectorStatus: VectorIndexingStatus | null;
   onCancelIndexing?: () => void;
   onCancelVectorIndexing?: () => void;
+  onStartVectorIndexing?: () => void;
+  semanticEnabled?: boolean;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -16,9 +18,11 @@ const phaseLabels: Record<string, string> = {
   cancelled: "취소됨",
 };
 
-export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing }: StatusBarProps) {
+export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, semanticEnabled }: StatusBarProps) {
   const isIndexing = progress && progress.phase !== "completed" && progress.phase !== "cancelled";
   const isVectorIndexing = vectorStatus && vectorStatus.is_running && vectorStatus.total_chunks > 0;
+  const hasPendingVectors = (vectorStatus?.pending_chunks ?? 0) > 0;
+  const isVectorComplete = vectorStatus && !vectorStatus.is_running && !hasPendingVectors;
   const percent = progress && progress.total_files > 0
     ? Math.round((progress.processed_files / progress.total_files) * 100)
     : 0;
@@ -171,18 +175,40 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
               {status?.total_files ?? 0}개
             </span>
           </span>
-          <span>
-            {status?.watched_folders.length ? (
-              <>
-                폴더:{" "}
-                <span style={{ color: "var(--color-text-secondary)" }}>
-                  {status.watched_folders.length}개
-                </span>
-              </>
-            ) : (
-              "폴더를 추가하세요"
+          <div className="flex items-center gap-3">
+            <span>
+              {status?.watched_folders.length ? (
+                <>
+                  폴더:{" "}
+                  <span style={{ color: "var(--color-text-secondary)" }}>
+                    {status.watched_folders.length}개
+                  </span>
+                </>
+              ) : (
+                "폴더를 추가하세요"
+              )}
+            </span>
+            {semanticEnabled && onStartVectorIndexing && !isVectorIndexing && hasPendingVectors && (
+              <button
+                onClick={onStartVectorIndexing}
+                className="px-2 py-0.5 text-xs rounded transition-colors"
+                style={{
+                  backgroundColor: "var(--color-bg-tertiary)",
+                  color: "var(--color-accent)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--color-accent)";
+                  e.currentTarget.style.color = "white";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
+                  e.currentTarget.style.color = "var(--color-accent)";
+                }}
+              >
+                벡터 인덱싱 시작
+              </button>
             )}
-          </span>
+          </div>
         </div>
       )}
     </footer>

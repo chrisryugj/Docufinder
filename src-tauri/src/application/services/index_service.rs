@@ -46,6 +46,7 @@ impl IndexService {
         path: &Path,
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
+        max_file_size_mb: u64,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
         self.validate_path(path)?;
@@ -65,6 +66,7 @@ impl IndexService {
                 include_subfolders,
                 cancel_flag,
                 progress_callback,
+                max_file_size_mb,
             )
         })
         .await
@@ -78,6 +80,7 @@ impl IndexService {
     pub fn start_vector_indexing(
         &self,
         progress_callback: Option<VectorProgressCallback>,
+        intensity: Option<crate::commands::settings::IndexingIntensity>,
     ) -> AppResult<()> {
         let embedder = self.embedder.as_ref()
             .ok_or(AppError::SemanticSearchDisabled)?;
@@ -93,6 +96,7 @@ impl IndexService {
                 embedder.clone(),
                 vector_index.clone(),
                 progress_callback,
+                intensity,
             )
             .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
         }
@@ -142,7 +146,18 @@ impl IndexService {
     pub fn get_vector_status(&self) -> AppResult<VectorIndexingStatus> {
         let worker = self.vector_worker.read()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
-        Ok(worker.get_status())
+        let mut status = worker.get_status();
+
+        if !status.is_running {
+            let conn = self.get_connection()?;
+            let stats = db::get_vector_indexing_stats(&conn)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            status.pending_chunks = stats.pending_chunks;
+            status.total_chunks = stats.pending_chunks;
+            status.processed_chunks = 0;
+        }
+
+        Ok(status)
     }
 
     /// 폴더 재인덱싱 (기존 데이터 삭제 후 다시)
@@ -151,6 +166,7 @@ impl IndexService {
         path: &Path,
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
+        max_file_size_mb: u64,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
         self.validate_path(path)?;
@@ -179,7 +195,7 @@ impl IndexService {
         }
 
         // 3. FTS 재인덱싱
-        self.index_folder_fts(path, include_subfolders, progress_callback).await
+        self.index_folder_fts(path, include_subfolders, progress_callback, max_file_size_mb).await
     }
 
     /// 시맨틱 검색 사용 가능 여부

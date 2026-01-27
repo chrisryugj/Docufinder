@@ -66,6 +66,10 @@ chrono = "0.4"
 rayon = "1.10"
 crossbeam-channel = "0.5"
 
+# Windows thread priority
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Threading"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]

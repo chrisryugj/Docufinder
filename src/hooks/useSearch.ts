@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type {
   SearchResult,
@@ -42,15 +42,16 @@ interface UseSearchReturn {
   clearRefine: () => void;
   /** 결과 내 검색 활성화 여부 */
   isRefineActive: boolean;
-  /** IME 조합 상태 설정 */
-  setComposing: (v: boolean) => void;
+  /** IME 조합 상태 설정 (compositionEnd 시 최종 쿼리 전달) */
+  setComposing: (v: boolean, finalQuery?: string) => void;
 }
 
 /**
  * 검색 로직 훅 (디바운스 포함)
  */
 export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
-  const { debounceMs = 500 } = options;
+  const { debounceMs = 150 } = options;
+  const compositionIdleMs = 300;
   // minConfidence는 외부에서 변경될 수 있으므로 직접 참조
   const minConfidence = options.minConfidence ?? 0;
 
@@ -61,12 +62,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
-  // IME 조합 중 여부 (한글 입력 시 조합 완료 전까지 검색 방지)
+  // IME 조합 중 여부
   const isComposingRef = useRef(false);
   // 검색 요청 ID (이전 검색 결과 무시용)
   const searchIdRef = useRef(0);
-  // IME 조합 완료 시 검색 재트리거용
-  const [searchTrigger, setSearchTrigger] = useState(0);
   const [filters, setFiltersInternal] = useState<SearchFilters>(() => {
     // localStorage에서 excludeFilename 복원
     try {
@@ -79,9 +78,16 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   });
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
   const [refineQuery, setRefineQuery] = useState("");
+  const [debouncedRefineQuery, setDebouncedRefineQuery] = useState("");
+
+  // refineQuery debounce (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedRefineQuery(refineQuery), 300);
+    return () => clearTimeout(timer);
+  }, [refineQuery]);
 
   const clearError = useCallback(() => setError(null), []);
-  const clearRefine = useCallback(() => setRefineQuery(""), []);
+  const clearRefine = useCallback(() => { setRefineQuery(""); setDebouncedRefineQuery(""); }, []);
 
   // excludeFilename 변경 시 localStorage 저장
   const prevExcludeFilename = useRef(filters.excludeFilename);
@@ -95,24 +101,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, []);
 
-  // IME 상태 설정 (SearchBar에서 호출)
-  // compositionEnd 시 즉시 검색 트리거
-  const setComposing = useCallback((v: boolean) => {
-    isComposingRef.current = v;
-    if (!v) {
-      // 조합 완료 → 현재 query로 즉시 검색 (debounce 적용)
-      // searchTrigger 변경으로 useEffect 재실행 유도
-      setSearchTrigger((c) => c + 1);
-    }
-  }, []);
-
-  // 검색 실행 함수
+  // 검색 실행 함수 (결과 업데이트는 startTransition으로 입력 블로킹 방지)
   const executeSearch = useCallback(
     async (searchQuery: string, mode: SearchMode) => {
       if (!searchQuery.trim()) {
-        setResults([]);
-        setFilenameResults([]);
-        setSearchTime(null);
+        startTransition(() => {
+          setResults([]);
+          setFilenameResults([]);
+          setSearchTime(null);
+        });
         setIsLoading(false);
         return;
       }
@@ -127,29 +124,34 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           const response = await invoke<SearchResponse>(SEARCH_COMMANDS[mode], {
             query: searchQuery,
           });
-          // 새 검색이 시작됐으면 이 결과 무시
           if (searchIdRef.current !== currentId) return;
-          setResults(response.results);
-          setFilenameResults([]);
-          setSearchTime(response.search_time_ms);
+          startTransition(() => {
+            setResults(response.results);
+            setFilenameResults([]);
+            setSearchTime(response.search_time_ms);
+          });
         } else {
           const [contentResponse, filenameResponse] = await Promise.all([
             invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }),
             invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }),
           ]);
           if (searchIdRef.current !== currentId) return;
-          setResults(contentResponse.results);
-          setFilenameResults(filenameResponse.results);
-          setSearchTime(contentResponse.search_time_ms);
+          startTransition(() => {
+            setResults(contentResponse.results);
+            setFilenameResults(filenameResponse.results);
+            setSearchTime(contentResponse.search_time_ms);
+          });
         }
       } catch (err) {
         if (searchIdRef.current !== currentId) return;
         const message = err instanceof Error ? err.message : String(err);
         console.error("Search failed:", err);
         setError(`검색 실패: ${message}`);
-        setResults([]);
-        setFilenameResults([]);
-        setSearchTime(null);
+        startTransition(() => {
+          setResults([]);
+          setFilenameResults([]);
+          setSearchTime(null);
+        });
       }
 
       if (searchIdRef.current === currentId) {
@@ -159,16 +161,29 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     []
   );
 
-  // 디바운스 검색 (IME 조합 중에는 검색하지 않음)
+  // IME 상태 설정 (SearchBar에서 호출)
+  // compositionEnd 이후에도 debounce에 의해 검색되도록만 상태 갱신
+  const setComposing = useCallback((v: boolean, finalQuery?: string) => {
+    isComposingRef.current = v;
+    if (!v && finalQuery !== undefined && finalQuery !== query) {
+      setQuery(finalQuery);
+    }
+  }, [query, setQuery]);
+
+  // 디바운스 검색 — 조합 중에는 대기, 완료 후 실행
   useEffect(() => {
+    const delay = isComposingRef.current
+      ? Math.max(debounceMs, compositionIdleMs)
+      : debounceMs;
     const timer = setTimeout(() => {
-      if (!isComposingRef.current) {
-        executeSearch(query, searchMode);
+      if (isComposingRef.current) {
+        isComposingRef.current = false;
       }
-    }, debounceMs);
+      executeSearch(query, searchMode);
+    }, delay);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch, searchTrigger]);
+  }, [query, searchMode, debounceMs, executeSearch, compositionIdleMs]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {
@@ -225,9 +240,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         break;
     }
 
-    // 결과 내 검색 필터링
-    if (refineQuery.trim()) {
-      const refineKeywords = refineQuery.trim().toLowerCase().split(/\s+/);
+    // 결과 내 검색 필터링 (debounced)
+    if (debouncedRefineQuery.trim()) {
+      const refineKeywords = debouncedRefineQuery.trim().toLowerCase().split(/\s+/);
       filtered = filtered.filter((r) => {
         const content = r.full_content.toLowerCase();
         // 모든 키워드가 포함되어야 함 (AND 조건)
@@ -236,20 +251,20 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
 
     return filtered;
-  }, [results, filters, minConfidence, refineQuery]);
+  }, [results, filters, minConfidence, debouncedRefineQuery]);
 
   // 파일명 검색 결과도 결과 내 검색 필터링
   const filteredFilenameResults = useMemo(() => {
-    if (!refineQuery.trim()) {
+    if (!debouncedRefineQuery.trim()) {
       return filenameResults;
     }
-    const keywords = refineQuery.trim().toLowerCase().split(/\s+/);
+    const keywords = debouncedRefineQuery.trim().toLowerCase().split(/\s+/);
     return filenameResults.filter((r) => {
       const fileName = r.file_name.toLowerCase();
       // 파일명에서 키워드 검색
       return keywords.every((kw) => fileName.includes(kw));
     });
-  }, [filenameResults, refineQuery]);
+  }, [filenameResults, debouncedRefineQuery]);
 
   // 파일별 그룹핑 결과
   const groupedResults = useMemo(() => {

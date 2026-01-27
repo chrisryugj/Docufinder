@@ -65,6 +65,7 @@ fn collect_files(
     extensions: &[&str],
     recursive: bool,
     cancel_flag: &AtomicBool,
+    max_file_size_bytes: u64,
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -78,10 +79,10 @@ fn collect_files(
         if let Ok(canonical) = dir.canonicalize() {
             visited.insert(canonical);
         }
-        collect_files_recursive(dir, extensions, &mut files, &mut visited, cancel_flag);
+        collect_files_recursive(dir, extensions, &mut files, &mut visited, cancel_flag, max_file_size_bytes);
     } else {
         // 현재 폴더만 탐색
-        collect_files_shallow(dir, extensions, &mut files, cancel_flag);
+        collect_files_shallow(dir, extensions, &mut files, cancel_flag, max_file_size_bytes);
     }
 
     files
@@ -93,6 +94,7 @@ fn collect_files_shallow(
     extensions: &[&str],
     files: &mut Vec<PathBuf>,
     cancel_flag: &AtomicBool,
+    max_file_size_bytes: u64,
 ) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
@@ -122,6 +124,15 @@ fn collect_files_shallow(
                 .to_lowercase();
 
             if extensions.contains(&ext.as_str()) {
+                // 파일 크기 제한 (0 = 무제한)
+                if max_file_size_bytes > 0 {
+                    if let Ok(meta) = path.metadata() {
+                        if meta.len() > max_file_size_bytes {
+                            tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, path);
+                            continue;
+                        }
+                    }
+                }
                 files.push(path);
             }
         }
@@ -134,6 +145,7 @@ fn collect_files_recursive(
     files: &mut Vec<PathBuf>,
     visited: &mut std::collections::HashSet<PathBuf>,
     cancel_flag: &AtomicBool,
+    max_file_size_bytes: u64,
 ) {
     if cancel_flag.load(Ordering::Relaxed) {
         return;
@@ -165,15 +177,13 @@ fn collect_files_recursive(
                 // 심볼릭 링크 순환 방지: 정규화된 경로로 중복 체크
                 if let Ok(canonical) = path.canonicalize() {
                     if visited.insert(canonical) {
-                        // 새로 추가된 경우에만 재귀 호출
-                        collect_files_recursive(&path, extensions, files, visited, cancel_flag);
+                        collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
                     } else {
                         tracing::debug!("Skipping already visited dir: {:?}", path);
                     }
                 } else {
-                    // canonicalize 실패 시에도 원본 경로로 visited 체크 (무한 루프 방지)
                     if visited.insert(path.clone()) {
-                        collect_files_recursive(&path, extensions, files, visited, cancel_flag);
+                        collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
                     } else {
                         tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
                     }
@@ -193,6 +203,15 @@ fn collect_files_recursive(
                 .to_lowercase();
 
             if extensions.contains(&ext.as_str()) {
+                // 파일 크기 제한 (0 = 무제한)
+                if max_file_size_bytes > 0 {
+                    if let Ok(meta) = path.metadata() {
+                        if meta.len() > max_file_size_bytes {
+                            tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, path);
+                            continue;
+                        }
+                    }
+                }
                 files.push(path);
             }
         }
@@ -371,6 +390,7 @@ pub fn index_folder_fts_only(
     recursive: bool,
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
+    max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
     let folder_str = folder_path.to_string_lossy().to_string();
 
@@ -388,11 +408,13 @@ pub fn index_folder_fts_only(
 
     // 1. 파일 스캔
     send_progress("scanning", 0, 0, None);
+    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
     let file_paths = collect_files(
         folder_path,
         SUPPORTED_EXTENSIONS,
         recursive,
         cancel_flag.as_ref(),
+        max_file_size_bytes,
     );
     let total = file_paths.len();
 

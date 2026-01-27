@@ -28,11 +28,11 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
     conn.pragma_update(None, "synchronous", "NORMAL")?;
 
     // === 성능 최적화 PRAGMA ===
-    // cache_size: 기본 2MB → 64MB (페이지 캐싱 증가)
-    conn.pragma_update(None, "cache_size", -65536)?;
+    // cache_size: 기본 2MB → 32MB (8GB 시스템 배려)
+    conn.pragma_update(None, "cache_size", -32768)?;
 
-    // mmap_size: 256MB 메모리 매핑 (대용량 파일 읽기 최적화)
-    conn.pragma_update(None, "mmap_size", 268435456)?;
+    // mmap_size: 128MB 메모리 매핑 (저사양 환경 배려)
+    conn.pragma_update(None, "mmap_size", 134217728)?;
 
     // temp_store: 임시 테이블 메모리 사용 (I/O 감소)
     conn.pragma_update(None, "temp_store", "MEMORY")?;

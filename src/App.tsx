@@ -42,6 +42,7 @@ function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [minConfidence, setMinConfidence] = useState(0);
   const [viewDensity, setViewDensity] = useState<ViewDensity>("compact");
+  const [semanticEnabled, setSemanticEnabled] = useState(false);
 
   // 스크롤 기반 검색 영역 축소
   const {
@@ -49,15 +50,12 @@ function App() {
     handleScroll,
     scrollToTop,
     scrollContainerRef,
-    scrollTop,
+    showScrollTopButton: showScrollTop,
     expand,
   } = useCollapsibleSearch({
     threshold: 200,  // 200px 이상 스크롤 시 축소 (깜박임 방지)
     onCollapse: () => searchInputRef.current?.blur(),
   });
-
-  // 맨 위로 버튼 표시 여부
-  const showScrollTop = scrollTop > 300;
 
   // 테마
   const { setTheme } = useTheme();
@@ -127,6 +125,8 @@ function App() {
     justCompleted: vectorJustCompleted,
     clearCompleted: clearVectorCompleted,
     cancel: cancelVectorIndexing,
+    startManual: startVectorIndexing,
+    isRunning: isVectorIndexing,
   } = useVectorIndexing();
 
   // 벡터 인덱싱 완료 시 토스트
@@ -181,6 +181,7 @@ function App() {
         setSearchMode(settings.search_mode ?? "hybrid");
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");
+        setSemanticEnabled(settings.semantic_search_enabled ?? false);
         applyHighlightColors(settings);
       } catch (err) {
         console.warn("Failed to load settings:", err);
@@ -490,6 +491,31 @@ function App() {
                 searchTime={searchTime}
               />
 
+              {/* 벡터 인덱싱 상태 배너 */}
+              {isVectorIndexing && (
+                <div
+                  className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
+                  style={{
+                    backgroundColor: "rgba(59, 130, 246, 0.1)",
+                    border: "1px solid rgba(59, 130, 246, 0.2)",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin h-3 w-3 border border-blue-400 border-t-transparent rounded-full" />
+                    <span>
+                      벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능
+                    </span>
+                  </div>
+                  <button
+                    onClick={cancelVectorIndexing}
+                    className="text-blue-400 hover:text-blue-300 font-medium"
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+
               {/* 필터 바 (검색바 바로 아래) */}
               {query && (results.length > 0 || filenameResults.length > 0) && (
                 <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
@@ -552,6 +578,8 @@ function App() {
           vectorStatus={vectorStatus}
           onCancelIndexing={cancelIndexing}
           onCancelVectorIndexing={cancelVectorIndexing}
+          onStartVectorIndexing={startVectorIndexing}
+          semanticEnabled={semanticEnabled}
         />
       </div>
 
@@ -564,6 +592,7 @@ function App() {
           setSearchMode(settings.search_mode ?? "hybrid");
           setMinConfidence(settings.min_confidence ?? 0);
           setViewDensity(settings.view_density ?? "compact");
+          setSemanticEnabled(settings.semantic_search_enabled ?? false);
           applyHighlightColors(settings);
         }}
         onClearData={async () => {

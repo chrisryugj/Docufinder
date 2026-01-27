@@ -5,6 +5,7 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { ConfidenceBadge } from "../ui/ConfidenceBadge";
 import { HighlightedText } from "./HighlightedText";
+import { buildPreviewContext } from "./searchTextUtils";
 import { getMatchTypeBadge } from "./matchType";
 
 interface GroupedSearchResultItemProps {
@@ -178,6 +179,13 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       <div className={isCompact ? "space-y-1" : "space-y-2"}>
         {displayChunks.map((chunk, idx) => {
           const matchBadge = getMatchTypeBadge(chunk.match_type);
+          const preview = buildPreviewContext({
+            previewText: chunk.content_preview,
+            fullText: chunk.full_content,
+            highlightRanges: chunk.highlight_ranges,
+            snippet: chunk.snippet,
+            query: searchQuery,
+          });
           return (
           <div
             key={`${chunk.chunk_index}-${idx}`}
@@ -219,11 +227,11 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
                 }}
               >
                 <HighlightedText
-                  text={chunk.content_preview}
-                  ranges={chunk.highlight_ranges}
-                  snippet={chunk.snippet}
+                  text={preview.text}
+                  ranges={preview.ranges}
                   refineKeywords={!chunk.snippet ? fallbackKeywords : undefined}
                   searchQuery={searchQuery}
+                  formatMode="preview"
                 />
               </p>
             </div>

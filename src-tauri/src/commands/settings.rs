@@ -30,10 +30,43 @@ pub struct Settings {
     /// 문서 내용 하이라이트 색상 (hex)
     #[serde(default)]
     pub highlight_content_color: Option<String>,
+    /// 시맨틱 검색 활성화 여부
+    #[serde(default)]
+    pub semantic_search_enabled: bool,
+    /// 벡터 인덱싱 모드 (manual / auto)
+    #[serde(default)]
+    pub vector_indexing_mode: VectorIndexingMode,
+    /// 인덱싱 강도 (fast / balanced / background)
+    #[serde(default)]
+    pub indexing_intensity: IndexingIntensity,
+    /// 단일 파일 최대 크기 (MB). 초과 시 스킵
+    #[serde(default = "default_max_file_size_mb")]
+    pub max_file_size_mb: u64,
 }
 
 fn default_include_subfolders() -> bool {
     true
+}
+
+fn default_max_file_size_mb() -> u64 {
+    200
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VectorIndexingMode {
+    #[default]
+    Manual,
+    Auto,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexingIntensity {
+    Fast,
+    #[default]
+    Balanced,
+    Background,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -76,6 +109,10 @@ impl Default for Settings {
             start_minimized: false,
             highlight_filename_color: None,
             highlight_content_color: None,
+            semantic_search_enabled: false,
+            vector_indexing_mode: VectorIndexingMode::Manual,
+            indexing_intensity: IndexingIntensity::Balanced,
+            max_file_size_mb: 200,
         }
     }
 }

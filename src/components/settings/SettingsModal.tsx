@@ -42,6 +42,25 @@ const VIEW_DENSITY_OPTIONS = [
   { value: "compact", label: "컴팩트 (좁게)" },
 ];
 
+const VECTOR_INDEXING_MODE_OPTIONS = [
+  { value: "manual", label: "수동" },
+  { value: "auto", label: "자동" },
+];
+
+const INDEXING_INTENSITY_OPTIONS = [
+  { value: "fast", label: "빠르게 (CPU 최대)" },
+  { value: "balanced", label: "균형 (권장)" },
+  { value: "background", label: "백그라운드 (최소 부하)" },
+];
+
+const MAX_FILE_SIZE_OPTIONS = [
+  { value: "50", label: "50 MB" },
+  { value: "100", label: "100 MB" },
+  { value: "200", label: "200 MB (기본)" },
+  { value: "500", label: "500 MB" },
+  { value: "0", label: "제한 없음" },
+];
+
 const CONFIDENCE_STEP = 5;
 
 // 하이라이트 색상 프리셋 (라이트/다크 모드 각각)
@@ -294,6 +313,113 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 }`}
               />
             </button>
+          </div>
+
+          {/* 성능 설정 섹션 */}
+          <div
+            className="border-t pt-4"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3
+              className="text-sm font-medium mb-3"
+              style={{ color: "var(--color-text-primary)" }}
+            >
+              성능 설정
+            </h3>
+          </div>
+
+          {/* 시맨틱 검색 토글 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                시맨틱 검색
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                AI 의미 기반 검색 (ONNX 모델 사용, 메모리 1GB+ 추가)
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.semantic_search_enabled ?? false}
+              onClick={() => handleChange("semantic_search_enabled", !(settings.semantic_search_enabled ?? false))}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                (settings.semantic_search_enabled ?? false)
+                  ? "bg-blue-500"
+                  : "bg-gray-600"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  (settings.semantic_search_enabled ?? false) ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* 시맨틱 관련 옵션 (시맨틱 ON일 때만) */}
+          {(settings.semantic_search_enabled ?? false) && (
+            <>
+              {/* 벡터 인덱싱 모드 */}
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  벡터 인덱싱 모드
+                </label>
+                <Dropdown
+                  options={VECTOR_INDEXING_MODE_OPTIONS}
+                  value={settings.vector_indexing_mode ?? "manual"}
+                  onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])}
+                  placeholder="모드 선택"
+                />
+                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  수동: 직접 시작 버튼으로 실행 / 자동: 인덱싱 후 자동 실행
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* 인덱싱 강도 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              인덱싱 강도
+            </label>
+            <Dropdown
+              options={INDEXING_INTENSITY_OPTIONS}
+              value={settings.indexing_intensity ?? "balanced"}
+              onChange={(value) => handleChange("indexing_intensity", value as Settings["indexing_intensity"])}
+              placeholder="강도 선택"
+            />
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              백그라운드: 다른 작업에 영향 최소화 (HDD 환경 권장)
+            </p>
+          </div>
+
+          {/* 최대 파일 크기 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              최대 파일 크기
+            </label>
+            <Dropdown
+              options={MAX_FILE_SIZE_OPTIONS}
+              value={String(settings.max_file_size_mb ?? 200)}
+              onChange={(value) => handleChange("max_file_size_mb", parseInt(value))}
+              placeholder="크기 선택"
+            />
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              설정 크기 초과 파일은 인덱싱 건너뜀 (0 = 제한 없음)
+            </p>
           </div>
 
           {/* 시스템 트레이 섹션 구분선 */}

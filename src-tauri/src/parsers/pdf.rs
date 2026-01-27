@@ -12,11 +12,6 @@ const PDF_PARSE_TIMEOUT_SECS: u64 = 10;
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미
 static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-/// 현재 detach된 PDF 스레드 수 조회
-pub fn detached_thread_count() -> usize {
-    DETACHED_THREAD_COUNT.load(Ordering::Relaxed)
-}
-
 /// PDF 파일 파싱
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
 /// catch_unwind + 타임아웃으로 panic/hang 방어
