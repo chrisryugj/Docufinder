@@ -42,13 +42,15 @@ interface UseSearchReturn {
   clearRefine: () => void;
   /** 결과 내 검색 활성화 여부 */
   isRefineActive: boolean;
+  /** IME 조합 상태 설정 */
+  setComposing: (v: boolean) => void;
 }
 
 /**
  * 검색 로직 훅 (디바운스 포함)
  */
 export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
-  const { debounceMs = 300 } = options;
+  const { debounceMs = 500 } = options;
   // minConfidence는 외부에서 변경될 수 있으므로 직접 참조
   const minConfidence = options.minConfidence ?? 0;
 
@@ -59,6 +61,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
+  // IME 조합 중 여부 (한글 입력 시 조합 완료 전까지 검색 방지)
+  const isComposingRef = useRef(false);
+  // 검색 요청 ID (이전 검색 결과 무시용)
+  const searchIdRef = useRef(0);
+  // IME 조합 완료 시 검색 재트리거용
+  const [searchTrigger, setSearchTrigger] = useState(0);
   const [filters, setFiltersInternal] = useState<SearchFilters>(() => {
     // localStorage에서 excludeFilename 복원
     try {
@@ -87,6 +95,17 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, []);
 
+  // IME 상태 설정 (SearchBar에서 호출)
+  // compositionEnd 시 즉시 검색 트리거
+  const setComposing = useCallback((v: boolean) => {
+    isComposingRef.current = v;
+    if (!v) {
+      // 조합 완료 → 현재 query로 즉시 검색 (debounce 적용)
+      // searchTrigger 변경으로 useEffect 재실행 유도
+      setSearchTrigger((c) => c + 1);
+    }
+  }, []);
+
   // 검색 실행 함수
   const executeSearch = useCallback(
     async (searchQuery: string, mode: SearchMode) => {
@@ -94,32 +113,37 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setResults([]);
         setFilenameResults([]);
         setSearchTime(null);
+        setIsLoading(false);
         return;
       }
 
+      // 이전 검색 결과 무시를 위한 ID
+      const currentId = ++searchIdRef.current;
       setIsLoading(true);
       setError(null);
 
       try {
         if (mode === "filename") {
-          // 파일명 모드: 파일명 검색만 실행
           const response = await invoke<SearchResponse>(SEARCH_COMMANDS[mode], {
             query: searchQuery,
           });
+          // 새 검색이 시작됐으면 이 결과 무시
+          if (searchIdRef.current !== currentId) return;
           setResults(response.results);
           setFilenameResults([]);
           setSearchTime(response.search_time_ms);
         } else {
-          // 내용 검색 모드: 파일명 검색도 병렬 실행 (통합 모드)
           const [contentResponse, filenameResponse] = await Promise.all([
             invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }),
             invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }),
           ]);
+          if (searchIdRef.current !== currentId) return;
           setResults(contentResponse.results);
           setFilenameResults(filenameResponse.results);
           setSearchTime(contentResponse.search_time_ms);
         }
       } catch (err) {
+        if (searchIdRef.current !== currentId) return;
         const message = err instanceof Error ? err.message : String(err);
         console.error("Search failed:", err);
         setError(`검색 실패: ${message}`);
@@ -128,19 +152,23 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setSearchTime(null);
       }
 
-      setIsLoading(false);
+      if (searchIdRef.current === currentId) {
+        setIsLoading(false);
+      }
     },
     []
   );
 
-  // 디바운스 검색
+  // 디바운스 검색 (IME 조합 중에는 검색하지 않음)
   useEffect(() => {
     const timer = setTimeout(() => {
-      executeSearch(query, searchMode);
+      if (!isComposingRef.current) {
+        executeSearch(query, searchMode);
+      }
     }, debounceMs);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch]);
+  }, [query, searchMode, debounceMs, executeSearch, searchTrigger]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {
@@ -271,5 +299,6 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     setRefineQuery,
     clearRefine,
     isRefineActive: refineQuery.trim().length > 0,
+    setComposing,
   };
 }

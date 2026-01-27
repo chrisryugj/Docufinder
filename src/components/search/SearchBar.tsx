@@ -12,6 +12,8 @@ interface SearchBarProps {
   status: IndexStatus | null;
   resultCount?: number;
   searchTime?: number | null;
+  onCompositionStart?: () => void;
+  onCompositionEnd?: () => void;
 }
 
 export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
@@ -25,6 +27,8 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       status,
       resultCount: _resultCount,
       searchTime: _searchTime,
+      onCompositionStart,
+      onCompositionEnd,
     },
     ref
   ) => {
@@ -114,6 +118,12 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             type="text"
             defaultValue={query}
             onChange={(e) => onQueryChange(e.target.value)}
+            onCompositionStart={onCompositionStart}
+            onCompositionEnd={(e) => {
+              onCompositionEnd?.();
+              // 조합 완료 후 최종 값으로 검색 트리거
+              onQueryChange((e.target as HTMLInputElement).value);
+            }}
             onFocus={handleFocus}
             placeholder="검색어 입력..."
             className="flex-1 bg-transparent border-none text-base focus:outline-none ml-3"

@@ -93,7 +93,8 @@ function App() {
     refineQuery,
     setRefineQuery,
     clearRefine,
-  } = useSearch({ debounceMs: 300, minConfidence });
+    setComposing,
+  } = useSearch({ minConfidence });
 
   // 인덱스 상태
   const {
@@ -428,6 +429,8 @@ function App() {
               ref={compactSearchInputRef}
               query={query}
               onQueryChange={handleQueryChange}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={() => setComposing(false)}
               searchMode={searchMode}
               onSearchModeChange={setSearchMode}
               isLoading={isLoading}
@@ -477,6 +480,8 @@ function App() {
                 ref={searchInputRef}
                 query={query}
                 onQueryChange={handleQueryChange}
+                onCompositionStart={() => setComposing(true)}
+                onCompositionEnd={() => setComposing(false)}
                 searchMode={searchMode}
                 onSearchModeChange={setSearchMode}
                 isLoading={isLoading}

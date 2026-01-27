@@ -36,6 +36,8 @@ interface CompactSearchBarProps {
   onRefineQueryChange: (query: string) => void;
   onRefineQueryClear: () => void;
   totalResultCount: number;
+  onCompositionStart?: () => void;
+  onCompositionEnd?: () => void;
 }
 
 export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarProps>(
@@ -61,6 +63,8 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
       onRefineQueryChange,
       onRefineQueryClear,
       totalResultCount,
+      onCompositionStart,
+      onCompositionEnd,
     },
     ref
   ) => {
@@ -197,6 +201,11 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
             type="text"
             defaultValue={query}
             onChange={(e) => onQueryChange(e.target.value)}
+            onCompositionStart={onCompositionStart}
+            onCompositionEnd={(e) => {
+              onCompositionEnd?.();
+              onQueryChange((e.target as HTMLInputElement).value);
+            }}
             placeholder="검색어 입력..."
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}

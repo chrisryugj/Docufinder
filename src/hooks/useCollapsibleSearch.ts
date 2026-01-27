@@ -39,81 +39,73 @@ export function useCollapsibleSearch(
   // 쓰로틀링을 위한 RAF 플래그
   const rafPending = useRef(false);
 
-  // 실제 스크롤 처리 로직
-  const handleScrollRaw = useCallback(
-    (e: UIEvent<HTMLDivElement>) => {
-      const container = e.currentTarget;
-      const currentScrollTop = container.scrollTop;
-
-      // 스크롤 방향 감지 (작은 움직임 무시: 5px 이상 차이만)
-      const scrollDelta = currentScrollTop - lastScrollTop.current;
-      if (Math.abs(scrollDelta) > 5) {
-        scrollDirectionUp.current = scrollDelta < 0;
-        lastScrollTop.current = currentScrollTop;
-      }
-
-      setScrollTop(currentScrollTop);
-
-      // 스크롤 가능 영역이 충분한지 체크 (컨텐츠 높이 - 컨테이너 높이 > threshold * 2)
-      const scrollableHeight = container.scrollHeight - container.clientHeight;
-      if (scrollableHeight < threshold * 2) {
-        // 스크롤 영역이 충분하지 않으면 축소하지 않음
-        if (prevCollapsed.current) {
-          prevCollapsed.current = false;
-          setIsCollapsed(false);
-          onExpand?.();
-        }
-        return;
-      }
-
-      // 맨 위 근처면 무조건 확장 (10px 이하)
-      if (currentScrollTop <= 10) {
-        if (prevCollapsed.current) {
-          prevCollapsed.current = false;
-          setIsCollapsed(false);
-          onExpand?.();
-        }
-        return;
-      }
-
-      // 축소: threshold 이상 스크롤 + 아래로 스크롤 중
-      // 확장: 위로 스크롤 중 + threshold/2 이하
-      let shouldCollapse = prevCollapsed.current;
-
-      if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current) {
-        // 확장 → 축소: threshold 넘고 아래로 스크롤 중
-        shouldCollapse = true;
-      } else if (prevCollapsed.current && scrollDirectionUp.current && currentScrollTop < threshold / 2) {
-        // 축소 → 확장: 위로 스크롤 중이고 threshold/2 이하
-        shouldCollapse = false;
-      }
-
-      if (shouldCollapse !== prevCollapsed.current) {
-        prevCollapsed.current = shouldCollapse;
-        setIsCollapsed(shouldCollapse);
-
-        if (shouldCollapse) {
-          onCollapse?.();
-        } else {
-          onExpand?.();
-        }
-      }
-    },
-    [threshold, onCollapse, onExpand]
-  );
-
   // RAF 기반 쓰로틀링 (60fps 제한, CPU 50% 감소)
+  // 주의: React synthetic event는 비동기 콜백에서 재사용되므로
+  // RAF 콜백에서는 scrollContainerRef를 직접 사용
   const handleScroll = useMemo(() => {
-    return (e: UIEvent<HTMLDivElement>) => {
+    return (_e: UIEvent<HTMLDivElement>) => {
       if (rafPending.current) return;
       rafPending.current = true;
 
       requestAnimationFrame(() => {
         rafPending.current = false;
-        handleScrollRaw(e);
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        const currentScrollTop = container.scrollTop;
+
+        // 스크롤 방향 감지 (작은 움직임 무시: 5px 이상 차이만)
+        const scrollDelta = currentScrollTop - lastScrollTop.current;
+        if (Math.abs(scrollDelta) > 5) {
+          scrollDirectionUp.current = scrollDelta < 0;
+          lastScrollTop.current = currentScrollTop;
+        }
+
+        setScrollTop(currentScrollTop);
+
+        // 스크롤 가능 영역이 충분한지 체크
+        const scrollableHeight = container.scrollHeight - container.clientHeight;
+        if (scrollableHeight < threshold * 2) {
+          if (prevCollapsed.current) {
+            prevCollapsed.current = false;
+            setIsCollapsed(false);
+            onExpand?.();
+          }
+          return;
+        }
+
+        // 맨 위 근처면 무조건 확장 (10px 이하)
+        if (currentScrollTop <= 10) {
+          if (prevCollapsed.current) {
+            prevCollapsed.current = false;
+            setIsCollapsed(false);
+            onExpand?.();
+          }
+          return;
+        }
+
+        // 축소/확장 판단
+        let shouldCollapse = prevCollapsed.current;
+
+        if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current) {
+          shouldCollapse = true;
+        } else if (prevCollapsed.current && scrollDirectionUp.current && currentScrollTop < threshold / 2) {
+          shouldCollapse = false;
+        }
+
+        if (shouldCollapse !== prevCollapsed.current) {
+          prevCollapsed.current = shouldCollapse;
+          setIsCollapsed(shouldCollapse);
+
+          if (shouldCollapse) {
+            onCollapse?.();
+          } else {
+            onExpand?.();
+          }
+        }
       });
     };
-  }, [handleScrollRaw]);
+  }, [threshold, onCollapse, onExpand]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
