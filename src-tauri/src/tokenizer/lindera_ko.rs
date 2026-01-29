@@ -79,6 +79,49 @@ impl LinderaKoTokenizer {
     fn contains_korean(text: &str) -> bool {
         text.chars().any(|c| c >= '\u{AC00}' && c <= '\u{D7AF}')
     }
+
+    /// 숫자+한글 조합 토큰 추출 (예: "1종", "2차", "3분기")
+    /// 형태소 분석기가 "1종" → "1" + "종"으로 쪼개는 것 방지
+    fn extract_number_korean_tokens(text: &str) -> Vec<String> {
+        let mut tokens = Vec::new();
+        let mut current = String::new();
+        let mut has_number = false;
+        let mut has_korean = false;
+
+        for c in text.chars() {
+            if c.is_ascii_digit() {
+                if has_korean && !current.is_empty() {
+                    // 한글 뒤에 숫자가 오면 (예: "종1") - 저장하고 새로 시작
+                    if has_number {
+                        tokens.push(current.clone());
+                    }
+                    current.clear();
+                    has_korean = false;
+                }
+                current.push(c);
+                has_number = true;
+            } else if c >= '\u{AC00}' && c <= '\u{D7AF}' {
+                // 한글
+                current.push(c);
+                has_korean = true;
+            } else {
+                // 공백/특수문자 - 현재 토큰 저장
+                if has_number && has_korean && current.len() >= 2 {
+                    tokens.push(current.clone());
+                }
+                current.clear();
+                has_number = false;
+                has_korean = false;
+            }
+        }
+
+        // 마지막 토큰 처리
+        if has_number && has_korean && current.len() >= 2 {
+            tokens.push(current);
+        }
+
+        tokens
+    }
 }
 
 impl TextTokenizer for LinderaKoTokenizer {
@@ -96,23 +139,40 @@ impl TextTokenizer for LinderaKoTokenizer {
     }
 
     fn tokenize_query(&self, query: &str) -> String {
-        let tokens = self.tokenize(query);
+        // 1. 숫자+한글 조합 보존 (예: "1종", "2차", "3분기")
+        let preserved_tokens = Self::extract_number_korean_tokens(query);
+
+        // 2. 형태소 분석
+        let mut tokens = self.tokenize(query);
+
+        // 3. 숫자+한글 조합 토큰 추가 (중복 제거)
+        for token in preserved_tokens {
+            if !tokens.contains(&token) {
+                tokens.push(token);
+            }
+        }
 
         if tokens.is_empty() {
             return String::new();
         }
 
-        // 각 토큰에 FTS5 prefix match 적용
-        // "사용했습니다" → "\"사용\"* \"했\"* \"습니다\"*"
-        tokens
+        // 4. OR 기반 검색 쿼리 생성
+        // "분기 1종 홍보" → ("분기"* OR "1종"* OR "홍보"*)
+        let term_queries: Vec<String> = tokens
             .iter()
             .map(|t| {
-                // 특수문자 이스케이프
                 let escaped = t.replace('"', "\"\"");
                 format!("\"{}\"*", escaped)
             })
-            .collect::<Vec<_>>()
-            .join(" ")
+            .collect();
+
+        // 단일 토큰이면 OR 불필요
+        if term_queries.len() == 1 {
+            return term_queries[0].clone();
+        }
+
+        // 여러 토큰이면 OR로 연결
+        format!("({})", term_queries.join(" OR "))
     }
 }
 
@@ -173,5 +233,39 @@ mod tests {
 
         println!("Mixed tokens: {:?}", tokens);
         assert!(tokens.contains(&"English".to_string()));
+    }
+
+    #[test]
+    fn test_number_korean_extraction() {
+        // 숫자+한글 조합 추출 테스트
+        let tokens = LinderaKoTokenizer::extract_number_korean_tokens("1종 2차 3분기");
+        println!("Number+Korean tokens: {:?}", tokens);
+        assert!(tokens.contains(&"1종".to_string()));
+        assert!(tokens.contains(&"2차".to_string()));
+        assert!(tokens.contains(&"3분기".to_string()));
+    }
+
+    #[test]
+    fn test_or_query_generation() {
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("분기 1종 홍보");
+
+        println!("OR Query: {}", query);
+        // OR 기반 쿼리 생성 확인
+        assert!(query.contains(" OR "));
+        assert!(query.starts_with('('));
+        assert!(query.ends_with(')'));
+        // 1종이 보존되어야 함
+        assert!(query.contains("1종"));
+    }
+
+    #[test]
+    fn test_single_token_no_or() {
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("검색");
+
+        println!("Single token query: {}", query);
+        // 단일 토큰이면 OR 없어야 함
+        assert!(!query.contains(" OR "));
     }
 }
