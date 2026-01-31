@@ -17,6 +17,9 @@ pub enum VectorError {
 
     #[error("Vector not found: {0}")]
     NotFound(i64),
+
+    #[error("Lock poisoned - another thread panicked while holding the lock")]
+    LockPoisoned,
 }
 
 /// 벡터 검색 결과
@@ -74,8 +77,16 @@ impl VectorIndex {
         }
 
         // 초기화 상태 로그
-        let index_size = vector_index.index.read().expect("index lock poisoned").size();
-        let map_size = vector_index.id_map.read().expect("id_map lock poisoned").len();
+        let index_size = vector_index
+            .index
+            .read()
+            .map_err(|_| VectorError::LockPoisoned)?
+            .size();
+        let map_size = vector_index
+            .id_map
+            .read()
+            .map_err(|_| VectorError::LockPoisoned)?
+            .len();
         tracing::info!(
             "VectorIndex initialized: index_size={}, id_map_count={}",
             index_size,
@@ -104,13 +115,21 @@ impl VectorIndex {
         }
 
         // 이미 존재하면 먼저 삭제
-        if self.id_map.read().expect("id_map lock poisoned").contains_key(&chunk_id) {
+        if self
+            .id_map
+            .read()
+            .map_err(|_| VectorError::LockPoisoned)?
+            .contains_key(&chunk_id)
+        {
             self.remove(chunk_id)?;
         }
 
         // 새 key 할당
         let key = {
-            let mut next = self.next_key.write().expect("next_key lock poisoned");
+            let mut next = self
+                .next_key
+                .write()
+                .map_err(|_| VectorError::LockPoisoned)?;
             let k = *next;
             *next += 1;
             k
@@ -118,7 +137,7 @@ impl VectorIndex {
 
         // usearch 인덱스에 추가 (쓰기 락 필요)
         {
-            let index = self.index.write().expect("index lock poisoned");
+            let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
 
             // 용량 확보 (필요시 확장)
             let current_size = index.size();
@@ -137,8 +156,14 @@ impl VectorIndex {
         }
 
         // 매핑 저장
-        self.id_map.write().expect("id_map lock poisoned").insert(chunk_id, key);
-        self.key_map.write().expect("key_map lock poisoned").insert(key, chunk_id);
+        self.id_map
+            .write()
+            .map_err(|_| VectorError::LockPoisoned)?
+            .insert(chunk_id, key);
+        self.key_map
+            .write()
+            .map_err(|_| VectorError::LockPoisoned)?
+            .insert(key, chunk_id);
 
         Ok(())
     }
@@ -146,7 +171,7 @@ impl VectorIndex {
     /// 벡터 삭제
     pub fn remove(&self, chunk_id: i64) -> Result<(), VectorError> {
         let key = {
-            let id_map = self.id_map.read().expect("id_map lock poisoned");
+            let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
             id_map.get(&chunk_id).copied()
         };
 
@@ -154,13 +179,19 @@ impl VectorIndex {
             // usearch에서 삭제 (mark as removed)
             self.index
                 .write()
-                .expect("index lock poisoned")
+                .map_err(|_| VectorError::LockPoisoned)?
                 .remove(key)
                 .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
             // 매핑 삭제
-            self.id_map.write().expect("id_map lock poisoned").remove(&chunk_id);
-            self.key_map.write().expect("key_map lock poisoned").remove(&key);
+            self.id_map
+                .write()
+                .map_err(|_| VectorError::LockPoisoned)?
+                .remove(&chunk_id);
+            self.key_map
+                .write()
+                .map_err(|_| VectorError::LockPoisoned)?
+                .remove(&key);
         }
 
         Ok(())
@@ -170,7 +201,7 @@ impl VectorIndex {
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<VectorResult>, VectorError> {
         // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
         let results = {
-            let index = self.index.read().expect("index lock poisoned");
+            let index = self.index.read().map_err(|_| VectorError::LockPoisoned)?;
             if index.size() == 0 {
                 return Ok(vec![]);
             }
@@ -179,7 +210,7 @@ impl VectorIndex {
                 .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?
         };
 
-        let key_map = self.key_map.read().expect("key_map lock poisoned");
+        let key_map = self.key_map.read().map_err(|_| VectorError::LockPoisoned)?;
         let mut vector_results = Vec::with_capacity(results.keys.len());
 
         for (key, distance) in results.keys.iter().zip(results.distances.iter()) {
@@ -202,14 +233,17 @@ impl VectorIndex {
         let path_str = self.path.to_string_lossy();
         self.index
             .write()
-            .expect("index lock poisoned")
+            .map_err(|_| VectorError::LockPoisoned)?
             .save(&path_str)
             .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
         // 매핑 파일 저장
         let map_path = self.path.with_extension("map");
-        let id_map = self.id_map.read().expect("id_map lock poisoned");
-        let next_key = *self.next_key.read().expect("next_key lock poisoned");
+        let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
+        let next_key = *self
+            .next_key
+            .read()
+            .map_err(|_| VectorError::LockPoisoned)?;
 
         let map_data = serde_json::json!({
             "id_map": id_map.iter().collect::<Vec<_>>(),
@@ -227,7 +261,7 @@ impl VectorIndex {
     fn load(&mut self) -> Result<(), VectorError> {
         // 인덱스 파일 로드 (초기화 시에만 호출, &mut self)
         let path_str = self.path.to_string_lossy();
-        let index = self.index.write().expect("index lock poisoned");
+        let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
         index
             .load(&path_str)
             .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
@@ -249,8 +283,8 @@ impl VectorIndex {
             };
 
             if let Some(pairs) = map_data.get("id_map").and_then(|v| v.as_array()) {
-                let mut id_map = self.id_map.write().expect("id_map lock poisoned");
-                let mut key_map = self.key_map.write().expect("key_map lock poisoned");
+                let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
+                let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
 
                 for pair in pairs {
                     if let (Some(chunk_id), Some(key)) = (
@@ -266,7 +300,10 @@ impl VectorIndex {
             }
 
             if let Some(next) = map_data.get("next_key").and_then(|v| v.as_u64()) {
-                *self.next_key.write().expect("next_key lock poisoned") = next;
+                *self
+                    .next_key
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)? = next;
             }
         } else {
             tracing::warn!(
@@ -280,25 +317,32 @@ impl VectorIndex {
 
     /// 인덱스 크기 (usearch에 저장된 벡터 수)
     pub fn size(&self) -> usize {
-        self.index.read().expect("index lock poisoned").size()
+        self.index.read().map(|i| i.size()).unwrap_or(0)
     }
 
     /// 매핑 크기 (chunk_id 매핑 수)
     pub fn id_map_size(&self) -> usize {
-        self.id_map.read().expect("id_map lock poisoned").len()
+        self.id_map.read().map(|m| m.len()).unwrap_or(0)
     }
 
     /// 인덱스 용량
     pub fn capacity(&self) -> usize {
-        self.index.read().expect("index lock poisoned").capacity()
+        self.index.read().map(|i| i.capacity()).unwrap_or(0)
     }
 
     /// 인덱스 초기화 (모든 데이터 삭제)
+    /// Note: best-effort - lock 실패 시 조용히 무시
     pub fn clear(&self) {
         // 매핑 초기화
-        self.id_map.write().expect("id_map lock poisoned").clear();
-        self.key_map.write().expect("key_map lock poisoned").clear();
-        *self.next_key.write().expect("next_key lock poisoned") = 0;
+        if let Ok(mut id_map) = self.id_map.write() {
+            id_map.clear();
+        }
+        if let Ok(mut key_map) = self.key_map.write() {
+            key_map.clear();
+        }
+        if let Ok(mut next_key) = self.next_key.write() {
+            *next_key = 0;
+        }
 
         // 새 인덱스로 교체
         let options = IndexOptions {
@@ -312,7 +356,9 @@ impl VectorIndex {
         };
 
         if let Ok(new_index) = Index::new(&options) {
-            *self.index.write().expect("index lock poisoned") = new_index;
+            if let Ok(mut index) = self.index.write() {
+                *index = new_index;
+            }
         }
 
         tracing::info!("Vector index cleared");

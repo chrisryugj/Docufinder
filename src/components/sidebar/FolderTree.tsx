@@ -54,9 +54,14 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
   // 폴더 통계 조회
   useEffect(() => {
+    if (folders.length === 0) return;
+
+    let isMounted = true;
+
     const fetchStats = async () => {
       const stats: Record<string, FolderStats> = {};
       for (const folder of folders) {
+        if (!isMounted) return;
         try {
           const result = await invoke<FolderStats>("get_folder_stats", {
             path: folder,
@@ -66,13 +71,17 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           console.error(`Failed to get stats for ${folder}:`, e);
         }
       }
-      setFolderStats(stats);
+      if (isMounted) {
+        setFolderStats(stats);
+      }
     };
 
-    if (folders.length > 0) {
-      fetchStats();
-      fetchFolderInfo();
-    }
+    fetchStats();
+    fetchFolderInfo();
+
+    return () => {
+      isMounted = false;
+    };
   }, [folders, fetchFolderInfo]);
 
   // 즐겨찾기 토글 (컨텍스트 메뉴용)
