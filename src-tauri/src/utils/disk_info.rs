@@ -19,11 +19,6 @@ impl DiskType {
     pub fn is_hdd(&self) -> bool {
         matches!(self, DiskType::Hdd | DiskType::Unknown)
     }
-
-    /// SSD인지 여부
-    pub fn is_ssd(&self) -> bool {
-        matches!(self, DiskType::Ssd)
-    }
 }
 
 /// 경로에서 드라이브 문자 추출 (Windows)
@@ -107,8 +102,6 @@ pub struct DiskSettings {
     pub throttle_ms: u64,
     /// 병렬 파싱 스레드 수 (0 = 비활성화)
     pub parallel_threads: usize,
-    /// 배치 크기
-    pub batch_size: usize,
 }
 
 impl DiskSettings {
@@ -118,12 +111,10 @@ impl DiskSettings {
             DiskType::Ssd => Self {
                 throttle_ms: 0,
                 parallel_threads: num_cpus::get().min(4),
-                batch_size: 100,
             },
             DiskType::Hdd | DiskType::Unknown => Self {
                 throttle_ms: 50,  // HDD는 랜덤 I/O 부하 방지
                 parallel_threads: 1,  // 순차 처리
-                batch_size: 20,
             },
         }
     }

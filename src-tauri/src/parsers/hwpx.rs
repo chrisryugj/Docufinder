@@ -487,7 +487,6 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                             has_page_break_before: pending_page_break,
                         });
                         total_char_offset += para_text.chars().count() + 1;
-                        pending_page_break = false;
                         split_paragraph = true;
                     }
 
