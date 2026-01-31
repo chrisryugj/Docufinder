@@ -2,10 +2,14 @@
 //!
 //! 메타데이터만 스캔된 파일들을 유휴 시간에 순차적으로 파싱.
 //! HDD 환경에서 랜덤 I/O를 최소화하고, 사용자 활동 시 일시정지.
+//!
+//! NOTE: 현재 미사용 (향후 백그라운드 파싱 기능 통합 예정)
+
+#![allow(dead_code)]
 
 use crate::db;
 use crate::parsers::parse_file;
-use crate::utils::disk_info::{detect_disk_type, DiskType};
+use crate::utils::disk_info::detect_disk_type;
 use crate::utils::idle_detector;
 
 use rusqlite::Connection;

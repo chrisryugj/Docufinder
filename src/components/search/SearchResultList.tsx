@@ -84,8 +84,18 @@ export function SearchResultList({
   // 아이템 높이 추정 (컴팩트 vs 기본)
   const estimatedItemHeight = isCompact ? 80 : 120;
 
-  // 가상화 설정 (50개 이상 + 외부 스크롤 컨테이너 있을 때 적용)
-  const shouldVirtualize = results.length >= 50 && scrollContainerRef?.current != null;
+  // 가상화 설정 - scrollContainerRef.current가 마운트 후 설정되므로
+  // 첫 렌더링에서는 null일 수 있어 useState로 추적
+  const [scrollElementReady, setScrollElementReady] = useState(false);
+
+  useEffect(() => {
+    if (scrollContainerRef?.current && !scrollElementReady) {
+      setScrollElementReady(true);
+    }
+  }, [scrollContainerRef, scrollElementReady]);
+
+  // 파일명 결과가 있으면 가상화 비활성화 (offset 계산 문제 방지)
+  const shouldVirtualize = results.length >= 50 && scrollElementReady && filenameResults.length === 0;
 
   const virtualizer = useVirtualizer({
     count: results.length,

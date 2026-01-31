@@ -613,6 +613,8 @@ pub fn upsert_file_fts_only(
 
 /// 파일 메타데이터만 저장 (FTS 인덱싱 없이, 파일명 검색용)
 /// scan_metadata_only()에서 사용
+/// NOTE: 현재 미사용 (scan_metadata_only가 미사용)
+#[allow(dead_code)]
 pub fn insert_file_metadata_only(
     conn: &Connection,
     path: &str,
@@ -671,6 +673,34 @@ pub fn get_pending_vector_chunks(conn: &Connection, limit: usize) -> Result<Vec<
     )?;
 
     let results = stmt.query_map(params![limit as i64], |row| {
+        Ok(PendingChunk {
+            chunk_id: row.get(0)?,
+            file_id: row.get(1)?,
+            content: row.get(2)?,
+            file_path: row.get(3)?,
+        })
+    })?;
+
+    results.collect()
+}
+
+/// 특정 파일의 pending 청크 조회 (DB 레벨 필터링)
+pub fn get_pending_vector_chunks_for_file(
+    conn: &Connection,
+    file_id: i64,
+    limit: usize,
+) -> Result<Vec<PendingChunk>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, c.file_id, fts.content, f.path
+         FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         JOIN chunks_fts fts ON fts.rowid = c.id
+         WHERE f.id = ? AND f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL
+         ORDER BY c.chunk_index
+         LIMIT ?"
+    )?;
+
+    let results = stmt.query_map(params![file_id, limit as i64], |row| {
         Ok(PendingChunk {
             chunk_id: row.get(0)?,
             file_id: row.get(1)?,

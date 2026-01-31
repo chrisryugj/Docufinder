@@ -375,17 +375,14 @@ fn run_prefetch_thread(
             break;
         }
 
-        // 해당 파일의 청크 로드
-        let chunks = match db::get_pending_vector_chunks(&conn, EMBEDDING_BATCH_SIZE * 10) {
+        // 해당 파일의 청크 로드 (DB 레벨 필터링)
+        let file_chunks = match db::get_pending_vector_chunks_for_file(&conn, file_id, EMBEDDING_BATCH_SIZE * 10) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!("[Prefetch] Failed to get chunks: {}", e);
+                tracing::warn!("[Prefetch] Failed to get chunks for file {}: {}", file_id, e);
                 continue;
             }
         };
-
-        // 해당 파일의 청크만 필터링
-        let file_chunks: Vec<_> = chunks.into_iter().filter(|c| c.file_id == file_id).collect();
 
         if file_chunks.is_empty() {
             continue;

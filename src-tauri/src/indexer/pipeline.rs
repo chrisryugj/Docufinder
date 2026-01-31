@@ -25,6 +25,8 @@ const CHANNEL_BUFFER_SIZE: usize = 64;
 const TRANSACTION_BATCH_SIZE: usize = 50;
 
 /// 단일 파일 인덱싱 (FTS + 벡터)
+/// NOTE: 현재 미사용 (index_folder_streaming 사용 중)
+#[allow(dead_code)]
 pub fn index_file(
     conn: &Connection,
     path: &Path,
@@ -259,6 +261,8 @@ fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexEr
 
 /// 파싱된 문서를 DB에 저장 (FTS + 벡터) - 공통 로직
 /// 반환: (chunks_count, vectors_count)
+/// NOTE: index_file에서만 사용 (현재 미사용)
+#[allow(dead_code)]
 fn save_document_to_db(
     conn: &Connection,
     path: &Path,
@@ -402,7 +406,19 @@ pub fn index_folder_fts_only(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
+    use crate::utils::disk_info::{detect_disk_type, DiskSettings};
+
     let folder_str = folder_path.to_string_lossy().to_string();
+
+    // 디스크 유형 감지 및 설정 적용
+    let disk_type = detect_disk_type(folder_path);
+    let disk_settings = DiskSettings::for_disk_type(disk_type);
+    tracing::info!(
+        "[FTS] Disk type: {:?}, threads: {}, throttle: {}ms",
+        disk_type,
+        disk_settings.parallel_threads,
+        disk_settings.throttle_ms
+    );
 
     // ⚡ 진행률 throttling (100ms 또는 10파일마다) - UI 렌더링 부하 감소
     use std::cell::Cell;
@@ -458,33 +474,48 @@ pub fn index_folder_fts_only(
         });
     }
 
-    // 2. 스트리밍 파이프라인
+    // 2. 스트리밍 파이프라인 (디스크 유형 기반 병렬화)
     let (sender, receiver) = bounded::<ParseResult>(CHANNEL_BUFFER_SIZE);
     let cancel_flag_producer = cancel_flag.clone();
+    let parallel_threads = disk_settings.parallel_threads;
+    let throttle_ms = disk_settings.throttle_ms;
 
     let producer_handle = std::thread::spawn(move || {
-        let _ = file_paths.par_iter().try_for_each(|path| {
-            if cancel_flag_producer.load(Ordering::Relaxed) {
-                return Err(());
-            }
+        // 커스텀 ThreadPool (디스크 유형에 따른 스레드 수)
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(parallel_threads)
+            .build()
+            .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
 
-            let path_clone = path.clone();
-            let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
-                Ok(Ok(doc)) => ParseResult::Success {
-                    path: path.clone(),
-                    document: doc,
-                },
-                Ok(Err(e)) => ParseResult::Failure {
-                    path: path.clone(),
-                    error: e.to_string(),
-                },
-                Err(_) => ParseResult::Failure {
-                    path: path.clone(),
-                    error: "Parser panicked".to_string(),
-                },
-            };
+        pool.install(|| {
+            let _ = file_paths.par_iter().try_for_each(|path| {
+                if cancel_flag_producer.load(Ordering::Relaxed) {
+                    return Err(());
+                }
 
-            sender.send(result).map_err(|_| ())
+                let path_clone = path.clone();
+                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
+                    Ok(Ok(doc)) => ParseResult::Success {
+                        path: path.clone(),
+                        document: doc,
+                    },
+                    Ok(Err(e)) => ParseResult::Failure {
+                        path: path.clone(),
+                        error: e.to_string(),
+                    },
+                    Err(_) => ParseResult::Failure {
+                        path: path.clone(),
+                        error: "Parser panicked".to_string(),
+                    },
+                };
+
+                // HDD throttle: I/O 부하 감소
+                if throttle_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(throttle_ms));
+                }
+
+                sender.send(result).map_err(|_| ())
+            });
         });
     });
 
@@ -665,8 +696,10 @@ fn save_document_to_db_fts_only_no_tx(
 }
 
 // ==================== Phase 2: 메타데이터 전용 스캔 ====================
+// NOTE: 현재 미사용 (향후 백그라운드 파싱 통합 예정)
 
 /// 메타데이터 스캔 진행률
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MetadataScanProgress {
     pub phase: String,

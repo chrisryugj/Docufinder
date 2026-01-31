@@ -89,7 +89,9 @@ export const SearchResultItem = memo(function SearchResultItem({
     };
   }, [contextMenu.isOpen, closeContextMenu]);
   // ⚡ full_content 대신 snippet/content_preview 사용 (성능 최적화)
-  const effectiveFullText = result.full_content || result.snippet || result.content_preview;
+  // snippet에서 [[HL]] 마커 제거 (펼친 상태에서 태그 노출 방지)
+  const cleanSnippet = result.snippet?.replace(/\[\[HL\]\]/g, '').replace(/\[\[\/HL\]\]/g, '');
+  const effectiveFullText = result.full_content || cleanSnippet || result.content_preview;
   const expandedView = isExpanded
     ? buildExpandedContext(effectiveFullText, result.highlight_ranges, result.snippet)
     : null;

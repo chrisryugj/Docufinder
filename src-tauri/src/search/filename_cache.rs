@@ -151,6 +151,8 @@ impl Default for FilenameCache {
 }
 
 /// 검색 결과 (filename.rs와 호환)
+/// NOTE: 현재 미사용 (SearchResponse 직접 사용 중)
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FilenameSearchResult {
     pub file_id: i64,

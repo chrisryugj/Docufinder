@@ -8,6 +8,7 @@ use crate::constants::SUPPORTED_EXTENSIONS;
 use crate::db;
 use crate::embedder::Embedder;
 use crate::indexer::pipeline;
+use crate::search::filename_cache::{FilenameCache, FilenameEntry};
 use crate::search::vector::VectorIndex;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
@@ -31,6 +32,8 @@ pub struct IndexContext {
     pub db_path: PathBuf,
     pub embedder: Option<Arc<Embedder>>,
     pub vector_index: Option<Arc<VectorIndex>>,
+    /// 파일명 캐시 (증분 인덱싱 시 동기화)
+    pub filename_cache: Arc<FilenameCache>,
 }
 
 impl WatchManager {
@@ -204,10 +207,15 @@ impl WatchManager {
 
         for path in pending.drain() {
             if !path.exists() {
-                // 파일이 삭제된 경우 - 벡터 인덱스와 DB에서 삭제
+                // 파일이 삭제된 경우 - 벡터 인덱스, DB, FilenameCache에서 삭제
                 let path_str = path.to_string_lossy().to_string();
 
-                // 1. 벡터 인덱스에서 삭제 (DB 삭제 전에 chunk_ids 조회 필요)
+                // 1. file_id 조회 (캐시 삭제용)
+                let file_id: Option<i64> = conn
+                    .query_row("SELECT id FROM files WHERE path = ?", [&path_str], |row| row.get(0))
+                    .ok();
+
+                // 2. 벡터 인덱스에서 삭제 (DB 삭제 전에 chunk_ids 조회 필요)
                 if let Some(vi) = &ctx.vector_index {
                     if let Ok(chunk_ids) = db::get_chunk_ids_for_path(&conn, &path_str) {
                         for chunk_id in chunk_ids {
@@ -218,11 +226,15 @@ impl WatchManager {
                     }
                 }
 
-                // 2. DB에서 삭제
+                // 3. DB에서 삭제
                 if let Err(e) = db::delete_file(&conn, &path_str) {
                     tracing::warn!("Failed to delete file from DB: {}", e);
                 } else {
-                    tracing::info!("Deleted from index: {}", path_str);
+                    // 4. FilenameCache에서 삭제
+                    if let Some(fid) = file_id {
+                        ctx.filename_cache.remove(fid);
+                    }
+                    tracing::info!("Deleted from index + cache: {}", path_str);
                 }
                 continue;
             }
@@ -230,8 +242,12 @@ impl WatchManager {
             // 파일 인덱싱 (FTS만, 벡터는 백그라운드 워커가 처리)
             match pipeline::index_file_fts_only(&conn, &path) {
                 Ok(result) => {
+                    // FilenameCache 갱신 - DB에서 파일 정보 조회
+                    if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &result.file_path) {
+                        ctx.filename_cache.upsert(entry);
+                    }
                     tracing::info!(
-                        "[FTS] Indexed: {} ({} chunks)",
+                        "[FTS] Indexed + cache updated: {} ({} chunks)",
                         result.file_path,
                         result.chunks_count
                     );
@@ -242,6 +258,30 @@ impl WatchManager {
             }
         }
         // 벡터는 vector_worker가 백그라운드에서 처리 (pending 상태)
+    }
+
+    /// DB에서 파일 정보 조회하여 FilenameEntry 생성
+    fn get_filename_entry_from_db(
+        conn: &rusqlite::Connection,
+        path: &str,
+    ) -> Result<FilenameEntry, rusqlite::Error> {
+        conn.query_row(
+            "SELECT id, path, name, file_type, COALESCE(size, 0), COALESCE(modified_at, 0)
+             FROM files WHERE path = ?",
+            [path],
+            |row| {
+                let name: String = row.get(2)?;
+                Ok(FilenameEntry {
+                    file_id: row.get(0)?,
+                    path: row.get(1)?,
+                    name: name.clone(),
+                    name_lower: name.to_lowercase(),
+                    file_type: row.get(3)?,
+                    size: row.get(4)?,
+                    modified_at: row.get(5)?,
+                })
+            },
+        )
     }
 }
 

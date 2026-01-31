@@ -181,6 +181,7 @@ impl AppContainer {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
                     vector_index: self.get_vector_index().ok(),
+                    filename_cache: self.filename_cache.clone(),
                 };
 
                 WatchManager::new(ctx)

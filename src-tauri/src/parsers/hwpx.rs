@@ -12,10 +12,16 @@ use zip::ZipArchive;
 struct PageSettings {
     /// 페이지 높이 (hwpunit)
     height: u32,
+    /// 페이지 너비 (hwpunit)
+    width: u32,
     /// 상단 여백 (hwpunit)
     top_margin: u32,
     /// 하단 여백 (hwpunit)
     bottom_margin: u32,
+    /// 좌측 여백 (hwpunit)
+    left_margin: u32,
+    /// 우측 여백 (hwpunit)
+    right_margin: u32,
     /// 머리말 영역 (hwpunit)
     header_offset: u32,
     /// 꼬리말 영역 (hwpunit)
@@ -26,9 +32,12 @@ impl Default for PageSettings {
     fn default() -> Self {
         // A4 기본값 (한글 기본 설정)
         Self {
-            height: 84188,      // 약 297mm (A4)
-            top_margin: 5668,   // 약 20mm
+            height: 84188,       // 약 297mm (A4)
+            width: 59528,        // 약 210mm (A4)
+            top_margin: 5668,    // 약 20mm
             bottom_margin: 4252, // 약 15mm
+            left_margin: 4252,   // 약 15mm
+            right_margin: 4252,  // 약 15mm
             header_offset: 4252,
             footer_offset: 4252,
         }
@@ -53,59 +62,147 @@ impl Default for DefaultStyle {
     }
 }
 
-/// 페이지 계산기
-#[allow(dead_code)]
-struct PageCalculator {
-    /// 한 페이지에 들어가는 대략적인 글자 수
-    chars_per_page: usize,
-    /// 한 줄에 들어가는 대략적인 글자 수
-    chars_per_line: usize,
-    /// 한 페이지 줄 수
-    lines_per_page: usize,
+/// 문단 노드 (구조적 파싱용)
+#[derive(Debug, Clone)]
+struct ParagraphNode {
+    /// 문단 텍스트
+    text: String,
+    /// 전체 텍스트 내 시작 오프셋 (글자 수 기준)
+    char_offset: usize,
+    /// 이 문단 앞에 강제 쪽 나눔이 있는지
+    has_page_break_before: bool,
 }
 
-impl PageCalculator {
+/// 가상 레이아웃 시뮬레이터 (Y좌표 추적 기반)
+struct LayoutSimulator {
+    /// 현재 페이지 번호 (1-based)
+    current_page: usize,
+    /// 현재 Y 위치 (hwpunit)
+    current_y: f32,
+    /// 페이지 유효 높이 (hwpunit)
+    max_height: f32,
+    /// 페이지 유효 너비 (hwpunit)
+    effective_width: f32,
+    /// 줄 높이 (hwpunit)
+    line_height: f32,
+    /// 글자 크기 (hwpunit)
+    font_size: f32,
+}
+
+impl LayoutSimulator {
     fn new(page: &PageSettings, style: &DefaultStyle) -> Self {
         // 유효 높이 = 페이지 높이 - 상단여백 - 하단여백 - 머리말 - 꼬리말
-        let effective_height = page.height
+        let max_height = page
+            .height
             .saturating_sub(page.top_margin)
             .saturating_sub(page.bottom_margin)
             .saturating_sub(page.header_offset)
-            .saturating_sub(page.footer_offset);
+            .saturating_sub(page.footer_offset) as f32;
 
-        // 한 줄 높이 = 글자크기 × (줄간격 / 100)
-        let line_height = (style.font_size * style.line_spacing) / 100;
-        let line_height = line_height.max(100); // 최소 1pt
+        // 유효 너비 = 페이지 너비 - 좌측여백 - 우측여백
+        let effective_width = page
+            .width
+            .saturating_sub(page.left_margin)
+            .saturating_sub(page.right_margin) as f32;
 
-        // 한 페이지 줄 수
-        let lines_per_page = (effective_height / line_height) as usize;
-        let lines_per_page = lines_per_page.max(10); // 최소 10줄
-
-        // 한 줄 글자 수 (A4 기준 약 40자 추정)
-        let chars_per_line = 40_usize;
-
-        // 한 페이지 글자 수
-        let chars_per_page = lines_per_page * chars_per_line;
+        // 줄 높이 = 글자크기 × (줄간격 / 100)
+        let font_size = style.font_size as f32;
+        let line_height = (font_size * style.line_spacing as f32 / 100.0).max(100.0);
 
         Self {
-            chars_per_page,
-            chars_per_line,
-            lines_per_page,
+            current_page: 1,
+            current_y: 0.0,
+            max_height,
+            effective_width,
+            line_height,
+            font_size,
         }
     }
 
-    /// 문자 오프셋으로 페이지 번호 계산 (1-based)
-    fn page_for_offset(&self, char_offset: usize) -> usize {
-        (char_offset / self.chars_per_page) + 1
+    /// 문단 처리 후 해당 문단의 페이지 번호 반환
+    fn process_paragraph(&mut self, para: &ParagraphNode) -> usize {
+        // 1. 강제 쪽 나눔 체크
+        if para.has_page_break_before {
+            self.current_page += 1;
+            self.current_y = 0.0;
+        }
+
+        // 빈 문단은 빈 줄로 처리
+        if para.text.trim().is_empty() {
+            let para_height = self.line_height;
+            if self.current_y + para_height > self.max_height {
+                self.current_page += 1;
+                self.current_y = para_height;
+            } else {
+                self.current_y += para_height;
+            }
+            return self.current_page;
+        }
+
+        // 2. 문단 높이 계산 (가중치 기반 줄 수)
+        let lines = self.estimate_lines(&para.text);
+        let para_height = lines as f32 * self.line_height;
+
+        // 3. 페이지 넘침 체크
+        if self.current_y + para_height > self.max_height {
+            // 문단이 남은 공간보다 큰 경우
+            if para_height > self.max_height {
+                // 문단이 페이지 전체보다 큰 경우 → 여러 페이지에 걸침
+                let remaining_height = self.max_height - self.current_y;
+                let lines_in_current = (remaining_height / self.line_height) as usize;
+                let remaining_lines = lines.saturating_sub(lines_in_current);
+
+                if lines_in_current > 0 {
+                    self.current_y = self.max_height;
+                }
+
+                // 다음 페이지로
+                self.current_page += 1;
+
+                // 남은 줄 수로 추가 페이지 계산
+                let lines_per_page = (self.max_height / self.line_height) as usize;
+                if lines_per_page > 0 && remaining_lines > 0 {
+                    let extra_pages = (remaining_lines.saturating_sub(1)) / lines_per_page;
+                    self.current_page += extra_pages;
+                    self.current_y = ((remaining_lines % lines_per_page) as f32) * self.line_height;
+                    if self.current_y == 0.0 && remaining_lines > 0 {
+                        self.current_y = self.max_height;
+                    }
+                }
+            } else {
+                // 다음 페이지로 넘어감
+                self.current_page += 1;
+                self.current_y = para_height;
+            }
+        } else {
+            self.current_y += para_height;
+        }
+
+        self.current_page
     }
 
-    /// 전체 글자 수로 총 페이지 수 계산
-    fn total_pages(&self, total_chars: usize) -> usize {
-        ((total_chars + self.chars_per_page - 1) / self.chars_per_page).max(1)
+    /// 가중치 기반 줄 수 계산 (한글 2.0, 영문 1.0)
+    fn estimate_lines(&self, text: &str) -> usize {
+        let text_width = calculate_weighted_width(text) * self.font_size * 0.5;
+        let lines = (text_width / self.effective_width).ceil() as usize;
+        lines.max(1) // 최소 1줄
+    }
+
+    /// 현재까지의 총 페이지 수
+    fn total_pages(&self) -> usize {
+        self.current_page
     }
 }
 
-/// HWPX 파일 파싱
+/// 텍스트의 가중치 기반 폭 계산
+/// 한글/한자/전각: 2.0, ASCII: 1.0
+fn calculate_weighted_width(text: &str) -> f32 {
+    text.chars()
+        .map(|c| if c.is_ascii() { 1.0 } else { 2.0 })
+        .sum()
+}
+
+/// HWPX 파일 파싱 (Virtual Layout Simulation 적용)
 /// HWPX는 OASIS ODF 기반 ZIP 포맷
 /// 구조: Contents/section0.xml, section1.xml, ..., Contents/header.xml
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
@@ -116,7 +213,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     // 1회 루프로 header.xml + section*.xml 모두 수집
     let mut header_content: Option<String> = None;
-    let mut sections: BTreeMap<usize, (String, String)> = BTreeMap::new(); // (텍스트, 원본 XML)
+    let mut section_xmls: BTreeMap<usize, String> = BTreeMap::new();
 
     for i in 0..archive.len() {
         let mut file = archive
@@ -143,11 +240,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
             let mut contents = String::new();
             std::io::Read::read_to_string(&mut file, &mut contents)?;
-
-            let section_text = extract_text_from_hwpx_section(&contents)?;
-            if !section_text.is_empty() {
-                sections.insert(section_num, (section_text, contents));
-            }
+            section_xmls.insert(section_num, contents);
         }
     }
 
@@ -157,36 +250,72 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         .map(|c| parse_header_xml(c))
         .unwrap_or_default();
 
-    // 3. 첫 번째 섹션에서 페이지 설정 파싱
-    let page_settings = sections
+    // 첫 번째 섹션에서 페이지 설정 파싱
+    let page_settings = section_xmls
         .values()
         .next()
-        .map(|(_, xml)| parse_page_settings(xml))
+        .map(|xml| parse_page_settings(xml))
         .unwrap_or_default();
 
-    // 4. 페이지 계산기 생성
-    let calculator = PageCalculator::new(&page_settings, &default_style);
+    // 모든 섹션에서 문단 추출 (구조적 파싱)
+    let mut all_paragraphs: Vec<ParagraphNode> = Vec::new();
+    let mut total_char_offset: usize = 0;
+
+    for (section_idx, xml) in &section_xmls {
+        let mut section_paras = extract_paragraphs_from_section(xml)?;
+
+        // 섹션 간 구분: 첫 번째가 아닌 섹션은 페이지 브레이크로 처리
+        if *section_idx > 0 && !section_paras.is_empty() {
+            section_paras[0].has_page_break_before = true;
+        }
+
+        // 오프셋 조정
+        for para in &mut section_paras {
+            para.char_offset += total_char_offset;
+        }
+
+        // 전체 오프셋 업데이트
+        if let Some(last) = section_paras.last() {
+            total_char_offset = last.char_offset + last.text.chars().count() + 1;
+        }
+
+        all_paragraphs.extend(section_paras);
+    }
+
+    // Layout Simulator로 각 문단의 페이지 번호 계산
+    let mut simulator = LayoutSimulator::new(&page_settings, &default_style);
+    let mut para_pages: Vec<usize> = Vec::with_capacity(all_paragraphs.len());
+
+    for para in &all_paragraphs {
+        let page = simulator.process_paragraph(para);
+        para_pages.push(page);
+    }
+
+    let page_count = simulator.total_pages();
 
     tracing::debug!(
-        "HWPX page calc: {}자/페이지, {}줄/페이지, 폰트 {}hwpunit, 줄간격 {}%",
-        calculator.chars_per_page,
-        calculator.lines_per_page,
+        "HWPX layout sim: {} 문단, {} 페이지, 폰트 {}hwpunit, 줄간격 {}%",
+        all_paragraphs.len(),
+        page_count,
         default_style.font_size,
         default_style.line_spacing
     );
 
-    // 5. 전체 텍스트 합치기
-    let mut all_text = String::new();
-    for (_, (section_text, _)) in &sections {
-        if !all_text.is_empty() {
-            all_text.push_str("\n\n");
-        }
-        all_text.push_str(section_text);
-    }
+    // 전체 텍스트 생성
+    let all_text: String = all_paragraphs
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
-    // 6. 페이지 계산 기반 청크 생성
-    let chunks = chunk_text_with_calculator(&all_text, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP, &calculator);
-    let page_count = calculator.total_pages(all_text.chars().count());
+    // 청크 생성 (시뮬레이션 결과 기반)
+    let chunks = chunk_with_paragraph_pages(
+        &all_text,
+        &all_paragraphs,
+        &para_pages,
+        super::DEFAULT_CHUNK_SIZE,
+        super::DEFAULT_CHUNK_OVERLAP,
+    );
 
     if all_text.is_empty() {
         tracing::warn!("HWPX file has no text content: {:?}", path);
@@ -204,24 +333,26 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     })
 }
 
-/// 페이지 계산기 기반 청크 분할 (정확한 페이지 번호)
-/// 메모리 최적화: Vec<char> 대신 바이트 오프셋 매핑 사용
-fn chunk_text_with_calculator(
+/// 문단별 페이지 정보 기반 청크 분할 (Virtual Layout Simulation 결과 활용)
+fn chunk_with_paragraph_pages(
     text: &str,
+    paragraphs: &[ParagraphNode],
+    para_pages: &[usize],
     chunk_size: usize,
     overlap: usize,
-    calculator: &PageCalculator,
 ) -> Vec<DocumentChunk> {
     let mut chunks = Vec::new();
 
-    if text.is_empty() {
+    if text.is_empty() || paragraphs.is_empty() {
         return chunks;
     }
 
-    // 바이트 오프셋만 저장 (Vec<char> 4bytes/char → Vec<usize> 8bytes/char이지만
-    // 실제 문자 데이터 복사 없이 원본 text에서 직접 슬라이싱 가능)
+    // 바이트 오프셋 매핑
     let byte_offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
     let total_len = byte_offsets.len();
+
+    // 문자 오프셋 → 페이지 번호 매핑 생성
+    let char_to_page = CharToPageMap::new(paragraphs, para_pages);
 
     let step = chunk_size.saturating_sub(overlap).max(1);
     let mut start = 0;
@@ -237,15 +368,23 @@ fn chunk_text_with_calculator(
             text.len()
         };
 
-        // 청크 시작 위치 기준 페이지 번호 계산
-        let page_number = calculator.page_for_offset(start);
+        // 청크 범위의 페이지 계산 (시작~끝)
+        let start_page = char_to_page.get(start).unwrap_or(1);
+        let end_page = char_to_page.get(end.saturating_sub(1)).unwrap_or(start_page);
+
+        // location_hint에 페이지 범위 표시
+        let location_hint = if start_page == end_page {
+            format!("페이지 {}", start_page)
+        } else {
+            format!("페이지 {}-{}", start_page, end_page)
+        };
 
         chunks.push(DocumentChunk {
             content: text[byte_start..byte_end].to_string(),
             start_offset: start,
             end_offset: end,
-            page_number: Some(page_number),
-            location_hint: Some(format!("페이지 {}", page_number)),
+            page_number: Some(start_page),
+            location_hint: Some(location_hint),
         });
 
         start += step;
@@ -257,14 +396,60 @@ fn chunk_text_with_calculator(
     chunks
 }
 
-/// HWPX section XML에서 텍스트 추출
-fn extract_text_from_hwpx_section(xml_content: &str) -> Result<String, ParseError> {
+/// 문자 오프셋으로 페이지 번호를 찾는 구조체
+struct CharToPageMap {
+    /// (시작 오프셋, 페이지 번호)
+    ranges: Vec<(usize, usize)>,
+}
+
+impl CharToPageMap {
+    fn new(paragraphs: &[ParagraphNode], para_pages: &[usize]) -> Self {
+        let mut ranges: Vec<(usize, usize)> = paragraphs
+            .iter()
+            .zip(para_pages.iter())
+            .map(|(para, &page)| (para.char_offset, page))
+            .collect();
+
+        // 오프셋 기준 정렬
+        ranges.sort_by_key(|(offset, _)| *offset);
+
+        Self { ranges }
+    }
+
+    /// 문자 오프셋에 해당하는 페이지 번호 반환
+    fn get(&self, char_offset: usize) -> Option<usize> {
+        if self.ranges.is_empty() {
+            return None;
+        }
+
+        // 이진 검색으로 해당 오프셋이 속한 문단 찾기
+        match self
+            .ranges
+            .binary_search_by_key(&char_offset, |(offset, _)| *offset)
+        {
+            Ok(idx) => Some(self.ranges[idx].1),
+            Err(idx) => {
+                if idx == 0 {
+                    Some(self.ranges[0].1)
+                } else {
+                    Some(self.ranges[idx - 1].1)
+                }
+            }
+        }
+    }
+}
+
+/// HWPX section XML에서 문단 단위로 텍스트 추출 (구조적 파싱)
+/// 페이지 브레이크 태그도 감지
+fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNode>, ParseError> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
 
-    let mut text_parts: Vec<String> = Vec::new();
+    let mut paragraphs: Vec<ParagraphNode> = Vec::new();
     let mut current_paragraph = String::new();
     let mut in_text = false;
+    let mut pending_page_break = false;
+    let mut total_char_offset: usize = 0;
 
     loop {
         match reader.read_event() {
@@ -275,6 +460,22 @@ fn extract_text_from_hwpx_section(xml_content: &str) -> Result<String, ParseErro
                 // hp:t 태그 = 텍스트 내용
                 if name == "t" {
                     in_text = true;
+                }
+
+                // 페이지 브레이크 감지
+                if name == "br" || name == "colPr" {
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if (key == "type" || key == "breakType") && val == "page" {
+                            pending_page_break = true;
+                        }
+                    }
+                }
+
+                // secPr (섹션 속성)에서도 페이지 브레이크 가능
+                if name == "secPr" && !paragraphs.is_empty() {
+                    pending_page_break = true;
                 }
             }
             Ok(Event::Text(e)) => {
@@ -293,9 +494,18 @@ fn extract_text_from_hwpx_section(xml_content: &str) -> Result<String, ParseErro
                     in_text = false;
                 }
                 // p 태그 종료 = 문단 끝
-                if name == "p" && !current_paragraph.is_empty() {
-                    text_parts.push(current_paragraph.clone());
-                    current_paragraph.clear();
+                if name == "p" {
+                    let para_text = std::mem::take(&mut current_paragraph);
+
+                    paragraphs.push(ParagraphNode {
+                        text: para_text.clone(),
+                        char_offset: total_char_offset,
+                        has_page_break_before: pending_page_break,
+                    });
+
+                    // 오프셋 업데이트 (문단 텍스트 + 줄바꿈)
+                    total_char_offset += para_text.chars().count() + 1;
+                    pending_page_break = false;
                 }
             }
             Ok(Event::Eof) => break,
@@ -309,10 +519,14 @@ fn extract_text_from_hwpx_section(xml_content: &str) -> Result<String, ParseErro
 
     // 마지막 문단 처리
     if !current_paragraph.is_empty() {
-        text_parts.push(current_paragraph);
+        paragraphs.push(ParagraphNode {
+            text: current_paragraph,
+            char_offset: total_char_offset,
+            has_page_break_before: pending_page_break,
+        });
     }
 
-    Ok(text_parts.join("\n"))
+    Ok(paragraphs)
 }
 
 /// header.xml에서 기본 스타일 파싱
@@ -335,9 +549,11 @@ fn parse_header_xml(xml_content: &str) -> DefaultStyle {
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = std::str::from_utf8(&attr.value).unwrap_or("");
-                        // 기본 스타일 ID 또는 이름으로 판별
-                        if (key == "id" || key == "name") &&
-                           (val == "0" || val.contains("바탕") || val.to_lowercase().contains("normal")) {
+                        if (key == "id" || key == "name")
+                            && (val == "0"
+                                || val.contains("바탕")
+                                || val.to_lowercase().contains("normal"))
+                        {
                             in_default_style = true;
                         }
                     }
@@ -399,15 +615,23 @@ fn parse_page_settings(xml_content: &str) -> PageSettings {
                 let local_name = e.local_name();
                 let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
 
-                // 페이지 속성 태그들
+                // 페이지 크기 태그들
                 if name == "sz" || name == "pSz" || name == "pageSz" {
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = std::str::from_utf8(&attr.value).unwrap_or("");
-                        if key == "h" || key == "height" {
-                            if let Ok(h) = val.parse::<u32>() {
-                                settings.height = h;
+                        match key {
+                            "h" | "height" => {
+                                if let Ok(h) = val.parse::<u32>() {
+                                    settings.height = h;
+                                }
                             }
+                            "w" | "width" => {
+                                if let Ok(w) = val.parse::<u32>() {
+                                    settings.width = w;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -426,6 +650,16 @@ fn parse_page_settings(xml_content: &str) -> PageSettings {
                             "bottom" | "b" => {
                                 if let Ok(v) = val.parse::<u32>() {
                                     settings.bottom_margin = v;
+                                }
+                            }
+                            "left" | "l" => {
+                                if let Ok(v) = val.parse::<u32>() {
+                                    settings.left_margin = v;
+                                }
+                            }
+                            "right" | "r" => {
+                                if let Ok(v) = val.parse::<u32>() {
+                                    settings.right_margin = v;
                                 }
                             }
                             "header" => {

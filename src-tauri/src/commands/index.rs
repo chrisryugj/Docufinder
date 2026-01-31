@@ -99,17 +99,28 @@ pub async fn add_folder(
     // 1. 감시 폴더 등록
     service.add_watched_folder(&path).map_err(ApiError::from)?;
 
-    // 2. FTS 인덱싱
+    // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
+    let metadata_result = service
+        .scan_metadata_only(&canonical_path, include_subfolders, None, max_file_size_mb)
+        .await;
+
+    // 3. FilenameCache 즉시 갱신 (메타데이터 스캔 후)
+    if let Ok(ref meta) = metadata_result {
+        refresh_filename_cache(&state);
+        tracing::info!("FilenameCache ready: {} files (metadata scan)", meta.files_found);
+    }
+
+    // 4. FTS 인덱싱 (느림, 백그라운드처럼 동작하지만 완료 대기)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = service
         .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
         .map_err(ApiError::from)?;
 
-    // 3. 파일 감시 시작
+    // 5. 파일 감시 시작
     start_file_watching(&state, &canonical_path)?;
 
-    // 4. FilenameCache 갱신
+    // 6. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
     // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만

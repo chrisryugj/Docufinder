@@ -6,12 +6,15 @@ use crate::application::dto::indexing::IndexStatus;
 use crate::application::errors::{AppError, AppResult};
 use crate::constants::BLOCKED_PATH_PATTERNS;
 use crate::db;
-use crate::indexer::pipeline::{self, FolderIndexResult, FtsProgressCallback};
+use crate::indexer::pipeline::{self, FolderIndexResult, FtsProgressCallback, MetadataScanProgress, MetadataScanResult};
 use crate::indexer::vector_worker::{VectorIndexingStatus, VectorProgressCallback, VectorWorker};
 use crate::search::vector::VectorIndex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
+
+/// 메타데이터 스캔 콜백 타입
+pub type MetadataProgressCallback = Box<dyn Fn(MetadataScanProgress) + Send + Sync>;
 
 /// 인덱싱 서비스
 pub struct IndexService {
@@ -61,6 +64,39 @@ impl IndexService {
         // blocking 작업으로 실행
         let result = tokio::task::spawn_blocking(move || {
             pipeline::index_folder_fts_only(
+                &conn,
+                &path_buf,
+                include_subfolders,
+                cancel_flag,
+                progress_callback,
+                max_file_size_mb,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Task join failed: {}", e)))?
+        .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+
+        Ok(result)
+    }
+
+    /// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
+    /// 파일명 검색을 위한 빠른 스캔
+    pub async fn scan_metadata_only(
+        &self,
+        path: &Path,
+        include_subfolders: bool,
+        progress_callback: Option<MetadataProgressCallback>,
+        max_file_size_mb: u64,
+    ) -> AppResult<MetadataScanResult> {
+        self.validate_path(path)?;
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
+        let conn = self.get_connection()?;
+        let path_buf = path.to_path_buf();
+        let cancel_flag = self.cancel_flag.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            pipeline::scan_metadata_only(
                 &conn,
                 &path_buf,
                 include_subfolders,

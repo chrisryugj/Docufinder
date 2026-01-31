@@ -2,6 +2,10 @@
 //!
 //! GetLastInputInfo를 사용하여 마지막 입력 이후 경과 시간을 측정.
 //! 백그라운드 파싱 시 사용자 활동 감지하여 일시정지.
+//!
+//! NOTE: 현재 background_parser에서만 사용 (향후 통합 예정)
+
+#![allow(dead_code)]
 
 use std::time::Duration;
 

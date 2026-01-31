@@ -192,9 +192,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             setSearchTime(response.search_time_ms);
           });
         } else {
+          // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
+          const contentPromise = invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery });
+          const filenamePromise = filters.excludeFilename
+            ? Promise.resolve({ results: [], search_time_ms: 0 } as SearchResponse)
+            : invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery });
+
           const [contentResponse, filenameResponse] = await Promise.all([
-            invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }),
-            invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }),
+            contentPromise,
+            filenamePromise,
           ]);
           if (searchIdRef.current !== currentId) return;
           // 캐시 저장
@@ -225,7 +231,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setIsLoading(false);
       }
     },
-    []
+    [filters.excludeFilename]
   );
 
   // IME 상태 설정 (SearchBar에서 호출)
