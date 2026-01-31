@@ -75,18 +75,14 @@ struct ParagraphNode {
 
 /// 가상 레이아웃 시뮬레이터 (Y좌표 추적 기반)
 struct LayoutSimulator {
-    /// 현재 페이지 번호 (1-based)
-    current_page: usize,
     /// 현재 Y 위치 (hwpunit)
     current_y: f32,
     /// 페이지 유효 높이 (hwpunit)
     max_height: f32,
-    /// 페이지 유효 너비 (hwpunit)
-    effective_width: f32,
     /// 줄 높이 (hwpunit)
     line_height: f32,
-    /// 글자 크기 (hwpunit)
-    font_size: f32,
+    /// 한 줄 최대 가중치 유닛 수 (ASCII=1.0, 전각=2.0)
+    max_units_per_line: f32,
 }
 
 impl LayoutSimulator {
@@ -106,100 +102,137 @@ impl LayoutSimulator {
             .saturating_sub(page.right_margin) as f32;
 
         // 줄 높이 = 글자크기 × (줄간격 / 100)
-        let font_size = style.font_size as f32;
-        let line_height = (font_size * style.line_spacing as f32 / 100.0).max(100.0);
+        let font_size = style.font_size.max(100) as f32;
+        let line_height = (font_size * style.line_spacing.max(80) as f32 / 100.0).max(100.0);
+
+        let max_height = max_height.max(line_height);
+        let effective_width = effective_width.max(font_size);
+        let max_units_per_line = (effective_width / (font_size * 0.5)).max(10.0);
 
         Self {
-            current_page: 1,
             current_y: 0.0,
             max_height,
-            effective_width,
             line_height,
-            font_size,
+            max_units_per_line,
         }
     }
 
-    /// 문단 처리 후 해당 문단의 페이지 번호 반환
-    fn process_paragraph(&mut self, para: &ParagraphNode) -> usize {
-        // 1. 강제 쪽 나눔 체크
+    fn layout_paragraph(&mut self, para: &ParagraphNode, page_starts: &mut Vec<usize>) {
         if para.has_page_break_before {
-            self.current_page += 1;
-            self.current_y = 0.0;
+            self.apply_page_break(page_starts, para.char_offset);
         }
 
-        // 빈 문단은 빈 줄로 처리
+        // 빈 문단은 한 줄 처리
         if para.text.trim().is_empty() {
-            let para_height = self.line_height;
-            if self.current_y + para_height > self.max_height {
-                self.current_page += 1;
-                self.current_y = para_height;
-            } else {
-                self.current_y += para_height;
-            }
-            return self.current_page;
+            self.advance_line(page_starts, para.char_offset);
+            return;
         }
 
-        // 2. 문단 높이 계산 (가중치 기반 줄 수)
-        let lines = self.estimate_lines(&para.text);
-        let para_height = lines as f32 * self.line_height;
+        let mut line_units = 0.0_f32;
+        let mut line_start_offset = 0usize;
 
-        // 3. 페이지 넘침 체크
-        if self.current_y + para_height > self.max_height {
-            // 문단이 남은 공간보다 큰 경우
-            if para_height > self.max_height {
-                // 문단이 페이지 전체보다 큰 경우 → 여러 페이지에 걸침
-                let remaining_height = self.max_height - self.current_y;
-                let lines_in_current = (remaining_height / self.line_height) as usize;
-                let remaining_lines = lines.saturating_sub(lines_in_current);
-
-                if lines_in_current > 0 {
-                    self.current_y = self.max_height;
-                }
-
-                // 다음 페이지로
-                self.current_page += 1;
-
-                // 남은 줄 수로 추가 페이지 계산
-                let lines_per_page = (self.max_height / self.line_height) as usize;
-                if lines_per_page > 0 && remaining_lines > 0 {
-                    let extra_pages = (remaining_lines.saturating_sub(1)) / lines_per_page;
-                    self.current_page += extra_pages;
-                    self.current_y = ((remaining_lines % lines_per_page) as f32) * self.line_height;
-                    if self.current_y == 0.0 && remaining_lines > 0 {
-                        self.current_y = self.max_height;
-                    }
-                }
-            } else {
-                // 다음 페이지로 넘어감
-                self.current_page += 1;
-                self.current_y = para_height;
+        for (idx, ch) in para.text.chars().enumerate() {
+            if ch == '\n' {
+                self.advance_line(page_starts, para.char_offset + line_start_offset);
+                line_units = 0.0;
+                line_start_offset = idx + 1;
+                continue;
             }
-        } else {
-            self.current_y += para_height;
+
+            let weight = char_weight_units(ch);
+            if line_units + weight > self.max_units_per_line {
+                self.advance_line(page_starts, para.char_offset + line_start_offset);
+                line_units = weight;
+                line_start_offset = idx;
+            } else {
+                line_units += weight;
+            }
         }
 
-        self.current_page
+        // 마지막 라인 처리
+        self.advance_line(page_starts, para.char_offset + line_start_offset);
     }
 
-    /// 가중치 기반 줄 수 계산 (한글 2.0, 영문 1.0)
-    fn estimate_lines(&self, text: &str) -> usize {
-        let text_width = calculate_weighted_width(text) * self.font_size * 0.5;
-        let lines = (text_width / self.effective_width).ceil() as usize;
-        lines.max(1) // 최소 1줄
+    fn apply_page_break(&mut self, page_starts: &mut Vec<usize>, offset: usize) {
+        if page_starts.last().copied() != Some(offset) {
+            page_starts.push(offset);
+        }
+        self.current_y = 0.0;
     }
 
-    /// 현재까지의 총 페이지 수
+    fn advance_line(&mut self, page_starts: &mut Vec<usize>, line_start_offset: usize) {
+        if self.current_y + self.line_height > self.max_height {
+            self.apply_page_break(page_starts, line_start_offset);
+        }
+        self.current_y += self.line_height;
+    }
+
+}
+
+#[derive(Debug, Clone)]
+struct PageMap {
+    page_starts: Vec<usize>,
+}
+
+impl PageMap {
+    fn empty() -> Self {
+        Self { page_starts: vec![0] }
+    }
+
     fn total_pages(&self) -> usize {
-        self.current_page
+        self.page_starts.len().max(1)
+    }
+
+    fn page_for_offset(&self, char_offset: usize) -> usize {
+        let idx = self.page_starts.partition_point(|&start| start <= char_offset);
+        idx.max(1)
     }
 }
 
-/// 텍스트의 가중치 기반 폭 계산
-/// 한글/한자/전각: 2.0, ASCII: 1.0
-fn calculate_weighted_width(text: &str) -> f32 {
-    text.chars()
-        .map(|c| if c.is_ascii() { 1.0 } else { 2.0 })
-        .sum()
+fn build_page_map(paragraphs: &[ParagraphNode], simulator: &mut LayoutSimulator) -> PageMap {
+    if paragraphs.is_empty() {
+        return PageMap::empty();
+    }
+
+    let mut page_starts = vec![0];
+    for para in paragraphs {
+        simulator.layout_paragraph(para, &mut page_starts);
+    }
+
+    PageMap { page_starts }
+}
+
+/// 문자 가중치 (ASCII=1.0, 전각=2.0)
+fn char_weight_units(ch: char) -> f32 {
+    if is_cjk_or_fullwidth(ch) {
+        2.0
+    } else {
+        1.0
+    }
+}
+
+fn is_cjk_or_fullwidth(ch: char) -> bool {
+    if ch.is_ascii() {
+        return false;
+    }
+
+    let code = ch as u32;
+    matches!(
+        code,
+        0x1100..=0x11FF // Hangul Jamo
+            | 0x2E80..=0x2FFF // CJK Radicals, Kangxi, etc
+            | 0x3000..=0x303F // CJK Symbols & Punctuation
+            | 0x3040..=0x30FF // Hiragana + Katakana
+            | 0x3130..=0x318F // Hangul Compatibility Jamo
+            | 0x31C0..=0x31EF // CJK Strokes
+            | 0x3400..=0x4DBF // CJK Ext A
+            | 0x4E00..=0x9FFF // CJK Unified Ideographs
+            | 0xAC00..=0xD7AF // Hangul Syllables
+            | 0xF900..=0xFAFF // CJK Compatibility Ideographs
+            | 0xFE10..=0xFE6F // CJK Compatibility Forms
+            | 0xFF00..=0xFFEF // Halfwidth/Fullwidth Forms
+            | 0x1F300..=0x1FAFF // Emoji (treat as full-width)
+    )
 }
 
 /// HWPX 파일 파싱 (Virtual Layout Simulation 적용)
@@ -282,16 +315,10 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         all_paragraphs.extend(section_paras);
     }
 
-    // Layout Simulator로 각 문단의 페이지 번호 계산
+    // Layout Simulator로 페이지 맵 생성 (문단 내부 줄 단위 반영)
     let mut simulator = LayoutSimulator::new(&page_settings, &default_style);
-    let mut para_pages: Vec<usize> = Vec::with_capacity(all_paragraphs.len());
-
-    for para in &all_paragraphs {
-        let page = simulator.process_paragraph(para);
-        para_pages.push(page);
-    }
-
-    let page_count = simulator.total_pages();
+    let page_map = build_page_map(&all_paragraphs, &mut simulator);
+    let page_count = page_map.total_pages();
 
     tracing::debug!(
         "HWPX layout sim: {} 문단, {} 페이지, 폰트 {}hwpunit, 줄간격 {}%",
@@ -309,10 +336,9 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         .join("\n");
 
     // 청크 생성 (시뮬레이션 결과 기반)
-    let chunks = chunk_with_paragraph_pages(
+    let chunks = chunk_with_page_map(
         &all_text,
-        &all_paragraphs,
-        &para_pages,
+        &page_map,
         super::DEFAULT_CHUNK_SIZE,
         super::DEFAULT_CHUNK_OVERLAP,
     );
@@ -333,26 +359,22 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     })
 }
 
-/// 문단별 페이지 정보 기반 청크 분할 (Virtual Layout Simulation 결과 활용)
-fn chunk_with_paragraph_pages(
+/// 페이지 맵 기반 청크 분할 (Virtual Layout Simulation 결과 활용)
+fn chunk_with_page_map(
     text: &str,
-    paragraphs: &[ParagraphNode],
-    para_pages: &[usize],
+    page_map: &PageMap,
     chunk_size: usize,
     overlap: usize,
 ) -> Vec<DocumentChunk> {
     let mut chunks = Vec::new();
 
-    if text.is_empty() || paragraphs.is_empty() {
+    if text.is_empty() {
         return chunks;
     }
 
     // 바이트 오프셋 매핑
     let byte_offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
     let total_len = byte_offsets.len();
-
-    // 문자 오프셋 → 페이지 번호 매핑 생성
-    let char_to_page = CharToPageMap::new(paragraphs, para_pages);
 
     let step = chunk_size.saturating_sub(overlap).max(1);
     let mut start = 0;
@@ -369,8 +391,8 @@ fn chunk_with_paragraph_pages(
         };
 
         // 청크 범위의 페이지 계산 (시작~끝)
-        let start_page = char_to_page.get(start).unwrap_or(1);
-        let end_page = char_to_page.get(end.saturating_sub(1)).unwrap_or(start_page);
+        let start_page = page_map.page_for_offset(start);
+        let end_page = page_map.page_for_offset(end.saturating_sub(1));
 
         // location_hint에 페이지 범위 표시
         let location_hint = if start_page == end_page {
@@ -396,49 +418,6 @@ fn chunk_with_paragraph_pages(
     chunks
 }
 
-/// 문자 오프셋으로 페이지 번호를 찾는 구조체
-struct CharToPageMap {
-    /// (시작 오프셋, 페이지 번호)
-    ranges: Vec<(usize, usize)>,
-}
-
-impl CharToPageMap {
-    fn new(paragraphs: &[ParagraphNode], para_pages: &[usize]) -> Self {
-        let mut ranges: Vec<(usize, usize)> = paragraphs
-            .iter()
-            .zip(para_pages.iter())
-            .map(|(para, &page)| (para.char_offset, page))
-            .collect();
-
-        // 오프셋 기준 정렬
-        ranges.sort_by_key(|(offset, _)| *offset);
-
-        Self { ranges }
-    }
-
-    /// 문자 오프셋에 해당하는 페이지 번호 반환
-    fn get(&self, char_offset: usize) -> Option<usize> {
-        if self.ranges.is_empty() {
-            return None;
-        }
-
-        // 이진 검색으로 해당 오프셋이 속한 문단 찾기
-        match self
-            .ranges
-            .binary_search_by_key(&char_offset, |(offset, _)| *offset)
-        {
-            Ok(idx) => Some(self.ranges[idx].1),
-            Err(idx) => {
-                if idx == 0 {
-                    Some(self.ranges[0].1)
-                } else {
-                    Some(self.ranges[idx - 1].1)
-                }
-            }
-        }
-    }
-}
-
 /// HWPX section XML에서 문단 단위로 텍스트 추출 (구조적 파싱)
 /// 페이지 브레이크 태그도 감지
 fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNode>, ParseError> {
@@ -448,7 +427,9 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
     let mut paragraphs: Vec<ParagraphNode> = Vec::new();
     let mut current_paragraph = String::new();
     let mut in_text = false;
+    let mut in_paragraph = false;
     let mut pending_page_break = false;
+    let mut split_paragraph = false;
     let mut total_char_offset: usize = 0;
 
     loop {
@@ -456,25 +437,67 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let local_name = e.local_name();
                 let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                let name_l = name.to_ascii_lowercase();
 
                 // hp:t 태그 = 텍스트 내용
-                if name == "t" {
+                if name_l == "t" {
                     in_text = true;
                 }
 
+                if name_l == "p" {
+                    in_paragraph = true;
+                }
+
                 // 페이지 브레이크 감지
-                if name == "br" || name == "colPr" {
+                let mut is_page_break = matches!(
+                    name_l.as_str(),
+                    "pagebreak" | "pgbreak" | "page-break"
+                );
+                let mut is_line_break = false;
+
+                if name_l == "br" || name_l == "colpr" || name_l == "break" {
+                    let mut break_type: Option<String> = None;
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = std::str::from_utf8(&attr.value).unwrap_or("");
-                        if (key == "type" || key == "breakType") && val == "page" {
-                            pending_page_break = true;
+                        let key_l = key.to_ascii_lowercase();
+                        let val_l = val.to_ascii_lowercase();
+                        if key_l == "type" || key_l == "breaktype" || key_l == "kind" {
+                            break_type = Some(val_l);
                         }
+                    }
+
+                    if let Some(bt) = break_type {
+                        if bt.contains("page") {
+                            is_page_break = true;
+                        } else if name_l == "br" && in_paragraph {
+                            is_line_break = true;
+                        }
+                    } else if name_l == "br" && in_paragraph {
+                        is_line_break = true;
                     }
                 }
 
+                if is_page_break {
+                    if in_paragraph && !current_paragraph.is_empty() {
+                        let para_text = std::mem::take(&mut current_paragraph);
+                        paragraphs.push(ParagraphNode {
+                            text: para_text.clone(),
+                            char_offset: total_char_offset,
+                            has_page_break_before: pending_page_break,
+                        });
+                        total_char_offset += para_text.chars().count() + 1;
+                        pending_page_break = false;
+                        split_paragraph = true;
+                    }
+
+                    pending_page_break = true;
+                } else if is_line_break {
+                    current_paragraph.push('\n');
+                }
+
                 // secPr (섹션 속성)에서도 페이지 브레이크 가능
-                if name == "secPr" && !paragraphs.is_empty() {
+                if name_l == "secpr" && !paragraphs.is_empty() {
                     pending_page_break = true;
                 }
             }
@@ -489,23 +512,31 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
             Ok(Event::End(e)) => {
                 let local_name = e.local_name();
                 let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                let name_l = name.to_ascii_lowercase();
 
-                if name == "t" {
+                if name_l == "t" {
                     in_text = false;
                 }
                 // p 태그 종료 = 문단 끝
-                if name == "p" {
-                    let para_text = std::mem::take(&mut current_paragraph);
+                if name_l == "p" {
+                    in_paragraph = false;
+                    if !current_paragraph.is_empty() || !split_paragraph {
+                        let para_text = std::mem::take(&mut current_paragraph);
 
-                    paragraphs.push(ParagraphNode {
-                        text: para_text.clone(),
-                        char_offset: total_char_offset,
-                        has_page_break_before: pending_page_break,
-                    });
+                        paragraphs.push(ParagraphNode {
+                            text: para_text.clone(),
+                            char_offset: total_char_offset,
+                            has_page_break_before: pending_page_break,
+                        });
 
-                    // 오프셋 업데이트 (문단 텍스트 + 줄바꿈)
-                    total_char_offset += para_text.chars().count() + 1;
-                    pending_page_break = false;
+                        // 오프셋 업데이트 (문단 텍스트 + 줄바꿈)
+                        total_char_offset += para_text.chars().count() + 1;
+                        pending_page_break = false;
+                    } else {
+                        current_paragraph.clear();
+                    }
+
+                    split_paragraph = false;
                 }
             }
             Ok(Event::Eof) => break,
