@@ -158,18 +158,28 @@ export function buildPreviewContext(input: {
   const highlightRanges = input.highlightRanges ?? [];
   const contextBefore = input.contextBefore ?? DEFAULT_CONTEXT_BEFORE;
   const contextAfter = input.contextAfter ?? DEFAULT_CONTEXT_AFTER;
+  const keywords = input.query ? extractSearchKeywords(input.query) : [];
+
+  // 결과 텍스트에 검색 키워드가 포함되어 있는지 확인
+  const hasKeyword = (text: string) =>
+    keywords.length === 0 ||
+    keywords.some((kw) => text.toLowerCase().includes(kw.toLowerCase()));
 
   if (input.snippet && input.snippet.includes("[[HL]]")) {
     const parsed = parseSnippetHighlights(input.snippet);
-    return buildContextWindow(parsed.text, parsed.ranges, contextBefore, contextAfter);
+    const result = buildContextWindow(parsed.text, parsed.ranges, contextBefore, contextAfter);
+    // 키워드가 있으면 반환, 없으면 fallback으로
+    if (hasKeyword(result.text)) return result;
   }
 
   if (fullText && highlightRanges.length > 0) {
-    return buildContextWindow(fullText, highlightRanges, contextBefore, contextAfter);
+    const result = buildContextWindow(fullText, highlightRanges, contextBefore, contextAfter);
+    // 키워드가 있으면 반환, 없으면 fallback으로
+    if (hasKeyword(result.text)) return result;
   }
 
+  // fallback: 키워드가 포함된 컨텍스트 직접 찾기
   const fallbackText = getPreviewWithKeyword(previewText, fullText, input.query ?? "", contextBefore, contextAfter);
-  const keywords = input.query ? extractSearchKeywords(input.query) : [];
   const fallbackRanges = keywords.length > 0 ? findKeywordRanges(fallbackText, keywords) : [];
   return { text: fallbackText, ranges: fallbackRanges };
 }

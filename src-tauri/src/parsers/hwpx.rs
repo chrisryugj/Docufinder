@@ -7,6 +7,22 @@ use std::io::BufReader;
 use std::path::Path;
 use zip::ZipArchive;
 
+// ============================================================================
+// 압축 폭탄 방어 상수
+// ============================================================================
+
+/// 단일 엔트리 최대 압축 해제 크기 (50MB)
+const MAX_ENTRY_UNCOMPRESSED_SIZE: u64 = 50 * 1024 * 1024;
+
+/// 전체 압축 해제 크기 합계 제한 (200MB)
+const MAX_TOTAL_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
+
+/// 최대 ZIP 엔트리 수
+const MAX_ZIP_ENTRIES: usize = 1000;
+
+/// 압축 비율 제한 (uncompressed/compressed > 100 = 의심)
+const MAX_COMPRESSION_RATIO: u64 = 100;
+
 /// HWPX 페이지 설정 (단위: hwpunit, 1pt = 100 hwpunit)
 #[derive(Debug, Clone)]
 struct PageSettings {
@@ -244,7 +260,56 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let mut archive =
         ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
+    // ========================================================================
+    // 압축 폭탄 방어: 사전 검증
+    // ========================================================================
+
+    // 1. 엔트리 수 제한
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err(ParseError::ParseError(format!(
+            "ZIP 엔트리 수 초과: {} (최대 {})",
+            archive.len(), MAX_ZIP_ENTRIES
+        )));
+    }
+
+    // 2. 총 uncompressed size 검증
+    let mut total_uncompressed: u64 = 0;
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index_raw(i) {
+            let uncompressed = entry.size();
+            let compressed = entry.compressed_size();
+
+            // 단일 엔트리 크기 제한
+            if uncompressed > MAX_ENTRY_UNCOMPRESSED_SIZE {
+                return Err(ParseError::ParseError(format!(
+                    "ZIP 엔트리 크기 초과: {} bytes (최대 {} bytes) - {}",
+                    uncompressed, MAX_ENTRY_UNCOMPRESSED_SIZE, entry.name()
+                )));
+            }
+
+            // 압축 비율 검사 (압축 폭탄 탐지)
+            if compressed > 0 && uncompressed / compressed > MAX_COMPRESSION_RATIO {
+                return Err(ParseError::ParseError(format!(
+                    "의심스러운 압축 비율: {}:1 - 압축 폭탄 가능성 ({})",
+                    uncompressed / compressed, entry.name()
+                )));
+            }
+
+            total_uncompressed += uncompressed;
+        }
+    }
+
+    // 총 압축 해제 크기 제한
+    if total_uncompressed > MAX_TOTAL_UNCOMPRESSED_SIZE {
+        return Err(ParseError::ParseError(format!(
+            "총 압축 해제 크기 초과: {} bytes (최대 {} bytes)",
+            total_uncompressed, MAX_TOTAL_UNCOMPRESSED_SIZE
+        )));
+    }
+
+    // ========================================================================
     // 1회 루프로 header.xml + section*.xml 모두 수집
+    // ========================================================================
     let mut header_content: Option<String> = None;
     let mut section_xmls: BTreeMap<usize, String> = BTreeMap::new();
 

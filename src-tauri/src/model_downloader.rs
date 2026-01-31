@@ -1,11 +1,18 @@
 //! 모델 자동 다운로드 모듈
 //!
 //! ONNX Runtime과 임베딩 모델을 자동으로 다운로드합니다.
+//! SHA-256 무결성 검증을 수행합니다.
 #![allow(dead_code)]
 
+use sha2::{Digest, Sha256};
 use std::fs::{self, File};
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::Path;
+use std::time::Duration;
+
+// ============================================================================
+// 모델 URL 및 SHA-256 해시 (무결성 검증용)
+// ============================================================================
 
 const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
 const E5_MODEL_URL: &str = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/onnx/model_int8.onnx";
@@ -14,6 +21,19 @@ const E5_TOKENIZER_URL: &str = "https://huggingface.co/Teradata/multilingual-e5-
 // Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)
 const RERANKER_MODEL_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
 const RERANKER_TOKENIZER_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/tokenizer.json";
+
+// SHA-256 해시 (무결성 검증)
+// 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
+const E5_MODEL_SHA256: &str = "d9fc0fc39b4cbda21e88e2e0ba389d77f67af9dbe08d8b2d6c79d1c50ad18f7a";
+const E5_TOKENIZER_SHA256: &str = "3daa51bc3f81d91cf2cb5ab8a73dfe53f24ef65c3b6990fa5c8ad5f22b54c8a5";
+const RERANKER_MODEL_SHA256: &str = "13d18cce0f3c0b1115f11ce42c2078cc73b6e0bbe7d8b4ba6e6b8b3dd1ebb49b";
+const RERANKER_TOKENIZER_SHA256: &str = "be4b6d26dbb2eca6b51ee2a51b8c94d179b36451c10ebfbc5f56fc9dc7a4df2e";
+// ONNX Runtime ZIP은 해시 검증 생략 (DLL만 추출하므로 복잡함)
+
+// 다운로드 설정
+const CONNECT_TIMEOUT_SECS: u64 = 30;
+const READ_TIMEOUT_SECS: u64 = 300; // 5분 (대용량 모델)
+const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024; // 500MB 상한
 
 /// 모델 다운로드 진행률 콜백
 pub type ProgressCallback = Box<dyn Fn(u64, u64, &str) + Send>;
@@ -53,20 +73,25 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
         tracing::info!("ONNX Runtime 다운로드 완료");
     }
 
-    // E5 임베딩 모델 다운로드
+    // E5 임베딩 모델 다운로드 (SHA-256 검증)
     if !model_path.exists() {
         tracing::info!("E5 모델 다운로드 중...");
-        download_file(E5_MODEL_URL, &model_path)?;
+        download_file_verified(E5_MODEL_URL, &model_path, E5_MODEL_SHA256)?;
         result.model_downloaded = true;
-        tracing::info!("E5 모델 다운로드 완료");
+        tracing::info!("E5 모델 다운로드 및 검증 완료");
+    } else {
+        // 기존 파일 무결성 검증
+        verify_existing_file(&model_path, E5_MODEL_SHA256, "E5 모델")?;
     }
 
-    // E5 토크나이저 다운로드
+    // E5 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
         tracing::info!("E5 토크나이저 다운로드 중...");
-        download_file(E5_TOKENIZER_URL, &tokenizer_path)?;
+        download_file_verified(E5_TOKENIZER_URL, &tokenizer_path, E5_TOKENIZER_SHA256)?;
         result.tokenizer_downloaded = true;
-        tracing::info!("E5 토크나이저 다운로드 완료");
+        tracing::info!("E5 토크나이저 다운로드 및 검증 완료");
+    } else {
+        verify_existing_file(&tokenizer_path, E5_TOKENIZER_SHA256, "E5 토크나이저")?;
     }
 
     // Cross-Encoder Reranker 모델 다운로드
@@ -88,44 +113,152 @@ pub fn ensure_reranker_model(models_dir: &Path) -> Result<(bool, bool), String> 
     let mut model_downloaded = false;
     let mut tokenizer_downloaded = false;
 
-    // Reranker 모델 다운로드
+    // Reranker 모델 다운로드 (SHA-256 검증)
     if !model_path.exists() {
         tracing::info!("Reranker 모델 다운로드 중...");
-        download_file(RERANKER_MODEL_URL, &model_path)?;
+        download_file_verified(RERANKER_MODEL_URL, &model_path, RERANKER_MODEL_SHA256)?;
         model_downloaded = true;
-        tracing::info!("Reranker 모델 다운로드 완료");
+        tracing::info!("Reranker 모델 다운로드 및 검증 완료");
+    } else {
+        verify_existing_file(&model_path, RERANKER_MODEL_SHA256, "Reranker 모델")?;
     }
 
-    // Reranker 토크나이저 다운로드
+    // Reranker 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
         tracing::info!("Reranker 토크나이저 다운로드 중...");
-        download_file(RERANKER_TOKENIZER_URL, &tokenizer_path)?;
+        download_file_verified(RERANKER_TOKENIZER_URL, &tokenizer_path, RERANKER_TOKENIZER_SHA256)?;
         tokenizer_downloaded = true;
-        tracing::info!("Reranker 토크나이저 다운로드 완료");
+        tracing::info!("Reranker 토크나이저 다운로드 및 검증 완료");
+    } else {
+        verify_existing_file(&tokenizer_path, RERANKER_TOKENIZER_SHA256, "Reranker 토크나이저")?;
     }
 
     Ok((model_downloaded, tokenizer_downloaded))
 }
 
-/// 파일 다운로드
-fn download_file(url: &str, dest: &Path) -> Result<(), String> {
-    let response = ureq::get(url)
+/// SHA-256 검증 포함 파일 다운로드
+fn download_file_verified(url: &str, dest: &Path, expected_hash: &str) -> Result<(), String> {
+    // 임시 파일에 다운로드
+    let temp_path = dest.with_extension("tmp");
+
+    // 다운로드
+    download_file_with_timeout(url, &temp_path)?;
+
+    // SHA-256 검증
+    let actual_hash = compute_sha256(&temp_path)?;
+    if actual_hash != expected_hash {
+        // 검증 실패 - 파일 삭제
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "무결성 검증 실패!\n예상: {}\n실제: {}\n\n파일이 변조되었거나 손상되었습니다. 보안을 위해 다운로드를 차단합니다.",
+            expected_hash, actual_hash
+        ));
+    }
+
+    // 검증 성공 - 최종 위치로 이동
+    fs::rename(&temp_path, dest)
+        .map_err(|e| format!("파일 이동 실패: {}", e))?;
+
+    tracing::info!("SHA-256 검증 성공: {}", dest.display());
+    Ok(())
+}
+
+/// 기존 파일 무결성 검증 (선택적)
+fn verify_existing_file(path: &Path, expected_hash: &str, name: &str) -> Result<(), String> {
+    let actual_hash = compute_sha256(path)?;
+    if actual_hash != expected_hash {
+        tracing::warn!(
+            "{} 무결성 불일치 - 예상: {}, 실제: {}. 파일을 삭제하고 재다운로드합니다.",
+            name, expected_hash, actual_hash
+        );
+        // 손상된 파일 삭제 (다음 실행 시 재다운로드)
+        let _ = fs::remove_file(path);
+        return Err(format!("{} 파일이 손상되었습니다. 앱을 재시작하여 다시 다운로드하세요.", name));
+    }
+    Ok(())
+}
+
+/// SHA-256 해시 계산
+fn compute_sha256(path: &Path) -> Result<String, String> {
+    let mut file = File::open(path)
+        .map_err(|e| format!("파일 열기 실패: {}", e))?;
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = file.read(&mut buffer)
+            .map_err(|e| format!("파일 읽기 실패: {}", e))?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    let hash = hasher.finalize();
+    Ok(format!("{:x}", hash))
+}
+
+/// 타임아웃 + 크기 제한 포함 파일 다운로드
+fn download_file_with_timeout(url: &str, dest: &Path) -> Result<(), String> {
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(CONNECT_TIMEOUT_SECS)))
+        .timeout_recv_body(Some(Duration::from_secs(READ_TIMEOUT_SECS)))
+        .build();
+    let agent = ureq::Agent::new_with_config(config);
+
+    let response = agent.get(url)
         .call()
         .map_err(|e| format!("다운로드 실패 ({}): {}", url, e))?;
+
+    // Content-Length 확인 (크기 제한)
+    if let Some(content_length) = response.headers().get("Content-Length") {
+        if let Ok(size) = content_length.to_str().unwrap_or("0").parse::<u64>() {
+            if size > MAX_FILE_SIZE {
+                return Err(format!(
+                    "파일 크기 초과: {} bytes (최대 {} bytes)",
+                    size, MAX_FILE_SIZE
+                ));
+            }
+        }
+    }
 
     let mut file = File::create(dest)
         .map_err(|e| format!("파일 생성 실패: {}", e))?;
 
     let mut reader = response.into_body().into_reader();
-    io::copy(&mut reader, &mut file)
-        .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+    let mut total_bytes: u64 = 0;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = reader.read(&mut buffer)
+            .map_err(|e| format!("읽기 실패: {}", e))?;
+        if bytes_read == 0 {
+            break;
+        }
+
+        total_bytes += bytes_read as u64;
+        if total_bytes > MAX_FILE_SIZE {
+            let _ = fs::remove_file(dest);
+            return Err(format!("다운로드 중 크기 제한 초과: {} bytes", total_bytes));
+        }
+
+        file.write_all(&buffer[..bytes_read])
+            .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+    }
 
     Ok(())
 }
 
 /// ONNX Runtime ZIP 다운로드 및 압축 해제
 fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
-    let response = ureq::get(ONNX_RUNTIME_URL)
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(CONNECT_TIMEOUT_SECS)))
+        .timeout_recv_body(Some(Duration::from_secs(READ_TIMEOUT_SECS)))
+        .build();
+    let agent = ureq::Agent::new_with_config(config);
+
+    let response = agent.get(ONNX_RUNTIME_URL)
         .call()
         .map_err(|e| format!("ONNX Runtime 다운로드 실패: {}", e))?;
 

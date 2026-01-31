@@ -22,9 +22,16 @@ impl DiskType {
 }
 
 /// 경로에서 드라이브 문자 추출 (Windows)
+/// `\\?\C:\...`, `C:\...`, `c:\...` 모두 지원
 fn get_drive_letter(path: &Path) -> Option<char> {
-    path.to_str()
-        .and_then(|s| s.chars().next())
+    let s = path.to_str()?;
+
+    // \\?\ 접두사 제거 후 드라이브 문자 추출
+    let normalized = s.strip_prefix(r"\\?\").unwrap_or(s);
+
+    normalized
+        .chars()
+        .next()
         .filter(|c| c.is_ascii_alphabetic())
 }
 
@@ -113,8 +120,8 @@ impl DiskSettings {
                 parallel_threads: num_cpus::get().min(4),
             },
             DiskType::Hdd | DiskType::Unknown => Self {
-                throttle_ms: 50,  // HDD는 랜덤 I/O 부하 방지
-                parallel_threads: 1,  // 순차 처리
+                throttle_ms: 10,  // HDD 부하 최소화 (50ms → 10ms)
+                parallel_threads: 2,  // 약간의 병렬 허용
             },
         }
     }
@@ -138,6 +145,9 @@ mod tests {
         assert_eq!(get_drive_letter(Path::new("C:\\Users")), Some('C'));
         assert_eq!(get_drive_letter(Path::new("D:\\Data")), Some('D'));
         assert_eq!(get_drive_letter(Path::new("/home/user")), Some('/'));
+        // \\?\ 접두사 처리
+        assert_eq!(get_drive_letter(Path::new(r"\\?\C:\Users")), Some('C'));
+        assert_eq!(get_drive_letter(Path::new(r"\\?\E:\Data")), Some('E'));
     }
 
     #[test]

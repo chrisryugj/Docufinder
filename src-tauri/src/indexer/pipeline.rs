@@ -406,15 +406,16 @@ pub fn index_folder_fts_only(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
-    use crate::utils::disk_info::{detect_disk_type, DiskSettings};
+    use crate::utils::disk_info::{detect_disk_type, DiskSettings, DiskType};
 
     let folder_str = folder_path.to_string_lossy().to_string();
 
-    // 디스크 유형 감지 및 설정 적용
+    // FTS는 순차 I/O라 HDD에서도 병렬 처리 가능 → SSD 설정 사용
+    // (디스크 타입은 벡터 인덱싱에서만 고려)
     let disk_type = detect_disk_type(folder_path);
-    let disk_settings = DiskSettings::for_disk_type(disk_type);
+    let disk_settings = DiskSettings::for_disk_type(DiskType::Ssd);
     tracing::info!(
-        "[FTS] Disk type: {:?}, threads: {}, throttle: {}ms",
+        "[FTS] Disk: {:?} (using SSD settings), threads: {}, throttle: {}ms",
         disk_type,
         disk_settings.parallel_threads,
         disk_settings.throttle_ms
