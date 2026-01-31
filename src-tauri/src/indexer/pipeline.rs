@@ -109,8 +109,13 @@ fn collect_files_shallow(
             break;
         }
 
+        // entry.file_type() 사용 (read_dir에서 캐시됨, HDD 최적화)
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
         let path = entry.path();
-        if path.is_file() {
+        if file_type.is_file() {
             // Office 임시 파일 (~$로 시작) 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.starts_with("~$") {
@@ -164,9 +169,14 @@ fn collect_files_recursive(
             break;
         }
 
+        // entry.file_type() 사용 (read_dir에서 캐시됨, HDD 최적화)
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
         let path = entry.path();
 
-        if path.is_dir() {
+        if file_type.is_dir() {
             // 숨김 폴더 제외
             if !path
                 .file_name()
@@ -189,7 +199,7 @@ fn collect_files_recursive(
                     }
                 }
             }
-        } else if path.is_file() {
+        } else if file_type.is_file() {
             // Office 임시 파일 (~$로 시작) 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.starts_with("~$") {
@@ -394,20 +404,36 @@ pub fn index_folder_fts_only(
 ) -> Result<FolderIndexResult, IndexError> {
     let folder_str = folder_path.to_string_lossy().to_string();
 
-    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>| {
+    // ⚡ 진행률 throttling (100ms 또는 10파일마다) - UI 렌더링 부하 감소
+    use std::cell::Cell;
+    let last_progress_time = Cell::new(std::time::Instant::now());
+    let last_progress_count = Cell::new(0usize);
+    const PROGRESS_THROTTLE_MS: u64 = 100;
+    const PROGRESS_THROTTLE_FILES: usize = 10;
+
+    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
         if let Some(ref cb) = progress_callback {
-            cb(FtsIndexingProgress {
-                phase: phase.to_string(),
-                total_files: total,
-                processed_files: processed,
-                current_file: current.map(|s| s.to_string()),
-                folder_path: folder_str.clone(),
-            });
+            // throttle: 100ms 또는 10파일마다, 또는 force=true일 때만 전송
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
+            let files_since = processed.saturating_sub(last_progress_count.get());
+
+            if force || elapsed >= PROGRESS_THROTTLE_MS || files_since >= PROGRESS_THROTTLE_FILES {
+                cb(FtsIndexingProgress {
+                    phase: phase.to_string(),
+                    total_files: total,
+                    processed_files: processed,
+                    current_file: current.map(|s| s.to_string()),
+                    folder_path: folder_str.clone(),
+                });
+                last_progress_time.set(now);
+                last_progress_count.set(processed);
+            }
         }
     };
 
     // 1. 파일 스캔
-    send_progress("scanning", 0, 0, None);
+    send_progress("scanning", 0, 0, None, true); // force: 시작
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
     let file_paths = collect_files(
         folder_path,
@@ -419,10 +445,10 @@ pub fn index_folder_fts_only(
     let total = file_paths.len();
 
     tracing::info!("[FTS] Found {} files in {:?}", total, folder_path);
-    send_progress("scanning", total, 0, None);
+    send_progress("scanning", total, 0, None, true); // force: 스캔 완료
 
     if cancel_flag.load(Ordering::Relaxed) {
-        send_progress("cancelled", total, 0, None);
+        send_progress("cancelled", total, 0, None, true); // force: 취소
         return Ok(FolderIndexResult {
             folder_path: folder_str,
             indexed_count: 0,
@@ -482,7 +508,7 @@ pub fn index_folder_fts_only(
             if cancel_flag.load(Ordering::Relaxed) {
                 // 취소 시 현재까지 커밋
                 let _ = conn.execute_batch("COMMIT");
-                send_progress("cancelled", total, processed, None);
+                send_progress("cancelled", total, processed, None, true); // force: 취소
                 errors.push("Cancelled by user".to_string());
                 was_cancelled = true;
                 break;
@@ -499,7 +525,7 @@ pub fn index_folder_fts_only(
                                 .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("unknown");
-                            send_progress("indexing", total, processed, Some(file_name));
+                            send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
                             match save_document_to_db_fts_only_no_tx(conn, &path, document) {
                                 Ok(_) => indexed += 1,
@@ -515,7 +541,7 @@ pub fn index_folder_fts_only(
                             }
                             failed += 1;
                             errors.push(format!("{:?}: {}", path, error));
-                            send_progress("indexing", total, processed, None);
+                            send_progress("indexing", total, processed, None, false); // throttled
                         }
                     }
 
@@ -545,7 +571,7 @@ pub fn index_folder_fts_only(
     }
 
     let phase = if was_cancelled { "cancelled" } else { "completed" };
-    send_progress(phase, total, processed, None);
+    send_progress(phase, total, processed, None, true); // force: 완료
 
     Ok(FolderIndexResult {
         folder_path: folder_str,
@@ -636,6 +662,209 @@ fn save_document_to_db_fts_only_no_tx(
     tracing::debug!("[FTS] Indexed: {} ({} chunks)", path_str, chunks_count);
 
     Ok(chunks_count)
+}
+
+// ==================== Phase 2: 메타데이터 전용 스캔 ====================
+
+/// 메타데이터 스캔 진행률
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MetadataScanProgress {
+    pub phase: String,
+    pub scanned_files: usize,
+    pub folder_path: String,
+}
+
+/// 메타데이터 스캔 결과
+#[derive(Debug, Clone)]
+pub struct MetadataScanResult {
+    pub folder_path: String,
+    pub files_found: usize,
+    pub errors: Vec<String>,
+}
+
+/// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
+/// 파일명 검색 즉시 가능하게 함
+pub fn scan_metadata_only(
+    conn: &Connection,
+    folder_path: &Path,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<Box<dyn Fn(MetadataScanProgress) + Send + Sync>>,
+    max_file_size_mb: u64,
+) -> Result<MetadataScanResult, IndexError> {
+    let folder_str = folder_path.to_string_lossy().to_string();
+
+    // 진행률 throttling
+    use std::cell::Cell;
+    let last_progress_time = Cell::new(std::time::Instant::now());
+    let last_progress_count = Cell::new(0usize);
+    const PROGRESS_THROTTLE_MS: u64 = 100;
+    const PROGRESS_THROTTLE_FILES: usize = 100; // 메타 스캔은 빠르므로 100개 단위
+
+    let send_progress = |phase: &str, count: usize, force: bool| {
+        if let Some(ref cb) = progress_callback {
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
+            let files_since = count.saturating_sub(last_progress_count.get());
+
+            if force || elapsed >= PROGRESS_THROTTLE_MS || files_since >= PROGRESS_THROTTLE_FILES {
+                cb(MetadataScanProgress {
+                    phase: phase.to_string(),
+                    scanned_files: count,
+                    folder_path: folder_str.clone(),
+                });
+                last_progress_time.set(now);
+                last_progress_count.set(count);
+            }
+        }
+    };
+
+    send_progress("scanning", 0, true);
+
+    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
+    let mut count = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // 배치 트랜잭션 (성능 최적화)
+    conn.execute_batch("BEGIN")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    let mut batch_count = 0;
+    const BATCH_SIZE: usize = 100;
+
+    // WalkDir 직접 순회 (collect_files보다 메모리 효율적)
+    let walker = if recursive {
+        walkdir::WalkDir::new(folder_path)
+    } else {
+        walkdir::WalkDir::new(folder_path).max_depth(1)
+    };
+
+    for entry in walker.into_iter().filter_map(|e| e.ok()) {
+        if cancel_flag.load(Ordering::Relaxed) {
+            let _ = conn.execute_batch("COMMIT");
+            send_progress("cancelled", count, true);
+            return Ok(MetadataScanResult {
+                folder_path: folder_str,
+                files_found: count,
+                errors: vec!["Cancelled".to_string()],
+            });
+        }
+
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+
+        // 확장자 체크
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+            continue;
+        }
+
+        // 임시 파일 제외
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if file_name.starts_with("~$") || file_name.starts_with('.') {
+            continue;
+        }
+
+        // 파일 크기 체크 (metadata 접근 - 파일 열지 않음)
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(e) => {
+                errors.push(format!("{:?}: {}", path, e));
+                continue;
+            }
+        };
+
+        if max_file_size_bytes > 0 && metadata.len() > max_file_size_bytes {
+            continue;
+        }
+
+        // DB에 메타데이터만 저장
+        let path_str = path.to_string_lossy().to_string();
+        let file_type = ext.clone();
+        let size = metadata.len() as i64;
+        let modified_at = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        if let Err(e) = db::insert_file_metadata_only(
+            conn,
+            &path_str,
+            file_name,
+            &file_type,
+            size,
+            modified_at,
+        ) {
+            errors.push(format!("{}: {}", path_str, e));
+            continue;
+        }
+
+        count += 1;
+        batch_count += 1;
+        send_progress("scanning", count, false);
+
+        // 배치 커밋
+        if batch_count >= BATCH_SIZE {
+            if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                tracing::warn!("Batch commit failed: {}", e);
+            }
+            batch_count = 0;
+        }
+    }
+
+    // 최종 커밋
+    if let Err(e) = conn.execute_batch("COMMIT") {
+        tracing::warn!("Final commit failed: {}", e);
+    }
+
+    send_progress("completed", count, true);
+    tracing::info!("[MetadataScan] {} files found in {:?}", count, folder_path);
+
+    Ok(MetadataScanResult {
+        folder_path: folder_str,
+        files_found: count,
+        errors,
+    })
+}
+
+// ==================== 단일 파일 FTS 인덱싱 (manager용) ====================
+
+/// 단일 파일 FTS 인덱싱 (벡터 제외) - 변경 감시에서 사용
+pub fn index_file_fts_only(conn: &Connection, path: &Path) -> Result<IndexResult, IndexError> {
+    let document = parse_file(path).map_err(|e| IndexError::ParseError(e.to_string()))?;
+    let total_chars = document.content.len();
+
+    conn.execute_batch("BEGIN")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document) {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(e);
+        }
+    };
+
+    if let Err(e) = conn.execute_batch("COMMIT") {
+        let _ = conn.execute_batch("ROLLBACK");
+        return Err(IndexError::DbError(e.to_string()));
+    }
+
+    Ok(IndexResult {
+        file_path: path.to_string_lossy().to_string(),
+        chunks_count,
+        vectors_count: 0,
+        total_chars,
+    })
 }
 
 #[derive(Debug)]

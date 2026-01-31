@@ -81,8 +81,8 @@ fn extract_text_with_location(
 
     let full_text = all_rows_text.join("\n");
 
-    // 행 단위로 청크 생성 (약 512자 기준)
-    let chunks = create_chunks_with_rows(&row_infos, sheet_name, base_offset, 512, 64);
+    // 행 단위로 청크 생성
+    let chunks = create_chunks_with_rows(&row_infos, sheet_name, base_offset, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP);
 
     (full_text, chunks)
 }

@@ -84,8 +84,8 @@ export function SearchResultList({
   // 아이템 높이 추정 (컴팩트 vs 기본)
   const estimatedItemHeight = isCompact ? 80 : 120;
 
-  // 가상화 설정 (100개 이상 + 외부 스크롤 컨테이너 있을 때만 적용)
-  const shouldVirtualize = results.length > 100 && scrollContainerRef?.current != null;
+  // 가상화 설정 (50개 이상 + 외부 스크롤 컨테이너 있을 때 적용)
+  const shouldVirtualize = results.length >= 50 && scrollContainerRef?.current != null;
 
   const virtualizer = useVirtualizer({
     count: results.length,
@@ -394,7 +394,7 @@ export function SearchResultList({
               })}
             </div>
           ) : (
-            // 플랫 뷰 (100개 이하: 일반 렌더링)
+            // 플랫 뷰 (50개 미만: 일반 렌더링)
             <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
               {results.map((result, index) => (
                 <div

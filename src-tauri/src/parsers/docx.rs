@@ -31,7 +31,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     }
 
     // 페이지별 청크 생성
-    let chunks = chunk_pages(&pages, 512, 64);
+    let chunks = chunk_pages(&pages, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP);
     let page_count = pages.len();
 
     Ok(ParsedDocument {

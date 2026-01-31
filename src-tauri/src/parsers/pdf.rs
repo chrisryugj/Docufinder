@@ -87,7 +87,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         let page_number = page_idx + 1; // 1-based
 
         // 페이지별 청크 생성
-        let page_chunks = chunk_text_with_page(&cleaned, 512, 64, page_number, global_offset);
+        let page_chunks = chunk_text_with_page(&cleaned, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP, page_number, global_offset);
         chunks.extend(page_chunks);
 
         if !all_text.is_empty() {

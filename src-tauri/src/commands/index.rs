@@ -109,7 +109,10 @@ pub async fn add_folder(
     // 3. 파일 감시 시작
     start_file_watching(&state, &canonical_path)?;
 
-    // 4. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
+    // 4. FilenameCache 갱신
+    refresh_filename_cache(&state);
+
+    // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
     let auto_vector = semantic_enabled
         && semantic_available
@@ -152,7 +155,12 @@ pub async fn remove_folder(
         container.folder_service()
     };
 
-    service.remove_folder(&path).await.map_err(ApiError::from)
+    let result = service.remove_folder(&path).await.map_err(ApiError::from);
+
+    // FilenameCache 갱신
+    refresh_filename_cache(&state);
+
+    result
 }
 
 /// 폴더 재인덱싱
@@ -197,6 +205,9 @@ pub async fn reindex_folder(
         .reindex_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
         .map_err(ApiError::from)?;
+
+    // FilenameCache 갱신
+    refresh_filename_cache(&state);
 
     // 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
@@ -338,7 +349,16 @@ pub async fn clear_all_data(
         let container = state.lock()?;
         container.index_service()
     };
-    service.clear_all().map_err(ApiError::from)
+    let result = service.clear_all().map_err(ApiError::from);
+
+    // FilenameCache 클리어
+    {
+        let container = state.lock()?;
+        container.get_filename_cache().clear();
+        tracing::info!("FilenameCache cleared");
+    }
+
+    result
 }
 
 // ============================================
@@ -466,6 +486,16 @@ fn stop_file_watching(state: &State<'_, Mutex<AppContainer>>, path: &Path) -> Ap
         }
     }
     Ok(())
+}
+
+/// FilenameCache 갱신 (인덱싱 완료 후 호출)
+fn refresh_filename_cache(state: &State<'_, Mutex<AppContainer>>) {
+    if let Ok(container) = state.lock() {
+        match container.load_filename_cache() {
+            Ok(count) => tracing::info!("FilenameCache refreshed: {} entries", count),
+            Err(e) => tracing::warn!("Failed to refresh FilenameCache: {}", e),
+        }
+    }
 }
 
 fn build_result_message(

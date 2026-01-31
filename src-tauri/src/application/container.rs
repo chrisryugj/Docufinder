@@ -8,6 +8,7 @@ use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager};
 use crate::indexer::vector_worker::VectorWorker;
 use crate::reranker::Reranker;
+use crate::search::filename_cache::FilenameCache;
 use crate::search::vector::VectorIndex;
 use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use crate::ApiError;
@@ -39,6 +40,8 @@ pub struct AppContainer {
     vector_worker: Arc<RwLock<VectorWorker>>,
     tokenizer: OnceCell<Arc<dyn TextTokenizer>>,
     reranker: OnceCell<Arc<Reranker>>,
+    /// 파일명 캐시 (Everything 스타일 빠른 검색)
+    filename_cache: Arc<FilenameCache>,
 
     // ============================================
     // Shared State
@@ -63,6 +66,7 @@ impl AppContainer {
             vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
             tokenizer: OnceCell::new(),
             reranker: OnceCell::new(),
+            filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -79,6 +83,7 @@ impl AppContainer {
             self.get_vector_index().ok(),
             self.get_tokenizer().ok(),
             self.get_reranker().ok(),
+            Some(self.filename_cache.clone()),
         )
     }
 
@@ -227,5 +232,20 @@ impl AppContainer {
     pub fn is_reranker_available(&self) -> bool {
         let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
         model_path.exists()
+    }
+
+    /// 파일명 캐시 가져오기
+    pub fn get_filename_cache(&self) -> Arc<FilenameCache> {
+        self.filename_cache.clone()
+    }
+
+    /// 파일명 캐시 로드 (DB에서)
+    pub fn load_filename_cache(&self) -> Result<usize, ApiError> {
+        let conn = crate::db::get_connection(&self.db_path)
+            .map_err(|e| ApiError::DatabaseConnection(format!("DB connection failed: {}", e)))?;
+
+        self.filename_cache
+            .load_from_db(&conn)
+            .map_err(|e| ApiError::DatabaseQuery(format!("Failed to load filename cache: {}", e)))
     }
 }

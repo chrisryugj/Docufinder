@@ -17,6 +17,48 @@ interface UseSearchOptions {
   minConfidence?: number;
 }
 
+// LRU 캐시 (검색 결과 캐싱)
+const CACHE_MAX_SIZE = 50;
+const CACHE_TTL_MS = 30000; // 30초
+
+interface CacheEntry {
+  results: SearchResult[];
+  filenameResults: SearchResult[];
+  searchTime: number;
+  timestamp: number;
+}
+
+const searchCache = new Map<string, CacheEntry>();
+
+function getCacheKey(query: string, mode: SearchMode): string {
+  return `${mode}:${query.trim().toLowerCase()}`;
+}
+
+function getFromCache(key: string): CacheEntry | null {
+  const entry = searchCache.get(key);
+  if (!entry) return null;
+
+  // TTL 체크
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    searchCache.delete(key);
+    return null;
+  }
+
+  // LRU: 접근 시 맨 뒤로 이동
+  searchCache.delete(key);
+  searchCache.set(key, entry);
+  return entry;
+}
+
+function setToCache(key: string, entry: Omit<CacheEntry, "timestamp">): void {
+  // LRU: 최대 크기 초과 시 가장 오래된 항목 제거
+  if (searchCache.size >= CACHE_MAX_SIZE) {
+    const firstKey = searchCache.keys().next().value;
+    if (firstKey) searchCache.delete(firstKey);
+  }
+  searchCache.set(key, { ...entry, timestamp: Date.now() });
+}
+
 interface UseSearchReturn {
   query: string;
   setQuery: (query: string) => void;
@@ -114,6 +156,19 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         return;
       }
 
+      // LRU 캐시 확인
+      const cacheKey = getCacheKey(searchQuery, mode);
+      const cached = getFromCache(cacheKey);
+      if (cached) {
+        startTransition(() => {
+          setResults(cached.results);
+          setFilenameResults(cached.filenameResults);
+          setSearchTime(cached.searchTime);
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // 이전 검색 결과 무시를 위한 ID
       const currentId = ++searchIdRef.current;
       setIsLoading(true);
@@ -125,6 +180,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             query: searchQuery,
           });
           if (searchIdRef.current !== currentId) return;
+          // 캐시 저장
+          setToCache(cacheKey, {
+            results: response.results,
+            filenameResults: [],
+            searchTime: response.search_time_ms,
+          });
           startTransition(() => {
             setResults(response.results);
             setFilenameResults([]);
@@ -136,6 +197,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }),
           ]);
           if (searchIdRef.current !== currentId) return;
+          // 캐시 저장
+          setToCache(cacheKey, {
+            results: contentResponse.results,
+            filenameResults: filenameResponse.results,
+            searchTime: contentResponse.search_time_ms,
+          });
           startTransition(() => {
             setResults(contentResponse.results);
             setFilenameResults(filenameResponse.results);
@@ -241,10 +308,11 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
 
     // 결과 내 검색 필터링 (debounced)
+    // ⚡ full_content 대신 snippet/content_preview 사용 (성능 최적화)
     if (debouncedRefineQuery.trim()) {
       const refineKeywords = debouncedRefineQuery.trim().toLowerCase().split(/\s+/);
       filtered = filtered.filter((r) => {
-        const content = r.full_content.toLowerCase();
+        const content = (r.snippet || r.content_preview || "").toLowerCase();
         // 모든 키워드가 포함되어야 함 (AND 조건)
         return refineKeywords.every((kw) => content.includes(kw));
       });

@@ -27,12 +27,12 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
     // synchronous=NORMAL: WAL에서 성능/안정성 균형
     conn.pragma_update(None, "synchronous", "NORMAL")?;
 
-    // === 성능 최적화 PRAGMA ===
-    // cache_size: 기본 2MB → 32MB (8GB 시스템 배려)
-    conn.pragma_update(None, "cache_size", -32768)?;
+    // === 성능 최적화 PRAGMA (8GB RAM / HDD 환경) ===
+    // cache_size: 16MB (메모리 여유 확보)
+    conn.pragma_update(None, "cache_size", -16384)?;
 
-    // mmap_size: 128MB 메모리 매핑 (저사양 환경 배려)
-    conn.pragma_update(None, "mmap_size", 134217728)?;
+    // mmap_size: 64MB (HDD에서 과도한 mmap 방지)
+    conn.pragma_update(None, "mmap_size", 67108864)?;
 
     // temp_store: 임시 테이블 메모리 사용 (I/O 감소)
     conn.pragma_update(None, "temp_store", "MEMORY")?;
@@ -602,6 +602,44 @@ pub fn upsert_file_fts_only(
     )?;
 
     // files_fts 인덱스 갱신
+    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
+    conn.execute(
+        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
+        params![file_id, name],
+    )?;
+
+    Ok(file_id)
+}
+
+/// 파일 메타데이터만 저장 (FTS 인덱싱 없이, 파일명 검색용)
+/// scan_metadata_only()에서 사용
+pub fn insert_file_metadata_only(
+    conn: &Connection,
+    path: &str,
+    name: &str,
+    file_type: &str,
+    size: i64,
+    modified_at: i64,
+) -> Result<i64> {
+    // fts_indexed_at = NULL, vector_indexed_at = NULL (파싱 대기 상태)
+    conn.execute(
+        "INSERT INTO files (path, name, file_type, size, modified_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(path) DO UPDATE SET
+           name = excluded.name,
+           file_type = excluded.file_type,
+           size = excluded.size,
+           modified_at = excluded.modified_at",
+        params![path, name, file_type, size, modified_at],
+    )?;
+
+    let file_id: i64 = conn.query_row(
+        "SELECT id FROM files WHERE path = ?",
+        params![path],
+        |row| row.get(0),
+    )?;
+
+    // files_fts 인덱스 갱신 (파일명 검색용)
     conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
     conn.execute(
         "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",

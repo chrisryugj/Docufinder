@@ -169,12 +169,30 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
           className="flex justify-between text-sm"
           style={{ color: "var(--color-text-muted)" }}
         >
-          <span>
-            인덱싱된 문서:{" "}
-            <span style={{ color: "var(--color-text-secondary)" }}>
-              {status?.total_files ?? 0}개
+          <div className="flex items-center gap-2">
+            <span>
+              문서:{" "}
+              <span style={{ color: "var(--color-text-secondary)" }}>
+                {status?.total_files ?? 0}개
+              </span>
             </span>
-          </span>
+            {/* 시맨틱 분석 대기 상태 표시 */}
+            {semanticEnabled && hasPendingVectors && !isVectorIndexing && (
+              <span style={{ color: "var(--color-text-muted)" }}>
+                | 시맨틱 대기:{" "}
+                <span style={{ color: "var(--color-accent)" }}>
+                  {vectorStatus?.pending_chunks ?? 0}
+                </span>
+              </span>
+            )}
+            {/* 시맨틱 완료 상태 */}
+            {semanticEnabled && isVectorComplete && (status?.vectors_count ?? 0) > 0 && (
+              <span style={{ color: "var(--color-text-muted)" }}>
+                | 시맨틱:{" "}
+                <span style={{ color: "var(--color-success, #22c55e)" }}>✓</span>
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <span>
               {status?.watched_folders.length ? (
@@ -205,7 +223,7 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
                   e.currentTarget.style.color = "var(--color-accent)";
                 }}
               >
-                벡터 인덱싱 시작
+                시맨틱 시작
               </button>
             )}
           </div>

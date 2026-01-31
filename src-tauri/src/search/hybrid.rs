@@ -3,8 +3,8 @@ use super::vector::VectorResult;
 
 /// Reciprocal Rank Fusion으로 하이브리드 검색 결과 병합
 pub fn merge_results(
-    fts_results: Vec<FtsResult>,
-    vector_results: Vec<VectorResult>,
+    fts_results: &[FtsResult],
+    vector_results: &[VectorResult],
     k: f32, // RRF 상수, 보통 60
 ) -> Vec<HybridResult> {
     use std::collections::HashMap;

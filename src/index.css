@@ -1,7 +1,6 @@
 /* All @import statements must come first */
-@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+/* 외부 폰트 제거 - 내부망 환경 최적화 */
+@import "./assets/fonts/pretendard.css";
 @import "tailwindcss";
 
 /* ============================================
@@ -10,9 +9,10 @@
    ============================================ */
 
 @theme {
-  --font-sans: 'Pretendard', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-display: 'Outfit', 'Pretendard', system-ui, sans-serif;
+  /* 로컬 Pretendard + 시스템 폰트 폴백 */
+  --font-sans: 'Pretendard', 'Pretendard Variable', 'Malgun Gothic', system-ui, sans-serif;
+  --font-mono: 'Consolas', 'D2Coding', 'Fira Code', monospace;
+  --font-display: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
 
   --color-primary-50: #f0fdfa;
   --color-primary-100: #ccfbf1;
@@ -232,24 +232,22 @@ body,
    Premium Utility Classes
    ============================================ */
 
-/* Glassmorphism */
+/* Glassmorphism - blur 제거 (저사양/내부망 최적화) */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.95);
+  /* backdrop-filter: blur(12px); 제거 - GPU 부담 */
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .glass-dark {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.95);
+  /* backdrop-filter: blur(12px); 제거 */
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .glass-card {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.98);
+  /* backdrop-filter: blur(8px); 제거 */
   border: 1px solid var(--color-border-subtle);
   box-shadow: var(--shadow-sm);
 }
@@ -660,4 +658,18 @@ body,
 }
 .micro-color-shift:hover {
   color: var(--color-accent);
+}
+
+/* ============================================
+   저사양 환경 최적화 (애니메이션 축소)
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

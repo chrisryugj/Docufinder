@@ -6,7 +6,7 @@ export function getMatchTypeBadge(matchType: SearchResultMatchType): {
 } {
   switch (matchType) {
     case "semantic":
-      return { label: "의미", variant: "semantic" };
+      return { label: "🧠 의미", variant: "semantic" };
     case "hybrid":
       return { label: "하이브리드", variant: "hybrid" };
     default:
