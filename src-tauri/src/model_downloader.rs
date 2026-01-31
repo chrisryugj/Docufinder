@@ -28,7 +28,8 @@ const E5_MODEL_SHA256: &str = "d9fc0fc39b4cbda21e88e2e0ba389d77f67af9dbe08d8b2d6
 const E5_TOKENIZER_SHA256: &str = "3daa51bc3f81d91cf2cb5ab8a73dfe53f24ef65c3b6990fa5c8ad5f22b54c8a5";
 const RERANKER_MODEL_SHA256: &str = "13d18cce0f3c0b1115f11ce42c2078cc73b6e0bbe7d8b4ba6e6b8b3dd1ebb49b";
 const RERANKER_TOKENIZER_SHA256: &str = "be4b6d26dbb2eca6b51ee2a51b8c94d179b36451c10ebfbc5f56fc9dc7a4df2e";
-// ONNX Runtime ZIP은 해시 검증 생략 (DLL만 추출하므로 복잡함)
+// ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
+const ONNX_RUNTIME_ZIP_SHA256: &str = "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
 
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
@@ -272,6 +273,17 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
         io::copy(&mut reader, &mut file)
             .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
     }
+
+    // SHA-256 무결성 검증
+    let actual_hash = compute_sha256(&temp_path)?;
+    if actual_hash != ONNX_RUNTIME_ZIP_SHA256 {
+        let _ = fs::remove_file(&temp_path);
+        return Err(format!(
+            "ONNX Runtime ZIP 무결성 검증 실패!\n예상: {}\n실제: {}\n\n파일이 변조되었거나 손상되었습니다.",
+            ONNX_RUNTIME_ZIP_SHA256, actual_hash
+        ));
+    }
+    tracing::info!("ONNX Runtime ZIP SHA-256 검증 성공");
 
     // ZIP 압축 해제
     let file = File::open(&temp_path)

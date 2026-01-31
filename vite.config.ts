@@ -23,6 +23,11 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_DEBUG,
   },
 
+  // 프로덕션 빌드에서 console.log 제거 (보안: 디버그 정보 노출 방지)
+  esbuild: {
+    drop: process.env.TAURI_DEBUG ? [] : ["console", "debugger"],
+  },
+
   // Prevent Vite from obscuring Rust errors
   clearScreen: false,
 });

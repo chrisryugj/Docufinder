@@ -80,6 +80,39 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info.location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+
+        eprintln!("╔══════════════════════════════════════════════════════════╗");
+        eprintln!("║                    CRITICAL ERROR                        ║");
+        eprintln!("╚══════════════════════════════════════════════════════════╝");
+        eprintln!("Location: {}", location);
+        eprintln!("Message: {}", message);
+        eprintln!("Please report this issue at: https://github.com/your-repo/issues");
+
+        // 긴급 로그 flush (tracing이 초기화되지 않았을 수 있음)
+        if let Some(data_dir) = dirs::data_dir() {
+            let crash_log = data_dir.join("com.anything.app").join("crash.log");
+            let _ = std::fs::write(&crash_log, format!(
+                "[{}] PANIC at {}: {}\n",
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                location,
+                message
+            ));
+        }
+    }));
+
     // tokenizers 병렬 처리 비활성화 (rayon과의 데드락 방지)
     std::env::set_var("TOKENIZERS_PARALLELISM", "false");
 
