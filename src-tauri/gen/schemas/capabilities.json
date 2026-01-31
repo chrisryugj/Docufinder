@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"DocuFinder default capabilities - 최소 권한 원칙","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:allow-open","dialog:allow-ask","updater:default","process:allow-restart","process:allow-exit"]}}
+{"default":{"identifier":"default","description":"DocuFinder default capabilities - 최소 권한 원칙","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","dialog:allow-open","dialog:allow-ask","process:allow-restart","process:allow-exit"]}}

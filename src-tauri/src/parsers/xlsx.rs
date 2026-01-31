@@ -2,9 +2,22 @@ use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use calamine::{open_workbook_auto, Data, Reader};
 use std::path::Path;
 
+/// 최대 XLSX 파일 크기 (100MB)
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
 /// XLSX/XLS 파일 파싱
 /// calamine 크레이트 사용, 시트/행 정보 포함
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    // 파일 크기 제한 (압축 폭탄 방어)
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() > MAX_FILE_SIZE {
+            return Err(ParseError::ParseError(format!(
+                "파일 크기 초과: {} bytes (최대 {} bytes)",
+                metadata.len(), MAX_FILE_SIZE
+            )));
+        }
+    }
+
     let mut workbook =
         open_workbook_auto(path).map_err(|e| ParseError::ParseError(e.to_string()))?;
 

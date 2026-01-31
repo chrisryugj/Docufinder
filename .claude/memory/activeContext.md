@@ -5,319 +5,62 @@
 - **Phase 2**: 완료 (파일 파서)
 - **Phase 3**: 완료 (시맨틱 검색)
 - **Phase 4**: 완료 (고급 기능)
+- **Clean Architecture**: Phase 2 완료 (AppContainer 마이그레이션)
+- **성능 최적화**: Phase 1~5 완료
+- **Phase 5 배포**: ✅ **보안 강화 Phase 1~2 완료, 베타 배포 준비 완료**
 
-## 완료된 작업
+## 마지막 업데이트
+2026-01-31 (보안 강화 Phase 2 완료 - 파싱 오류 알림, FTS 성능 개선)
 
-### Phase 1 (기반 구축)
-- Tauri 프로젝트 셋업
-- AppState (DB 경로 공유)
-- DB CRUD 함수 (파일, 청크, 폴더)
-- 인덱싱 파이프라인 (폴더 순회 → 파싱 → DB 저장)
-- FTS5 검색 + 파일 정보 조인
-- 프론트엔드 UI (폴더 선택, 검색, 결과 표시)
+---
 
-### Phase 2 (파일 파서)
-| 파서 | 파일 | 라이브러리 |
-|------|------|------------|
-| HWPX | `parsers/hwpx.rs` | zip + quick-xml |
-| DOCX | `parsers/docx.rs` | zip + quick-xml |
-| XLSX | `parsers/xlsx.rs` | calamine |
-| PDF | `parsers/pdf.rs` | pdf-extract |
-| TXT/MD | `parsers/txt.rs` | 내장 |
+## 🚀 Phase 5: 사내 배포 준비 (완료)
 
-### Phase 3 (시맨틱 검색)
-| 컴포넌트 | 파일 | 라이브러리 |
-|----------|------|------------|
-| 임베더 | `embedder/mod.rs` | ort 2.0.0-rc.11 + tokenizers |
-| 벡터 인덱스 | `search/vector.rs` | usearch 2.23 |
-| 하이브리드 검색 | `search/hybrid.rs` | RRF 알고리즘 |
-
-**주요 기능**:
-- multilingual-e5-small 모델 (384차원, 118MB)
-- 청크 임베딩 → usearch HNSW 인덱스
-- 시맨틱 검색 (벡터 유사도)
-- 하이브리드 검색 (FTS + 벡터 + RRF 병합)
-
-### Phase 4 (고급 기능)
-| 기능 | 파일 | 설명 |
+### ✅ Phase 1 완료 (보안 필수)
+| 작업 | 파일 | 설명 |
 |------|------|------|
-| 파일 감시 | `indexer/manager.rs` | notify 기반, 디바운스 처리 |
-| 증분 인덱싱 | `indexer/manager.rs` | 백그라운드 스레드에서 자동 처리 |
-| 하이라이트 | `App.tsx` | highlight_ranges → mark 태그 |
-| 검색 모드 | `App.tsx` | keyword/semantic/hybrid 선택 |
-| 파일 열기 | `App.tsx` | shell:open 연동 (기존) |
+| **업데이터 비활성화** | `tauri.conf.json`, `default.json`, `lib.rs` | 외부 통신 차단 |
+| **SHA-256 무결성 검증** | `model_downloader.rs` | 모델/DLL 다운로드 시 해시 검증 |
+| **타임아웃 추가** | `model_downloader.rs` | 30초 연결, 5분 읽기 |
+| **압축 폭탄 방어** | `hwpx.rs`, `docx.rs`, `xlsx.rs` | uncompressed size, 엔트리 수, 압축비 제한 |
 
-## 다음 작업 (Phase 5: 배포)
+### ✅ Phase 2 완료 (안정성 강화)
+| 작업 | 파일 | 설명 |
+|------|------|------|
+| **파싱 오류 알림** | `App.tsx:141-162` | 토스트로 실패 수 표시 |
+| **FTS SSD 모드 강제** | `pipeline.rs:409-421` | HDD에서도 병렬 처리 |
+| **PDF 타임아웃 5초** | `pdf.rs:9` | 10초 → 5초 |
+| **경로 파싱 수정** | `disk_info.rs:26-36` | `\\?\` 접두사 처리 |
 
-| 작업 | 설명 | 우선순위 |
-|------|------|----------|
-| MSI 설치파일 | `pnpm tauri:build` → MSI 생성 | P1 |
-| 자동 업데이트 | tauri-plugin-updater 설정 | P2 |
-| 사용자 테스트 | 파일명 검색 등 전체 기능 검증 | P1 |
+### 📋 Phase 3 (정책 준수 - 옵션)
+- [ ] DB 암호화 검토 (SQLCipher) - 정책 요구 시
+- [ ] CSP 강화 - 보안팀 요구 시
+
+---
+
+## 📊 인덱싱 테스트 결과 (1695개 파일)
+
+| 항목 | 결과 |
+|------|------|
+| 성공 | 1558개 (92%) |
+| 실패 | 137개 (8%) |
+| 실패 원인 | ZIP 손상, PDF 타임아웃, 압축 폭탄 방어 |
+
+---
 
 ## 핵심 파일
+
 | 파일 | 역할 |
 |------|------|
-| `src-tauri/src/lib.rs` | AppState (embedder, vector_index, watch_manager) |
-| `src-tauri/src/embedder/mod.rs` | ONNX 임베딩 생성 |
-| `src-tauri/src/search/vector.rs` | usearch 벡터 인덱스 |
-| `src-tauri/src/search/hybrid.rs` | RRF 병합 |
-| `src-tauri/src/indexer/pipeline.rs` | 인덱싱 (FTS + 벡터) |
-| `src-tauri/src/indexer/manager.rs` | 파일 감시 + 증분 인덱싱 |
-| `src-tauri/src/commands/search.rs` | 검색 커맨드 (keyword, semantic, hybrid) |
-
-## 모델 다운로드
-시맨틱 검색을 사용하려면 모델 파일이 필요합니다:
-```
-{앱 데이터 폴더}/models/multilingual-e5-small/
-├── model.onnx       (118MB)
-└── tokenizer.json   (17MB)
-```
-
-HuggingFace에서 다운로드:
-- https://huggingface.co/intfloat/multilingual-e5-small
+| `src-tauri/src/lib.rs` | AppContainer 초기화 |
+| `src-tauri/src/indexer/pipeline.rs` | FTS 인덱싱 파이프라인 |
+| `src-tauri/src/model_downloader.rs` | 모델 다운로드 + SHA-256 검증 |
+| `src-tauri/src/utils/disk_info.rs` | SSD/HDD 감지 |
+| `src-tauri/src/parsers/` | 문서 파서 (압축 폭탄 방어 포함) |
+| `src/App.tsx` | 프론트엔드 앱 (파싱 오류 토스트) |
 
 ## 실행 방법
 ```bash
-pnpm tauri:dev
+pnpm tauri:dev      # 개발 모드
+pnpm tauri:build    # MSI 빌드
 ```
-
-## 최근 세션 작업 (2026-01-17)
-
-**계획 문서**: `.claude/plans/refactoring-plan.md`
-
-### ✅ Sprint 1 완료
-
-| 작업 | 파일 | 상태 |
-|------|------|------|
-| 토스트 시스템 분리 | `src/components/ui/Toast.tsx`, `src/hooks/useToast.ts` | ✅ |
-| 파일 열기 피드백 | `src/App.tsx:148-161` | ✅ |
-| 최근검색 시간 배지 | `src/components/sidebar/RecentSearches.tsx` | ✅ |
-| RecentSearch 타입 마이그레이션 | `src/hooks/useLocalStorage.ts`, `src/types/search.ts` | ✅ |
-| formatRelativeTime 유틸 | `src/utils/formatRelativeTime.ts` | ✅ |
-| 사이드바 접기/펼치기 | `src/components/sidebar/Sidebar.tsx` | ✅ |
-
-### ✅ Sprint 2 완료
-
-| 작업 | 파일 | 상태 |
-|------|------|------|
-| 폴더별 인덱싱 통계 | `db/mod.rs:372-398`, `FolderTree.tsx` | ✅ |
-| 하위폴더 포함 토글 (설정) | `settings.rs:19-25`, `SettingsModal.tsx:228-258` | ✅ |
-| 하위폴더 설정 실제 연동 | `pipeline.rs:42-173`, `index.rs:63-82` | ✅ |
-| 즐겨찾기 폴더 (DB) | `db/mod.rs:118-160` | ✅ |
-| 즐겨찾기 폴더 (백엔드) | `index.rs:221-260` | ✅ |
-| 즐겨찾기 폴더 (프론트) | `FolderTree.tsx` (별 아이콘 + 상단 정렬) | ✅ |
-
-### ✅ Sprint 3 완료
-
-| 작업 | 파일 | 상태 |
-|------|------|------|
-| 인덱싱 진행률 시스템 | `pipeline.rs`, `index.rs`, `lib.rs` | ✅ |
-| 진행률 UI + 취소 버튼 | `StatusBar.tsx`, `useIndexStatus.ts` | ✅ |
-| 드라이브 루트 경고 | `useIndexStatus.ts` (ask dialog) | ✅ |
-| 이벤트 타입 | `types/index.ts` (IndexingProgress) | ✅ |
-
-### ✅ Sprint 4 완료 (파일명 검색)
-
-| 작업 | 파일 | 상태 |
-|------|------|------|
-| files_fts FTS5 테이블 | `db/mod.rs` | ✅ |
-| search_filename 커맨드 | `search/filename.rs`, `commands/search.rs` | ✅ |
-| 파일명 모드 버튼 | `types/search.ts`, `SearchBar.tsx` | ✅ |
-| 통합 모드 (파일명+내용) | `useSearch.ts`, `SearchResultList.tsx` | ✅ |
-| "파일명만" 필터 | `SearchFilters.tsx` | ✅ |
-| cleanPath 유틸 | `utils/cleanPath.ts` | ✅ |
-| 설정 모드 연동 | `settings.rs`, `App.tsx`, `SettingsModal.tsx` | ✅ |
-
-**기능 요약**:
-- Everything 스타일 파일명 검색
-- 4가지 검색 모드: 하이브리드/키워드/시맨틱/파일명
-- 내용 검색 시 파일명 매치도 함께 표시 (상단)
-- Windows Long Path prefix (`\\?\`) 자동 제거
-
-### 이전 세션 작업
-- **보기 밀도 설정**: 기본/컴팩트 모드 전환 기능
-- **컴팩트 모드**: 세로 ~50% 축소 (line-clamp 2줄, 경로 숨김, 패딩/간격 축소)
-- **검색바**: 그라디언트 제거, 미니멀 디자인으로 간소화
-- **스크롤 맨 위로 FAB**: 300px 이상 스크롤 시 표시
-- 다크모드 UI 전면 개선
-- FTS5 한국어 키워드 검색 버그 수정
-- RAG 스타일 신뢰도 표시 및 파일 그룹핑
-
-## 핵심 파일 (Sprint 2 신규)
-| 파일 | 역할 |
-|------|------|
-| `src-tauri/src/db/mod.rs:118-160` | 즐겨찾기 토글, 폴더 상세정보 조회 |
-| `src-tauri/src/indexer/pipeline.rs:42-173` | recursive 옵션 지원 인덱싱 |
-| `src-tauri/src/commands/settings.rs:101-113` | 설정 동기 조회 (get_settings_sync) |
-| `src/components/sidebar/FolderTree.tsx` | 폴더 통계, 즐겨찾기 UI |
-| `src/types/index.ts` | FolderStats, WatchedFolderInfo 타입 |
-
-## 핵심 파일 (Sprint 3 신규)
-| 파일 | 역할 |
-|------|------|
-| `src-tauri/src/indexer/pipeline.rs:128-288` | 진행률 콜백 + 취소 지원 인덱싱 |
-| `src-tauri/src/commands/index.rs:41-162` | Tauri 이벤트 emit + cancel_indexing 커맨드 |
-| `src-tauri/src/lib.rs:36-70` | indexing_cancel_flag (AtomicBool) |
-| `src/hooks/useIndexStatus.ts` | 진행률 이벤트 리스너 + 드라이브 경고 |
-| `src/components/layout/StatusBar.tsx` | 진행률 바 + 취소 버튼 UI |
-| `src/types/index.ts:31-45` | IndexingProgress 타입 |
-
-## 🔧 코드 리팩토링 (2026-01-18)
-
-코드 리뷰 기반 Critical/High 이슈 수정 완료:
-
-| Phase | 이슈 | 파일 | 상태 |
-|-------|------|------|------|
-| 1 | VectorIndex 스레드 안전성 | `search/vector.rs:35` - RwLock 적용 | ✅ |
-| 2 | 파일 삭제 이벤트 미처리 | `indexer/manager.rs:148` - Remove 분기 | ✅ |
-| 3 | foreign_keys PRAGMA | `db/mod.rs:19` + chunks 명시적 삭제 | ✅ |
-| 4 | 설정값(max_results) 미반영 | `commands/search.rs:71,144,217,327` | ✅ |
-| 5 | CSP + 폰트 로컬화 | `tauri.conf.json`, `index.html`, fonts/ | ✅ |
-| 6 | 모델 부재 시 에러 | `lib.rs:109-115` | ✅ |
-
-**계획 문서**: `.claude/plans/drifting-sauteeing-goblet.md`
-
-### 핵심 변경사항
-
-1. **VectorIndex 스레드 안전성**
-   - `index: Index` → `index: RwLock<Index>`
-   - `unsafe impl Send/Sync` 제거
-   - 검색은 read lock, 추가/삭제/저장은 write lock
-
-2. **데이터 무결성**
-   - foreign_keys PRAGMA ON
-   - 파일 삭제 시 chunks 명시적 삭제
-
-3. **보안 강화**
-   - CSP: `default-src 'self'; style-src 'self' 'unsafe-inline'...`
-   - Pretendard 폰트 로컬 번들링 (~2MB)
-
-## 🔍 결과내검색 기능 (2026-01-18)
-
-| 기능 | 파일 | 설명 |
-|------|------|------|
-| 결과내검색 필터 | `useSearch.ts:178-186` | 2글자 이상 키워드만 필터링 |
-| 필터 UI | `SearchFilters.tsx` | refineQuery 입력 + 클리어 버튼 |
-| 필터바 유지 | `App.tsx:381` | 원본 결과 기준으로 필터바 표시 |
-| IME 초기화 | `App.tsx:102-117` | 앱 시작 시 blur-focus 사이클 |
-| CSS 수정 | `index.css:1-5` | @import 순서 수정 (HMR 오류 방지) |
-
-**Known Issue**: 앱 최초 시작 시 IME 팝업창 뜸 (다른 창 갔다오면 해결)
-
-## 🚀 시스템 트레이 + 자동 시작 (2026-01-18)
-
-| 기능 | 파일 | 설명 |
-|------|------|------|
-| 시스템 트레이 | `lib.rs:273-311` | X버튼→트레이 최소화, 메뉴(열기/종료) |
-| 자동 시작 | `lib.rs:208`, `settings.rs:149-158` | tauri-plugin-autostart |
-| 시작 시 최소화 | `lib.rs:315-325` | --minimized 인자 또는 설정 |
-| 재인덱싱 | `index.rs:348-463` | 폴더 우클릭 메뉴 |
-| 컨텍스트 메뉴 | `FolderTree.tsx:90-133` | 우클릭 재인덱싱/폴더제거 |
-
-**설정 옵션**:
-- `auto_start`: Windows 시작 시 자동 실행
-- `start_minimized`: 시작 시 트레이로 최소화
-
-## 🎨 앱 아이콘 교체 (2026-01-18)
-
-| 작업 | 파일 | 설명 |
-|------|------|------|
-| 앱 아이콘 | `src-tauri/icons/*` | 새 디자인 (폴더+돋보기) |
-| 헤더 아이콘 | `Header.tsx:21-25` | SVG → 이미지로 변경 |
-| 트레이 아이콘 | `lib.rs:280` | default_window_icon() 사용 |
-| 아이콘 생성 | `scripts/generate-icons.mjs` | sharp + png-to-ico |
-
-**주의**: 작업표시줄 고정 아이콘은 고정 해제 → 재고정 필요
-
-## 🧹 Rust 코드 정리 (2026-01-18)
-
-dead_code warning 26개 → 0개 정리:
-- 미사용 상수/함수/struct 삭제
-- 필요하지만 미사용 필드는 `#[allow(dead_code)]` 추가
-- 미사용 import 제거
-
-## ✅ 2단계 인덱싱 시스템 구현 완료 (2026-01-18)
-
-### 배경
-- 인덱싱 속도 병목: ONNX 임베딩이 99% 시간 소비
-- 2,000개 파일 인덱싱 시 10분+ 소요
-- 취소 버튼 반응 느림
-
-### 해결된 이슈 (Codex + Claude)
-| 이슈 | 해결 | 파일 |
-|------|------|------|
-| tokenizers 데드락 | `TOKENIZERS_PARALLELISM=false` | `lib.rs:202-203` |
-| 파싱 실패 시 파일명 검색 불가 | `save_file_metadata_only()` 추가 | `pipeline.rs:387-413` |
-| 스캔 중 취소 불가 | collect_files에 cancel_flag 전달 | `pipeline.rs:260-285` |
-| 채널 대기 중 취소 불가 | recv_timeout 100ms | `pipeline.rs:167,180-218` |
-| DB 락 병목 | 파일당 트랜잭션 (BEGIN/COMMIT) | `pipeline.rs:447-498` |
-
-### 구현 완료
-
-**계획 문서**: `.claude/plans/binary-crafting-curry.md`
-
-**아키텍처**:
-```
-[폴더 추가]
-    ↓
-1단계: FTS 인덱싱 (동기, ~30초)
-    - 메타데이터 + 파싱 + FTS5 저장
-    → 완료 즉시 파일명/키워드 검색 가능
-    ↓
-2단계: 벡터 인덱싱 (백그라운드)
-    - 별도 스레드, 32청크씩 배치
-    - FAB로 진행률 표시
-    → 완료 시 "시맨틱 검색 준비 완료!" 토스트
-```
-
-### ✅ 완료된 작업
-| Phase | 작업 | 파일 | 상태 |
-|-------|------|------|------|
-| 1-1 | DB 스키마 변경 | `db/mod.rs:110-124` (fts_indexed_at, vector_indexed_at) | ✅ |
-| 1-2 | DB 조회/업데이트 함수 | `db/mod.rs:497-645` (upsert_file_fts_only, get_pending_vector_chunks 등) | ✅ |
-| 1-3 | pipeline.rs FTS 분리 | `pipeline.rs:542-776` (index_folder_fts_only) | ✅ |
-| 1-4 | vector_worker.rs | `indexer/vector_worker.rs` (VectorWorker 백그라운드 워커) | ✅ **신규** |
-| 2-1 | AppState 확장 | `lib.rs:44-45,61,148-151` (vector_worker 필드) | ✅ |
-| 2-2 | add_folder 수정 | `commands/index.rs:50-183` (FTS→벡터 2단계) | ✅ |
-| 2-3 | 새 커맨드 | `commands/index.rs:470-495` (get_vector_indexing_status, cancel_vector_indexing) | ✅ |
-| 3-1 | 타입 확장 | `types/index.ts:49-64` (VectorIndexingStatus, VectorIndexingProgress) | ✅ |
-| 3-2 | useVectorIndexing | `hooks/useVectorIndexing.ts` | ✅ **신규** |
-| 3-3 | VectorIndexingFAB | `components/ui/VectorIndexingFAB.tsx` | ✅ **신규** |
-| 3-4 | App.tsx 통합 | `App.tsx:93-108,478-487` (FAB + 완료 토스트) | ✅ |
-
-### 핵심 파일
-| 파일 | 역할 |
-|------|------|
-| `src-tauri/src/db/mod.rs` | 2단계 인덱싱 DB 함수 |
-| `src-tauri/src/indexer/pipeline.rs` | FTS 전용 인덱싱 |
-| `src-tauri/src/indexer/vector_worker.rs` | 백그라운드 벡터 워커 |
-| `src-tauri/src/commands/index.rs` | 2단계 커맨드 |
-| `src/hooks/useVectorIndexing.ts` | 벡터 인덱싱 상태 훅 |
-| `src/components/ui/VectorIndexingFAB.tsx` | 원형 진행률 FAB |
-
-### 📋 다음 할 일
-- [ ] 실제 테스트 (pnpm tauri:dev)
-- [ ] Phase 4: 앱 재시작 시 미완료 벡터 인덱싱 자동 재개
-
-## 🔄 스크롤 축소 검색바 + UI 개선 (2026-01-18)
-
-| 기능 | 파일 | 설명 |
-|------|------|------|
-| 스크롤 축소 | `useCollapsibleSearch.ts` | 200px+ 스크롤 시 컴팩트 검색바로 전환 |
-| 컴팩트 검색바 | `CompactSearchBar.tsx` | 축소 시 표시되는 헤더 통합 검색바 |
-| 필터 정렬 | `App.tsx:472` | 검색바와 동일 max-w-4xl mx-auto |
-| 필터 구분선 | `App.tsx:472` | pb-3 border-b 추가 |
-| 깜박임 방지 | `App.tsx:53` | threshold 100→200px |
-
-## 🖱️ 우클릭 컨텍스트 메뉴 (2026-01-18)
-
-| 기능 | 파일 | 설명 |
-|------|------|------|
-| 검색 결과 우클릭 | `GroupedSearchResultItem.tsx`, `SearchResultItem.tsx` | 파일/폴더 열기, 경로 복사 |
-| Portal 렌더링 | createPortal → body | 스크롤/오버플로우 무관 |
-| 폴더 열기 토스트 | `App.tsx:278` | 성공 시 피드백 |
-| 컨텍스트 메뉴 스타일 | `FolderTree.tsx` | CSS 변수 + hover 일관성 |
-
-## 마지막 업데이트
-2026-01-18 (우클릭 컨텍스트 메뉴 + UI 개선)

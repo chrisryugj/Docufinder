@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
-/// PDF 파싱 타임아웃 (초) - 대부분 5초 내 완료, hang 감지용
-const PDF_PARSE_TIMEOUT_SECS: u64 = 10;
+/// PDF 파싱 타임아웃 (초) - 대부분 3초 내 완료, hang 방지
+const PDF_PARSE_TIMEOUT_SECS: u64 = 5;
 
 /// Detach된 PDF 파싱 스레드 카운터 (리소스 모니터링용)
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미

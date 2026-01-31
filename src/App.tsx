@@ -137,6 +137,29 @@ function App() {
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted]);
 
+  // 폴더 추가 래퍼 (파싱 실패 알림 포함)
+  const handleAddFolder = useCallback(async () => {
+    const result = await addFolder();
+    if (result) {
+      const { indexed_count, failed_count, errors } = result;
+      if (failed_count > 0) {
+        // 실패 파일이 있으면 경고 토스트
+        showToast(
+          `${indexed_count}개 인덱싱 완료, ${failed_count}개 파싱 실패`,
+          "error",
+          5000
+        );
+        // 콘솔에 상세 오류 (개발자용)
+        if (import.meta.env.DEV && errors?.length) {
+          console.warn("[파싱 실패 목록]", errors.slice(0, 20));
+        }
+      } else if (indexed_count > 0) {
+        showToast(`${indexed_count}개 파일 인덱싱 완료`, "success");
+      }
+    }
+    return result;
+  }, [addFolder, showToast]);
+
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
 
@@ -410,7 +433,7 @@ function App() {
         isOpen={sidebarOpen}
         onToggle={toggleSidebar}
         watchedFolders={status?.watched_folders ?? []}
-        onAddFolder={addFolder}
+        onAddFolder={handleAddFolder}
         onRemoveFolder={removeFolder}
         recentSearches={recentSearches}
         onSelectSearch={handleSelectSearch}
@@ -438,7 +461,7 @@ function App() {
               status={status}
               resultCount={filteredResults.length}
               onExpand={handleExpand}
-              onAddFolder={addFolder}
+              onAddFolder={handleAddFolder}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
               isIndexing={isIndexing}
@@ -459,7 +482,7 @@ function App() {
         {!isCollapsed && (
           <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/90 backdrop-blur-md border-b" style={{ borderColor: 'var(--color-border)' }}>
             <Header
-              onAddFolder={addFolder}
+              onAddFolder={handleAddFolder}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
               isIndexing={isIndexing}

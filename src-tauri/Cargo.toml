@@ -17,7 +17,7 @@ tauri = { version = "2", features = ["devtools", "tray-icon"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
-tauri-plugin-updater = "2"
+# tauri-plugin-updater = "2"  # 사내 배포용: 비활성화
 tauri-plugin-process = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-window-state = "2"
@@ -54,6 +54,9 @@ async-trait = "0.1"
 
 # HTTP client for model download
 ureq = "3"
+
+# SHA-256 무결성 검증
+sha2 = "0.10"
 
 # Utilities
 thiserror = "2"
