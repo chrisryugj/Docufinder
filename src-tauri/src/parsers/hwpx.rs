@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use zip::ZipArchive;
 
@@ -320,10 +320,11 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
         let name = file.name().to_string();
 
-        // header.xml 수집
+        // header.xml 수집 (하드 제한: 압축 폭탄 방어)
         if name == "Contents/header.xml" {
             let mut contents = String::new();
-            std::io::Read::read_to_string(&mut file, &mut contents)?;
+            std::io::Read::take(&mut file, MAX_ENTRY_UNCOMPRESSED_SIZE)
+                .read_to_string(&mut contents)?;
             header_content = Some(contents);
             continue;
         }
@@ -336,8 +337,10 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
                 .parse::<usize>()
                 .unwrap_or(0);
 
+            // 하드 제한: 압축 폭탄 방어 (사전 검증 우회 대비)
             let mut contents = String::new();
-            std::io::Read::read_to_string(&mut file, &mut contents)?;
+            std::io::Read::take(&mut file, MAX_ENTRY_UNCOMPRESSED_SIZE)
+                .read_to_string(&mut contents)?;
             section_xmls.insert(section_num, contents);
         }
     }
@@ -667,8 +670,8 @@ fn parse_header_xml(xml_content: &str) -> DefaultStyle {
                     }
                 }
 
-                // 문단 속성 (lineSpacing)
-                if name == "lineSpacing" || name == "lnSpc" {
+                // 문단 속성 (lineSpacing) - 기본 스타일 내에서만 적용
+                if (name == "lineSpacing" || name == "lnSpc") && in_default_style {
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = std::str::from_utf8(&attr.value).unwrap_or("");

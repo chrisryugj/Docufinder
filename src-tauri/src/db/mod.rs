@@ -287,36 +287,52 @@ pub fn upsert_file(
     Ok(file_id)
 }
 
-/// 파일 삭제 (청크 + FTS 인덱스 포함)
+/// 파일 삭제 (청크 + FTS 인덱스 포함) - 트랜잭션 보장
 pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
-    // 1. chunks_fts에서 삭제
-    conn.execute(
-        "DELETE FROM chunks_fts WHERE rowid IN (
-            SELECT c.id FROM chunks c
-            JOIN files f ON c.file_id = f.id
-            WHERE f.path = ?
-        )",
-        params![path],
-    )?;
+    // 트랜잭션 시작 (원자성 보장)
+    conn.execute("BEGIN IMMEDIATE", [])?;
 
-    // 2. chunks 명시적 삭제 (foreign_keys 미활성화 환경 대비)
-    conn.execute(
-        "DELETE FROM chunks WHERE file_id IN (
-            SELECT id FROM files WHERE path = ?
-        )",
-        params![path],
-    )?;
+    let result = (|| -> Result<usize> {
+        // 1. chunks_fts에서 삭제
+        conn.execute(
+            "DELETE FROM chunks_fts WHERE rowid IN (
+                SELECT c.id FROM chunks c
+                JOIN files f ON c.file_id = f.id
+                WHERE f.path = ?
+            )",
+            params![path],
+        )?;
 
-    // 3. files_fts에서 삭제 (파일명 검색 인덱스)
-    conn.execute(
-        "DELETE FROM files_fts WHERE rowid IN (
-            SELECT id FROM files WHERE path = ?
-        )",
-        params![path],
-    )?;
+        // 2. chunks 명시적 삭제 (foreign_keys 미활성화 환경 대비)
+        conn.execute(
+            "DELETE FROM chunks WHERE file_id IN (
+                SELECT id FROM files WHERE path = ?
+            )",
+            params![path],
+        )?;
 
-    // 4. files 삭제
-    conn.execute("DELETE FROM files WHERE path = ?", params![path])
+        // 3. files_fts에서 삭제 (파일명 검색 인덱스)
+        conn.execute(
+            "DELETE FROM files_fts WHERE rowid IN (
+                SELECT id FROM files WHERE path = ?
+            )",
+            params![path],
+        )?;
+
+        // 4. files 삭제
+        conn.execute("DELETE FROM files WHERE path = ?", params![path])
+    })();
+
+    match result {
+        Ok(count) => {
+            conn.execute("COMMIT", [])?;
+            Ok(count)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
 /// 파일 개수 조회
@@ -358,7 +374,7 @@ pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) ->
     Ok(results)
 }
 
-/// 폴더 내 모든 파일 삭제 (FTS + 파일)
+/// 폴더 내 모든 파일 삭제 (FTS + 파일) - 트랜잭션 보장
 pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<usize> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
@@ -366,64 +382,112 @@ pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<us
     let pattern_unix = format!("{}/%", escaped_unix);
     let pattern_win = format!("{}\\\\%", escaped_win);
 
-    // chunks_fts 삭제
-    conn.execute(
-        "DELETE FROM chunks_fts WHERE rowid IN (
-            SELECT c.id FROM chunks c
-            JOIN files f ON c.file_id = f.id
-            WHERE f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\'
-        )",
-        params![pattern_unix, pattern_win],
-    )?;
+    // 트랜잭션 시작 (원자성 보장)
+    conn.execute("BEGIN IMMEDIATE", [])?;
 
-    // files_fts 삭제 (파일명 검색 인덱스)
-    conn.execute(
-        "DELETE FROM files_fts WHERE rowid IN (
-            SELECT id FROM files
-            WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'
-        )",
-        params![pattern_unix, pattern_win],
-    )?;
+    let result = (|| -> Result<usize> {
+        // chunks_fts 삭제
+        conn.execute(
+            "DELETE FROM chunks_fts WHERE rowid IN (
+                SELECT c.id FROM chunks c
+                JOIN files f ON c.file_id = f.id
+                WHERE f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\'
+            )",
+            params![pattern_unix, pattern_win],
+        )?;
 
-    // 파일 삭제 (chunks는 CASCADE로 삭제됨)
-    conn.execute(
-        "DELETE FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
-        params![pattern_unix, pattern_win],
-    )
+        // files_fts 삭제 (파일명 검색 인덱스)
+        conn.execute(
+            "DELETE FROM files_fts WHERE rowid IN (
+                SELECT id FROM files
+                WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'
+            )",
+            params![pattern_unix, pattern_win],
+        )?;
+
+        // 파일 삭제 (chunks는 CASCADE로 삭제됨)
+        conn.execute(
+            "DELETE FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
+            params![pattern_unix, pattern_win],
+        )
+    })();
+
+    match result {
+        Ok(count) => {
+            conn.execute("COMMIT", [])?;
+            Ok(count)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
-/// 모든 데이터 초기화 (files, chunks, FTS, watched_folders)
+/// 모든 데이터 초기화 (files, chunks, FTS, watched_folders) - 트랜잭션 보장
 pub fn clear_all_data(conn: &Connection) -> Result<()> {
-    // FTS 먼저 삭제
-    conn.execute("DELETE FROM chunks_fts", [])?;
-    conn.execute("DELETE FROM files_fts", [])?;
+    // 트랜잭션 시작 (원자성 보장)
+    conn.execute("BEGIN IMMEDIATE", [])?;
 
-    // chunks (CASCADE로 자동 삭제되지만 명시적 삭제)
-    conn.execute("DELETE FROM chunks", [])?;
+    let result = (|| -> Result<()> {
+        // FTS 먼저 삭제
+        conn.execute("DELETE FROM chunks_fts", [])?;
+        conn.execute("DELETE FROM files_fts", [])?;
 
-    // files
-    conn.execute("DELETE FROM files", [])?;
+        // chunks (CASCADE로 자동 삭제되지만 명시적 삭제)
+        conn.execute("DELETE FROM chunks", [])?;
 
-    // watched_folders
-    conn.execute("DELETE FROM watched_folders", [])?;
+        // files
+        conn.execute("DELETE FROM files", [])?;
 
-    Ok(())
+        // watched_folders
+        conn.execute("DELETE FROM watched_folders", [])?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            conn.execute("COMMIT", [])?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
 // ==================== 청크 ====================
 
-/// 파일의 기존 청크 삭제
+/// 파일의 기존 청크 삭제 - 트랜잭션 보장
 pub fn delete_chunks_for_file(conn: &Connection, file_id: i64) -> Result<()> {
-    // FTS에서 먼저 삭제
-    conn.execute(
-        "DELETE FROM chunks_fts WHERE rowid IN (
-            SELECT id FROM chunks WHERE file_id = ?
-        )",
-        params![file_id],
-    )?;
+    // 트랜잭션 시작 (원자성 보장)
+    conn.execute("BEGIN IMMEDIATE", [])?;
 
-    conn.execute("DELETE FROM chunks WHERE file_id = ?", params![file_id])?;
-    Ok(())
+    let result = (|| -> Result<()> {
+        // FTS에서 먼저 삭제
+        conn.execute(
+            "DELETE FROM chunks_fts WHERE rowid IN (
+                SELECT id FROM chunks WHERE file_id = ?
+            )",
+            params![file_id],
+        )?;
+
+        conn.execute("DELETE FROM chunks WHERE file_id = ?", params![file_id])?;
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            conn.execute("COMMIT", [])?;
+            Ok(())
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
 /// 청크 저장 + FTS 인덱싱
