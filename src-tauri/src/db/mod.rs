@@ -651,37 +651,12 @@ pub fn insert_file_metadata_only(
     Ok(file_id)
 }
 
-/// 벡터 인덱싱 대기 중인 청크 조회
+/// 벡터 인덱싱 대기 중인 청크
 #[derive(Debug, Clone)]
 pub struct PendingChunk {
     pub chunk_id: i64,
-    pub file_id: i64,
     pub content: String,
     pub file_path: String,
-}
-
-/// 벡터 인덱싱 대기 중인 청크 조회 (limit 개수)
-pub fn get_pending_vector_chunks(conn: &Connection, limit: usize) -> Result<Vec<PendingChunk>> {
-    let mut stmt = conn.prepare(
-        "SELECT c.id, c.file_id, fts.content, f.path
-         FROM chunks c
-         JOIN files f ON f.id = c.file_id
-         JOIN chunks_fts fts ON fts.rowid = c.id
-         WHERE f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL
-         ORDER BY f.id, c.chunk_index
-         LIMIT ?"
-    )?;
-
-    let results = stmt.query_map(params![limit as i64], |row| {
-        Ok(PendingChunk {
-            chunk_id: row.get(0)?,
-            file_id: row.get(1)?,
-            content: row.get(2)?,
-            file_path: row.get(3)?,
-        })
-    })?;
-
-    results.collect()
 }
 
 /// 특정 파일의 pending 청크 조회 (DB 레벨 필터링)
@@ -691,7 +666,7 @@ pub fn get_pending_vector_chunks_for_file(
     limit: usize,
 ) -> Result<Vec<PendingChunk>> {
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.file_id, fts.content, f.path
+        "SELECT c.id, fts.content, f.path
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
@@ -703,9 +678,8 @@ pub fn get_pending_vector_chunks_for_file(
     let results = stmt.query_map(params![file_id, limit as i64], |row| {
         Ok(PendingChunk {
             chunk_id: row.get(0)?,
-            file_id: row.get(1)?,
-            content: row.get(2)?,
-            file_path: row.get(3)?,
+            content: row.get(1)?,
+            file_path: row.get(2)?,
         })
     })?;
 
