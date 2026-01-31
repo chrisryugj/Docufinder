@@ -114,24 +114,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let mut archive =
         ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
-    // 1. header.xml에서 기본 스타일 파싱
-    let default_style = match archive.by_name("Contents/header.xml") {
-        Ok(mut header_file) => {
-            let mut header_content = String::new();
-            std::io::Read::read_to_string(&mut header_file, &mut header_content)?;
-            parse_header_xml(&header_content)
-        }
-        Err(_) => DefaultStyle::default(),
-    };
-
-    // 아카이브 다시 열기 (borrow 해제)
-    drop(archive);
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let mut archive =
-        ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
-
-    // 2. section 파일들 수집 + 페이지 설정 파싱
+    // 1회 루프로 header.xml + section*.xml 모두 수집
+    let mut header_content: Option<String> = None;
     let mut sections: BTreeMap<usize, (String, String)> = BTreeMap::new(); // (텍스트, 원본 XML)
 
     for i in 0..archive.len() {
@@ -140,6 +124,14 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             .map_err(|e| ParseError::ParseError(e.to_string()))?;
 
         let name = file.name().to_string();
+
+        // header.xml 수집
+        if name == "Contents/header.xml" {
+            let mut contents = String::new();
+            std::io::Read::read_to_string(&mut file, &mut contents)?;
+            header_content = Some(contents);
+            continue;
+        }
 
         // section XML 파일만 처리 (section0.xml, section1.xml, ...)
         if name.starts_with("Contents/section") && name.ends_with(".xml") {
@@ -158,6 +150,12 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             }
         }
     }
+
+    // header.xml에서 기본 스타일 파싱
+    let default_style = header_content
+        .as_ref()
+        .map(|c| parse_header_xml(c))
+        .unwrap_or_default();
 
     // 3. 첫 번째 섹션에서 페이지 설정 파싱
     let page_settings = sections
@@ -187,7 +185,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     }
 
     // 6. 페이지 계산 기반 청크 생성
-    let chunks = chunk_text_with_calculator(&all_text, 512, 64, &calculator);
+    let chunks = chunk_text_with_calculator(&all_text, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP, &calculator);
     let page_count = calculator.total_pages(all_text.chars().count());
 
     if all_text.is_empty() {
@@ -207,6 +205,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 }
 
 /// 페이지 계산기 기반 청크 분할 (정확한 페이지 번호)
+/// 메모리 최적화: Vec<char> 대신 바이트 오프셋 매핑 사용
 fn chunk_text_with_calculator(
     text: &str,
     chunk_size: usize,
@@ -214,25 +213,35 @@ fn chunk_text_with_calculator(
     calculator: &PageCalculator,
 ) -> Vec<DocumentChunk> {
     let mut chunks = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
-    let total_len = chars.len();
 
-    if total_len == 0 {
+    if text.is_empty() {
         return chunks;
     }
+
+    // 바이트 오프셋만 저장 (Vec<char> 4bytes/char → Vec<usize> 8bytes/char이지만
+    // 실제 문자 데이터 복사 없이 원본 text에서 직접 슬라이싱 가능)
+    let byte_offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+    let total_len = byte_offsets.len();
 
     let step = chunk_size.saturating_sub(overlap).max(1);
     let mut start = 0;
 
     while start < total_len {
         let end = (start + chunk_size).min(total_len);
-        let chunk_content: String = chars[start..end].iter().collect();
+
+        // 바이트 오프셋으로 직접 슬라이싱
+        let byte_start = byte_offsets[start];
+        let byte_end = if end < total_len {
+            byte_offsets[end]
+        } else {
+            text.len()
+        };
 
         // 청크 시작 위치 기준 페이지 번호 계산
         let page_number = calculator.page_for_offset(start);
 
         chunks.push(DocumentChunk {
-            content: chunk_content,
+            content: text[byte_start..byte_end].to_string(),
             start_offset: start,
             end_offset: end,
             page_number: Some(page_number),

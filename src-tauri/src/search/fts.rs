@@ -44,6 +44,7 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
 
     // snippet(테이블, 컬럼인덱스, 시작마커, 끝마커, 생략기호, 토큰수)
     // page_number, location_hint 직접 포함 (N+1 쿼리 제거)
+    // ⚡ highlight() 제거 - full_content 불필요, snippet만 사용 (성능 최적화)
     let mut stmt = conn.prepare(
         "SELECT
             c.id,
@@ -57,7 +58,6 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
             c.page_number,
             c.location_hint,
             snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet,
-            highlight(chunks_fts, 0, '[[HL]]', '[[/HL]]') as highlight,
             f.modified_at
          FROM chunks_fts fts
          JOIN chunks c ON c.id = fts.rowid
@@ -80,8 +80,7 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
             page_number: row.get(8)?,
             location_hint: row.get(9)?,
             snippet: row.get(10)?,
-            highlight: row.get(11)?,
-            modified_at: row.get(12)?,
+            modified_at: row.get(11)?,
         })
     })?;
 
@@ -212,9 +211,6 @@ pub struct FtsResult {
     /// FTS5 snippet() - 매칭 컨텍스트 (하이라이트 마커 포함)
     /// [[HL]]매칭[[/HL]] 형식
     pub snippet: String,
-    /// FTS5 highlight() - 전체 컨텐츠에 하이라이트 마커 포함
-    /// [[HL]]매칭[[/HL]] 형식
-    pub highlight: String,
     /// 파일 수정 시간 (Unix timestamp, 초)
     pub modified_at: Option<i64>,
 }

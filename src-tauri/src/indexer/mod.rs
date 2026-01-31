@@ -1,3 +1,4 @@
+pub mod background_parser;
 pub mod manager;
 pub mod pipeline;
 pub mod vector_worker;

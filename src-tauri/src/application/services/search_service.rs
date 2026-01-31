@@ -7,13 +7,16 @@ use crate::application::dto::search::{MatchType, SearchQuery, SearchResponse, Se
 use crate::application::errors::{AppError, AppResult};
 use crate::db::{self, ChunkInfo};
 use crate::reranker::Reranker;
-use crate::search::{filename, fts, hybrid};
+use crate::search::{filename, filename_cache::FilenameCache, fts, hybrid, sentence};
 use crate::tokenizer::TextTokenizer;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+
+/// 시맨틱 검색 결과 enrich 설정 (⚡ 20→10 성능 최적화)
+const SEMANTIC_ENRICH_MAX_RESULTS: usize = 10;
 
 /// 검색 서비스
 pub struct SearchService {
@@ -22,6 +25,8 @@ pub struct SearchService {
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
     tokenizer: Option<Arc<dyn TextTokenizer>>,
     reranker: Option<Arc<Reranker>>,
+    /// 파일명 캐시 (인메모리 빠른 검색)
+    filename_cache: Option<Arc<FilenameCache>>,
 }
 
 impl SearchService {
@@ -32,6 +37,7 @@ impl SearchService {
         vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
         tokenizer: Option<Arc<dyn TextTokenizer>>,
         reranker: Option<Arc<Reranker>>,
+        filename_cache: Option<Arc<FilenameCache>>,
     ) -> Self {
         Self {
             db_path,
@@ -39,6 +45,7 @@ impl SearchService {
             vector_index,
             tokenizer,
             reranker,
+            filename_cache,
         }
     }
 
@@ -75,18 +82,18 @@ impl SearchService {
         let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
         let confidences = normalize_fts_confidence(&scores);
 
-        // 결과 변환
+        // 결과 변환 (⚡ full_content 제거 - snippet만 전달)
         let results: Vec<SearchResult> = fts_results
             .into_iter()
             .enumerate()
             .map(|(idx, r)| {
-                let highlight_ranges = parse_highlight_ranges(&r.highlight);
+                let highlight_ranges = parse_highlight_ranges(&r.snippet);
                 SearchResult {
                     file_path: r.file_path,
                     file_name: r.file_name,
                     chunk_index: r.chunk_index,
                     content_preview: strip_highlight_markers(&r.snippet),
-                    full_content: r.content,
+                    full_content: String::new(), // ⚡ 성능 최적화: 빈 문자열
                     score: r.score,
                     confidence: confidences.get(idx).copied().unwrap_or(50),
                     match_type: MatchType::Keyword,
@@ -116,51 +123,78 @@ impl SearchService {
         })
     }
 
-    /// 파일명 검색 (FTS5)
+    /// 파일명 검색 (캐시 우선, fallback: LIKE 검색)
     pub async fn search_filename(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
-        let conn = self.get_connection()?;
+        // 캐시 사용 (있고 비어있지 않으면)
+        let use_cache = self.filename_cache.as_ref().map_or(false, |c| !c.is_empty());
 
-        // 파일명 FTS5 검색 실행
-        let filename_results = filename::search(&conn, query, max_results)
-            .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+        let results: Vec<SearchResult> = if use_cache {
+            // ⚡ 인메모리 캐시 검색 (~5ms)
+            let cache = self.filename_cache.as_ref().unwrap();
+            let cache_results = cache.search(query, max_results);
 
-        // 스코어 정규화
-        let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
-        let confidences = normalize_fts_confidence(&scores);
+            cache_results
+                .into_iter()
+                .map(|r| {
+                    SearchResult {
+                        file_path: r.path,
+                        file_name: r.name.clone(),
+                        chunk_index: 0,
+                        content_preview: r.name.clone(),
+                        full_content: String::new(),
+                        score: 1.0,
+                        confidence: 100,
+                        match_type: MatchType::Filename,
+                        highlight_ranges: vec![],
+                        page_number: None,
+                        start_offset: 0,
+                        location_hint: Some(r.file_type),
+                        snippet: Some(r.name),
+                        modified_at: Some(r.modified_at),
+                    }
+                })
+                .collect()
+        } else {
+            // Fallback: DB LIKE 검색
+            let conn = self.get_connection()?;
+            let filename_results = filename::search(&conn, query, max_results)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
-        // 결과 변환
-        let results: Vec<SearchResult> = filename_results
-            .into_iter()
-            .enumerate()
-            .map(|(idx, r)| {
-                let highlight_ranges = parse_highlight_ranges(&r.highlight);
-                SearchResult {
-                    file_path: r.file_path,
-                    file_name: r.file_name.clone(),
-                    chunk_index: 0,
-                    content_preview: r.file_name.clone(),
-                    full_content: r.file_name,
-                    score: r.score,
-                    confidence: confidences.get(idx).copied().unwrap_or(50),
-                    match_type: MatchType::Filename,
-                    highlight_ranges,
-                    page_number: None,
-                    start_offset: 0,
-                    location_hint: Some(r.file_type),
-                    snippet: None,
-                    modified_at: r.modified_at,
-                }
-            })
-            .collect();
+            let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
+            let confidences = normalize_fts_confidence(&scores);
+
+            filename_results
+                .into_iter()
+                .enumerate()
+                .map(|(idx, r)| {
+                    SearchResult {
+                        file_path: r.file_path,
+                        file_name: r.file_name.clone(),
+                        chunk_index: 0,
+                        content_preview: r.file_name.clone(),
+                        full_content: String::new(),
+                        score: r.score,
+                        confidence: confidences.get(idx).copied().unwrap_or(50),
+                        match_type: MatchType::Filename,
+                        highlight_ranges: vec![],
+                        page_number: None,
+                        start_offset: 0,
+                        location_hint: Some(r.file_type),
+                        snippet: Some(r.file_name),
+                        modified_at: r.modified_at,
+                    }
+                })
+                .collect()
+        };
 
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
         tracing::info!(
-            "Filename search '{}': {} results in {}ms",
-            query, total_count, search_time_ms
+            "Filename search '{}': {} results in {}ms (cache={})",
+            query, total_count, search_time_ms, use_cache
         );
 
         Ok(SearchResponse {
@@ -206,8 +240,8 @@ impl SearchService {
             .map(|c| (c.chunk_id, c))
             .collect();
 
-        // 결과 변환
-        let results: Vec<SearchResult> = vector_results
+        // 결과 변환 (⚡ full_content 제거)
+        let mut results: Vec<SearchResult> = vector_results
             .into_iter()
             .filter_map(|vr| {
                 chunk_map.get(&vr.chunk_id).map(|chunk| SearchResult {
@@ -215,7 +249,7 @@ impl SearchService {
                     file_name: chunk.file_name.clone(),
                     chunk_index: chunk.chunk_index,
                     content_preview: truncate_preview(&chunk.content, 200),
-                    full_content: chunk.content.clone(),
+                    full_content: String::new(), // ⚡ 성능 최적화
                     score: vr.score as f64,
                     confidence: normalize_vector_confidence(vr.score as f64),
                     match_type: MatchType::Semantic,
@@ -223,11 +257,16 @@ impl SearchService {
                     page_number: chunk.page_number,
                     start_offset: chunk.start_offset,
                     location_hint: chunk.location_hint.clone(),
-                    snippet: None,
+                    snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
                     modified_at: chunk.modified_at,
                 })
             })
             .collect();
+
+        // 시맨틱 결과에 가장 유사한 문장 추가
+        if let Err(e) = self.enrich_semantic_results(&mut results, &query_embedding) {
+            tracing::warn!("Semantic enrichment failed: {}", e);
+        }
 
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
@@ -262,45 +301,45 @@ impl SearchService {
         };
 
         // 2. 벡터 검색 (가능한 경우, 락 불필요)
-        let vector_results = match (self.embedder.as_ref(), self.vector_index.as_ref()) {
+        let (vector_results, query_embedding) = match (self.embedder.as_ref(), self.vector_index.as_ref()) {
             (Some(emb), Some(vi)) => {
                 match emb.embed(query, true) {
-                    Ok(query_embedding) => vi.search(&query_embedding, max_results).unwrap_or_default(),
+                    Ok(qe) => {
+                        let results = vi.search(&qe, max_results).unwrap_or_default();
+                        (results, Some(qe))
+                    }
                     Err(e) => {
                         tracing::warn!("Failed to embed query: {}", e);
-                        vec![]
+                        (vec![], None)
                     }
                 }
             }
-            _ => vec![],
+            _ => (vec![], None),
         };
 
-        // 3. RRF 병합
-        const RRF_K: f32 = 60.0;
-        let mut hybrid_results = hybrid::merge_results(fts_results.clone(), vector_results.clone(), RRF_K);
+        // 3. FTS 결과를 HashMap으로 변환 (DB 중복 조회 제거)
+        // FtsResult에 이미 content, file_path 등 모든 정보가 있음
+        let fts_map: HashMap<i64, &fts::FtsResult> = fts_results
+            .iter()
+            .map(|r| (r.chunk_id, r))
+            .collect();
+        // vector_chunk_ids만 유지 (매치 타입 판별용)
+        let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
-        // 4. Cross-Encoder Reranking (상위 20개만)
+        // 4. RRF 병합 (슬라이스 참조로 clone 제거)
+        const RRF_K: f32 = 60.0;
+        let mut hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
+
+        // 5. Cross-Encoder Reranking (상위 20개만)
+        // FTS 결과에서 직접 content 조회 (DB 조회 제거)
         const RERANK_TOP_K: usize = 20;
         if let Some(rr) = self.reranker.as_ref() {
             if hybrid_results.len() > 1 {
-                // chunk_id로 콘텐츠 조회
-                let rerank_chunk_ids: Vec<i64> = hybrid_results
-                    .iter()
-                    .take(RERANK_TOP_K)
-                    .map(|r| r.chunk_id)
-                    .collect();
-                let rerank_chunks = db::get_chunks_by_ids(&conn, &rerank_chunk_ids)
-                    .map_err(|e| AppError::SearchFailed(e.to_string()))?;
-                let rerank_chunk_map: HashMap<i64, ChunkInfo> = rerank_chunks
-                    .into_iter()
-                    .map(|c| (c.chunk_id, c))
-                    .collect();
-
-                // Reranking 대상 문서 추출
+                // Reranking 대상 문서 추출 (FTS 결과에서 직접)
                 let documents: Vec<&str> = hybrid_results
                     .iter()
                     .take(RERANK_TOP_K)
-                    .filter_map(|r| rerank_chunk_map.get(&r.chunk_id).map(|c| c.content.as_str()))
+                    .filter_map(|r| fts_map.get(&r.chunk_id).map(|f| f.content.as_str()))
                     .collect();
 
                 if !documents.is_empty() {
@@ -325,71 +364,89 @@ impl SearchService {
             }
         }
 
-        // 5. chunk_id로 파일 정보 조회
-        let chunk_ids: Vec<i64> = hybrid_results.iter().map(|r| r.chunk_id).collect();
-        let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)
-            .map_err(|e| AppError::SearchFailed(e.to_string()))?;
-
-        let chunk_map: HashMap<i64, ChunkInfo> = chunks
-            .into_iter()
-            .map(|c| (c.chunk_id, c))
-            .collect();
-
-        // FTS/벡터 결과 맵 생성
-        let fts_snippet_map: HashMap<i64, String> = fts_results
+        // 6. 벡터 전용 결과만 DB 조회 (FTS에 없는 것만)
+        let vector_only_ids: Vec<i64> = hybrid_results
             .iter()
-            .map(|r| (r.chunk_id, r.snippet.clone()))
+            .filter(|r| !fts_map.contains_key(&r.chunk_id))
+            .map(|r| r.chunk_id)
             .collect();
-        let fts_highlight_map: HashMap<i64, Vec<(usize, usize)>> = fts_results
-            .iter()
-            .map(|r| (r.chunk_id, parse_highlight_ranges(&r.highlight)))
-            .collect();
-        let fts_chunk_ids: HashSet<i64> = fts_results.iter().map(|r| r.chunk_id).collect();
-        let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
-        // 결과 변환
-        let results: Vec<SearchResult> = hybrid_results
+        let vector_only_chunks: HashMap<i64, ChunkInfo> = if !vector_only_ids.is_empty() {
+            db::get_chunks_by_ids(&conn, &vector_only_ids)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?
+                .into_iter()
+                .map(|c| (c.chunk_id, c))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+
+        // 결과 변환 (FTS 결과 우선, 벡터 전용은 DB 조회 결과 사용)
+        let mut results: Vec<SearchResult> = hybrid_results
             .into_iter()
             .filter_map(|hr| {
-                chunk_map.get(&hr.chunk_id).map(|chunk| {
-                    let snippet = fts_snippet_map.get(&hr.chunk_id).cloned();
-                    let (content_preview, highlight_ranges) = match &snippet {
-                        Some(s) => (strip_highlight_markers(s), vec![]),
-                        None => (truncate_preview(&chunk.content, 200), vec![]),
-                    };
-                    let highlight_ranges = fts_highlight_map
-                        .get(&hr.chunk_id)
-                        .cloned()
-                        .unwrap_or(highlight_ranges);
-                    let match_type = match (
-                        fts_chunk_ids.contains(&hr.chunk_id),
-                        vector_chunk_ids.contains(&hr.chunk_id),
-                    ) {
-                        (true, true) => MatchType::Hybrid,
-                        (true, false) => MatchType::Keyword,
-                        (false, true) => MatchType::Semantic,
-                        (false, false) => MatchType::Hybrid,
-                    };
+                let match_type = match (
+                    fts_map.contains_key(&hr.chunk_id),
+                    vector_chunk_ids.contains(&hr.chunk_id),
+                ) {
+                    (true, true) => MatchType::Hybrid,
+                    (true, false) => MatchType::Keyword,
+                    (false, true) => MatchType::Semantic,
+                    (false, false) => MatchType::Hybrid,
+                };
 
-                    SearchResult {
-                        file_path: chunk.file_path.clone(),
-                        file_name: chunk.file_name.clone(),
-                        chunk_index: chunk.chunk_index,
+                // FTS 결과에서 직접 가져오기 (DB 조회 불필요, ⚡ full_content 제거)
+                if let Some(fts_r) = fts_map.get(&hr.chunk_id) {
+                    let snippet = Some(fts_r.snippet.clone());
+                    let content_preview = strip_highlight_markers(&fts_r.snippet);
+                    let highlight_ranges = parse_highlight_ranges(&fts_r.snippet);
+
+                    Some(SearchResult {
+                        file_path: fts_r.file_path.clone(),
+                        file_name: fts_r.file_name.clone(),
+                        chunk_index: fts_r.chunk_index,
                         content_preview,
-                        full_content: chunk.content.clone(),
+                        full_content: String::new(), // ⚡ 성능 최적화
                         score: hr.score as f64,
                         confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
                         match_type,
                         highlight_ranges,
+                        page_number: fts_r.page_number,
+                        start_offset: fts_r.start_offset,
+                        location_hint: fts_r.location_hint.clone(),
+                        snippet,
+                        modified_at: fts_r.modified_at,
+                    })
+                } else if let Some(chunk) = vector_only_chunks.get(&hr.chunk_id) {
+                    // 벡터 전용 결과 (DB 조회 결과 사용, ⚡ full_content 제거)
+                    Some(SearchResult {
+                        file_path: chunk.file_path.clone(),
+                        file_name: chunk.file_name.clone(),
+                        chunk_index: chunk.chunk_index,
+                        content_preview: truncate_preview(&chunk.content, 200),
+                        full_content: String::new(), // ⚡ 성능 최적화
+                        score: hr.score as f64,
+                        confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
+                        match_type,
+                        highlight_ranges: vec![],
                         page_number: chunk.page_number,
                         start_offset: chunk.start_offset,
                         location_hint: chunk.location_hint.clone(),
-                        snippet,
+                        snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
                         modified_at: chunk.modified_at,
-                    }
-                })
+                    })
+                } else {
+                    None
+                }
             })
             .collect();
+
+        // 시맨틱 결과에 가장 유사한 문장 추가 (snippet이 없는 결과만)
+        if let Some(qe) = query_embedding.as_ref() {
+            if let Err(e) = self.enrich_semantic_results(&mut results, qe) {
+                tracing::warn!("Hybrid semantic enrichment failed: {}", e);
+            }
+        }
 
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
@@ -405,6 +462,93 @@ impl SearchService {
             search_time_ms,
             search_mode: "hybrid".to_string(),
         })
+    }
+
+    // ============================================
+    // Semantic Enrichment
+    // ============================================
+
+    /// 시맨틱 검색 결과에 가장 유사한 문장 추가
+    ///
+    /// 각 청크를 문장으로 분리하고, 쿼리 임베딩과 가장 유사한 문장을 찾아
+    /// snippet 필드에 [[HL]]...[[/HL]] 형식으로 추가합니다.
+    fn enrich_semantic_results(
+        &self,
+        results: &mut [SearchResult],
+        query_embedding: &[f32],
+    ) -> AppResult<()> {
+        let embedder = match self.embedder.as_ref() {
+            Some(e) => e,
+            None => return Ok(()),
+        };
+
+        // 처리할 결과 제한 (성능)
+        let results_to_process = results.len().min(SEMANTIC_ENRICH_MAX_RESULTS);
+
+        // 1. 모든 청크에서 문장 추출
+        // (result_idx, sentence_text, start, end)
+        let mut all_sentences: Vec<(usize, String, usize, usize)> = Vec::new();
+
+        for (idx, result) in results.iter().take(results_to_process).enumerate() {
+            // 이미 snippet이 있으면 (FTS 매칭) 스킵
+            if result.snippet.is_some() {
+                continue;
+            }
+
+            // ⚡ full_content 대신 content_preview 사용 (성능 최적화)
+            let sentences = sentence::split_sentences(&result.content_preview);
+            for sent in sentences {
+                all_sentences.push((idx, sent.text, sent.start, sent.end));
+            }
+        }
+
+        if all_sentences.is_empty() {
+            return Ok(());
+        }
+
+        // 2. 배치 임베딩
+        let texts: Vec<String> = all_sentences.iter().map(|(_, t, _, _)| t.clone()).collect();
+        let embeddings = match embedder.embed_batch(&texts) {
+            Ok(emb) => emb,
+            Err(e) => {
+                tracing::warn!("Semantic enrichment embedding failed: {}", e);
+                return Ok(());
+            }
+        };
+
+        // 3. 각 청크별 최고 유사도 문장 선택
+        let mut best_per_result: HashMap<usize, (String, f32, usize, usize)> = HashMap::new();
+
+        for ((result_idx, sentence_text, start, end), embedding) in all_sentences.iter().zip(embeddings.iter()) {
+            let sim = sentence::cosine_similarity(query_embedding, embedding);
+
+            best_per_result
+                .entry(*result_idx)
+                .and_modify(|e| {
+                    if sim > e.1 {
+                        *e = (sentence_text.clone(), sim, *start, *end);
+                    }
+                })
+                .or_insert((sentence_text.clone(), sim, *start, *end));
+        }
+
+        // 4. 결과에 snippet 추가
+        let enriched_count = best_per_result.len();
+        for (idx, (sentence_text, _sim, start, end)) in best_per_result {
+            if let Some(result) = results.get_mut(idx) {
+                // snippet에 하이라이트 마커 추가
+                result.snippet = Some(format!("[[HL]]{}[[/HL]]", sentence_text));
+                // highlight_ranges는 content_preview 내 위치
+                result.highlight_ranges = vec![(start, end)];
+            }
+        }
+
+        tracing::debug!(
+            "Enriched {} semantic results with best sentences",
+            enriched_count
+        );
+
+        Ok(())
     }
 
     // ============================================
@@ -447,39 +591,41 @@ fn strip_highlight_markers(snippet: &str) -> String {
         .replace("[[/HL]]", "")
 }
 
-/// highlight() 결과에서 하이라이트 범위 추출
+/// highlight() 결과에서 하이라이트 범위 추출 (O(n) 최적화)
 fn parse_highlight_ranges(marked: &str) -> Vec<(usize, usize)> {
+    const HL_START: &str = "[[HL]]";
+    const HL_END: &str = "[[/HL]]";
+
     let mut ranges = Vec::new();
     let mut clean_pos = 0;
-    let mut i = 0;
-    let chars: Vec<char> = marked.chars().collect();
-    let len = chars.len();
+    let mut rest = marked;
 
-    while i < len {
-        if i + 6 <= len && &marked[char_offset(&chars, i)..char_offset(&chars, i + 6)] == "[[HL]]" {
+    while !rest.is_empty() {
+        if let Some(pos) = rest.find(HL_START) {
+            // HL_START 이전 문자 수 계산
+            clean_pos += rest[..pos].chars().count();
+            rest = &rest[pos + HL_START.len()..];
+
             let start = clean_pos;
-            i += 6;
-            while i < len {
-                if i + 7 <= len && &marked[char_offset(&chars, i)..char_offset(&chars, i + 7)] == "[[/HL]]" {
-                    ranges.push((start, clean_pos));
-                    i += 7;
-                    break;
-                }
-                clean_pos += 1;
-                i += 1;
+
+            // HL_END 찾기
+            if let Some(end_pos) = rest.find(HL_END) {
+                clean_pos += rest[..end_pos].chars().count();
+                ranges.push((start, clean_pos));
+                rest = &rest[end_pos + HL_END.len()..];
+            } else {
+                // HL_END 없으면 나머지 전체가 하이라이트
+                clean_pos += rest.chars().count();
+                ranges.push((start, clean_pos));
+                break;
             }
         } else {
-            clean_pos += 1;
-            i += 1;
+            // 더 이상 마커 없음
+            break;
         }
     }
 
     ranges
-}
-
-/// 문자 인덱스를 바이트 오프셋으로 변환
-fn char_offset(chars: &[char], char_idx: usize) -> usize {
-    chars.iter().take(char_idx).map(|c| c.len_utf8()).sum()
 }
 
 /// FTS5 BM25 스코어를 confidence로 변환

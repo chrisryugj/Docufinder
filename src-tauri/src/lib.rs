@@ -12,6 +12,7 @@ mod parsers;
 mod reranker;         // Cross-Encoder Reranking (Phase 5)
 mod search;
 mod tokenizer;        // 한국어 형태소 분석 (Phase 5)
+mod utils;            // 유틸리티 (idle_detector, disk_info)
 
 pub use error::{ApiError, ApiResult};
 pub use application::container::AppContainer;
@@ -211,6 +212,16 @@ pub fn run() {
                             }
                         }
                     }
+                }
+            }
+
+            // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색)
+            match container.load_filename_cache() {
+                Ok(count) => {
+                    tracing::info!("FilenameCache loaded: {} files", count);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load filename cache: {}", e);
                 }
             }
 

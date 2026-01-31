@@ -88,20 +88,22 @@ export const SearchResultItem = memo(function SearchResultItem({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [contextMenu.isOpen, closeContextMenu]);
+  // ⚡ full_content 대신 snippet/content_preview 사용 (성능 최적화)
+  const effectiveFullText = result.full_content || result.snippet || result.content_preview;
   const expandedView = isExpanded
-    ? buildExpandedContext(result.full_content, result.highlight_ranges, result.snippet)
+    ? buildExpandedContext(effectiveFullText, result.highlight_ranges, result.snippet)
     : null;
   const previewView = !isExpanded
     ? buildPreviewContext({
         previewText: result.content_preview,
-        fullText: result.full_content,
+        fullText: effectiveFullText,
         highlightRanges: result.highlight_ranges,
         snippet: result.snippet,
         query,
       })
     : null;
   const displayText = isExpanded
-    ? expandedView?.text ?? result.full_content
+    ? expandedView?.text ?? effectiveFullText
     : previewView?.text ?? result.content_preview;
   const displayRanges = isExpanded
     ? expandedView?.ranges ?? result.highlight_ranges

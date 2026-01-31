@@ -7,6 +7,12 @@ pub mod xlsx;
 use std::path::Path;
 use thiserror::Error;
 
+/// 기본 청크 크기 (문자 수)
+/// 512 → 1024로 증가: 청크 수 50% 감소, DB 크기/검색 비용 절감
+pub const DEFAULT_CHUNK_SIZE: usize = 1024;
+/// 기본 청크 오버랩 (문자 수)
+pub const DEFAULT_CHUNK_OVERLAP: usize = 128;
+
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("Unsupported file type: {0}")]

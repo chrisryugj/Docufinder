@@ -38,6 +38,7 @@ tokio = { version = "1", features = ["full"] }
 
 # File watching
 notify = "8"
+walkdir = "2"
 
 # Semantic search (Phase 3)
 ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native"] }
@@ -66,9 +67,13 @@ chrono = "0.4"
 rayon = "1.10"
 crossbeam-channel = "0.5"
 
-# Windows thread priority
+# Windows APIs
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_System_Threading"] }
+windows-sys = { version = "0.59", features = [
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_SystemInformation"
+] }
 
 [features]
 default = ["custom-protocol"]

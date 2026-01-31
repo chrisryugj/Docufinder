@@ -227,19 +227,13 @@ impl WatchManager {
                 continue;
             }
 
-            // 파일 인덱싱
-            match pipeline::index_file(
-                &conn,
-                &path,
-                ctx.embedder.as_ref(),
-                ctx.vector_index.as_ref(),
-            ) {
+            // 파일 인덱싱 (FTS만, 벡터는 백그라운드 워커가 처리)
+            match pipeline::index_file_fts_only(&conn, &path) {
                 Ok(result) => {
                     tracing::info!(
-                        "Indexed: {} ({} chunks, {} vectors)",
+                        "[FTS] Indexed: {} ({} chunks)",
                         result.file_path,
-                        result.chunks_count,
-                        result.vectors_count
+                        result.chunks_count
                     );
                 }
                 Err(e) => {
@@ -247,13 +241,7 @@ impl WatchManager {
                 }
             }
         }
-
-        // 벡터 인덱스 저장
-        if let Some(vi) = &ctx.vector_index {
-            if let Err(e) = vi.save() {
-                tracing::warn!("Failed to save vector index: {}", e);
-            }
-        }
+        // 벡터는 vector_worker가 백그라운드에서 처리 (pending 상태)
     }
 }
 

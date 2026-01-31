@@ -6,8 +6,8 @@ use std::path::Path;
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let content = fs::read_to_string(path)?;
 
-    // 청크 분할 (512자, 64자 오버랩)
-    let chunks = chunk_text(&content, 512, 64);
+    // 청크 분할
+    let chunks = chunk_text(&content, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP);
 
     Ok(ParsedDocument {
         content,

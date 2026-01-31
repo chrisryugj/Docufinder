@@ -4,7 +4,8 @@ export interface SearchResult {
   file_name: string;
   chunk_index: number;
   content_preview: string;
-  full_content: string;
+  /** @deprecated 성능 최적화로 제거됨 - snippet 사용 권장 */
+  full_content?: string;
   score: number;
   /** 정규화된 신뢰도 (0-100) */
   confidence: number;
