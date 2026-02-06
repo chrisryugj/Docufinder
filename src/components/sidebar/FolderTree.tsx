@@ -59,19 +59,24 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     let isMounted = true;
 
     const fetchStats = async () => {
-      const stats: Record<string, FolderStats> = {};
-      for (const folder of folders) {
-        if (!isMounted) return;
-        try {
-          const result = await invoke<FolderStats>("get_folder_stats", {
-            path: folder,
-          });
-          stats[folder] = result;
-        } catch (e) {
-          console.error(`Failed to get stats for ${folder}:`, e);
-        }
-      }
+      const entries = await Promise.all(
+        folders.map(async (folder) => {
+          try {
+            const result = await invoke<FolderStats>("get_folder_stats", {
+              path: folder,
+            });
+            return [folder, result] as const;
+          } catch (e) {
+            console.error(`Failed to get stats for ${folder}:`, e);
+            return null;
+          }
+        })
+      );
       if (isMounted) {
+        const stats: Record<string, FolderStats> = {};
+        for (const entry of entries) {
+          if (entry) stats[entry[0]] = entry[1];
+        }
         setFolderStats(stats);
       }
     };

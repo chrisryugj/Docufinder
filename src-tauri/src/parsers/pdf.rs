@@ -8,6 +8,9 @@ use std::time::Duration;
 /// PDF 파싱 타임아웃 (초) - 대부분 3초 내 완료, hang 방지
 const PDF_PARSE_TIMEOUT_SECS: u64 = 5;
 
+/// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 20개 = ~160MB 상한)
+const MAX_DETACHED_THREADS: usize = 20;
+
 /// Detach된 PDF 파싱 스레드 카운터 (리소스 모니터링용)
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미
 static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -16,6 +19,15 @@ static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
 /// catch_unwind + 타임아웃으로 panic/hang 방어
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    // hang 스레드 상한 체크 - 시스템 안정성 보호
+    let current_detached = DETACHED_THREAD_COUNT.load(Ordering::Relaxed);
+    if current_detached >= MAX_DETACHED_THREADS {
+        return Err(ParseError::ParseError(format!(
+            "PDF 파싱 중단: hang 스레드 {}개 초과 (상한 {}). 앱 재시작을 권장합니다.",
+            current_detached, MAX_DETACHED_THREADS
+        )));
+    }
+
     // pdf-extract가 일부 PDF에서 내부 스레드 panic 발생 → 메인 스레드 hang
     // 별도 스레드 + 타임아웃으로 방어
     let path_owned = path.to_path_buf();

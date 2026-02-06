@@ -24,6 +24,9 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
     // busy_timeout: 잠금 충돌 시 5초 대기 (race condition 방지)
     conn.pragma_update(None, "busy_timeout", 5000)?;
 
+    // journal_size_limit: WAL 파일 최대 64MB (대량 인덱싱 시 디스크 bloat 방지)
+    conn.pragma_update(None, "journal_size_limit", 67108864)?;
+
     // synchronous=NORMAL: WAL에서 성능/안정성 균형
     conn.pragma_update(None, "synchronous", "NORMAL")?;
 
@@ -497,6 +500,7 @@ pub fn delete_chunks_for_file_no_tx(conn: &Connection, file_id: i64) -> Result<(
 }
 
 /// 청크 저장 + FTS 인덱싱
+#[allow(clippy::too_many_arguments)]
 pub fn insert_chunk(
     conn: &Connection,
     file_id: i64,

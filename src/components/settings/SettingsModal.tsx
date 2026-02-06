@@ -16,9 +16,9 @@ interface SettingsModalProps {
 }
 
 const SEARCH_MODE_OPTIONS = [
-  { value: "hybrid", label: "하이브리드 (권장)" },
-  { value: "keyword", label: "키워드 검색" },
-  { value: "semantic", label: "의미 검색" },
+  { value: "keyword", label: "키워드 검색 (권장)" },
+  { value: "hybrid", label: "하이브리드 (모델 필요)" },
+  { value: "semantic", label: "의미 검색 (모델 필요)" },
   { value: "filename", label: "파일명 검색" },
 ];
 
@@ -177,7 +177,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               placeholder="검색 모드 선택"
             />
             <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-              하이브리드: 키워드 + 의미 검색 결합 (모델 필요)
+              키워드: FTS5 전문 검색 / 하이브리드: 키워드 + 의미 검색 (시맨틱 활성화 필요)
             </p>
           </div>
 
@@ -328,62 +328,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             </h3>
           </div>
 
-          {/* 시맨틱 검색 토글 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <label
-                className="text-sm font-medium"
-                style={{ color: "var(--color-text-secondary)" }}
-              >
-                시맨틱 검색
-              </label>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                AI 의미 기반 검색 (ONNX 모델 사용, 메모리 1GB+ 추가)
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.semantic_search_enabled ?? false}
-              onClick={() => handleChange("semantic_search_enabled", !(settings.semantic_search_enabled ?? false))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                (settings.semantic_search_enabled ?? false)
-                  ? "bg-blue-500"
-                  : "bg-gray-600"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  (settings.semantic_search_enabled ?? false) ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* 시맨틱 관련 옵션 (시맨틱 ON일 때만) */}
-          {(settings.semantic_search_enabled ?? false) && (
-            <>
-              {/* 벡터 인덱싱 모드 */}
-              <div>
-                <label
-                  className="block text-sm font-medium mb-2"
-                  style={{ color: "var(--color-text-secondary)" }}
-                >
-                  벡터 인덱싱 모드
-                </label>
-                <Dropdown
-                  options={VECTOR_INDEXING_MODE_OPTIONS}
-                  value={settings.vector_indexing_mode ?? "manual"}
-                  onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])}
-                  placeholder="모드 선택"
-                />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  수동: 직접 시작 버튼으로 실행 / 자동: 인덱싱 후 자동 실행
-                </p>
-              </div>
-            </>
-          )}
-
           {/* 인덱싱 강도 */}
           <div>
             <label
@@ -420,6 +364,103 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
               설정 크기 초과 파일은 인덱싱 건너뜀 (0 = 제한 없음)
             </p>
+          </div>
+
+          {/* 고급 기능 섹션 */}
+          <div
+            className="border-t pt-4"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3
+              className="text-sm font-medium mb-1"
+              style={{ color: "var(--color-text-primary)" }}
+            >
+              고급 기능
+            </h3>
+            <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
+              AI 기반 시맨틱 검색. 활성화 시 ONNX 모델을 다운로드합니다.
+            </p>
+          </div>
+
+          {/* 시맨틱 검색 토글 */}
+          <div
+            className="rounded-lg p-3"
+            style={{
+              backgroundColor: (settings.semantic_search_enabled ?? false)
+                ? "rgba(245, 158, 11, 0.08)"
+                : "var(--color-bg-secondary)",
+              border: `1px solid ${(settings.semantic_search_enabled ?? false)
+                ? "rgba(245, 158, 11, 0.3)"
+                : "var(--color-border)"}`,
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <label
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  시맨틱 검색
+                </label>
+                <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  문서의 의미를 이해하여 유사한 내용을 찾아줍니다
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={settings.semantic_search_enabled ?? false}
+                onClick={() => handleChange("semantic_search_enabled", !(settings.semantic_search_enabled ?? false))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                  (settings.semantic_search_enabled ?? false)
+                    ? "bg-amber-500"
+                    : "bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    (settings.semantic_search_enabled ?? false) ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* 활성화 시 경고 + 옵션 */}
+            {(settings.semantic_search_enabled ?? false) && (
+              <div className="mt-3 space-y-3">
+                <div
+                  className="flex items-start gap-2 p-2 rounded text-xs"
+                  style={{
+                    backgroundColor: "rgba(245, 158, 11, 0.1)",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "rgb(245, 158, 11)" }} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                  </svg>
+                  <span>메모리 약 1GB 추가 사용. 저사양 PC(4GB RAM)에서는 성능 저하가 발생할 수 있습니다.</span>
+                </div>
+
+                {/* 벡터 인덱싱 모드 */}
+                <div>
+                  <label
+                    className="block text-xs font-medium mb-1.5"
+                    style={{ color: "var(--color-text-secondary)" }}
+                  >
+                    벡터 인덱싱 모드
+                  </label>
+                  <Dropdown
+                    options={VECTOR_INDEXING_MODE_OPTIONS}
+                    value={settings.vector_indexing_mode ?? "manual"}
+                    onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])}
+                    placeholder="모드 선택"
+                  />
+                  <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    수동: 직접 시작 / 자동: 인덱싱 후 자동 실행
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 시스템 트레이 섹션 구분선 */}

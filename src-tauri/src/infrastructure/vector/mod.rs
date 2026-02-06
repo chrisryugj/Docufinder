@@ -308,7 +308,13 @@ impl VectorRepository for UsearchVectorRepository {
             "next_key": next_key,
         });
 
-        std::fs::write(&map_path, serde_json::to_string(&map_data).unwrap()).map_err(|e| {
+        let map_json = serde_json::to_string(&map_data).map_err(|e| {
+            DomainError::VectorIndexError {
+                operation: "serialize_map".to_string(),
+                reason: e.to_string(),
+            }
+        })?;
+        std::fs::write(&map_path, map_json).map_err(|e| {
             DomainError::VectorIndexError {
                 operation: "save_map".to_string(),
                 reason: e.to_string(),

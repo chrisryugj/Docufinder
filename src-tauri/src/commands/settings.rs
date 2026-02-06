@@ -2,7 +2,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::AppContainer;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
@@ -97,7 +97,7 @@ pub enum Theme {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            search_mode: SearchMode::Hybrid,
+            search_mode: SearchMode::Keyword,
             max_results: 50,
             chunk_size: 512,
             chunk_overlap: 64,
@@ -118,7 +118,7 @@ impl Default for Settings {
 }
 
 /// 설정 파일 경로 가져오기
-fn get_settings_path(app_data_dir: &PathBuf) -> PathBuf {
+fn get_settings_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("settings.json")
 }
 
@@ -160,7 +160,7 @@ pub async fn get_settings(state: State<'_, Mutex<AppContainer>>) -> ApiResult<Se
 }
 
 /// 설정 동기 조회 (내부 사용)
-pub fn get_settings_sync(app_data_dir: &PathBuf) -> Settings {
+pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     let settings_path = get_settings_path(app_data_dir);
 
     if settings_path.exists() {
@@ -197,10 +197,8 @@ pub async fn update_settings(
         if let Err(e) = autostart_manager.enable() {
             tracing::warn!("Failed to enable autostart: {}", e);
         }
-    } else {
-        if let Err(e) = autostart_manager.disable() {
-            tracing::warn!("Failed to disable autostart: {}", e);
-        }
+    } else if let Err(e) = autostart_manager.disable() {
+        tracing::warn!("Failed to disable autostart: {}", e);
     }
 
     let settings_path = get_settings_path(&app_data_dir);

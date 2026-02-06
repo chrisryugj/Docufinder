@@ -13,7 +13,7 @@ use crate::search::vector::VectorIndex;
 use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use crate::ApiError;
 use once_cell::sync::OnceCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -51,7 +51,7 @@ pub struct AppContainer {
 
 impl AppContainer {
     /// 새 AppContainer 생성
-    pub fn new(app_data_dir: &PathBuf) -> Self {
+    pub fn new(app_data_dir: &Path) -> Self {
         let db_path = app_data_dir.join("docufinder.db");
         let vector_index_path = app_data_dir.join("vectors.usearch");
         let models_dir = app_data_dir.join("models");

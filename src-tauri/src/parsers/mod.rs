@@ -14,6 +14,7 @@ pub const DEFAULT_CHUNK_SIZE: usize = 1024;
 pub const DEFAULT_CHUNK_OVERLAP: usize = 128;
 
 #[derive(Error, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum ParseError {
     #[error("Unsupported file type: {0}")]
     UnsupportedFileType(String),

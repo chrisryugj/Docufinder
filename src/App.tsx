@@ -202,7 +202,7 @@ function App() {
     const loadSettings = async () => {
       try {
         const settings = await invoke<Settings>("get_settings");
-        setSearchMode(settings.search_mode ?? "hybrid");
+        setSearchMode(settings.search_mode ?? "keyword");
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
@@ -613,7 +613,7 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         onThemeChange={setTheme}
         onSettingsSaved={(settings) => {
-          setSearchMode(settings.search_mode ?? "hybrid");
+          setSearchMode(settings.search_mode ?? "keyword");
           setMinConfidence(settings.min_confidence ?? 0);
           setViewDensity(settings.view_density ?? "compact");
           setSemanticEnabled(settings.semantic_search_enabled ?? false);

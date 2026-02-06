@@ -56,6 +56,7 @@ impl Chunk {
     }
 
     /// DB에서 로드할 때 사용 (모든 필드 지정)
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstitute(
         id: ChunkId,
         file_id: FileId,
@@ -132,7 +133,7 @@ impl Chunk {
     /// 유효한 크기인지 확인 (10-2000자)
     pub fn is_valid_size(&self) -> bool {
         let len = self.content.len();
-        len >= MIN_CHUNK_SIZE && len <= MAX_CHUNK_SIZE
+        (MIN_CHUNK_SIZE..=MAX_CHUNK_SIZE).contains(&len)
     }
 
     /// 청크에 텍스트가 포함되어 있는지 확인

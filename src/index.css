@@ -176,19 +176,15 @@
   --color-accent-light: rgba(59, 130, 246, 0.2);
   --color-accent-glow: rgba(96, 165, 250, 0.4);
 
-  /* Highlighting - Content */
-  --color-highlight-bg: #854d0e;
-  --color-highlight-text: #fef08a;
+  /* Highlighting - Content (대비 강화) */
+  --color-highlight-bg: #a16207;
+  --color-highlight-text: #fef9c3;
   --color-highlight-refine-bg: #166534;
-  /* Green-800 */
   --color-highlight-refine-text: #bbf7d0;
-  /* Green-200 */
 
-  /* Highlighting - Filename */
-  --color-highlight-filename-bg: #b45309;
-  /* Amber-700 */
-  --color-highlight-filename-text: #fef3c7;
-  /* Amber-100 */
+  /* Highlighting - Filename (대비 강화) */
+  --color-highlight-filename-bg: #c2410c;
+  --color-highlight-filename-text: #fff7ed;
 
   /* File Type Colors (Brighter for dark mode) */
   --color-file-hwpx: #A78BFA;

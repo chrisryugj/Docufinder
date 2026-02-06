@@ -108,7 +108,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
+  const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
   // IME 조합 중 여부
   const isComposingRef = useRef(false);
   // 검색 요청 ID (이전 검색 결과 무시용)

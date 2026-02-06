@@ -97,7 +97,7 @@ impl BackgroundParser {
 
     /// 실행 중인지 확인
     pub fn is_running(&self) -> bool {
-        self.worker_handle.as_ref().map_or(false, |h| !h.is_finished())
+        self.worker_handle.as_ref().is_some_and(|h| !h.is_finished())
     }
 
     /// 종료 대기

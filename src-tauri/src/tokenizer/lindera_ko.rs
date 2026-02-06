@@ -77,7 +77,7 @@ impl LinderaKoTokenizer {
 
     /// 한글 포함 여부 확인
     fn contains_korean(text: &str) -> bool {
-        text.chars().any(|c| c >= '\u{AC00}' && c <= '\u{D7AF}')
+        text.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c))
     }
 
     /// 숫자+한글 조합 토큰 추출 (예: "1종", "2차", "3분기")
@@ -100,7 +100,7 @@ impl LinderaKoTokenizer {
                 }
                 current.push(c);
                 has_number = true;
-            } else if c >= '\u{AC00}' && c <= '\u{D7AF}' {
+            } else if ('\u{AC00}'..='\u{D7AF}').contains(&c) {
                 // 한글
                 current.push(c);
                 has_korean = true;
@@ -132,7 +132,7 @@ impl TextTokenizer for LinderaKoTokenizer {
         } else {
             // 영어/숫자만 있는 경우 공백 기준 분리
             text.split_whitespace()
-                .map(|s| Self::clean_token(s))
+                .map(Self::clean_token)
                 .filter(|s| !s.is_empty())
                 .collect()
         }
