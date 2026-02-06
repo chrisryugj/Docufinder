@@ -155,11 +155,9 @@ impl FolderService {
             if let Ok(mut wm) = wm.write() {
                 for folder in folders {
                     let path = Path::new(&folder);
-                    if path.exists() {
-                        if wm.watch(path).is_ok() {
-                            tracing::info!("Resumed watching: {}", folder);
-                            resumed += 1;
-                        }
+                    if path.exists() && wm.watch(path).is_ok() {
+                        tracing::info!("Resumed watching: {}", folder);
+                        resumed += 1;
                     }
                 }
             }

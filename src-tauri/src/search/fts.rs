@@ -36,8 +36,6 @@ pub fn search_with_tokenizer(
 
 /// FTS5 검색 내부 구현
 fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
-    let safe_query = safe_query;
-
     if safe_query.is_empty() {
         return Ok(vec![]);
     }

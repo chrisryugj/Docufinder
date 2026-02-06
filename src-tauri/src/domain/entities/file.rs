@@ -123,6 +123,7 @@ impl File {
     }
 
     /// DB에서 로드할 때 사용 (모든 필드 지정)
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstitute(
         id: FileId,
         path: String,

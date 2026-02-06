@@ -17,6 +17,8 @@ import type { ToastData, ToastType } from "../components/ui/Toast";
  * updateToast(id, { message: "저장 완료", type: "success" });
  * ```
  */
+const MAX_VISIBLE_TOASTS = 3;
+
 export function useToast() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -41,7 +43,21 @@ export function useToast() {
     (message: string, type: ToastType = "info", duration = 3000): string => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-      setToasts((prev) => [...prev, { id, message, type }]);
+      setToasts((prev) => {
+        const next = [...prev, { id, message, type }];
+        // 최대 표시 수 초과 시 오래된 것부터 제거
+        if (next.length > MAX_VISIBLE_TOASTS) {
+          const removed = next.splice(0, next.length - MAX_VISIBLE_TOASTS);
+          for (const t of removed) {
+            const timer = timersRef.current.get(t.id);
+            if (timer) {
+              clearTimeout(timer);
+              timersRef.current.delete(t.id);
+            }
+          }
+        }
+        return next;
+      });
 
       // loading 타입이 아니고 duration > 0이면 자동 닫기
       if (type !== "loading" && duration > 0) {

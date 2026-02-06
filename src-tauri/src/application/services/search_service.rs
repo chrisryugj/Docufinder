@@ -128,11 +128,19 @@ impl SearchService {
         let start = Instant::now();
 
         // 캐시 사용 (있고 비어있지 않으면)
-        let use_cache = self.filename_cache.as_ref().map_or(false, |c| !c.is_empty());
+        let use_cache = self.filename_cache.as_ref().is_some_and(|c| !c.is_empty());
 
         let results: Vec<SearchResult> = if use_cache {
             // ⚡ 인메모리 캐시 검색 (~5ms)
-            let cache = self.filename_cache.as_ref().unwrap();
+            let cache = match self.filename_cache.as_ref() {
+                Some(c) => c,
+                None => return Ok(SearchResponse {
+                    results: vec![],
+                    total_count: 0,
+                    search_time_ms: start.elapsed().as_millis() as u64,
+                    search_mode: "filename".to_string(),
+                }),
+            };
             let cache_results = cache.search(query, max_results);
 
             cache_results
@@ -417,26 +425,26 @@ impl SearchService {
                         snippet,
                         modified_at: fts_r.modified_at,
                     })
-                } else if let Some(chunk) = vector_only_chunks.get(&hr.chunk_id) {
-                    // 벡터 전용 결과 (DB 조회 결과 사용, ⚡ full_content 제거)
-                    Some(SearchResult {
-                        file_path: chunk.file_path.clone(),
-                        file_name: chunk.file_name.clone(),
-                        chunk_index: chunk.chunk_index,
-                        content_preview: truncate_preview(&chunk.content, 200),
-                        full_content: String::new(), // ⚡ 성능 최적화
-                        score: hr.score as f64,
-                        confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
-                        match_type,
-                        highlight_ranges: vec![],
-                        page_number: chunk.page_number,
-                        start_offset: chunk.start_offset,
-                        location_hint: chunk.location_hint.clone(),
-                        snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
-                        modified_at: chunk.modified_at,
-                    })
                 } else {
-                    None
+                    vector_only_chunks.get(&hr.chunk_id).map(|chunk| {
+                        // 벡터 전용 결과 (DB 조회 결과 사용, ⚡ full_content 제거)
+                        SearchResult {
+                            file_path: chunk.file_path.clone(),
+                            file_name: chunk.file_name.clone(),
+                            chunk_index: chunk.chunk_index,
+                            content_preview: truncate_preview(&chunk.content, 200),
+                            full_content: String::new(), // ⚡ 성능 최적화
+                            score: hr.score as f64,
+                            confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
+                            match_type,
+                            highlight_ranges: vec![],
+                            page_number: chunk.page_number,
+                            start_offset: chunk.start_offset,
+                            location_hint: chunk.location_hint.clone(),
+                            snippet: Some(truncate_preview(&chunk.content, 200)),
+                            modified_at: chunk.modified_at,
+                        }
+                    })
                 }
             })
             .collect();
@@ -645,19 +653,19 @@ fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
         .iter()
         .map(|&score| {
             let normalized = (max - score) / (max - min);
-            (normalized * 100.0).round().min(100.0).max(0.0) as u8
+            (normalized * 100.0).round().clamp(0.0, 100.0) as u8
         })
         .collect()
 }
 
 /// 벡터 유사도 스코어를 confidence로 변환
 fn normalize_vector_confidence(score: f64) -> u8 {
-    (score * 100.0).round().min(100.0).max(0.0) as u8
+    (score * 100.0).round().clamp(0.0, 100.0) as u8
 }
 
 /// RRF 스코어를 confidence로 변환
 fn normalize_rrf_confidence(score: f64, k: f64) -> u8 {
     let max_possible = 2.0 / (k + 1.0);
     let normalized = (score / max_possible).min(1.0);
-    (normalized * 100.0).round().min(100.0).max(0.0) as u8
+    (normalized * 100.0).round().clamp(0.0, 100.0) as u8
 }

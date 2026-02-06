@@ -152,14 +152,12 @@ pub fn run() {
                         std::fs::create_dir_all(&model_target).ok();
 
                         // 모델 파일들 복사
-                        for entry in std::fs::read_dir(&resource_model).into_iter().flatten() {
-                            if let Ok(entry) = entry {
-                                let src = entry.path();
-                                let dest = model_target.join(entry.file_name());
-                                if src.is_file() {
-                                    if let Err(e) = std::fs::copy(&src, &dest) {
-                                        tracing::warn!("Failed to copy {:?}: {}", src, e);
-                                    }
+                        for entry in std::fs::read_dir(&resource_model).into_iter().flatten().flatten() {
+                            let src = entry.path();
+                            let dest = model_target.join(entry.file_name());
+                            if src.is_file() {
+                                if let Err(e) = std::fs::copy(&src, &dest) {
+                                    tracing::warn!("Failed to copy {:?}: {}", src, e);
                                 }
                             }
                         }
@@ -289,7 +287,7 @@ pub fn run() {
             if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
                 if let Ok(container) = container.lock() {
                     let startup_settings = container.db_path.parent()
-                        .map(|dir| crate::commands::settings::get_settings_sync(&dir.to_path_buf()))
+                        .map(crate::commands::settings::get_settings_sync)
                         .unwrap_or_default();
                     let should_auto_resume = container.is_semantic_available()
                         && startup_settings.semantic_search_enabled
@@ -340,7 +338,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(app.default_window_icon().expect("Default window icon must be set in tauri.conf.json").clone())
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .tooltip("Anything")

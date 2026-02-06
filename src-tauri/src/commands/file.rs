@@ -60,8 +60,7 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
             .to_lowercase();
 
         // PDF는 SumatraPDF로 페이지 지정 열기 시도
-        if extension == "pdf" && page.is_some() {
-            let page_num = page.unwrap();
+        if let (true, Some(page_num)) = (extension == "pdf", page) {
 
             // SumatraPDF 경로 확인
             let sumatra_paths = [

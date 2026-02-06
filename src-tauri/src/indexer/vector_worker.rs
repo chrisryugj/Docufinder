@@ -11,7 +11,7 @@ use crate::db::{self, PendingChunk};
 use crate::embedder::Embedder;
 use crate::search::vector::VectorIndex;
 use crossbeam_channel::{bounded, RecvTimeoutError};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
@@ -34,7 +34,7 @@ struct PrefetchedBatch {
 }
 
 /// 벡터 인덱싱 상태
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct VectorIndexingStatus {
     pub is_running: bool,
     pub total_chunks: usize,
@@ -42,19 +42,6 @@ pub struct VectorIndexingStatus {
     pub pending_chunks: usize,
     pub current_file: Option<String>,
     pub error: Option<String>,
-}
-
-impl Default for VectorIndexingStatus {
-    fn default() -> Self {
-        Self {
-            is_running: false,
-            total_chunks: 0,
-            processed_chunks: 0,
-            pending_chunks: 0,
-            current_file: None,
-            error: None,
-        }
-    }
 }
 
 /// 벡터 인덱싱 진행률 이벤트
@@ -188,7 +175,7 @@ impl Default for VectorWorker {
 /// 구조: [DB 프리페치 스레드] --배치--> [메인 스레드: 임베딩 + 저장]
 /// DB I/O와 임베딩이 병렬로 진행되어 처리량 향상
 fn run_vector_indexing(
-    db_path: &PathBuf,
+    db_path: &Path,
     embedder: &Arc<Embedder>,
     vector_index: &Arc<VectorIndex>,
     cancel_flag: &Arc<AtomicBool>,
@@ -229,7 +216,7 @@ fn run_vector_indexing(
     let (batch_tx, batch_rx) = bounded::<PrefetchedBatch>(PREFETCH_BUFFER_SIZE);
 
     // 프리페치 스레드용 DB 경로 복사
-    let prefetch_db_path = db_path.clone();
+    let prefetch_db_path = db_path.to_path_buf();
     let prefetch_cancel = cancel_flag.clone();
 
     // 프리페치 스레드 시작

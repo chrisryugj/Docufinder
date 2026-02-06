@@ -82,7 +82,7 @@ fn extract_text_with_location(
 
         let cells: Vec<String> = row
             .iter()
-            .filter_map(|cell| cell_to_string(cell))
+            .filter_map(cell_to_string)
             .collect();
 
         if !cells.is_empty() {
@@ -131,7 +131,7 @@ fn create_chunks_with_rows(
             && !current_chunk_text.is_empty()
         {
             // 현재 청크 저장
-            let location = format_location_hint(sheet_name, chunk_start_row.unwrap(), chunk_end_row);
+            let location = format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
             chunks.push(DocumentChunk {
                 content: current_chunk_text.clone(),
                 start_offset: current_offset,
@@ -161,7 +161,7 @@ fn create_chunks_with_rows(
 
     // 마지막 청크 저장
     if !current_chunk_text.is_empty() {
-        let location = format_location_hint(sheet_name, chunk_start_row.unwrap(), chunk_end_row);
+        let location = format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
         chunks.push(DocumentChunk {
             content: current_chunk_text.clone(),
             start_offset: current_offset,

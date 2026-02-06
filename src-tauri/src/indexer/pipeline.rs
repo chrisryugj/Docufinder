@@ -22,7 +22,7 @@ use std::time::{Duration, UNIX_EPOCH};
 const CHANNEL_BUFFER_SIZE: usize = 64;
 
 /// FTS 배치 트랜잭션 크기 - fsync 오버헤드 감소 (3~5배 성능 향상)
-const TRANSACTION_BATCH_SIZE: usize = 50;
+const TRANSACTION_BATCH_SIZE: usize = 200;
 
 /// 단일 파일 인덱싱 (FTS + 벡터)
 /// NOTE: 현재 미사용 (index_folder_streaming 사용 중)
@@ -193,12 +193,10 @@ fn collect_files_recursive(
                     } else {
                         tracing::debug!("Skipping already visited dir: {:?}", path);
                     }
+                } else if visited.insert(path.clone()) {
+                    collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
                 } else {
-                    if visited.insert(path.clone()) {
-                        collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
-                    } else {
-                        tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
-                    }
+                    tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
                 }
             }
         } else if file_type.is_file() {
@@ -407,16 +405,15 @@ pub fn index_folder_fts_only(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
-    use crate::utils::disk_info::{detect_disk_type, DiskSettings, DiskType};
+    use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
     let folder_str = folder_path.to_string_lossy().to_string();
 
-    // FTS는 순차 I/O라 HDD에서도 병렬 처리 가능 → SSD 설정 사용
-    // (디스크 타입은 벡터 인덱싱에서만 고려)
+    // 실제 디스크 타입에 맞춘 스레드 수 조정 (HDD: 2, SSD: 4)
     let disk_type = detect_disk_type(folder_path);
-    let disk_settings = DiskSettings::for_disk_type(DiskType::Ssd);
+    let disk_settings = DiskSettings::for_disk_type(disk_type);
     tracing::info!(
-        "[FTS] Disk: {:?} (using SSD settings), threads: {}, throttle: {}ms",
+        "[FTS] Disk: {:?}, threads: {}, throttle: {}ms",
         disk_type,
         disk_settings.parallel_threads,
         disk_settings.throttle_ms
@@ -487,7 +484,12 @@ pub fn index_folder_fts_only(
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(parallel_threads)
             .build()
-            .unwrap_or_else(|_| rayon::ThreadPoolBuilder::new().build().unwrap());
+            .unwrap_or_else(|_| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(2)
+                    .build()
+                    .expect("Failed to create even a minimal 2-thread pool")
+            });
 
         pool.install(|| {
             let _ = file_paths.par_iter().try_for_each(|path| {
@@ -924,7 +926,7 @@ pub struct FolderIndexResult {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)]
+#[allow(dead_code, clippy::enum_variant_names)]
 pub enum IndexError {
     #[error("IO error: {0}")]
     IoError(String),

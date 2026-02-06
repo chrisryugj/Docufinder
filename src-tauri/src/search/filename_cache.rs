@@ -7,6 +7,9 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+/// 캐시 최대 엔트리 수 (~40MB 상한, 8GB RAM 환경 기준)
+const MAX_CACHE_ENTRIES: usize = 200_000;
+
 /// 파일명 엔트리
 #[derive(Debug, Clone)]
 pub struct FilenameEntry {
@@ -79,10 +82,17 @@ impl FilenameCache {
         })?;
 
         let mut entries = Vec::new();
-        for row in rows {
-            if let Ok(entry) = row {
-                entries.push(entry);
-            }
+        for entry in rows.flatten() {
+            entries.push(entry);
+        }
+
+        let total = entries.len();
+        if total > MAX_CACHE_ENTRIES {
+            tracing::warn!(
+                "FilenameCache: {} entries exceeds max {}. Truncating.",
+                total, MAX_CACHE_ENTRIES
+            );
+            entries.truncate(MAX_CACHE_ENTRIES);
         }
 
         let count = entries.len();
@@ -91,7 +101,7 @@ impl FilenameCache {
             cache.rebuild_index();
         }
 
-        tracing::info!("FilenameCache: loaded {} entries", count);
+        tracing::info!("FilenameCache: loaded {} entries (total in DB: {})", count, total);
         Ok(count)
     }
 
