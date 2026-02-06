@@ -113,7 +113,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
         });
 
         // 개발 모드에서만 로깅
-        if (import.meta.env.DEV) {
+        if ((import.meta as any).env.DEV) {
           console.log("Indexing result:", result);
         }
 

@@ -168,7 +168,7 @@ export function Dropdown<T extends string | number>({
           {options.map((option, index) => (
             <button
               key={String(option.value)}
-              ref={(el) => (optionRefs.current[index] = el)}
+              ref={(el) => { optionRefs.current[index] = el; }}
               id={`dropdown-option-${index}`}
               type="button"
               onClick={() => {

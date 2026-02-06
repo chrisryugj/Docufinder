@@ -54,6 +54,7 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
             c.start_offset,
             c.end_offset,
             c.page_number,
+            c.page_end,
             c.location_hint,
             snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet,
             f.modified_at
@@ -76,9 +77,10 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
             start_offset: row.get(6)?,
             end_offset: row.get(7)?,
             page_number: row.get(8)?,
-            location_hint: row.get(9)?,
-            snippet: row.get(10)?,
-            modified_at: row.get(11)?,
+            page_end: row.get(9)?,
+            location_hint: row.get(10)?,
+            snippet: row.get(11)?,
+            modified_at: row.get(12)?,
         })
     })?;
 
@@ -202,8 +204,10 @@ pub struct FtsResult {
     pub score: f64,
     pub start_offset: i64,
     pub end_offset: i64,
-    /// 페이지 번호 (DOCX/PDF/HWPX)
+    /// 페이지 번호 - 청크 시작 페이지 (DOCX/PDF/HWPX)
     pub page_number: Option<i64>,
+    /// 청크 끝 페이지
+    pub page_end: Option<i64>,
     /// 위치 힌트 (XLSX: "Sheet1!행1-50", PDF: "페이지 3" 등)
     pub location_hint: Option<String>,
     /// FTS5 snippet() - 매칭 컨텍스트 (하이라이트 마커 포함)

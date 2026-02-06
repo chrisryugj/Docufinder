@@ -48,6 +48,8 @@ pub struct DocumentChunk {
     pub start_offset: usize,
     pub end_offset: usize,
     pub page_number: Option<usize>,
+    /// 청크 끝 페이지 (page_number가 start_page, 이것이 end_page)
+    pub page_end: Option<usize>,
     /// 위치 힌트 (XLSX: "Sheet1!A1:D50", PDF: "페이지 3", 등)
     pub location_hint: Option<String>,
 }
@@ -102,6 +104,7 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<Document
             start_offset: start,
             end_offset: end,
             page_number: None,
+            page_end: None,
             location_hint: None,
         });
 

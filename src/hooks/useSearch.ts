@@ -91,6 +91,8 @@ interface UseSearchReturn {
   isRefineActive: boolean;
   /** IME 조합 상태 설정 (compositionEnd 시 최종 쿼리 전달) */
   setComposing: (v: boolean, finalQuery?: string) => void;
+  /** 캐시 무효화 + 재검색 (데이터 변경 시) */
+  invalidate: () => void;
 }
 
 /**
@@ -200,7 +202,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
           const contentPromise = invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery });
           const filenamePromise = filters.excludeFilename
-            ? Promise.resolve({ results: [], search_time_ms: 0 } as SearchResponse)
+            ? Promise.resolve({ results: [], search_time_ms: 0, total_count: 0 })
             : invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery });
 
           const [contentResponse, filenameResponse] = await Promise.all([
@@ -397,6 +399,20 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     );
   }, [filteredResults]);
 
+  // 캐시 무효화 + 재검색 (폴더 삭제 등 데이터 변경 시)
+  const invalidate = useCallback(() => {
+    searchCache.clear();
+    if (query.trim()) {
+      executeSearch(query, searchMode);
+    } else {
+      startTransition(() => {
+        setResults([]);
+        setFilenameResults([]);
+        setSearchTime(null);
+      });
+    }
+  }, [query, searchMode, executeSearch]);
+
   return {
     query,
     setQuery,
@@ -419,5 +435,6 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     clearRefine,
     isRefineActive: refineQuery.trim().length > 0,
     setComposing,
+    invalidate,
   };
 }

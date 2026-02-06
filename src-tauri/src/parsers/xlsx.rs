@@ -137,6 +137,7 @@ fn create_chunks_with_rows(
                 start_offset: current_offset,
                 end_offset: current_offset + current_chunk_text.len(),
                 page_number: None,
+                page_end: None,
                 location_hint: Some(location),
             });
 
@@ -167,6 +168,7 @@ fn create_chunks_with_rows(
             start_offset: current_offset,
             end_offset: current_offset + current_chunk_text.len(),
             page_number: None,
+            page_end: None,
             location_hint: Some(location),
         });
     }

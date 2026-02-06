@@ -1,7 +1,7 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -78,6 +78,22 @@ impl Default for DefaultStyle {
     }
 }
 
+/// 스타일별 속성 (styles.xml에서 파싱)
+#[derive(Debug, Clone)]
+struct StyleData {
+    font_size: Option<u32>,     // hwpunit (1pt = 100)
+    line_spacing: Option<u32>,  // %
+}
+
+/// LineSeg (HWP 렌더러가 계산한 줄 레이아웃)
+#[derive(Debug, Clone)]
+struct LineSeg {
+    /// 문단 내 시작 글자 위치
+    text_start_pos: usize,
+    /// 줄 높이 (hwpunit, spacing 포함)
+    line_height: u32,
+}
+
 /// 문단 노드 (구조적 파싱용)
 #[derive(Debug, Clone)]
 struct ParagraphNode {
@@ -87,6 +103,12 @@ struct ParagraphNode {
     char_offset: usize,
     /// 이 문단 앞에 강제 쪽 나눔이 있는지
     has_page_break_before: bool,
+    /// 참조 스타일 ID (styleIDRef)
+    style_id: Option<String>,
+    /// 내장 객체(이미지/표 등)의 총 높이 (hwpunit)
+    object_height: f32,
+    /// HWP 렌더러의 줄 레이아웃 데이터
+    line_segs: Vec<LineSeg>,
 }
 
 /// 가상 레이아웃 시뮬레이터 (Y좌표 추적 기반)
@@ -133,40 +155,117 @@ impl LayoutSimulator {
         }
     }
 
-    fn layout_paragraph(&mut self, para: &ParagraphNode, page_starts: &mut Vec<usize>) {
+    /// 문단 레이아웃 (lineSeg 우선 → 스타일 기반 시뮬레이션 fallback)
+    fn layout_paragraph(
+        &mut self,
+        para: &ParagraphNode,
+        page_starts: &mut Vec<usize>,
+        styles: &HashMap<String, StyleData>,
+        default_style: &DefaultStyle,
+    ) {
         if para.has_page_break_before {
             self.apply_page_break(page_starts, para.char_offset);
         }
 
         // 빈 문단은 한 줄 처리
-        if para.text.trim().is_empty() {
+        if para.text.trim().is_empty() && para.object_height <= 0.0 && para.line_segs.is_empty() {
             self.advance_line(page_starts, para.char_offset);
             return;
         }
 
-        let mut line_units = 0.0_f32;
-        let mut line_start_offset = 0usize;
-
-        for (idx, ch) in para.text.chars().enumerate() {
-            if ch == '\n' {
-                self.advance_line(page_starts, para.char_offset + line_start_offset);
-                line_units = 0.0;
-                line_start_offset = idx + 1;
-                continue;
+        // === 경로 1: lineSeg 데이터가 있으면 HWP 렌더러 결과 직접 사용 ===
+        if !para.line_segs.is_empty() {
+            for seg in &para.line_segs {
+                let offset = para.char_offset + seg.text_start_pos;
+                let height = seg.line_height.max(100) as f32;
+                if self.current_y + height > self.max_height {
+                    self.apply_page_break(page_starts, offset);
+                }
+                self.current_y += height;
             }
+        } else {
+            // === 경로 2: 스타일 기반 시뮬레이션 ===
+            let (line_h, max_units) = self.resolve_style(para, styles, default_style);
 
-            let weight = char_weight_units(ch);
-            if line_units + weight > self.max_units_per_line {
-                self.advance_line(page_starts, para.char_offset + line_start_offset);
-                line_units = weight;
-                line_start_offset = idx;
+            if para.text.trim().is_empty() {
+                // 텍스트 없이 객체만 있는 문단
+                // (객체 높이는 아래서 처리)
             } else {
-                line_units += weight;
+                let mut line_units = 0.0_f32;
+                let mut line_start_offset = 0usize;
+
+                for (idx, ch) in para.text.chars().enumerate() {
+                    if ch == '\n' {
+                        self.advance_line_with(
+                            page_starts,
+                            para.char_offset + line_start_offset,
+                            line_h,
+                        );
+                        line_units = 0.0;
+                        line_start_offset = idx + 1;
+                        continue;
+                    }
+
+                    let weight = char_weight_units(ch);
+                    if line_units + weight > max_units {
+                        self.advance_line_with(
+                            page_starts,
+                            para.char_offset + line_start_offset,
+                            line_h,
+                        );
+                        line_units = weight;
+                        line_start_offset = idx;
+                    } else {
+                        line_units += weight;
+                    }
+                }
+
+                // 마지막 라인 처리
+                self.advance_line_with(
+                    page_starts,
+                    para.char_offset + line_start_offset,
+                    line_h,
+                );
             }
         }
 
-        // 마지막 라인 처리
-        self.advance_line(page_starts, para.char_offset + line_start_offset);
+        // === 객체 높이 반영 (이미지/표 등) ===
+        // lineSeg 경로에서도 inline이 아닌 블록 객체 높이는 별도 반영
+        // (lineSeg는 글자 취급 객체만 포함하므로 블록 객체는 추가 필요)
+        if para.object_height > 0.0 {
+            if self.current_y + para.object_height > self.max_height {
+                self.apply_page_break(page_starts, para.char_offset);
+            }
+            self.current_y += para.object_height;
+        }
+    }
+
+    /// 문단별 스타일 해석 → (line_height, max_units_per_line)
+    fn resolve_style(
+        &self,
+        para: &ParagraphNode,
+        styles: &HashMap<String, StyleData>,
+        default_style: &DefaultStyle,
+    ) -> (f32, f32) {
+        let style_data = para
+            .style_id
+            .as_ref()
+            .and_then(|id| styles.get(id));
+
+        let font_sz = style_data
+            .and_then(|s| s.font_size)
+            .unwrap_or(default_style.font_size)
+            .max(100) as f32;
+
+        let line_sp = style_data
+            .and_then(|s| s.line_spacing)
+            .unwrap_or(default_style.line_spacing)
+            .max(80) as f32;
+
+        let line_h = (font_sz * line_sp / 100.0).max(100.0);
+        let max_units = (self.max_units_per_line * self.line_height / line_h).max(10.0);
+
+        (line_h, max_units)
     }
 
     fn apply_page_break(&mut self, page_starts: &mut Vec<usize>, offset: usize) {
@@ -183,6 +282,17 @@ impl LayoutSimulator {
         self.current_y += self.line_height;
     }
 
+    fn advance_line_with(
+        &mut self,
+        page_starts: &mut Vec<usize>,
+        line_start_offset: usize,
+        height: f32,
+    ) {
+        if self.current_y + height > self.max_height {
+            self.apply_page_break(page_starts, line_start_offset);
+        }
+        self.current_y += height;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -294,6 +404,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     // 1회 루프로 header.xml + section*.xml 모두 수집
     // ========================================================================
     let mut header_content: Option<String> = None;
+    let mut styles_content: Option<String> = None;
     let mut section_xmls: BTreeMap<usize, String> = BTreeMap::new();
 
     for i in 0..archive.len() {
@@ -309,6 +420,15 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             std::io::Read::take(&mut file, MAX_ENTRY_UNCOMPRESSED_SIZE)
                 .read_to_string(&mut contents)?;
             header_content = Some(contents);
+            continue;
+        }
+
+        // styles.xml 수집 (스타일별 폰트/줄간격)
+        if name == "Contents/styles.xml" {
+            let mut contents = String::new();
+            std::io::Read::take(&mut file, MAX_ENTRY_UNCOMPRESSED_SIZE)
+                .read_to_string(&mut contents)?;
+            styles_content = Some(contents);
             continue;
         }
 
@@ -332,6 +452,12 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let default_style = header_content
         .as_ref()
         .map(|c| parse_header_xml(c))
+        .unwrap_or_default();
+
+    // styles.xml에서 스타일별 속성 파싱
+    let styles_map = styles_content
+        .as_ref()
+        .map(|c| parse_styles_xml(c))
         .unwrap_or_default();
 
     // 섹션별 페이지 설정 파싱 + 문단 추출 + 페이지맵 빌드
@@ -359,7 +485,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         // 섹션은 항상 새 페이지에서 시작하므로 simulator 재생성이 정확
         let mut simulator = LayoutSimulator::new(&section_settings, &default_style);
         for para in &section_paras {
-            simulator.layout_paragraph(para, &mut page_starts);
+            simulator.layout_paragraph(para, &mut page_starts, &styles_map, &default_style);
         }
 
         // 전체 오프셋 업데이트
@@ -379,6 +505,14 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         .sum::<usize>()
         + all_paragraphs.len().saturating_sub(1);
 
+    // lineSeg 커버리지 계산 (신뢰도 판정용)
+    let paras_with_linesegs = all_paragraphs
+        .iter()
+        .filter(|p| !p.line_segs.is_empty())
+        .count();
+    let total_paras = all_paragraphs.len().max(1);
+    let lineseg_coverage = paras_with_linesegs as f32 / total_paras as f32;
+
     // Sanity check: 시뮬레이션 결과 검증
     let estimated_pages = page_map.total_pages();
     let chars_per_page = if estimated_pages > 0 {
@@ -387,18 +521,22 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         0
     };
 
-    // 페이지당 250자 미만이면 시뮬레이션 오류로 판단
-    // (한글 A4 10pt 160% 기준 최소 ~500자/페이지, 큰 글씨여도 250자 이상)
-    let is_unreasonable = total_chars > 0 && estimated_pages > 1 && chars_per_page < 250;
+    // lineSeg 커버리지가 50% 이상이면 시뮬레이션 신뢰도 높음 → fallback 스킵
+    // lineSeg 없이 페이지당 250자 미만이면 시뮬레이션 오류로 판단
+    let is_unreasonable = total_chars > 0
+        && estimated_pages > 1
+        && chars_per_page < 250
+        && lineseg_coverage < 0.5;
 
     let (page_map, page_count) = if is_unreasonable {
         tracing::warn!(
-            "HWPX layout sim unreasonable: {} pages for {} chars ({} chars/page, fontSz={}, lineSpacing={}%). Falling back to proportional.",
+            "HWPX layout sim unreasonable: {} pages for {} chars ({} chars/page, fontSz={}, lineSpacing={}%, lineSeg={:.0}%). Falling back to proportional.",
             estimated_pages,
             total_chars,
             chars_per_page,
             default_style.font_size,
-            default_style.line_spacing
+            default_style.line_spacing,
+            lineseg_coverage * 100.0
         );
         // 비례 배분 fallback: ~1500 chars/page (한글 A4 기본 추정)
         let est_pages = (total_chars / 1500).max(1);
@@ -415,10 +553,21 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         (page_map, pc)
     };
 
+    // 신뢰도 표시 (lineSeg 기반이면 HIGH, 아니면 LOW)
+    let confidence = if lineseg_coverage >= 0.5 {
+        "HIGH(lineSeg)"
+    } else if styles_map.is_empty() {
+        "LOW(basic-sim)"
+    } else {
+        "MEDIUM(styled-sim)"
+    };
+
     tracing::debug!(
-        "HWPX layout sim: {} 문단, {} 페이지, 폰트 {}hwpunit, 줄간격 {}%",
+        "HWPX page calc: {} 문단, {} 페이지, 신뢰도={}, lineSeg={:.0}%, 폰트 {}hwpunit, 줄간격 {}%",
         all_paragraphs.len(),
         page_count,
+        confidence,
+        lineseg_coverage * 100.0,
         default_style.font_size,
         default_style.line_spacing
     );
@@ -501,6 +650,7 @@ fn chunk_with_page_map(
             start_offset: start,
             end_offset: end,
             page_number: Some(start_page),
+            page_end: Some(end_page),
             location_hint: Some(location_hint),
         });
 
@@ -514,7 +664,7 @@ fn chunk_with_page_map(
 }
 
 /// HWPX section XML에서 문단 단위로 텍스트 추출 (구조적 파싱)
-/// 페이지 브레이크 태그도 감지
+/// lineSeg, 객체 높이, 스타일 ID, 페이지 브레이크 태그 감지
 fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNode>, ParseError> {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
@@ -526,6 +676,19 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
     let mut pending_page_break = false;
     let mut split_paragraph = false;
     let mut total_char_offset: usize = 0;
+
+    // Phase 1: 스타일 ID 추적
+    let mut current_style_id: Option<String> = None;
+
+    // Phase 1: 객체 높이 추적
+    let mut in_object: bool = false;
+    let mut object_depth: usize = 0;
+    let mut current_object_height: f32 = 0.0;
+    let mut para_object_height: f32 = 0.0;
+
+    // Phase 2: lineSeg 추적
+    let mut in_lineseg_array = false;
+    let mut current_linesegs: Vec<LineSeg> = Vec::new();
 
     loop {
         match reader.read_event() {
@@ -539,8 +702,87 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                     in_text = true;
                 }
 
+                // p 태그: 스타일 ID 추출
                 if name_l == "p" {
                     in_paragraph = true;
+                    current_style_id = None;
+                    para_object_height = 0.0;
+                    current_linesegs.clear();
+
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if key == "styleIDRef" || key == "style" || key == "styleid" {
+                            current_style_id = Some(val.to_string());
+                        }
+                    }
+                }
+
+                // 객체 태그 감지 (pic, tbl, container, rect, ellipse, curve 등)
+                if matches!(
+                    name_l.as_str(),
+                    "pic" | "tbl" | "container" | "rect" | "ellipse" | "curve"
+                ) && in_paragraph
+                {
+                    in_object = true;
+                    object_depth = 1;
+                    current_object_height = 0.0;
+                } else if in_object {
+                    object_depth += 1;
+                }
+
+                // 객체 내부의 sz 태그에서 높이 추출
+                if name_l == "sz" && in_object {
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if key == "h" || key == "height" {
+                            if let Ok(h) = val.parse::<f32>() {
+                                if h > 0.0 && h < 500000.0 {
+                                    current_object_height = h;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // linesegarray 태그
+                if name_l == "linesegarray" && in_paragraph {
+                    in_lineseg_array = true;
+                }
+
+                // lineseg 태그
+                if name_l == "lineseg" && in_lineseg_array {
+                    let mut text_start: usize = 0;
+                    let mut line_h: u32 = 0;
+
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        let key_l = key.to_ascii_lowercase();
+                        match key_l.as_str() {
+                            "textstartpos" | "textpos" | "textstart" => {
+                                text_start = val.parse().unwrap_or(0);
+                            }
+                            "lineheight" | "lineht" | "lnheight" => {
+                                line_h = val.parse().unwrap_or(0);
+                            }
+                            // spacing을 line_height에 합산
+                            "spacing" => {
+                                if let Ok(sp) = val.parse::<u32>() {
+                                    line_h = line_h.saturating_add(sp);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    if line_h > 0 {
+                        current_linesegs.push(LineSeg {
+                            text_start_pos: text_start,
+                            line_height: line_h,
+                        });
+                    }
                 }
 
                 // 페이지 브레이크 감지
@@ -580,9 +822,13 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                             text: para_text.clone(),
                             char_offset: total_char_offset,
                             has_page_break_before: pending_page_break,
+                            style_id: current_style_id.clone(),
+                            object_height: para_object_height,
+                            line_segs: std::mem::take(&mut current_linesegs),
                         });
                         total_char_offset += para_text.chars().count() + 1;
                         split_paragraph = true;
+                        para_object_height = 0.0;
                     }
 
                     pending_page_break = true;
@@ -611,6 +857,28 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                 if name_l == "t" {
                     in_text = false;
                 }
+
+                // 객체 태그 종료
+                if in_object {
+                    if matches!(
+                        name_l.as_str(),
+                        "pic" | "tbl" | "container" | "rect" | "ellipse" | "curve"
+                    ) {
+                        // 객체 높이를 문단에 합산
+                        para_object_height += current_object_height;
+                        in_object = false;
+                        object_depth = 0;
+                        current_object_height = 0.0;
+                    } else {
+                        object_depth = object_depth.saturating_sub(1);
+                    }
+                }
+
+                // linesegarray 종료
+                if name_l == "linesegarray" {
+                    in_lineseg_array = false;
+                }
+
                 // p 태그 종료 = 문단 끝
                 if name_l == "p" {
                     in_paragraph = false;
@@ -621,6 +889,9 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                             text: para_text.clone(),
                             char_offset: total_char_offset,
                             has_page_break_before: pending_page_break,
+                            style_id: current_style_id.clone(),
+                            object_height: para_object_height,
+                            line_segs: std::mem::take(&mut current_linesegs),
                         });
 
                         // 오프셋 업데이트 (문단 텍스트 + 줄바꿈)
@@ -631,6 +902,8 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                     }
 
                     split_paragraph = false;
+                    para_object_height = 0.0;
+                    current_linesegs.clear();
                 }
             }
             Ok(Event::Eof) => break,
@@ -648,10 +921,122 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
             text: current_paragraph,
             char_offset: total_char_offset,
             has_page_break_before: pending_page_break,
+            style_id: current_style_id,
+            object_height: para_object_height,
+            line_segs: current_linesegs,
         });
     }
 
     Ok(paragraphs)
+}
+
+/// styles.xml에서 스타일별 속성 파싱
+/// 스타일 ID → (폰트크기, 줄간격) 매핑
+fn parse_styles_xml(xml_content: &str) -> HashMap<String, StyleData> {
+    let mut reader = Reader::from_str(xml_content);
+    reader.config_mut().trim_text(true);
+
+    let mut styles: HashMap<String, StyleData> = HashMap::new();
+    let mut current_id: Option<String> = None;
+    let mut current_font_size: Option<u32> = None;
+    let mut current_line_spacing: Option<u32> = None;
+    let mut in_style = false;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let local_name = e.local_name();
+                let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+
+                // style 태그 시작
+                if name == "style" || name == "Style" {
+                    in_style = true;
+                    current_font_size = None;
+                    current_line_spacing = None;
+                    current_id = None;
+
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if key == "id" || key == "Id" {
+                            current_id = Some(val.to_string());
+                        }
+                    }
+                }
+
+                // charPr (글자 속성)
+                if (name == "charPr" || name == "rPr") && in_style {
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if key == "fontSz" || key == "sz" {
+                            if let Ok(sz) = val.parse::<u32>() {
+                                current_font_size = Some(normalize_font_size(sz));
+                            }
+                        }
+                    }
+                }
+
+                // lineSpacing / lnSpc (줄간격)
+                if (name == "lineSpacing" || name == "lnSpc") && in_style {
+                    for attr in e.attributes().flatten() {
+                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
+                        if key == "val" || key == "value" {
+                            if let Ok(ls) = val.parse::<u32>() {
+                                current_line_spacing = Some(normalize_line_spacing(ls));
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Event::End(e)) => {
+                let local_name = e.local_name();
+                let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                if name == "style" || name == "Style" {
+                    if let Some(id) = current_id.take() {
+                        if current_font_size.is_some() || current_line_spacing.is_some() {
+                            styles.insert(
+                                id,
+                                StyleData {
+                                    font_size: current_font_size,
+                                    line_spacing: current_line_spacing,
+                                },
+                            );
+                        }
+                    }
+                    in_style = false;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+
+    styles
+}
+
+/// fontSz 단위 정규화 (공통)
+fn normalize_font_size(raw: u32) -> u32 {
+    let mut sz = raw;
+    if sz >= 40000 {
+        sz /= 100;
+    } else if sz > 4000 {
+        sz /= 10;
+    }
+    sz.clamp(500, 4000)
+}
+
+/// lineSpacing 단위 정규화 (공통)
+fn normalize_line_spacing(raw: u32) -> u32 {
+    let mut ls = raw;
+    if ls >= 5000 {
+        ls /= 100;
+    } else if ls > 500 {
+        ls /= 10;
+    }
+    ls.clamp(80, 300)
 }
 
 /// header.xml에서 기본 스타일 파싱
@@ -723,20 +1108,9 @@ fn parse_header_xml(xml_content: &str) -> DefaultStyle {
         }
     }
 
-    // fontSz 단위 정규화:
-    // - 표준 HWP: centipoint (1pt = 100 hwpunit), 10pt = 1000
-    // - 일부 HWPX: millipoint (1pt = 1000), 10pt = 10000
-    // 본문 글자 크기가 40pt(4000) 초과는 비합리적 → millipoint로 판단
+    // 공통 정규화 함수 사용
     let original_font = style.font_size;
-    if style.font_size >= 40000 {
-        // 400pt+ → /100 (micro-point 등)
-        style.font_size /= 100;
-    } else if style.font_size > 4000 {
-        // 40pt+ → /10 (millipoint)
-        style.font_size /= 10;
-    }
-    // 최종 clamp: 5pt(500) ~ 40pt(4000)
-    style.font_size = style.font_size.clamp(500, 4000);
+    style.font_size = normalize_font_size(style.font_size);
     if style.font_size != original_font {
         tracing::debug!(
             "HWPX fontSz normalized: {} -> {}",
@@ -745,19 +1119,8 @@ fn parse_header_xml(xml_content: &str) -> DefaultStyle {
         );
     }
 
-    // lineSpacing 단위 정규화 (구간별):
-    // - 표준: % 단위 (160 = 160%)
-    // - 일부: centi-percent (16000 = 160%), permille (1600 = 160%)
     let original_ls = style.line_spacing;
-    if style.line_spacing >= 5000 {
-        // 16000 → 160, centi-percent 계열
-        style.line_spacing /= 100;
-    } else if style.line_spacing > 500 {
-        // 1600 → 160, permille 계열
-        style.line_spacing /= 10;
-    }
-    // 최종 clamp: 80% ~ 300%
-    style.line_spacing = style.line_spacing.clamp(80, 300);
+    style.line_spacing = normalize_line_spacing(style.line_spacing);
     if style.line_spacing != original_ls {
         tracing::debug!(
             "HWPX lineSpacing normalized: {} -> {}",
