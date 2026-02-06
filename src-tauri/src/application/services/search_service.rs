@@ -83,11 +83,18 @@ impl SearchService {
         let confidences = normalize_fts_confidence(&scores);
 
         // 결과 변환 (⚡ full_content 제거 - snippet만 전달)
+        // + 키워드 위치 기반 페이지 보간 (page_start~page_end 내에서)
         let results: Vec<SearchResult> = fts_results
             .into_iter()
             .enumerate()
             .map(|(idx, r)| {
                 let highlight_ranges = parse_highlight_ranges(&r.snippet);
+                let page_number = interpolate_page_from_snippet(
+                    r.page_number,
+                    r.page_end,
+                    &r.content,
+                    &r.snippet,
+                );
                 SearchResult {
                     file_path: r.file_path,
                     file_name: r.file_name,
@@ -98,7 +105,7 @@ impl SearchService {
                     confidence: confidences.get(idx).copied().unwrap_or(50),
                     match_type: MatchType::Keyword,
                     highlight_ranges,
-                    page_number: r.page_number,
+                    page_number,
                     start_offset: r.start_offset,
                     location_hint: r.location_hint,
                     snippet: Some(r.snippet),
@@ -408,6 +415,12 @@ impl SearchService {
                     let snippet = Some(fts_r.snippet.clone());
                     let content_preview = strip_highlight_markers(&fts_r.snippet);
                     let highlight_ranges = parse_highlight_ranges(&fts_r.snippet);
+                    let page_number = interpolate_page_from_snippet(
+                        fts_r.page_number,
+                        fts_r.page_end,
+                        &fts_r.content,
+                        &fts_r.snippet,
+                    );
 
                     Some(SearchResult {
                         file_path: fts_r.file_path.clone(),
@@ -419,7 +432,7 @@ impl SearchService {
                         confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
                         match_type,
                         highlight_ranges,
-                        page_number: fts_r.page_number,
+                        page_number,
                         start_offset: fts_r.start_offset,
                         location_hint: fts_r.location_hint.clone(),
                         snippet,
@@ -668,4 +681,43 @@ fn normalize_rrf_confidence(score: f64, k: f64) -> u8 {
     let max_possible = 2.0 / (k + 1.0);
     let normalized = (score / max_possible).min(1.0);
     (normalized * 100.0).round().clamp(0.0, 100.0) as u8
+}
+
+/// 키워드 위치 기반 페이지 보간
+/// snippet에서 첫 번째 하이라이트 키워드를 추출하고,
+/// 전체 청크 텍스트 내 위치를 기반으로 page_start~page_end 사이를 보간
+fn interpolate_page_from_snippet(
+    page_start: Option<i64>,
+    page_end: Option<i64>,
+    chunk_content: &str,
+    snippet: &str,
+) -> Option<i64> {
+    let ps = page_start?;
+    let pe = page_end.unwrap_or(ps);
+
+    // 같은 페이지면 보간 불필요
+    if ps == pe {
+        return Some(ps);
+    }
+
+    // snippet에서 첫 번째 [[HL]]...[[/HL]] 추출
+    let hl_start = snippet.find("[[HL]]")?;
+    let after_hl = &snippet[hl_start + 6..];
+    let hl_end = after_hl.find("[[/HL]]")?;
+    let keyword = &after_hl[..hl_end];
+
+    if keyword.is_empty() {
+        return Some(ps);
+    }
+
+    // 청크 텍스트에서 키워드 위치 찾기
+    let keyword_pos = chunk_content.find(keyword)?;
+    let chunk_len = chunk_content.len().max(1);
+
+    // 비율 기반 보간
+    let ratio = keyword_pos as f64 / chunk_len as f64;
+    let page_span = (pe - ps) as f64;
+    let interpolated = ps as f64 + ratio * page_span;
+
+    Some(interpolated.round() as i64)
 }

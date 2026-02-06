@@ -211,6 +211,7 @@ fn chunk_pages(pages: &[PageText], chunk_size: usize, overlap: usize) -> Vec<Doc
                 start_offset: page.start_offset + start,
                 end_offset: page.start_offset + end,
                 page_number: Some(page.page_number),
+                page_end: Some(page.page_number),
                 location_hint: Some(format!("페이지 {}", page.page_number)),
             });
 

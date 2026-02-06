@@ -321,6 +321,7 @@ fn save_document_to_db(
                 chunk.start_offset,
                 chunk.end_offset,
                 chunk.page_number,
+                chunk.page_end,
                 chunk.location_hint.as_deref(),
             )
             .map_err(|e| IndexError::DbError(e.to_string()))?;
@@ -984,6 +985,7 @@ fn save_document_to_db_fts_only_no_tx(
             chunk.start_offset,
             chunk.end_offset,
             chunk.page_number,
+            chunk.page_end,
             chunk.location_hint.as_deref(),
         )
         .map_err(|e| IndexError::DbError(e.to_string()))?;

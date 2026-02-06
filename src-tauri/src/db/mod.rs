@@ -153,6 +153,14 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         tracing::warn!("Migration: failed to copy indexed_at to fts_indexed_at: {}", e);
     }
 
+    // page_end 컬럼 추가 (마이그레이션 - 청크 끝 페이지 저장용)
+    if let Err(e) = conn.execute(
+        "ALTER TABLE chunks ADD COLUMN page_end INTEGER",
+        [],
+    ) {
+        tracing::trace!("Migration: page_end column already exists or failed: {}", e);
+    }
+
     // 인덱스 생성
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
@@ -590,18 +598,20 @@ pub fn insert_chunk(
     start_offset: usize,
     end_offset: usize,
     page_number: Option<usize>,
+    page_end: Option<usize>,
     location_hint: Option<&str>,
 ) -> Result<i64> {
     // 청크 메타데이터 저장
     conn.execute(
-        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, location_hint)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, page_end, location_hint)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
         params![
             file_id,
             chunk_index as i64,
             start_offset as i64,
             end_offset as i64,
             page_number.map(|p| p as i64),
+            page_end.map(|p| p as i64),
             location_hint
         ],
     )?;
@@ -628,7 +638,7 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.location_hint, f.path, f.name, fts.content, f.modified_at
+                c.page_end, c.location_hint, f.path, f.name, fts.content, f.modified_at
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
@@ -647,11 +657,12 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
             start_offset: row.get(3)?,
             end_offset: row.get(4)?,
             page_number: row.get(5)?,
-            location_hint: row.get(6)?,
-            file_path: row.get(7)?,
-            file_name: row.get(8)?,
-            content: row.get(9)?,
-            modified_at: row.get(10)?,
+            page_end: row.get(6)?,
+            location_hint: row.get(7)?,
+            file_path: row.get(8)?,
+            file_name: row.get(9)?,
+            content: row.get(10)?,
+            modified_at: row.get(11)?,
         })
     })?;
 
@@ -715,6 +726,7 @@ pub struct ChunkInfo {
     pub start_offset: i64,
     pub end_offset: i64,
     pub page_number: Option<i64>,
+    pub page_end: Option<i64>,
     pub location_hint: Option<String>,
     pub file_path: String,
     pub file_name: String,

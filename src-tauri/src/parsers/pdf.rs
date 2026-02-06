@@ -154,6 +154,7 @@ fn chunk_text_with_page(
             start_offset: base_offset + start,
             end_offset: base_offset + end,
             page_number: Some(page_number),
+            page_end: Some(page_number),
             location_hint: Some(format!("페이지 {}", page_number)),
         });
 

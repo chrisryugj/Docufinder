@@ -93,6 +93,7 @@ function App() {
     setRefineQuery,
     clearRefine,
     setComposing,
+    invalidate: invalidateSearch,
   } = useSearch({ minConfidence });
 
   // 인덱스 상태
@@ -151,7 +152,7 @@ function App() {
           5000
         );
         // 콘솔에 상세 오류 (개발자용)
-        if (import.meta.env.DEV && errors?.length) {
+        if ((import.meta as any).env.DEV && errors?.length) {
           console.warn("[파싱 실패 목록]", errors.slice(0, 20));
         }
       } else if (indexed_count > 0) {
@@ -160,6 +161,18 @@ function App() {
     }
     return result;
   }, [addFolder, showToast]);
+
+  // 폴더 제거 래퍼 (캐시 무효화 + 재검색 + 토스트)
+  const handleRemoveFolder = useCallback(async (path: string) => {
+    const toastId = showToast("폴더 제거 중...", "loading");
+    try {
+      await removeFolder(path);
+      invalidateSearch();
+      updateToast(toastId, { message: "폴더가 제거되었습니다", type: "success" });
+    } catch {
+      updateToast(toastId, { message: "폴더 제거 실패", type: "error" });
+    }
+  }, [removeFolder, invalidateSearch, showToast, updateToast]);
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
@@ -273,7 +286,7 @@ function App() {
   // searchMode 변경 시 keywordOnly 필터 리셋 (무한 루프 방지)
   useEffect(() => {
     if (searchMode !== "hybrid" && filters.keywordOnly) {
-      setFilters((prev) => ({ ...prev, keywordOnly: false }));
+      setFilters({ ...filters, keywordOnly: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchMode]); // filters 제외하여 무한 루프 방지
@@ -435,7 +448,7 @@ function App() {
         onToggle={toggleSidebar}
         watchedFolders={status?.watched_folders ?? []}
         onAddFolder={handleAddFolder}
-        onRemoveFolder={removeFolder}
+        onRemoveFolder={handleRemoveFolder}
         isIndexing={isIndexing}
         onFoldersChange={refreshStatus}
         recentSearches={recentSearches}

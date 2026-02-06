@@ -288,6 +288,7 @@ fn parse_and_index_file(conn: &Connection, path: &Path, file_id: i64) -> Result<
             chunk.start_offset,
             chunk.end_offset,
             chunk.page_number,
+            chunk.page_end,
             chunk.location_hint.as_deref(),
         ).map_err(|e| e.to_string())?;
     }
