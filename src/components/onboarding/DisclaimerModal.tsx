@@ -88,8 +88,8 @@ export function DisclaimerModal({ isOpen, onAccept, onExit }: DisclaimerModalPro
               4. 저작권
             </h4>
             <p>
-              본 소프트웨어는 개인 및 비상업적 용도로 무료로 사용할 수 있습니다.
-              상업적 사용에 대해서는 별도 문의가 필요합니다.
+              본 소프트웨어의 저작권은 개발팀에 있으며, 사내 업무 목적으로
+              자유롭게 사용할 수 있습니다.
             </p>
           </section>
         </div>

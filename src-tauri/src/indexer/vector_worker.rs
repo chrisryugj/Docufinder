@@ -300,9 +300,11 @@ fn run_vector_indexing(
                     }
                 }
 
-                // 파일 완료 표시
-                if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                    tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                // 파일 완료 표시 (취소된 경우 스킵 - 부분 처리 파일 방지)
+                if !cancel_flag.load(Ordering::Relaxed) {
+                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
+                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                    }
                 }
             }
             Err(RecvTimeoutError::Timeout) => continue,

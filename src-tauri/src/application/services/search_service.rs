@@ -110,7 +110,7 @@ impl SearchService {
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
-        tracing::info!(
+        tracing::debug!(
             "Keyword search '{}': {} results in {}ms (tokenizer={})",
             query, total_count, search_time_ms, use_tokenizer
         );
@@ -200,7 +200,7 @@ impl SearchService {
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
-        tracing::info!(
+        tracing::debug!(
             "Filename search '{}': {} results in {}ms (cache={})",
             query, total_count, search_time_ms, use_cache
         );
@@ -279,7 +279,7 @@ impl SearchService {
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
-        tracing::info!(
+        tracing::debug!(
             "Semantic search '{}': {} results in {}ms",
             query, total_count, search_time_ms
         );
@@ -459,7 +459,7 @@ impl SearchService {
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
-        tracing::info!(
+        tracing::debug!(
             "Hybrid search '{}': {} results in {}ms (tokenizer={}, reranker={})",
             query, total_count, search_time_ms, use_tokenizer, use_reranker
         );

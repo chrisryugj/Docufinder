@@ -10,7 +10,7 @@ $EMBED_TOKENIZER_URL = "https://huggingface.co/Teradata/multilingual-e5-small/re
 
 # === Cross-Encoder Reranking 모델 ===
 $RERANK_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\ms-marco-MiniLM-L6-v2"
-$RERANK_MODEL_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_int8.onnx"
+$RERANK_MODEL_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx"
 $RERANK_TOKENIZER_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/tokenizer.json"
 
 # === ONNX Runtime ===
@@ -79,11 +79,20 @@ if (-not (Test-Path $RERANK_MODEL_DIR)) {
     New-Item -ItemType Directory -Path $RERANK_MODEL_DIR | Out-Null
 }
 
+$RERANK_MODEL_SHA256 = "13d18cce0f3c0b1115f11ce42c2078cc73b6e0bbe7d8b4ba6e6b8b3dd1ebb49b"
+
 $rerankModelPath = Join-Path $RERANK_MODEL_DIR "model.onnx"
 if (-not (Test-Path $rerankModelPath)) {
     Write-Host "[4/5] Cross-Encoder 모델 다운로드 중 (~23MB)..." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri $RERANK_MODEL_URL -OutFile $rerankModelPath
-    Write-Host "  -> model.onnx 다운로드 완료" -ForegroundColor Green
+    $tempPath = Join-Path $RERANK_MODEL_DIR "model.onnx.tmp"
+    Invoke-WebRequest -Uri $RERANK_MODEL_URL -OutFile $tempPath
+    $hash = (Get-FileHash -Path $tempPath -Algorithm SHA256).Hash.ToLower()
+    if ($hash -ne $RERANK_MODEL_SHA256) {
+        Remove-Item $tempPath -Force
+        throw "Reranker 모델 SHA-256 검증 실패! 예상: $RERANK_MODEL_SHA256, 실제: $hash"
+    }
+    Move-Item $tempPath $rerankModelPath -Force
+    Write-Host "  -> model.onnx 다운로드 + SHA-256 검증 완료" -ForegroundColor Green
 } else {
     Write-Host "[4/5] Reranker model.onnx 이미 존재" -ForegroundColor Gray
 }
