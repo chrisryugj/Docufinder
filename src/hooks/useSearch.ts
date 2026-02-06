@@ -35,8 +35,8 @@ export function clearSearchCache(): void {
   searchCache.clear();
 }
 
-function getCacheKey(query: string, mode: SearchMode): string {
-  return `${mode}:${query.trim().toLowerCase()}`;
+function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean): string {
+  return `${mode}:${excludeFilename ? "nf:" : ""}${query.trim().toLowerCase()}`;
 }
 
 function getFromCache(key: string): CacheEntry | null {
@@ -162,7 +162,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       }
 
       // LRU 캐시 확인
-      const cacheKey = getCacheKey(searchQuery, mode);
+      const cacheKey = getCacheKey(searchQuery, mode, filters.excludeFilename);
       const cached = getFromCache(cacheKey);
       if (cached) {
         startTransition(() => {
@@ -269,6 +269,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       minConfidence > 0 ||
       filters.keywordOnly ||
       filters.fileType !== "all" ||
+      filters.dateRange !== "all" ||
       debouncedRefineQuery.trim().length > 0;
     const needsSort = filters.sortBy !== "relevance";
 
@@ -289,6 +290,18 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         const type = (r.match_type ?? "").toLowerCase();
         return type === "keyword" || type === "hybrid";
       });
+    }
+
+    // 날짜 범위 필터
+    if (filters.dateRange !== "all") {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cutoff: Record<string, number> = {
+        today: nowSec - 86400,
+        week: nowSec - 86400 * 7,
+        month: nowSec - 86400 * 30,
+      };
+      const minTime = cutoff[filters.dateRange] ?? 0;
+      filtered = filtered.filter((r) => (r.modified_at ?? 0) >= minTime);
     }
 
     // 파일 타입 필터

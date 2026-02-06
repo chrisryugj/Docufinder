@@ -165,7 +165,7 @@ function SearchSection() {
 
       <FeatureBox
         title="🔀 하이브리드 (추천)"
-        description="키워드 검색과 의미 검색을 함께 사용해요. 가장 정확한 결과를 얻을 수 있어서 기본으로 설정되어 있어요."
+        description="키워드 검색과 의미 검색을 함께 사용해요. 시맨틱 검색 활성화 후 사용할 수 있으며, 가장 정확한 결과를 얻을 수 있어요."
       />
       <FeatureBox
         title="🔤 키워드"

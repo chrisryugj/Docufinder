@@ -83,7 +83,15 @@
   --color-success: #10B981;
   --color-warning: #F59E0B;
   --color-error: #EF4444;
+  --color-error-rgb: 239, 68, 68;
   --color-info: #0EA5E9;
+
+  /* Component Aliases (ErrorBanner, VectorIndexingFAB, HelpModal 등에서 사용) */
+  --color-primary-rgb: 59, 130, 246;
+  --color-primary-light: #60A5FA;
+  --color-accent-bg: var(--color-accent-subtle);
+  --bg-primary: var(--color-bg-primary);
+  --text-primary: var(--color-text-primary);
 
   /* Highlighting - Content */
   --color-highlight-bg: #fde047;
@@ -175,6 +183,14 @@
   --color-accent-subtle: rgba(59, 130, 246, 0.15);
   --color-accent-light: rgba(59, 130, 246, 0.2);
   --color-accent-glow: rgba(96, 165, 250, 0.4);
+
+  /* Functional (dark overrides) */
+  --color-error-rgb: 248, 113, 113;
+  --color-primary-rgb: 96, 165, 250;
+  --color-primary-light: #93C5FD;
+  --color-accent-bg: rgba(59, 130, 246, 0.15);
+  --bg-primary: var(--color-bg-primary);
+  --text-primary: var(--color-text-primary);
 
   /* Highlighting - Content (대비 강화) */
   --color-highlight-bg: #a16207;

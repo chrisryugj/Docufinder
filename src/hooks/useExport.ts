@@ -131,11 +131,16 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
 }
 
 /**
- * CSV 이스케이프 (쌍따옴표, 쉼표, 줄바꿈 처리)
+ * CSV 이스케이프 (쌍따옴표, 쉼표, 줄바꿈 + 수식 주입 방어)
  */
 function escapeCSV(value: string): string {
-  if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
+  // 수식 주입 방어: =, +, -, @, \t, \r 시작 시 앞에 ' 추가
+  let v = value;
+  if (/^[=+\-@\t\r]/.test(v)) {
+    v = `'${v}`;
   }
-  return value;
+  if (v.includes(",") || v.includes('"') || v.includes("\n")) {
+    return `"${v.replace(/"/g, '""')}"`;
+  }
+  return v;
 }
