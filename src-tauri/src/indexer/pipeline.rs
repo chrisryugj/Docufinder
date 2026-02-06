@@ -304,7 +304,8 @@ fn save_document_to_db(
         let old_chunk_ids = db::get_chunk_ids_for_file(conn, file_id)
             .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-        db::delete_chunks_for_file(conn, file_id)
+        // _no_tx 버전 사용: 이미 BEGIN 트랜잭션 내에서 실행 중
+        db::delete_chunks_for_file_no_tx(conn, file_id)
             .map_err(|e| IndexError::DbError(e.to_string()))?;
 
         // 청크 저장 + FTS 인덱싱
@@ -672,12 +673,14 @@ fn save_document_to_db_fts_only_no_tx(
     let file_id = db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    db::delete_chunks_for_file(conn, file_id)
+    // _no_tx 버전 사용: 호출자(index_folder_fts_only)가 이미 트랜잭션을 관리하므로
+    // 중첩 BEGIN 방지 (SQLite는 중첩 트랜잭션 미지원)
+    db::delete_chunks_for_file_no_tx(conn, file_id)
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     let chunks_count = document.chunks.len();
 
-    for (idx, chunk) in document.chunks.iter().enumerate() {
+    for (idx, chunk) in document.chunks.into_iter().enumerate() {
         db::insert_chunk(
             conn,
             file_id,

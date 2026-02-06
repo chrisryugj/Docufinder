@@ -94,8 +94,9 @@ export function SearchResultList({
     }
   }, [scrollContainerRef, scrollElementReady]);
 
-  // 파일명 결과가 있으면 가상화 비활성화 (offset 계산 문제 방지)
-  const shouldVirtualize = results.length >= 50 && scrollElementReady && filenameResults.length === 0;
+  // 50개 이상이면 가상화 활성화
+  // 파일명 섹션은 가상화 영역 밖에서 별도 렌더링되므로 offset에 영향 없음
+  const shouldVirtualize = results.length >= 50 && scrollElementReady;
 
   const virtualizer = useVirtualizer({
     count: results.length,

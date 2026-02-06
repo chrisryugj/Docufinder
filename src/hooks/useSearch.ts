@@ -30,6 +30,11 @@ interface CacheEntry {
 
 const searchCache = new Map<string, CacheEntry>();
 
+/** 검색 캐시 전체 초기화 (데이터 리셋 시 호출) */
+export function clearSearchCache(): void {
+  searchCache.clear();
+}
+
 function getCacheKey(query: string, mode: SearchMode): string {
   return `${mode}:${query.trim().toLowerCase()}`;
 }
@@ -260,6 +265,18 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {
+    const needsFilter =
+      minConfidence > 0 ||
+      filters.keywordOnly ||
+      filters.fileType !== "all" ||
+      debouncedRefineQuery.trim().length > 0;
+    const needsSort = filters.sortBy !== "relevance";
+
+    // 필터/정렬 불필요 시 원본 반환 (배열 복사 회피)
+    if (!needsFilter && !needsSort) {
+      return results;
+    }
+
     let filtered = [...results];
 
     if (minConfidence > 0) {
