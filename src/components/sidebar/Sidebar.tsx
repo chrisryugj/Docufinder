@@ -10,6 +10,8 @@ interface SidebarProps {
   watchedFolders: string[];
   onRemoveFolder?: (path: string) => void;
   onAddFolder: () => void;
+  isIndexing?: boolean;
+  onFoldersChange?: () => void;
   // 최근 검색 관련
   recentSearches: RecentSearch[];
   onSelectSearch: (query: string) => void;
@@ -28,6 +30,8 @@ export function Sidebar({
   watchedFolders,
   onRemoveFolder,
   onAddFolder,
+  isIndexing,
+  onFoldersChange,
   recentSearches,
   onSelectSearch,
   onRemoveSearch,
@@ -113,6 +117,8 @@ export function Sidebar({
               <FolderTree
                 folders={watchedFolders}
                 onRemoveFolder={onRemoveFolder}
+                isIndexing={isIndexing}
+                onFoldersChange={onFoldersChange}
               />
             )}
           </section>

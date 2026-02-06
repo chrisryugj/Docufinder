@@ -78,4 +78,6 @@ pub struct WatchedFolderInfo {
     pub is_favorite: bool,
     /// 추가 시간 (Unix timestamp)
     pub added_at: Option<i64>,
+    /// 인덱싱 상태 ("indexing" | "completed")
+    pub indexing_status: String,
 }

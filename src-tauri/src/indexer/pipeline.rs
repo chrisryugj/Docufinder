@@ -397,6 +397,7 @@ pub struct FtsIndexingProgress {
 pub type FtsProgressCallback = Box<dyn Fn(FtsIndexingProgress) + Send + Sync>;
 
 /// 폴더 인덱싱 - FTS만 (1단계, 벡터 제외)
+/// skip_indexed: true이면 이미 fts_indexed_at이 있는 파일은 건너뜀 (resume 용)
 pub fn index_folder_fts_only(
     conn: &Connection,
     folder_path: &Path,
@@ -404,6 +405,30 @@ pub fn index_folder_fts_only(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
+) -> Result<FolderIndexResult, IndexError> {
+    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, false)
+}
+
+/// 폴더 인덱싱 재개 - 이미 인덱싱된 파일 스킵
+pub fn resume_folder_fts(
+    conn: &Connection,
+    folder_path: &Path,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<FtsProgressCallback>,
+    max_file_size_mb: u64,
+) -> Result<FolderIndexResult, IndexError> {
+    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, true)
+}
+
+fn index_folder_fts_impl(
+    conn: &Connection,
+    folder_path: &Path,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<FtsProgressCallback>,
+    max_file_size_mb: u64,
+    skip_indexed: bool,
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -450,16 +475,32 @@ pub fn index_folder_fts_only(
     // 1. 파일 스캔
     send_progress("scanning", 0, 0, None, true); // force: 시작
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
-    let file_paths = collect_files(
+    let mut file_paths = collect_files(
         folder_path,
         SUPPORTED_EXTENSIONS,
         recursive,
         cancel_flag.as_ref(),
         max_file_size_bytes,
     );
+
+    // skip_indexed: 이미 인덱싱된 파일 제외 (resume 용)
+    if skip_indexed {
+        let already_indexed = crate::db::get_fts_indexed_paths_in_folder(conn, &folder_str)
+            .unwrap_or_default();
+        if !already_indexed.is_empty() {
+            let before = file_paths.len();
+            file_paths.retain(|p| {
+                let path_str = p.to_string_lossy().to_string();
+                !already_indexed.contains(&path_str)
+            });
+            let skipped = before - file_paths.len();
+            tracing::info!("[FTS Resume] Skipping {} already-indexed files", skipped);
+        }
+    }
+
     let total = file_paths.len();
 
-    tracing::info!("[FTS] Found {} files in {:?}", total, folder_path);
+    tracing::info!("[FTS] Found {} files to index in {:?}", total, folder_path);
     send_progress("scanning", total, 0, None, true); // force: 스캔 완료
 
     if cancel_flag.load(Ordering::Relaxed) {
@@ -613,6 +654,258 @@ pub fn index_folder_fts_only(
         indexed_count: indexed,
         failed_count: failed,
         vectors_count: 0, // FTS만이므로 0
+        errors,
+    })
+}
+
+/// 폴더 동기화 결과
+#[derive(Debug)]
+pub struct SyncResult {
+    pub folder_path: String,
+    pub added: usize,
+    pub modified: usize,
+    pub deleted: usize,
+    pub failed: usize,
+    pub unchanged: usize,
+    pub errors: Vec<String>,
+}
+
+/// 폴더 동기화 - 변경분만 인덱싱 (추가/수정/삭제 감지)
+pub fn sync_folder_fts(
+    conn: &Connection,
+    folder_path: &Path,
+    recursive: bool,
+    cancel_flag: Arc<AtomicBool>,
+    progress_callback: Option<FtsProgressCallback>,
+    max_file_size_mb: u64,
+) -> Result<SyncResult, IndexError> {
+    use crate::utils::disk_info::{detect_disk_type, DiskSettings};
+
+    let folder_str = folder_path.to_string_lossy().to_string();
+
+    // 1. DB에서 기존 파일 메타데이터 조회
+    let db_files = db::get_file_metadata_in_folder(conn, &folder_str)
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    // 2. 파일시스템 스캔
+    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
+    let fs_files = collect_files(
+        folder_path,
+        SUPPORTED_EXTENSIONS,
+        recursive,
+        cancel_flag.as_ref(),
+        max_file_size_bytes,
+    );
+
+    if cancel_flag.load(Ordering::Relaxed) {
+        return Ok(SyncResult {
+            folder_path: folder_str,
+            added: 0, modified: 0, deleted: 0, failed: 0, unchanged: 0,
+            errors: vec!["Cancelled".to_string()],
+        });
+    }
+
+    // 3. Diff 계산
+    let mut to_index: Vec<PathBuf> = Vec::new(); // 추가 + 수정
+    let mut unchanged = 0usize;
+
+    let fs_path_set: std::collections::HashSet<String> = fs_files.iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect();
+
+    for path in &fs_files {
+        let path_str = path.to_string_lossy().to_string();
+        if let Some(&(db_modified, _db_size)) = db_files.get(&path_str) {
+            // DB에 있음 → modified_at 비교
+            if let Ok(meta) = fs::metadata(path) {
+                let fs_modified = meta.modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                if fs_modified != db_modified {
+                    to_index.push(path.clone()); // 수정됨
+                } else {
+                    unchanged += 1;
+                }
+            } else {
+                unchanged += 1;
+            }
+        } else {
+            to_index.push(path.clone()); // 새 파일
+        }
+    }
+
+    // 삭제된 파일: DB에는 있지만 파일시스템에 없음
+    let to_delete: Vec<String> = db_files.keys()
+        .filter(|db_path| !fs_path_set.contains(*db_path))
+        .cloned()
+        .collect();
+
+    let added_count = to_index.len();
+    let delete_count = to_delete.len();
+
+    tracing::info!(
+        "[Sync] {} - to_index: {}, to_delete: {}, unchanged: {}",
+        folder_str, added_count, delete_count, unchanged
+    );
+
+    // 4. 삭제 처리
+    let mut deleted = 0;
+    for path in &to_delete {
+        if cancel_flag.load(Ordering::Relaxed) { break; }
+        if let Err(e) = db::delete_file(conn, path) {
+            tracing::warn!("Failed to delete stale file {}: {}", path, e);
+        } else {
+            deleted += 1;
+        }
+    }
+
+    // 5. 인덱싱할 파일이 없으면 바로 완료 (progress 이벤트 없이 조용히)
+    if to_index.is_empty() {
+        return Ok(SyncResult {
+            folder_path: folder_str,
+            added: 0, modified: 0, deleted, failed: 0, unchanged,
+            errors: vec![],
+        });
+    }
+
+    // 6. 변경된 파일만 인덱싱 (기존 파이프라인 재사용)
+    let disk_type = detect_disk_type(folder_path);
+    let disk_settings = DiskSettings::for_disk_type(disk_type);
+    let total = to_index.len();
+
+    // 진행률 throttling
+    use std::cell::Cell;
+    let last_progress_time = Cell::new(std::time::Instant::now());
+    let last_progress_count = Cell::new(0usize);
+
+    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
+        if let Some(ref cb) = progress_callback {
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
+            let files_since = processed.saturating_sub(last_progress_count.get());
+            if force || elapsed >= 100 || files_since >= 10 {
+                cb(FtsIndexingProgress {
+                    phase: phase.to_string(),
+                    total_files: total,
+                    processed_files: processed,
+                    current_file: current.map(|s| s.to_string()),
+                    folder_path: folder_str.clone(),
+                });
+                last_progress_time.set(now);
+                last_progress_count.set(processed);
+            }
+        }
+    };
+
+    send_progress("indexing", total, 0, None, true);
+
+    // Producer: 파싱
+    let (sender, receiver) = bounded::<ParseResult>(CHANNEL_BUFFER_SIZE);
+    let cancel_flag_producer = cancel_flag.clone();
+    let parallel_threads = disk_settings.parallel_threads;
+    let throttle_ms = disk_settings.throttle_ms;
+
+    let producer_handle = std::thread::spawn(move || {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(parallel_threads)
+            .build()
+            .unwrap_or_else(|_| {
+                rayon::ThreadPoolBuilder::new().num_threads(2).build()
+                    .expect("Failed to create thread pool")
+            });
+
+        pool.install(|| {
+            let _ = to_index.par_iter().try_for_each(|path| {
+                if cancel_flag_producer.load(Ordering::Relaxed) { return Err(()); }
+
+                let path_clone = path.clone();
+                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
+                    Ok(Ok(doc)) => ParseResult::Success { path: path.clone(), document: doc },
+                    Ok(Err(e)) => ParseResult::Failure { path: path.clone(), error: e.to_string() },
+                    Err(_) => ParseResult::Failure { path: path.clone(), error: "Parser panicked".to_string() },
+                };
+
+                if throttle_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(throttle_ms));
+                }
+
+                sender.send(result).map_err(|_| ())
+            });
+        });
+    });
+
+    // Consumer: DB 저장
+    let mut indexed = 0;
+    let mut failed = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut processed = 0;
+    let recv_timeout = Duration::from_millis(100);
+
+    if let Err(e) = conn.execute_batch("BEGIN") {
+        return Err(IndexError::DbError(format!("Failed to begin transaction: {}", e)));
+    }
+
+    let mut batch_count = 0;
+    loop {
+        if cancel_flag.load(Ordering::Relaxed) {
+            let _ = conn.execute_batch("COMMIT");
+            break;
+        }
+
+        match receiver.recv_timeout(recv_timeout) {
+            Ok(result) => {
+                processed += 1;
+                batch_count += 1;
+
+                match result {
+                    ParseResult::Success { path, document } => {
+                        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+                        send_progress("indexing", total, processed, Some(file_name), false);
+                        match save_document_to_db_fts_only_no_tx(conn, &path, document) {
+                            Ok(_) => indexed += 1,
+                            Err(e) => {
+                                failed += 1;
+                                errors.push(format!("{:?}: {}", path, e));
+                            }
+                        }
+                    }
+                    ParseResult::Failure { path, error } => {
+                        if let Err(e) = save_file_metadata_only(conn, &path) {
+                            tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
+                        }
+                        failed += 1;
+                        errors.push(format!("{:?}: {}", path, error));
+                    }
+                }
+
+                if batch_count >= TRANSACTION_BATCH_SIZE {
+                    if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                        tracing::warn!("Batch commit failed: {}", e);
+                    }
+                    batch_count = 0;
+                }
+            }
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    if let Err(e) = conn.execute_batch("COMMIT") {
+        tracing::warn!("Final commit failed: {}", e);
+    }
+    let _ = producer_handle.join();
+
+    send_progress("completed", total, processed, None, true);
+
+    Ok(SyncResult {
+        folder_path: folder_str,
+        added: indexed,
+        modified: 0, // added에 포함됨 (구분은 로그로)
+        deleted,
+        failed,
+        unchanged,
         errors,
     })
 }

@@ -79,6 +79,70 @@ impl IndexService {
         Ok(result)
     }
 
+    /// 폴더 FTS 인덱싱 재개 (이미 인덱싱된 파일 스킵)
+    pub async fn resume_folder_fts(
+        &self,
+        path: &Path,
+        include_subfolders: bool,
+        progress_callback: Option<FtsProgressCallback>,
+        max_file_size_mb: u64,
+    ) -> AppResult<FolderIndexResult> {
+        self.validate_path(path)?;
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
+        let conn = self.get_connection()?;
+        let path_buf = path.to_path_buf();
+        let cancel_flag = self.cancel_flag.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            pipeline::resume_folder_fts(
+                &conn,
+                &path_buf,
+                include_subfolders,
+                cancel_flag,
+                progress_callback,
+                max_file_size_mb,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Task join failed: {}", e)))?
+        .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+
+        Ok(result)
+    }
+
+    /// 폴더 동기화 (변경분만 인덱싱: 추가/수정/삭제)
+    pub async fn sync_folder(
+        &self,
+        path: &Path,
+        include_subfolders: bool,
+        progress_callback: Option<FtsProgressCallback>,
+        max_file_size_mb: u64,
+    ) -> AppResult<pipeline::SyncResult> {
+        self.validate_path(path)?;
+        self.cancel_flag.store(false, Ordering::Relaxed);
+
+        let conn = self.get_connection()?;
+        let path_buf = path.to_path_buf();
+        let cancel_flag = self.cancel_flag.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            pipeline::sync_folder_fts(
+                &conn,
+                &path_buf,
+                include_subfolders,
+                cancel_flag,
+                progress_callback,
+                max_file_size_mb,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("Task join failed: {}", e)))?
+        .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+
+        Ok(result)
+    }
+
     /// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
     /// 파일명 검색을 위한 빠른 스캔
     pub async fn scan_metadata_only(

@@ -64,7 +64,17 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
         "txt" | "md" => txt::parse(path),
         "hwpx" => hwpx::parse(path),
         "docx" => docx::parse(path),
-        "xlsx" | "xls" => xlsx::parse(path),
+        "xlsx" | "xls" => {
+            // calamine 라이브러리 내부 패닉 방지 (손상된 xls 파일 등)
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xlsx::parse(path)))
+                .unwrap_or_else(|_| {
+                    tracing::error!("XLS/XLSX parser panicked: {:?}", path);
+                    Err(ParseError::ParseError(format!(
+                        "XLS/XLSX 파서 내부 오류 (파일 손상 가능): {}",
+                        path.display()
+                    )))
+                })
+        }
         "pdf" => pdf::parse(path),
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }

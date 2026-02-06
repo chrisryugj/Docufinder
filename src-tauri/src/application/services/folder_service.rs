@@ -118,6 +118,7 @@ impl FolderService {
                 path: f.path,
                 is_favorite: f.is_favorite,
                 added_at: f.added_at,
+                indexing_status: f.indexing_status,
             })
             .collect())
     }

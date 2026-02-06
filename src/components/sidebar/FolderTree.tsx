@@ -8,6 +8,7 @@ interface FolderTreeProps {
   onRemoveFolder?: (path: string) => void;
   onFoldersChange?: () => void; // 폴더 목록 갱신 콜백
   onReindexStart?: () => void; // 재인덱싱 시작 콜백
+  isIndexing?: boolean; // 현재 인덱싱 중 여부
 }
 
 interface ContextMenuState {
@@ -20,7 +21,7 @@ interface ContextMenuState {
 /**
  * 인덱싱된 폴더 목록 표시
  */
-export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart }: FolderTreeProps) {
+export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart, isIndexing }: FolderTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
   );
@@ -37,6 +38,9 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     folderPath: "",
   });
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // 자동 재인덱싱 트리거 추적 (중복 방지)
+  const resumedRef = useRef<Set<string>>(new Set());
 
   // 폴더 정보 조회 (즐겨찾기 포함)
   const fetchFolderInfo = useCallback(async () => {
@@ -88,6 +92,35 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       isMounted = false;
     };
   }, [folders, fetchFolderInfo]);
+
+  // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
+  useEffect(() => {
+    if (isIndexing) return; // 이미 인덱싱 중이면 스킵
+
+    const incompleteFolders = Object.entries(folderInfo)
+      .filter(([path, info]) => info.indexing_status === "indexing" && !resumedRef.current.has(path))
+      .map(([path]) => path);
+
+    if (incompleteFolders.length === 0) return;
+
+    const resumeIndexing = async () => {
+      for (const path of incompleteFolders) {
+        resumedRef.current.add(path);
+        console.info(`Resuming incomplete indexing: ${path}`);
+        try {
+          onReindexStart?.();
+          await invoke("resume_indexing", { path });
+          onFoldersChange?.();
+        } catch (e) {
+          console.error(`Failed to resume indexing for ${path}:`, e);
+        }
+      }
+      // 완료 후 정보 새로고침
+      fetchFolderInfo();
+    };
+
+    resumeIndexing();
+  }, [folderInfo, isIndexing, onReindexStart, onFoldersChange, fetchFolderInfo]);
 
   // 즐겨찾기 토글 (컨텍스트 메뉴용)
   const handleToggleFavorite = async () => {
@@ -228,8 +261,19 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                 {getFolderName(folder)}
               </span>
 
+              {/* 인덱싱 미완료 표시 */}
+              {folderInfo[folder]?.indexing_status === "indexing" && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-500/20 text-amber-400 flex-shrink-0" title="인덱싱 미완료 - 자동 재개 중">
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  재개중
+                </span>
+              )}
+
               {/* 파일 수 배지 */}
-              {folderStats[folder] && (
+              {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
                 <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-slate-400 flex-shrink-0">
                   {folderStats[folder].file_count}
                 </span>

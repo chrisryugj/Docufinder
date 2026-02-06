@@ -122,6 +122,15 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         tracing::trace!("Migration: is_favorite column already exists or failed: {}", e);
     }
 
+    // indexing_status 컬럼 추가 (마이그레이션 - 인덱싱 중 앱 종료 감지용)
+    // 기본값 'completed': 기존 폴더는 이미 인덱싱 완료 상태
+    if let Err(e) = conn.execute(
+        "ALTER TABLE watched_folders ADD COLUMN indexing_status TEXT DEFAULT 'completed'",
+        [],
+    ) {
+        tracing::trace!("Migration: indexing_status column already exists or failed: {}", e);
+    }
+
     // 2단계 인덱싱 지원: fts_indexed_at, vector_indexed_at 컬럼 추가
     if let Err(e) = conn.execute(
         "ALTER TABLE files ADD COLUMN fts_indexed_at INTEGER",
@@ -228,12 +237,13 @@ pub struct WatchedFolderInfo {
     pub path: String,
     pub is_favorite: bool,
     pub added_at: Option<i64>,
+    pub indexing_status: String,
 }
 
 /// 감시 폴더 목록 조회 (상세 정보 포함)
 pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFolderInfo>> {
     let mut stmt = conn.prepare(
-        "SELECT path, COALESCE(is_favorite, 0), added_at FROM watched_folders ORDER BY is_favorite DESC, added_at DESC"
+        "SELECT path, COALESCE(is_favorite, 0), added_at, COALESCE(indexing_status, 'completed') FROM watched_folders ORDER BY is_favorite DESC, added_at DESC"
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -241,10 +251,81 @@ pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFol
             path: row.get(0)?,
             is_favorite: row.get::<_, i32>(1)? == 1,
             added_at: row.get(2)?,
+            indexing_status: row.get(3)?,
         })
     })?;
 
     rows.collect()
+}
+
+/// 폴더 인덱싱 상태 업데이트
+pub fn set_folder_indexing_status(conn: &Connection, path: &str, status: &str) -> Result<usize> {
+    conn.execute(
+        "UPDATE watched_folders SET indexing_status = ? WHERE path = ?",
+        params![status, path],
+    )
+}
+
+/// 미완료 인덱싱 폴더 조회 (앱 재시작 시 사용)
+#[allow(dead_code)]
+pub fn get_incomplete_folders(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT path FROM watched_folders WHERE indexing_status = 'indexing'"
+    )?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    rows.collect()
+}
+
+/// 폴더 내 파일 메타데이터 조회 (sync diff용)
+pub fn get_file_metadata_in_folder(conn: &Connection, folder_path: &str) -> Result<std::collections::HashMap<String, (i64, Option<i64>)>> {
+    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
+    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", escaped_unix);
+    let pattern_win = format!("{}\\\\%", escaped_win);
+
+    let mut stmt = conn.prepare(
+        "SELECT path, modified_at, size FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'"
+    )?;
+
+    let rows = stmt.query_map(params![pattern_unix, pattern_win], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+        ))
+    })?;
+
+    let mut map = std::collections::HashMap::new();
+    for row in rows {
+        if let Ok((path, modified_at, size)) = row {
+            map.insert(path, (modified_at, size));
+        }
+    }
+    Ok(map)
+}
+
+/// 폴더 내 이미 FTS 인덱싱 완료된 파일 경로 조회 (resume 시 스킵용)
+pub fn get_fts_indexed_paths_in_folder(conn: &Connection, folder_path: &str) -> Result<std::collections::HashSet<String>> {
+    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
+    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", escaped_unix);
+    let pattern_win = format!("{}\\\\%", escaped_win);
+
+    let mut stmt = conn.prepare(
+        "SELECT path FROM files WHERE fts_indexed_at IS NOT NULL AND (path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\')"
+    )?;
+
+    let rows = stmt.query_map(params![pattern_unix, pattern_win], |row| {
+        row.get::<_, String>(0)
+    })?;
+
+    let mut set = std::collections::HashSet::new();
+    for row in rows {
+        if let Ok(path) = row {
+            set.insert(path);
+        }
+    }
+    Ok(set)
 }
 
 // ==================== 파일 ====================

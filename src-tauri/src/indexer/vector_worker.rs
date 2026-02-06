@@ -310,6 +310,10 @@ fn run_vector_indexing(
         }
     }
 
+    // batch_rx를 먼저 drop해야 프리페치 스레드의 batch_tx.send()가
+    // SendError를 반환하여 스레드가 종료될 수 있음 (데드락 방지)
+    drop(batch_rx);
+
     // 프리페치 스레드 종료 대기
     let _ = prefetch_handle.join();
 

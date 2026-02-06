@@ -28,12 +28,14 @@ export interface WatchedFolderInfo {
   path: string;
   is_favorite: boolean;
   added_at: number | null;
+  /** 인덱싱 상태: "indexing" (미완료) | "completed" */
+  indexing_status: "indexing" | "completed";
 }
 
 /** 인덱싱 진행률 이벤트 (1단계: FTS) */
 export interface IndexingProgress {
   /** 현재 진행 단계 */
-  phase: "scanning" | "parsing" | "indexing" | "completed" | "cancelled";
+  phase: "preparing" | "scanning" | "parsing" | "indexing" | "completed" | "cancelled";
   /** 전체 파일 수 */
   total_files: number;
   /** 처리된 파일 수 */

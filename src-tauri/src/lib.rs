@@ -326,6 +326,110 @@ pub fn run() {
                 }
             }
 
+            // 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // 앱 초기화 완료 대기 (UI 렌더링 우선)
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                    let (folders_to_sync, service, include_subfolders, max_file_size_mb) = {
+                        let container_state = match app_handle.try_state::<Mutex<AppContainer>>() {
+                            Some(c) => c,
+                            None => return,
+                        };
+                        let container = match container_state.lock() {
+                            Ok(c) => c,
+                            Err(_) => return,
+                        };
+                        let conn = match db::get_connection(&container.db_path) {
+                            Ok(c) => c,
+                            Err(_) => return,
+                        };
+                        // 완료된 폴더만 (미완료는 FolderTree가 resume_indexing으로 처리)
+                        let folder_infos = db::get_watched_folders_with_info(&conn).unwrap_or_default();
+                        let completed: Vec<String> = folder_infos.into_iter()
+                            .filter(|f| f.indexing_status == "completed")
+                            .map(|f| f.path)
+                            .collect();
+
+                        if completed.is_empty() { return; }
+
+                        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
+                        let settings = app_data_dir
+                            .as_ref()
+                            .map(|dir| crate::commands::settings::get_settings_sync(dir))
+                            .unwrap_or_default();
+                        (
+                            completed,
+                            container.index_service(),
+                            settings.include_subfolders,
+                            settings.max_file_size_mb,
+                        )
+                    };
+
+                    tracing::info!("[Startup Sync] Checking {} completed folders for offline changes...", folders_to_sync.len());
+
+                    let mut total_added = 0usize;
+                    let mut total_deleted = 0usize;
+
+                    for folder in &folders_to_sync {
+                        let path = std::path::Path::new(folder);
+                        if !path.exists() { continue; }
+
+                        let ah = app_handle.clone();
+                        let progress_cb: Box<dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync> =
+                            Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
+                                #[derive(serde::Serialize)]
+                                struct ProgressEvent {
+                                    phase: String,
+                                    total_files: usize,
+                                    processed_files: usize,
+                                    current_file: Option<String>,
+                                    folder_path: String,
+                                    error: Option<String>,
+                                }
+                                let _ = ah.emit("indexing-progress", &ProgressEvent {
+                                    phase: p.phase,
+                                    total_files: p.total_files,
+                                    processed_files: p.processed_files,
+                                    current_file: p.current_file,
+                                    folder_path: p.folder_path,
+                                    error: None,
+                                });
+                            });
+
+                        match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb).await {
+                            Ok(result) => {
+                                total_added += result.added;
+                                total_deleted += result.deleted;
+                                if result.added > 0 || result.deleted > 0 {
+                                    tracing::info!(
+                                        "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
+                                        folder, result.added, result.deleted, result.unchanged
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("[Startup Sync] Failed to sync {}: {}", folder, e);
+                            }
+                        }
+                    }
+
+                    // 변경이 있으면 FilenameCache 갱신
+                    if total_added > 0 || total_deleted > 0 {
+                        if let Some(cs) = app_handle.try_state::<Mutex<AppContainer>>() {
+                            if let Ok(c) = cs.lock() {
+                                let _ = c.load_filename_cache();
+                            }
+                        }
+                        tracing::info!("[Startup Sync] Complete: {} added, {} deleted", total_added, total_deleted);
+                    } else {
+                        tracing::info!("[Startup Sync] No offline changes detected");
+                    }
+                });
+            }
+
             // 개발 모드에서 DevTools 열기
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -445,6 +549,7 @@ pub fn run() {
             commands::index::toggle_favorite,
             commands::index::cancel_indexing,
             commands::index::reindex_folder,
+            commands::index::resume_indexing,
             commands::index::get_vector_indexing_status,
             commands::index::cancel_vector_indexing,
             commands::index::start_vector_indexing,

@@ -11,6 +11,7 @@ interface StatusBarProps {
 }
 
 const phaseLabels: Record<string, string> = {
+  preparing: "폴더 분석 준비 중",
   scanning: "파일 검색 중",
   parsing: "파일 분석 중",
   indexing: "인덱싱 중",
@@ -47,12 +48,16 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
               <span style={{ color: "var(--color-text-secondary)" }}>
                 {phaseLabels[progress.phase] || progress.phase}
               </span>
-              <span style={{ color: "var(--color-text-muted)" }}>
-                {progress.processed_files} / {progress.total_files}
-              </span>
+              {progress.phase !== "preparing" && (
+                <span style={{ color: "var(--color-text-muted)" }}>
+                  {progress.processed_files} / {progress.total_files}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-3">
-              <span style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
+              {progress.phase !== "preparing" && (
+                <span style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
+              )}
               {onCancelIndexing && (
                 <button
                   onClick={onCancelIndexing}
@@ -81,13 +86,20 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
             className="h-1 rounded-full overflow-hidden"
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
-            <div
-              className="h-full transition-all duration-300"
-              style={{
-                width: `${percent}%`,
-                backgroundColor: "var(--color-primary)",
-              }}
-            />
+            {progress.phase === "preparing" ? (
+              <div
+                className="h-full w-1/3 rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]"
+                style={{ backgroundColor: "var(--color-primary)" }}
+              />
+            ) : (
+              <div
+                className="h-full transition-all duration-300"
+                style={{
+                  width: `${percent}%`,
+                  backgroundColor: "var(--color-primary)",
+                }}
+              />
+            )}
           </div>
 
           {/* 현재 파일명 */}
@@ -178,7 +190,7 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
             </span>
             {/* 시맨틱 분석 대기 상태 표시 */}
             {semanticEnabled && hasPendingVectors && !isVectorIndexing && (
-              <span style={{ color: "var(--color-text-muted)" }}>
+              <span style={{ color: "var(--color-text-muted)" }} title="AI가 문서 내용을 분석하여 의미 기반 검색을 준비합니다">
                 | 시맨틱 대기:{" "}
                 <span style={{ color: "var(--color-accent)" }}>
                   {vectorStatus?.pending_chunks ?? 0}
@@ -187,7 +199,7 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
             )}
             {/* 시맨틱 완료 상태 */}
             {semanticEnabled && isVectorComplete && (status?.vectors_count ?? 0) > 0 && (
-              <span style={{ color: "var(--color-text-muted)" }}>
+              <span style={{ color: "var(--color-text-muted)" }} title="시맨틱 검색: 키워드가 정확히 일치하지 않아도 의미가 비슷한 문서를 찾아줍니다">
                 | 시맨틱:{" "}
                 <span style={{ color: "var(--color-success, #22c55e)" }}>✓</span>
               </span>

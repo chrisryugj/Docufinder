@@ -52,6 +52,10 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
   const cancel = useCallback(async () => {
     try {
       await invoke("cancel_vector_indexing");
+      // 즉시 UI 상태 반영 (백엔드 이벤트 대기 없이)
+      setStatus((prev) =>
+        prev ? { ...prev, is_running: false, current_file: null } : prev
+      );
     } catch (err) {
       console.error("Failed to cancel vector indexing:", err);
     }

@@ -436,6 +436,8 @@ function App() {
         watchedFolders={status?.watched_folders ?? []}
         onAddFolder={handleAddFolder}
         onRemoveFolder={removeFolder}
+        isIndexing={isIndexing}
+        onFoldersChange={refreshStatus}
         recentSearches={recentSearches}
         onSelectSearch={handleSelectSearch}
         onRemoveSearch={removeSearch}
@@ -616,7 +618,12 @@ function App() {
           setSearchMode(settings.search_mode ?? "keyword");
           setMinConfidence(settings.min_confidence ?? 0);
           setViewDensity(settings.view_density ?? "compact");
-          setSemanticEnabled(settings.semantic_search_enabled ?? false);
+          const newSemanticEnabled = settings.semantic_search_enabled ?? false;
+          setSemanticEnabled(newSemanticEnabled);
+          // 시맨틱 OFF로 변경 시 진행 중인 벡터 인덱싱 취소
+          if (!newSemanticEnabled && isVectorIndexing) {
+            cancelVectorIndexing();
+          }
           applyHighlightColors(settings);
         }}
         onClearData={async () => {
