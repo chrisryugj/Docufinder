@@ -20,6 +20,7 @@ function isLightColor(hex: string): boolean {
 
 // Hooks
 import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch } from "./hooks";
+import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 
 // Components
@@ -620,6 +621,7 @@ function App() {
         }}
         onClearData={async () => {
           await invoke("clear_all_data");
+          clearSearchCache();
           await refreshStatus();
         }}
       />

@@ -460,23 +460,12 @@ pub fn clear_all_data(conn: &Connection) -> Result<()> {
 
 // ==================== 청크 ====================
 
-/// 파일의 기존 청크 삭제 - 트랜잭션 보장
+/// 파일의 기존 청크 삭제 - 트랜잭션 보장 (단독 호출용)
 pub fn delete_chunks_for_file(conn: &Connection, file_id: i64) -> Result<()> {
     // 트랜잭션 시작 (원자성 보장)
     conn.execute("BEGIN IMMEDIATE", [])?;
 
-    let result = (|| -> Result<()> {
-        // FTS에서 먼저 삭제
-        conn.execute(
-            "DELETE FROM chunks_fts WHERE rowid IN (
-                SELECT id FROM chunks WHERE file_id = ?
-            )",
-            params![file_id],
-        )?;
-
-        conn.execute("DELETE FROM chunks WHERE file_id = ?", params![file_id])?;
-        Ok(())
-    })();
+    let result = delete_chunks_for_file_no_tx(conn, file_id);
 
     match result {
         Ok(()) => {
@@ -488,6 +477,23 @@ pub fn delete_chunks_for_file(conn: &Connection, file_id: i64) -> Result<()> {
             Err(e)
         }
     }
+}
+
+/// 파일의 기존 청크 삭제 - 트랜잭션 없음 (배치 파이프라인용)
+///
+/// 호출자가 이미 트랜잭션을 관리하는 경우 사용.
+/// 중첩 BEGIN 방지로 배치 인덱싱 시 에러 해소.
+pub fn delete_chunks_for_file_no_tx(conn: &Connection, file_id: i64) -> Result<()> {
+    // FTS에서 먼저 삭제
+    conn.execute(
+        "DELETE FROM chunks_fts WHERE rowid IN (
+            SELECT id FROM chunks WHERE file_id = ?
+        )",
+        params![file_id],
+    )?;
+
+    conn.execute("DELETE FROM chunks WHERE file_id = ?", params![file_id])?;
+    Ok(())
 }
 
 /// 청크 저장 + FTS 인덱싱

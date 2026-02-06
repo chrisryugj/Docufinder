@@ -4,6 +4,7 @@
 //! 10만 파일에서 ~5ms 검색 목표.
 
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::sync::RwLock;
 
 /// 파일명 엔트리
@@ -19,16 +20,40 @@ pub struct FilenameEntry {
     pub modified_at: i64,
 }
 
+/// 캐시 내부 데이터 (entries + file_id → index 매핑)
+struct CacheData {
+    entries: Vec<FilenameEntry>,
+    /// file_id → entries 인덱스 매핑 (upsert/remove O(1))
+    id_index: HashMap<i64, usize>,
+}
+
+impl CacheData {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            id_index: HashMap::new(),
+        }
+    }
+
+    /// entries로부터 id_index 재구축
+    fn rebuild_index(&mut self) {
+        self.id_index.clear();
+        for (idx, entry) in self.entries.iter().enumerate() {
+            self.id_index.insert(entry.file_id, idx);
+        }
+    }
+}
+
 /// 인메모리 파일명 캐시
 pub struct FilenameCache {
-    entries: RwLock<Vec<FilenameEntry>>,
+    data: RwLock<CacheData>,
 }
 
 impl FilenameCache {
     /// 빈 캐시 생성
     pub fn new() -> Self {
         Self {
-            entries: RwLock::new(Vec::new()),
+            data: RwLock::new(CacheData::new()),
         }
     }
 
@@ -61,8 +86,9 @@ impl FilenameCache {
         }
 
         let count = entries.len();
-        if let Ok(mut cache) = self.entries.write() {
-            *cache = entries;
+        if let Ok(mut cache) = self.data.write() {
+            cache.entries = entries;
+            cache.rebuild_index();
         }
 
         tracing::info!("FilenameCache: loaded {} entries", count);
@@ -86,13 +112,13 @@ impl FilenameCache {
             return vec![];
         }
 
-        let entries = match self.entries.read() {
+        let cache = match self.data.read() {
             Ok(e) => e,
             Err(_) => return vec![],
         };
 
         // O(n) 스캔 - 모든 검색어가 포함된 파일만
-        entries
+        cache.entries
             .iter()
             .filter(|e| terms.iter().all(|term| e.name_lower.contains(term)))
             .take(limit)
@@ -100,35 +126,46 @@ impl FilenameCache {
             .collect()
     }
 
-    /// 파일 추가/갱신
+    /// 파일 추가/갱신 - O(1) HashMap 룩업 (기존 O(n) position() 대비 대폭 개선)
     pub fn upsert(&self, entry: FilenameEntry) {
-        if let Ok(mut entries) = self.entries.write() {
-            // 기존 엔트리 찾기
-            if let Some(pos) = entries.iter().position(|e| e.file_id == entry.file_id) {
-                entries[pos] = entry;
+        if let Ok(mut cache) = self.data.write() {
+            let file_id = entry.file_id;
+            if let Some(&pos) = cache.id_index.get(&file_id) {
+                cache.entries[pos] = entry;
             } else {
-                entries.push(entry);
+                let idx = cache.entries.len();
+                cache.id_index.insert(file_id, idx);
+                cache.entries.push(entry);
             }
         }
     }
 
-    /// 파일 삭제
+    /// 파일 삭제 - swap_remove + 인덱스 갱신으로 O(1)
     pub fn remove(&self, file_id: i64) {
-        if let Ok(mut entries) = self.entries.write() {
-            entries.retain(|e| e.file_id != file_id);
+        if let Ok(mut cache) = self.data.write() {
+            if let Some(pos) = cache.id_index.remove(&file_id) {
+                // swap_remove: 마지막 원소와 교체 후 제거 (O(1))
+                cache.entries.swap_remove(pos);
+                // swap된 원소의 인덱스 갱신
+                if pos < cache.entries.len() {
+                    let swapped_id = cache.entries[pos].file_id;
+                    cache.id_index.insert(swapped_id, pos);
+                }
+            }
         }
     }
 
-    /// 경로로 삭제 (폴더 삭제 시)
+    /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축
     pub fn remove_by_path_prefix(&self, path_prefix: &str) {
-        if let Ok(mut entries) = self.entries.write() {
-            entries.retain(|e| !e.path.starts_with(path_prefix));
+        if let Ok(mut cache) = self.data.write() {
+            cache.entries.retain(|e| !e.path.starts_with(path_prefix));
+            cache.rebuild_index();
         }
     }
 
     /// 캐시 크기
     pub fn len(&self) -> usize {
-        self.entries.read().map(|e| e.len()).unwrap_or(0)
+        self.data.read().map(|c| c.entries.len()).unwrap_or(0)
     }
 
     /// 캐시 비어있는지
@@ -138,8 +175,9 @@ impl FilenameCache {
 
     /// 캐시 초기화
     pub fn clear(&self) {
-        if let Ok(mut entries) = self.entries.write() {
-            entries.clear();
+        if let Ok(mut cache) = self.data.write() {
+            cache.entries.clear();
+            cache.id_index.clear();
         }
     }
 }
