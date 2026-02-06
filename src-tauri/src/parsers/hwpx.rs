@@ -191,10 +191,6 @@ struct PageMap {
 }
 
 impl PageMap {
-    fn empty() -> Self {
-        Self { page_starts: vec![0] }
-    }
-
     fn total_pages(&self) -> usize {
         self.page_starts.len().max(1)
     }
@@ -203,19 +199,6 @@ impl PageMap {
         let idx = self.page_starts.partition_point(|&start| start <= char_offset);
         idx.max(1)
     }
-}
-
-fn build_page_map(paragraphs: &[ParagraphNode], simulator: &mut LayoutSimulator) -> PageMap {
-    if paragraphs.is_empty() {
-        return PageMap::empty();
-    }
-
-    let mut page_starts = vec![0];
-    for para in paragraphs {
-        simulator.layout_paragraph(para, &mut page_starts);
-    }
-
-    PageMap { page_starts }
 }
 
 /// 문자 가중치 (ASCII=1.0, 전각=2.0)
@@ -351,18 +334,15 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         .map(|c| parse_header_xml(c))
         .unwrap_or_default();
 
-    // 첫 번째 섹션에서 페이지 설정 파싱
-    let page_settings = section_xmls
-        .values()
-        .next()
-        .map(|xml| parse_page_settings(xml))
-        .unwrap_or_default();
-
-    // 모든 섹션에서 문단 추출 (구조적 파싱)
+    // 섹션별 페이지 설정 파싱 + 문단 추출 + 페이지맵 빌드
     let mut all_paragraphs: Vec<ParagraphNode> = Vec::new();
+    let mut page_starts = vec![0usize];
     let mut total_char_offset: usize = 0;
 
     for (section_idx, xml) in &section_xmls {
+        // 각 섹션의 페이지 설정 파싱 (표/도형 오염 방지된 컨텍스트 기반)
+        let section_settings = parse_page_settings(xml);
+
         let mut section_paras = extract_paragraphs_from_section(xml)?;
 
         // 섹션 간 구분: 첫 번째가 아닌 섹션은 페이지 브레이크로 처리
@@ -375,6 +355,13 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             para.char_offset += total_char_offset;
         }
 
+        // 섹션별 LayoutSimulator로 페이지맵 빌드
+        // 섹션은 항상 새 페이지에서 시작하므로 simulator 재생성이 정확
+        let mut simulator = LayoutSimulator::new(&section_settings, &default_style);
+        for para in &section_paras {
+            simulator.layout_paragraph(para, &mut page_starts);
+        }
+
         // 전체 오프셋 업데이트
         if let Some(last) = section_paras.last() {
             total_char_offset = last.char_offset + last.text.chars().count() + 1;
@@ -383,10 +370,50 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         all_paragraphs.extend(section_paras);
     }
 
-    // Layout Simulator로 페이지 맵 생성 (문단 내부 줄 단위 반영)
-    let mut simulator = LayoutSimulator::new(&page_settings, &default_style);
-    let page_map = build_page_map(&all_paragraphs, &mut simulator);
-    let page_count = page_map.total_pages();
+    let page_map = PageMap { page_starts };
+
+    // 전체 문자 수 계산 (문단 + 줄바꿈)
+    let total_chars: usize = all_paragraphs
+        .iter()
+        .map(|p| p.text.chars().count())
+        .sum::<usize>()
+        + all_paragraphs.len().saturating_sub(1);
+
+    // Sanity check: 시뮬레이션 결과 검증
+    let estimated_pages = page_map.total_pages();
+    let chars_per_page = if estimated_pages > 0 {
+        total_chars / estimated_pages
+    } else {
+        0
+    };
+
+    // 페이지당 250자 미만이면 시뮬레이션 오류로 판단
+    // (한글 A4 10pt 160% 기준 최소 ~500자/페이지, 큰 글씨여도 250자 이상)
+    let is_unreasonable = total_chars > 0 && estimated_pages > 1 && chars_per_page < 250;
+
+    let (page_map, page_count) = if is_unreasonable {
+        tracing::warn!(
+            "HWPX layout sim unreasonable: {} pages for {} chars ({} chars/page, fontSz={}, lineSpacing={}%). Falling back to proportional.",
+            estimated_pages,
+            total_chars,
+            chars_per_page,
+            default_style.font_size,
+            default_style.line_spacing
+        );
+        // 비례 배분 fallback: ~1500 chars/page (한글 A4 기본 추정)
+        let est_pages = (total_chars / 1500).max(1);
+        let cpp = total_chars / est_pages;
+        let mut page_starts = vec![0usize];
+        for i in 1..est_pages {
+            page_starts.push(i * cpp);
+        }
+        let pm = PageMap { page_starts };
+        let pc = pm.total_pages();
+        (pm, pc)
+    } else {
+        let pc = page_map.total_pages();
+        (page_map, pc)
+    };
 
     tracing::debug!(
         "HWPX layout sim: {} 문단, {} 페이지, 폰트 {}hwpunit, 줄간격 {}%",
@@ -696,82 +723,106 @@ fn parse_header_xml(xml_content: &str) -> DefaultStyle {
         }
     }
 
+    // fontSz 단위 정규화:
+    // - 표준 HWP: centipoint (1pt = 100 hwpunit), 10pt = 1000
+    // - 일부 HWPX: millipoint (1pt = 1000), 10pt = 10000
+    // 본문 글자 크기가 40pt(4000) 초과는 비합리적 → millipoint로 판단
+    let original_font = style.font_size;
+    if style.font_size >= 40000 {
+        // 400pt+ → /100 (micro-point 등)
+        style.font_size /= 100;
+    } else if style.font_size > 4000 {
+        // 40pt+ → /10 (millipoint)
+        style.font_size /= 10;
+    }
+    // 최종 clamp: 5pt(500) ~ 40pt(4000)
+    style.font_size = style.font_size.clamp(500, 4000);
+    if style.font_size != original_font {
+        tracing::debug!(
+            "HWPX fontSz normalized: {} -> {}",
+            original_font,
+            style.font_size
+        );
+    }
+
+    // lineSpacing 단위 정규화 (구간별):
+    // - 표준: % 단위 (160 = 160%)
+    // - 일부: centi-percent (16000 = 160%), permille (1600 = 160%)
+    let original_ls = style.line_spacing;
+    if style.line_spacing >= 5000 {
+        // 16000 → 160, centi-percent 계열
+        style.line_spacing /= 100;
+    } else if style.line_spacing > 500 {
+        // 1600 → 160, permille 계열
+        style.line_spacing /= 10;
+    }
+    // 최종 clamp: 80% ~ 300%
+    style.line_spacing = style.line_spacing.clamp(80, 300);
+    if style.line_spacing != original_ls {
+        tracing::debug!(
+            "HWPX lineSpacing normalized: {} -> {}",
+            original_ls,
+            style.line_spacing
+        );
+    }
+
     style
 }
 
 /// section XML에서 페이지 설정 파싱
-/// sec > pPr 또는 secPr 내의 width, height, margins 추출
+/// secPr/pagePr 컨텍스트 내부의 pSz/pageSz/margin만 반영 (표/도형 sz 오염 방지)
 fn parse_page_settings(xml_content: &str) -> PageSettings {
     let mut reader = Reader::from_str(xml_content);
     reader.config_mut().trim_text(true);
 
-    let mut settings = PageSettings::default();
+    let defaults = PageSettings::default();
+    let mut settings = defaults.clone();
+
+    // secPr 또는 pagePr 내부에서만 페이지 크기/여백을 파싱
+    let mut in_page_context = false;
+    let mut context_depth: usize = 0;
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+            Ok(Event::Start(e)) => {
                 let local_name = e.local_name();
                 let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                let name_l = name.to_ascii_lowercase();
 
-                // 페이지 크기 태그들
-                if name == "sz" || name == "pSz" || name == "pageSz" {
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
-                        match key {
-                            "h" | "height" => {
-                                if let Ok(h) = val.parse::<u32>() {
-                                    settings.height = h;
-                                }
-                            }
-                            "w" | "width" => {
-                                if let Ok(w) = val.parse::<u32>() {
-                                    settings.width = w;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                // secPr, pagePr, masterPage 등 페이지 설정 컨텍스트 진입
+                if matches!(
+                    name_l.as_str(),
+                    "secpr" | "pagepr" | "masterpage" | "pagelayout"
+                ) {
+                    in_page_context = true;
+                    context_depth = 1;
+                } else if in_page_context {
+                    context_depth += 1;
+                    parse_page_element(&name_l, &e, &mut settings);
                 }
+            }
+            Ok(Event::Empty(e)) => {
+                if in_page_context {
+                    let local_name = e.local_name();
+                    let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                    let name_l = name.to_ascii_lowercase();
+                    parse_page_element(&name_l, &e, &mut settings);
+                }
+            }
+            Ok(Event::End(e)) => {
+                if in_page_context {
+                    let local_name = e.local_name();
+                    let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                    let name_l = name.to_ascii_lowercase();
 
-                // 여백 설정
-                if name == "margin" || name == "pageMar" {
-                    for attr in e.attributes().flatten() {
-                        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
-                        let val = std::str::from_utf8(&attr.value).unwrap_or("");
-                        match key {
-                            "top" | "t" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.top_margin = v;
-                                }
-                            }
-                            "bottom" | "b" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.bottom_margin = v;
-                                }
-                            }
-                            "left" | "l" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.left_margin = v;
-                                }
-                            }
-                            "right" | "r" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.right_margin = v;
-                                }
-                            }
-                            "header" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.header_offset = v;
-                                }
-                            }
-                            "footer" => {
-                                if let Ok(v) = val.parse::<u32>() {
-                                    settings.footer_offset = v;
-                                }
-                            }
-                            _ => {}
-                        }
+                    if matches!(
+                        name_l.as_str(),
+                        "secpr" | "pagepr" | "masterpage" | "pagelayout"
+                    ) {
+                        in_page_context = false;
+                        context_depth = 0;
+                    } else {
+                        context_depth = context_depth.saturating_sub(1);
                     }
                 }
             }
@@ -781,5 +832,112 @@ fn parse_page_settings(xml_content: &str) -> PageSettings {
         }
     }
 
+    // 값 검증: 비정상이면 기본값 유지
+    // A4 기준 hwpunit: height ~84188, width ~59528
+    // 허용 범위: 가로/세로 각 20000~200000 (B5~A3 이상 커버)
+    if settings.height < 20000 || settings.height > 200000 {
+        tracing::debug!(
+            "HWPX page height {} out of range, using default {}",
+            settings.height,
+            defaults.height
+        );
+        settings.height = defaults.height;
+    }
+    if settings.width < 20000 || settings.width > 200000 {
+        tracing::debug!(
+            "HWPX page width {} out of range, using default {}",
+            settings.width,
+            defaults.width
+        );
+        settings.width = defaults.width;
+    }
+
+    // 여백이 페이지의 80% 이상을 차지하면 비정상
+    let margin_sum = settings
+        .top_margin
+        .saturating_add(settings.bottom_margin)
+        .saturating_add(settings.header_offset)
+        .saturating_add(settings.footer_offset);
+    if margin_sum > settings.height * 4 / 5 {
+        tracing::debug!(
+            "HWPX vertical margins {} exceed 80% of height {}, using defaults",
+            margin_sum,
+            settings.height
+        );
+        settings.top_margin = defaults.top_margin;
+        settings.bottom_margin = defaults.bottom_margin;
+        settings.header_offset = defaults.header_offset;
+        settings.footer_offset = defaults.footer_offset;
+    }
+
     settings
+}
+
+/// 페이지 설정 요소 파싱 헬퍼 (secPr/pagePr 컨텍스트 내에서만 호출)
+fn parse_page_element(
+    name: &str,
+    e: &quick_xml::events::BytesStart<'_>,
+    settings: &mut PageSettings,
+) {
+    // 페이지 크기
+    if matches!(name, "sz" | "psz" | "pagesz") {
+        for attr in e.attributes().flatten() {
+            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+            let val = std::str::from_utf8(&attr.value).unwrap_or("");
+            match key {
+                "h" | "height" => {
+                    if let Ok(h) = val.parse::<u32>() {
+                        settings.height = h;
+                    }
+                }
+                "w" | "width" => {
+                    if let Ok(w) = val.parse::<u32>() {
+                        settings.width = w;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // 여백 설정
+    if matches!(name, "margin" | "pagemar") {
+        for attr in e.attributes().flatten() {
+            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+            let val = std::str::from_utf8(&attr.value).unwrap_or("");
+            match key {
+                "top" | "t" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.top_margin = v;
+                    }
+                }
+                "bottom" | "b" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.bottom_margin = v;
+                    }
+                }
+                "left" | "l" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.left_margin = v;
+                    }
+                }
+                "right" | "r" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.right_margin = v;
+                    }
+                }
+                "header" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.header_offset = v;
+                    }
+                }
+                "footer" => {
+                    if let Ok(v) = val.parse::<u32>() {
+                        settings.footer_offset = v;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
