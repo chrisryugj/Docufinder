@@ -10,11 +10,11 @@ name = "docufinder_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "^2.5", features = [] }
 
 [dependencies]
-# Tauri 프레임워크 (^2.9: 2.9.x 범위 내 호환 버전 사용)
-tauri = { version = "^2.9", features = ["devtools", "tray-icon"] }
+# Tauri 프레임워크 (^2.10: tauri 2.10.2+)
+tauri = { version = "^2.10", features = ["devtools", "tray-icon"] }
 tauri-plugin-shell = "^2.3"
 tauri-plugin-dialog = "^2.6"
 tauri-plugin-fs = "^2.4"
