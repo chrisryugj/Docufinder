@@ -62,11 +62,23 @@ export const SearchResultItem = memo(function SearchResultItem({
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({
-      isOpen: true,
-      x: e.clientX,
-      y: e.clientY,
-    });
+
+    // 뷰포트 경계 체크로 메뉴 오버플로 방지
+    const menuWidth = 200;
+    const menuHeight = 160;
+    const padding = 8;
+
+    let x = e.clientX;
+    let y = e.clientY;
+
+    if (x + menuWidth > window.innerWidth - padding) {
+      x = window.innerWidth - menuWidth - padding;
+    }
+    if (y + menuHeight > window.innerHeight - padding) {
+      y = window.innerHeight - menuHeight - padding;
+    }
+
+    setContextMenu({ isOpen: true, x, y });
   }, []);
 
   // 컨텍스트 메뉴 닫기

@@ -5,6 +5,8 @@ import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
 import { InfoTooltip } from "../ui/Tooltip";
+import { SettingsToggle } from "./SettingsToggle";
+import { ColorPresetPicker } from "./ColorPresetPicker";
 import type { Settings } from "../../types/settings";
 
 interface SettingsModalProps {
@@ -208,18 +210,18 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 content={
                   <div className="space-y-2 py-1">
                     <div>
-                      <strong className="text-gray-100">📊 점수 산정</strong>
+                      <strong style={{ color: "var(--color-text-primary)" }}>📊 점수 산정</strong>
                       <p className="mt-0.5">RRF(Reciprocal Rank Fusion) 방식으로 키워드 검색과 의미 검색 순위를 병합해 계산합니다.</p>
                     </div>
                     <div>
-                      <strong className="text-gray-100">💡 추천 설정</strong>
+                      <strong style={{ color: "var(--color-text-primary)" }}>💡 추천 설정</strong>
                       <ul className="mt-0.5 space-y-0.5">
                         <li>• <strong>0%</strong>: 모든 결과 표시</li>
                         <li>• <strong>20-30%</strong>: 관련성 높은 결과 (권장)</li>
                         <li>• <strong>50%+</strong>: 매우 정확한 결과만</li>
                       </ul>
                     </div>
-                    <p className="text-gray-400 text-[10px]">같은 문서도 페이지별로 점수가 다를 수 있습니다</p>
+                    <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>같은 문서도 페이지별로 점수가 다를 수 있습니다</p>
                   </div>
                 }
                 maxWidth={320}
@@ -284,36 +286,12 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           </div>
 
           {/* 하위폴더 포함 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <label
-                className="text-sm font-medium"
-                style={{ color: "var(--color-text-secondary)" }}
-              >
-                하위폴더 포함
-              </label>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                폴더 추가 시 하위폴더도 함께 인덱싱
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.include_subfolders ?? true}
-              onClick={() => handleChange("include_subfolders", !(settings.include_subfolders ?? true))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                (settings.include_subfolders ?? true)
-                  ? "bg-blue-500"
-                  : "bg-gray-600"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  (settings.include_subfolders ?? true) ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
+          <SettingsToggle
+            label="하위폴더 포함"
+            description="폴더 추가 시 하위폴더도 함께 인덱싱"
+            checked={settings.include_subfolders ?? true}
+            onChange={(v) => handleChange("include_subfolders", v)}
+          />
 
           {/* 성능 설정 섹션 */}
           <div
@@ -394,36 +372,13 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 : "var(--color-border)"}`,
             }}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <label
-                  className="text-sm font-medium"
-                  style={{ color: "var(--color-text-secondary)" }}
-                >
-                  시맨틱 검색
-                </label>
-                <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  문서의 의미를 이해하여 유사한 내용을 찾아줍니다
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.semantic_search_enabled ?? false}
-                onClick={() => handleChange("semantic_search_enabled", !(settings.semantic_search_enabled ?? false))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                  (settings.semantic_search_enabled ?? false)
-                    ? "bg-amber-500"
-                    : "bg-gray-600"
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    (settings.semantic_search_enabled ?? false) ? "translate-x-6" : "translate-x-1"
-                  }`}
-                />
-              </button>
-            </div>
+            <SettingsToggle
+              label="시맨틱 검색"
+              description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다"
+              checked={settings.semantic_search_enabled ?? false}
+              onChange={(v) => handleChange("semantic_search_enabled", v)}
+              activeColor="bg-amber-500"
+            />
 
             {/* 활성화 시 경고 + 옵션 */}
             {(settings.semantic_search_enabled ?? false) && (
@@ -477,68 +432,20 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           </div>
 
           {/* 윈도우 시작 시 자동 실행 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <label
-                className="text-sm font-medium"
-                style={{ color: "var(--color-text-secondary)" }}
-              >
-                Windows 시작 시 자동 실행
-              </label>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                컴퓨터 부팅 시 자동으로 시작
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.auto_start ?? false}
-              onClick={() => handleChange("auto_start", !(settings.auto_start ?? false))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                (settings.auto_start ?? false)
-                  ? "bg-blue-500"
-                  : "bg-gray-600"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  (settings.auto_start ?? false) ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
+          <SettingsToggle
+            label="Windows 시작 시 자동 실행"
+            description="컴퓨터 부팅 시 자동으로 시작"
+            checked={settings.auto_start ?? false}
+            onChange={(v) => handleChange("auto_start", v)}
+          />
 
           {/* 시작 시 최소화 */}
-          <div className="flex items-center justify-between">
-            <div>
-              <label
-                className="text-sm font-medium"
-                style={{ color: "var(--color-text-secondary)" }}
-              >
-                시작 시 트레이로 최소화
-              </label>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                앱 시작 시 트레이 아이콘으로 숨김
-              </p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={settings.start_minimized ?? false}
-              onClick={() => handleChange("start_minimized", !(settings.start_minimized ?? false))}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                (settings.start_minimized ?? false)
-                  ? "bg-blue-500"
-                  : "bg-gray-600"
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  (settings.start_minimized ?? false) ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
-          </div>
+          <SettingsToggle
+            label="시작 시 트레이로 최소화"
+            description="앱 시작 시 트레이 아이콘으로 숨김"
+            checked={settings.start_minimized ?? false}
+            onChange={(v) => handleChange("start_minimized", v)}
+          />
 
           {/* 하이라이트 색상 섹션 */}
           <div
@@ -554,74 +461,22 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           </div>
 
           {/* 파일명 하이라이트 색상 */}
-          <div>
-            <label
-              className="block text-sm font-medium mb-2"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              파일명 하이라이트
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {HIGHLIGHT_COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset.value || "default"}
-                  type="button"
-                  onClick={() => handleChange("highlight_filename_color", preset.value || undefined)}
-                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
-                    (settings.highlight_filename_color || "") === preset.value
-                      ? "ring-2 ring-offset-2"
-                      : ""
-                  }`}
-                  style={{
-                    backgroundColor: preset.light,
-                    borderColor: (settings.highlight_filename_color || "") === preset.value
-                      ? "var(--color-accent)"
-                      : "var(--color-border)",
-                  }}
-                  title={preset.label}
-                  aria-label={`${preset.label} 색상 선택`}
-                />
-              ))}
-            </div>
-            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-              파일명 검색 결과에서 매칭된 글자 강조 색상
-            </p>
-          </div>
+          <ColorPresetPicker
+            label="파일명 하이라이트"
+            description="파일명 검색 결과에서 매칭된 글자 강조 색상"
+            presets={HIGHLIGHT_COLOR_PRESETS}
+            selectedValue={settings.highlight_filename_color}
+            onChange={(v) => handleChange("highlight_filename_color", v)}
+          />
 
           {/* 문서 내용 하이라이트 색상 */}
-          <div>
-            <label
-              className="block text-sm font-medium mb-2"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              문서 내용 하이라이트
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {HIGHLIGHT_COLOR_PRESETS.map((preset) => (
-                <button
-                  key={preset.value || "default"}
-                  type="button"
-                  onClick={() => handleChange("highlight_content_color", preset.value || undefined)}
-                  className={`w-8 h-8 rounded-lg border-2 transition-all ${
-                    (settings.highlight_content_color || "") === preset.value
-                      ? "ring-2 ring-offset-2"
-                      : ""
-                  }`}
-                  style={{
-                    backgroundColor: preset.light,
-                    borderColor: (settings.highlight_content_color || "") === preset.value
-                      ? "var(--color-accent)"
-                      : "var(--color-border)",
-                  }}
-                  title={preset.label}
-                  aria-label={`${preset.label} 색상 선택`}
-                />
-              ))}
-            </div>
-            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-              문서 검색 결과에서 매칭된 키워드 강조 색상
-            </p>
-          </div>
+          <ColorPresetPicker
+            label="문서 내용 하이라이트"
+            description="문서 검색 결과에서 매칭된 키워드 강조 색상"
+            presets={HIGHLIGHT_COLOR_PRESETS}
+            selectedValue={settings.highlight_content_color}
+            onChange={(v) => handleChange("highlight_content_color", v)}
+          />
 
           {/* 데이터 관리 섹션 */}
           <div

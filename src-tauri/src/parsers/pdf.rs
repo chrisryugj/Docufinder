@@ -50,8 +50,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             ));
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            // 타임아웃 - JoinHandle drop 시 스레드는 detach되어 백그라운드에서 계속 실행됨
-            // pdf_extract가 hang된 경우 스레드 리소스는 프로세스 종료 시까지 유지됨
+            // 타임아웃 - 별도 경량 클린업 스레드가 원본 스레드 완료를 대기 후 카운터 감소
             let count = DETACHED_THREAD_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
             tracing::warn!(
                 "PDF parsing timed out after {}s, thread detached (total: {}): {:?}",
@@ -65,7 +64,15 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
                     count
                 );
             }
-            std::mem::drop(handle); // 명시적 detach
+            // 클린업 스레드: 원본 스레드 완료 시 카운터 감소 (최소 스택으로 오버헤드 최소화)
+            let _ = std::thread::Builder::new()
+                .name("pdf-cleanup".into())
+                .stack_size(64 * 1024) // 64KB 최소 스택
+                .spawn(move || {
+                    let _ = handle.join();
+                    DETACHED_THREAD_COUNT.fetch_sub(1, Ordering::Relaxed);
+                    tracing::debug!("Detached PDF thread completed and reclaimed");
+                });
             return Err(ParseError::ParseError(format!(
                 "PDF parsing timed out after {}s (detached threads: {})",
                 PDF_PARSE_TIMEOUT_SECS,

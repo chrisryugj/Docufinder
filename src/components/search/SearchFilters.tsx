@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type {
   SearchFilters as FiltersType,
   SortOption,
@@ -27,7 +28,7 @@ interface SearchFiltersProps {
 /**
  * 검색 필터/정렬 바
  */
-export function SearchFilters({
+export const SearchFilters = memo(function SearchFilters({
   filters,
   onFiltersChange,
   showRefineSearch = false,
@@ -106,7 +107,7 @@ export function SearchFilters({
             type="checkbox"
             checked={filters.keywordOnly}
             onChange={(e) => onFiltersChange({ ...filters, keywordOnly: e.target.checked })}
-            className="accent-blue-500 w-3 h-3"
+            className="accent-[var(--color-accent)] w-3 h-3"
             aria-label="키워드 포함 결과만 보기"
           />
           키워드 포함만
@@ -126,7 +127,7 @@ export function SearchFilters({
             type="checkbox"
             checked={filters.excludeFilename}
             onChange={(e) => onFiltersChange({ ...filters, excludeFilename: e.target.checked })}
-            className="accent-blue-500 w-3 h-3"
+            className="accent-[var(--color-accent)] w-3 h-3"
             aria-label="파일명 검색 결과 제외"
           />
           파일명 제외
@@ -161,7 +162,7 @@ export function SearchFilters({
           {refineQuery && onRefineQueryClear && (
             <button
               onClick={onRefineQueryClear}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-gray-600"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors hover:bg-[var(--color-bg-tertiary)]"
               style={{ color: "var(--color-text-muted)" }}
               aria-label="결과 내 검색 초기화"
             >
@@ -196,7 +197,7 @@ export function SearchFilters({
       )}
     </div>
   );
-}
+});
 
 // 드롭다운 컴포넌트
 interface FilterDropdownProps<T extends string> {

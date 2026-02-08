@@ -43,146 +43,167 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
+/// 현재 스키마 버전
+const CURRENT_SCHEMA_VERSION: i32 = 5;
+
+/// 스키마 버전 조회
+fn get_schema_version(conn: &Connection) -> i32 {
+    conn.query_row(
+        "SELECT version FROM schema_version WHERE id = 1",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// 스키마 버전 저장
+fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_version (id, version) VALUES (1, ?1)",
+        params![version],
+    )?;
+    Ok(())
+}
+
 /// 데이터베이스 초기화
 pub fn init_database(db_path: &Path) -> Result<()> {
     let conn = get_connection(db_path)?;
 
-    // 파일 메타데이터 테이블
+    // 스키마 버전 테이블 (항상 먼저 생성)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS files (
+        "CREATE TABLE IF NOT EXISTS schema_version (
             id INTEGER PRIMARY KEY,
-            path TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            file_type TEXT NOT NULL,
-            size INTEGER,
-            modified_at INTEGER,
-            hash TEXT,
-            indexed_at INTEGER
+            version INTEGER NOT NULL
         )",
         [],
     )?;
 
-    // 청크 메타데이터 테이블
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS chunks (
-            id INTEGER PRIMARY KEY,
-            file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
-            chunk_index INTEGER,
-            start_offset INTEGER,
-            end_offset INTEGER,
-            page_number INTEGER,
-            paragraph_number INTEGER,
-            location_hint TEXT
-        )",
-        [],
-    )?;
+    let current_version = get_schema_version(&conn);
 
-    // FTS5 전문 검색 인덱스 (청크 내용)
-    conn.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-            content,
-            content_rowid='id',
-            tokenize='unicode61'
-        )",
-        [],
-    )?;
+    // === v1: 기본 테이블 ===
+    if current_version < 1 {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS files (
+                id INTEGER PRIMARY KEY,
+                path TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                size INTEGER,
+                modified_at INTEGER,
+                hash TEXT,
+                indexed_at INTEGER
+            )",
+            [],
+        )?;
 
-    // FTS5 파일명 검색 인덱스
-    conn.execute(
-        "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
-            name,
-            content_rowid='id',
-            tokenize='unicode61'
-        )",
-        [],
-    )?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS chunks (
+                id INTEGER PRIMARY KEY,
+                file_id INTEGER REFERENCES files(id) ON DELETE CASCADE,
+                chunk_index INTEGER,
+                start_offset INTEGER,
+                end_offset INTEGER,
+                page_number INTEGER,
+                paragraph_number INTEGER,
+                location_hint TEXT
+            )",
+            [],
+        )?;
 
-    // 기존 파일 → files_fts 마이그레이션 (최초 실행 시)
-    conn.execute(
-        "INSERT OR IGNORE INTO files_fts (rowid, name) SELECT id, name FROM files",
-        [],
-    )?;
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+                content,
+                content_rowid='id',
+                tokenize='unicode61'
+            )",
+            [],
+        )?;
 
-    // 감시 폴더 테이블
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS watched_folders (
-            id INTEGER PRIMARY KEY,
-            path TEXT UNIQUE NOT NULL,
-            added_at INTEGER,
-            is_favorite INTEGER DEFAULT 0
-        )",
-        [],
-    )?;
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
+                name,
+                content_rowid='id',
+                tokenize='unicode61'
+            )",
+            [],
+        )?;
 
-    // 기존 테이블에 is_favorite 컬럼 추가 (마이그레이션 - 이미 존재하면 무시)
-    if let Err(e) = conn.execute(
-        "ALTER TABLE watched_folders ADD COLUMN is_favorite INTEGER DEFAULT 0",
-        [],
-    ) {
-        tracing::trace!("Migration: is_favorite column already exists or failed: {}", e);
+        conn.execute(
+            "INSERT OR IGNORE INTO files_fts (rowid, name) SELECT id, name FROM files",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS watched_folders (
+                id INTEGER PRIMARY KEY,
+                path TEXT UNIQUE NOT NULL,
+                added_at INTEGER,
+                is_favorite INTEGER DEFAULT 0
+            )",
+            [],
+        )?;
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)", [])?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)", [])?;
+
+        set_schema_version(&conn, 1)?;
+        tracing::info!("Schema migrated to v1 (base tables)");
     }
 
-    // indexing_status 컬럼 추가 (마이그레이션 - 인덱싱 중 앱 종료 감지용)
-    // 기본값 'completed': 기존 폴더는 이미 인덱싱 완료 상태
-    if let Err(e) = conn.execute(
-        "ALTER TABLE watched_folders ADD COLUMN indexing_status TEXT DEFAULT 'completed'",
-        [],
-    ) {
-        tracing::trace!("Migration: indexing_status column already exists or failed: {}", e);
+    // === v2: is_favorite 컬럼 ===
+    if current_version < 2 {
+        if let Err(e) = conn.execute(
+            "ALTER TABLE watched_folders ADD COLUMN is_favorite INTEGER DEFAULT 0",
+            [],
+        ) {
+            tracing::trace!("Migration v2: is_favorite already exists: {}", e);
+        }
+        set_schema_version(&conn, 2)?;
+        tracing::info!("Schema migrated to v2 (is_favorite)");
     }
 
-    // 2단계 인덱싱 지원: fts_indexed_at, vector_indexed_at 컬럼 추가
-    if let Err(e) = conn.execute(
-        "ALTER TABLE files ADD COLUMN fts_indexed_at INTEGER",
-        [],
-    ) {
-        tracing::trace!("Migration: fts_indexed_at column already exists or failed: {}", e);
-    }
-    if let Err(e) = conn.execute(
-        "ALTER TABLE files ADD COLUMN vector_indexed_at INTEGER",
-        [],
-    ) {
-        tracing::trace!("Migration: vector_indexed_at column already exists or failed: {}", e);
+    // === v3: indexing_status 컬럼 ===
+    if current_version < 3 {
+        if let Err(e) = conn.execute(
+            "ALTER TABLE watched_folders ADD COLUMN indexing_status TEXT DEFAULT 'completed'",
+            [],
+        ) {
+            tracing::trace!("Migration v3: indexing_status already exists: {}", e);
+        }
+        set_schema_version(&conn, 3)?;
+        tracing::info!("Schema migrated to v3 (indexing_status)");
     }
 
-    // 기존 데이터 마이그레이션: indexed_at 값을 fts_indexed_at으로 복사
-    if let Err(e) = conn.execute(
-        "UPDATE files SET fts_indexed_at = indexed_at WHERE fts_indexed_at IS NULL AND indexed_at IS NOT NULL",
-        [],
-    ) {
-        tracing::warn!("Migration: failed to copy indexed_at to fts_indexed_at: {}", e);
+    // === v4: 2단계 인덱싱 (fts_indexed_at, vector_indexed_at) ===
+    if current_version < 4 {
+        if let Err(e) = conn.execute("ALTER TABLE files ADD COLUMN fts_indexed_at INTEGER", []) {
+            tracing::trace!("Migration v4: fts_indexed_at already exists: {}", e);
+        }
+        if let Err(e) = conn.execute("ALTER TABLE files ADD COLUMN vector_indexed_at INTEGER", []) {
+            tracing::trace!("Migration v4: vector_indexed_at already exists: {}", e);
+        }
+        // 기존 데이터 마이그레이션
+        let _ = conn.execute(
+            "UPDATE files SET fts_indexed_at = indexed_at WHERE fts_indexed_at IS NULL AND indexed_at IS NOT NULL",
+            [],
+        );
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_fts_indexed ON files(fts_indexed_at)", [])?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_vector_indexed ON files(vector_indexed_at)", [])?;
+
+        set_schema_version(&conn, 4)?;
+        tracing::info!("Schema migrated to v4 (two-phase indexing)");
     }
 
-    // page_end 컬럼 추가 (마이그레이션 - 청크 끝 페이지 저장용)
-    if let Err(e) = conn.execute(
-        "ALTER TABLE chunks ADD COLUMN page_end INTEGER",
-        [],
-    ) {
-        tracing::trace!("Migration: page_end column already exists or failed: {}", e);
+    // === v5: page_end 컬럼 ===
+    if current_version < 5 {
+        if let Err(e) = conn.execute("ALTER TABLE chunks ADD COLUMN page_end INTEGER", []) {
+            tracing::trace!("Migration v5: page_end already exists: {}", e);
+        }
+        set_schema_version(&conn, 5)?;
+        tracing::info!("Schema migrated to v5 (page_end)");
     }
 
-    // 인덱스 생성
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)",
-        [],
-    )?;
-
-    // === 2단계 인덱싱 성능 최적화 인덱스 ===
-    // 벡터 대기 파일 조회 최적화 (10배 빠름)
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_files_fts_indexed ON files(fts_indexed_at)",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_files_vector_indexed ON files(vector_indexed_at)",
-        [],
-    )?;
-
-    tracing::info!("Database initialized at {:?}", db_path);
+    tracing::info!("Database initialized at {:?} (schema v{})", db_path, CURRENT_SCHEMA_VERSION);
     Ok(())
 }
 

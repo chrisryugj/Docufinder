@@ -4,7 +4,6 @@
 //! Handles only: input validation, settings retrieval, service invocation.
 
 use crate::application::dto::search::SearchResponse;
-use crate::commands::settings::get_settings_sync;
 use crate::error::{ApiError, ApiResult};
 use crate::AppContainer;
 use std::sync::Mutex;
@@ -27,12 +26,7 @@ pub async fn search_keyword(
 
     let (service, max_results) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let max_results = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir).max_results)
-            .unwrap_or(50);
-
+        let max_results = container.get_settings().max_results;
         (container.search_service(), max_results)
     };
 
@@ -59,12 +53,7 @@ pub async fn search_filename(
 
     let (service, max_results) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let max_results = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir).max_results)
-            .unwrap_or(50);
-
+        let max_results = container.get_settings().max_results;
         (container.search_service(), max_results)
     };
 
@@ -91,12 +80,7 @@ pub async fn search_semantic(
 
     let (service, max_results, semantic_enabled) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
-
+        let settings = container.get_settings();
         (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };
 
@@ -128,12 +112,7 @@ pub async fn search_hybrid(
 
     let (service, max_results, semantic_enabled) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
-
+        let settings = container.get_settings();
         (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };
 

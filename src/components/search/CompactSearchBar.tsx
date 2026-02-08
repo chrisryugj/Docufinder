@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useRef, useEffect, useState } from "react";
+import { useIMEComposition } from "../../hooks/useIMEComposition";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -69,9 +70,16 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
     ref
   ) => {
     const innerRef = useRef<HTMLInputElement>(null);
-    const isComposingRef = useRef(false);
     const [showModeDropdown, setShowModeDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const { imeHandlers } = useIMEComposition({
+      query,
+      onQueryChange,
+      onCompositionStart,
+      onCompositionEnd,
+      inputRef: innerRef,
+    });
 
     // 드롭다운 외부 클릭 시 닫기
     useEffect(() => {
@@ -201,44 +209,7 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
             ref={innerRef}
             type="text"
             defaultValue={query}
-            onChange={(e) => {
-              const value = e.target.value;
-              const composing = (e.nativeEvent as InputEvent).isComposing === true;
-              if (composing && !isComposingRef.current) {
-                isComposingRef.current = true;
-                onCompositionStart?.();
-              } else if (!composing && isComposingRef.current) {
-                isComposingRef.current = false;
-                onCompositionEnd?.(value);
-              }
-              onQueryChange(value);
-            }}
-            onCompositionStart={() => {
-              if (!isComposingRef.current) {
-                isComposingRef.current = true;
-                onCompositionStart?.();
-              }
-            }}
-            onCompositionEnd={(e) => {
-              const finalValue = (e.target as HTMLInputElement).value;
-              if (isComposingRef.current) {
-                isComposingRef.current = false;
-              }
-              if (finalValue !== query) {
-                onQueryChange(finalValue);
-              }
-              onCompositionEnd?.(finalValue);
-            }}
-            onBlur={() => {
-              if (isComposingRef.current) {
-                isComposingRef.current = false;
-                const value = innerRef.current?.value ?? query;
-                if (value !== query) {
-                  onQueryChange(value);
-                }
-                onCompositionEnd?.(value);
-              }
-            }}
+            {...imeHandlers}
             placeholder="검색어 입력..."
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}

@@ -170,6 +170,14 @@ impl Default for VectorWorker {
     }
 }
 
+impl Drop for VectorWorker {
+    fn drop(&mut self) {
+        // 자동 정리: 취소 요청 후 스레드 종료 대기
+        self.cancel();
+        self.join();
+    }
+}
+
 /// 벡터 인덱싱 실행 (파이프라인 병렬화)
 ///
 /// 구조: [DB 프리페치 스레드] --배치--> [메인 스레드: 임베딩 + 저장]

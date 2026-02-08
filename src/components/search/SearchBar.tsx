@@ -1,7 +1,8 @@
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
+import { useIMEComposition } from "../../hooks/useIMEComposition";
 
 interface SearchBarProps {
   query: string;
@@ -33,10 +34,17 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
     ref
   ) => {
     const innerRef = useRef<HTMLInputElement>(null);
-    const hasInitializedIME = useRef(false);
-    const isComposingRef = useRef(false);
     const [showModeDropdown, setShowModeDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const { imeHandlers } = useIMEComposition({
+      query,
+      onQueryChange,
+      onCompositionStart,
+      onCompositionEnd,
+      inputRef: innerRef,
+      enableWindowsIMEInit: true,
+    });
 
     // 드롭다운 외부 클릭 시 닫기
     useEffect(() => {
@@ -50,24 +58,6 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       }
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [showModeDropdown]);
-
-    // 첫 포커스 시 IME 초기화 (Windows 한영전환 문제 해결)
-    const handleFocus = useCallback(() => {
-      if (hasInitializedIME.current) return;
-      hasInitializedIME.current = true;
-
-      const input = innerRef.current;
-      if (!input) return;
-
-      // blur 후 최소 딜레이로 다시 focus (Windows IME 리셋)
-      // requestAnimationFrame 2연속 ≈ 32ms (100ms보다 빠르고 안정적)
-      input.blur();
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          input.focus();
-        });
-      });
-    }, []);
 
     useEffect(() => {
       // 외부에서 query prop이 바뀌면 (예: 최근검색 클릭, 클리어 등) input 값 동기화
@@ -118,45 +108,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
             ref={innerRef}
             type="text"
             defaultValue={query}
-            onChange={(e) => {
-              const value = e.target.value;
-              const composing = (e.nativeEvent as InputEvent).isComposing === true;
-              if (composing && !isComposingRef.current) {
-                isComposingRef.current = true;
-                onCompositionStart?.();
-              } else if (!composing && isComposingRef.current) {
-                isComposingRef.current = false;
-                onCompositionEnd?.(value);
-              }
-              onQueryChange(value);
-            }}
-            onCompositionStart={() => {
-              if (!isComposingRef.current) {
-                isComposingRef.current = true;
-                onCompositionStart?.();
-              }
-            }}
-            onCompositionEnd={(e) => {
-              const finalValue = (e.target as HTMLInputElement).value;
-              if (isComposingRef.current) {
-                isComposingRef.current = false;
-              }
-              if (finalValue !== query) {
-                onQueryChange(finalValue);
-              }
-              onCompositionEnd?.(finalValue);
-            }}
-            onBlur={() => {
-              if (isComposingRef.current) {
-                isComposingRef.current = false;
-                const value = innerRef.current?.value ?? query;
-                if (value !== query) {
-                  onQueryChange(value);
-                }
-                onCompositionEnd?.(value);
-              }
-            }}
-            onFocus={handleFocus}
+            {...imeHandlers}
             placeholder="검색어 입력..."
             className="flex-1 bg-transparent border-none text-base focus:outline-none ml-3"
             style={{ color: "var(--color-text-primary)" }}

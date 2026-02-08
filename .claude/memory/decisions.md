@@ -480,3 +480,144 @@
 
 ### 계획 파일
 `~/.claude/plans/prancy-soaring-anchor.md`
+
+## 2026-01-31 - 사내 배포 보안 강화 (Phase 3)
+
+**상황**: 3가지 리뷰 종합 후 추가 보안/안정성 개선 필요
+- 리뷰 1: 보안/코드품질/배포안정성 종합
+- 리뷰 2: HWPX 파서 공백/에러처리/압축폭탄
+- 리뷰 3: DLL 무결성/DB 암호화 최종 검증
+
+### 결정 5: ONNX Runtime DLL 해시 검증
+
+**문제**: 모델 파일은 SHA-256 검증하지만, DLL은 검증 생략 (코드에 주석으로 명시)
+**결정**: ZIP 다운로드 후 해시 검증 추가 (`78d447...`)
+**이유**: DLL은 실행 코드 → 변조 시 치명적
+**영향**: `model_downloader.rs:31-32, 276-285`
+
+### 결정 6: DB 트랜잭션 적용
+
+**문제**: 4개 DELETE 개별 실행 → 중간 실패 시 데이터 불일치 (고아 레코드)
+**결정**: BEGIN IMMEDIATE + COMMIT/ROLLBACK 패턴
+**구현**: 클로저로 작업 묶고, 에러 시 롤백
+**영향**:
+- `db/mod.rs:291-336` - delete_file()
+- `db/mod.rs:362-409` - delete_files_in_folder()
+- `db/mod.rs:412-443` - clear_all_data()
+- `db/mod.rs:448-475` - delete_chunks_for_file()
+
+### 결정 7: 크래시 핸들러
+
+**문제**: `.expect()` 패닉 시 데이터 저장 없이 강제 종료
+**결정**: panic::set_hook으로 크래시 로그 저장
+**구현**: `dirs::data_dir()/com.anything.app/crash.log`에 기록
+**영향**: `lib.rs:84-114`
+
+### 결정 8: HWPX Read::take() 하드 제한
+
+**문제**: by_index_raw 실패 시 사전 검증 우회 가능
+**결정**: 실제 읽기에도 50MB 하드 제한 추가
+**영향**: `hwpx.rs:326, 342` - take() 적용
+
+### 결정 9: lineSpacing 조건 수정
+
+**문제**: 기본 스타일 밖에서도 lineSpacing 적용 → 페이지 계산 오차
+**결정**: `&& in_default_style` 조건 추가
+**영향**: `hwpx.rs:671`
+
+### 결정 10: 프로덕션 console.log 제거
+
+**문제**: 31곳에서 디버그 정보 노출 가능
+**결정**: esbuild drop 설정으로 프로덕션에서 자동 제거
+**영향**: `vite.config.ts:27-29`
+
+### 계획 파일
+`~/.claude/plans/shimmering-soaring-hamming.md`
+
+## 2026-01-31 - 사내 배포 최종 안정성 검증 (Phase 4)
+
+**상황**: 30년차 개발자 관점의 비판적 코드 리뷰 후 Critical/Warning 이슈 발견
+- 3개 병렬 에이전트로 Rust 코드 품질, 보안, 프론트엔드 분석 완료
+- 전체 점수 85/100 - 배포 가능 수준
+
+### 결정 11: VectorIndex expect() → graceful error handling
+
+**문제**: 30개 이상의 `expect()` 호출 → lock poisoned 시 전체 앱 panic
+**시나리오**:
+- PDF 파싱 중 panic → catch_unwind로 복구
+- 해당 스레드가 VectorIndex lock 잡고 있었으면 → Lock poisoned
+- 다음 검색 시 전체 앱 crash
+
+**결정**: `VectorError::LockPoisoned` 추가, 모든 expect() → `map_err(|_| VectorError::LockPoisoned)?`
+**영향**:
+- `search/vector.rs` - 25개 위치 수정
+- `size()`, `id_map_size()`, `capacity()` → `unwrap_or(0)`
+- `clear()` → best-effort (lock 실패 시 조용히 무시)
+
+### 결정 12: FolderTree 비동기 setState 메모리 누수 방지
+
+**문제**: `fetchFolderInfo()` 비동기 호출 후 컴포넌트 언마운트 시 setState 호출
+**시나리오**:
+- 사용자가 빠르게 폴더 추가/삭제 반복
+- 비동기 invoke 완료 전 컴포넌트 언마운트
+- 콘솔 경고 + 잠재적 메모리 누수
+
+**결정**: `isMounted` 플래그로 언마운트 후 setState 호출 방지
+**영향**: `FolderTree.tsx:59-85` - useEffect cleanup 추가
+
+### 리뷰 결과 요약
+
+**이미 잘된 부분** (수정 불필요):
+- SQL Injection 방어 ✅ (파라미터 바인딩)
+- Path Traversal 방어 ✅ (canonicalize)
+- 압축 폭탄 방어 ✅ (size/ratio/entry 제한)
+- SHA-256 무결성 검증 ✅ (모델+DLL)
+- ErrorBoundary ✅ (main.tsx에서 App 감쌈)
+- Crash Handler ✅ (panic hook)
+- TypeScript 타입 안정성 ✅ (any 0개)
+
+### 계획 파일
+`~/.claude/plans/floating-stirring-hickey.md`
+
+## 2026-02-08 - 프로덕션 종합 리뷰 Phase A+B+C (26건 개선)
+
+**상황**: 사내 배포 전 종합 리뷰 결과 4 Critical + 8 Major + 20 Minor 발견 (프로덕션 점수 65/100)
+**3개 병렬 에이전트**: Rust 백엔드, React 프론트엔드, 빌드/배포/설정 심층 분석
+
+### 결정 13: panic = "unwind" 전환 (Critical)
+
+**문제**: `panic = "abort"`가 PDF/XLSX 파서의 `catch_unwind` 완전 무효화 → 손상 파일 하나로 앱 전체 크래시
+**결정**: `panic = "unwind"` + `strip = "debuginfo"`
+**트레이드오프**: 바이너리 5-15% 증가 (안정성 >> 크기)
+**영향**: `Cargo.toml:89,93` - 모든 catch_unwind 복원 (pdf.rs, mod.rs, pipeline.rs, lib.rs)
+
+### 결정 14: VectorIndex TOCTOU 레이스컨디션 수정
+
+**문제**: add()/remove()에서 read lock → release → write lock 패턴 → 사이에 다른 스레드 개입 가능
+**결정**: 단일 write lock 스코프로 통합 + 고정 락 순서 (index → id_map → key_map → next_key)
+**이유**: 데드락 방지를 위해 락 순서 고정, 자기 호출(self.remove()) 인라인화
+**영향**: `search/vector.rs:107-176` - add(), remove() 완전 재작성
+
+### 결정 15: 디스크 감지 캐싱 (OnceLock)
+
+**문제**: PowerShell WMI 호출이 매번 실행됨 → 2번째 인덱싱부터도 2-3초 지연
+**결정**: `OnceLock<Mutex<HashMap<char, DiskType>>>` 드라이브별 1회 캐싱
+**영향**: `disk_info.rs` - detect_disk_type() 캐시 로직 추가
+
+### 결정 16: CSS 디자인 시스템 체계화
+
+**문제**: ErrorBoundary CSS 변수 5/7개 미정의 (에러 화면 안 보임), 9개 컴포넌트 하드코딩 컬러
+**결정**:
+- ErrorBoundary: `--bg-secondary` → `--color-bg-secondary` 등 5개 수정
+- FileIcon, Tooltip, Input, RecentSearches, SettingsModal, SearchFilters: CSS 변수 마이그레이션
+**이유**: 라이트/다크 테마 모두 정상 동작 확보
+**영향**: 8개 프론트엔드 파일 수정
+
+### 결정 17: devtools feature flag 분리
+
+**문제**: `tauri/devtools`가 릴리스 빌드에 포함 → 사용자에게 DevTools 노출
+**결정**: `[features] devtools = ["tauri/devtools"]` 분리, 개발 시 `--features devtools`
+**영향**: `Cargo.toml` - features 섹션 재구성
+
+### 계획 파일
+`~/.claude/plans/wobbly-sauteeing-horizon.md`

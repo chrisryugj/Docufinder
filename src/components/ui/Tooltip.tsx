@@ -16,12 +16,17 @@ const positionStyles = {
 };
 
 const arrowStyles = {
-  top: "top-full left-1/2 -translate-x-1/2 border-t-gray-700 border-x-transparent border-b-transparent",
-  bottom:
-    "bottom-full left-1/2 -translate-x-1/2 border-b-gray-700 border-x-transparent border-t-transparent",
-  left: "left-full top-1/2 -translate-y-1/2 border-l-gray-700 border-y-transparent border-r-transparent",
-  right:
-    "right-full top-1/2 -translate-y-1/2 border-r-gray-700 border-y-transparent border-l-transparent",
+  top: "top-full left-1/2 -translate-x-1/2 border-x-transparent border-b-transparent",
+  bottom: "bottom-full left-1/2 -translate-x-1/2 border-x-transparent border-t-transparent",
+  left: "left-full top-1/2 -translate-y-1/2 border-y-transparent border-r-transparent",
+  right: "right-full top-1/2 -translate-y-1/2 border-y-transparent border-l-transparent",
+};
+
+const arrowColorStyles: Record<string, React.CSSProperties> = {
+  top: { borderTopColor: "var(--color-bg-tertiary)" },
+  bottom: { borderBottomColor: "var(--color-bg-tertiary)" },
+  left: { borderLeftColor: "var(--color-bg-tertiary)" },
+  right: { borderRightColor: "var(--color-bg-tertiary)" },
 };
 
 export function Tooltip({
@@ -59,18 +64,23 @@ export function Tooltip({
         <div
           className={`
             absolute z-50 px-2 py-1
-            bg-gray-700 text-gray-200 text-xs rounded shadow-lg
+            text-xs rounded shadow-lg
             pointer-events-none
             ${maxWidth ? "" : "whitespace-nowrap"}
             ${positionStyles[position]}
           `}
-          style={maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" } : undefined}
+          style={{
+            backgroundColor: "var(--color-bg-tertiary)",
+            color: "var(--color-text-secondary)",
+            ...(maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" as const } : {}),
+          }}
           role="tooltip"
         >
           {content}
           {/* Arrow */}
           <div
             className={`absolute border-4 ${arrowStyles[position]}`}
+            style={arrowColorStyles[position]}
             aria-hidden="true"
           />
         </div>
@@ -120,7 +130,7 @@ export function ShortcutTooltip({
     <Tooltip
       content={
         <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 bg-gray-600 rounded text-[10px] font-mono">
+          <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ backgroundColor: "var(--color-bg-secondary)" }}>
             {shortcut}
           </kbd>
         </span>
