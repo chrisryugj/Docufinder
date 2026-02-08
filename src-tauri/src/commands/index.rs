@@ -7,7 +7,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::indexer::pipeline::FtsIndexingProgress;
 use crate::indexer::vector_worker::{VectorIndexingProgress, VectorIndexingStatus};
 use crate::AppContainer;
-use super::settings::{get_settings_sync, VectorIndexingMode};
+use super::settings::VectorIndexingMode;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -77,14 +77,10 @@ pub async fn add_folder(
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
     let path = canonical_path.to_string_lossy().to_string();
 
-    // 설정 및 서비스 준비
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb) = {
+    // 설정 및 서비스 준비 (단일 lock 스코프에서 필요한 데이터 전부 추출)
+    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
+        let settings = container.get_settings();
         (
             container.index_service(),
             settings.include_subfolders,
@@ -93,18 +89,16 @@ pub async fn add_folder(
             settings.semantic_search_enabled,
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
+            container.db_path.clone(),
         )
     };
 
     // 1. 감시 폴더 등록
     service.add_watched_folder(&path).map_err(ApiError::from)?;
 
-    // 인덱싱 상태를 'indexing'으로 설정 (앱 종료 시 미완료 감지용)
-    {
-        let container = state.lock()?;
-        if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            let _ = crate::db::set_folder_indexing_status(&conn, &path, "indexing");
-        }
+    // 인덱싱 상태를 'indexing'으로 설정 (db_path로 직접 접근, 재잠금 불필요)
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path, "indexing");
     }
 
     // UI에 준비 중 상태 알림 (메타데이터 스캔 전)
@@ -141,12 +135,9 @@ pub async fn add_folder(
     // 6. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
-    // 인덱싱 완료 상태로 업데이트
-    {
-        let container = state.lock()?;
-        if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            let _ = crate::db::set_folder_indexing_status(&conn, &path, "completed");
-        }
+    // 인덱싱 완료 상태로 업데이트 (db_path로 직접 접근, 재잠금 불필요)
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path, "completed");
     }
 
     // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
@@ -218,13 +209,9 @@ pub async fn reindex_folder(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb) = {
+    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
+        let settings = container.get_settings();
         (
             container.index_service(),
             settings.include_subfolders,
@@ -233,16 +220,14 @@ pub async fn reindex_folder(
             settings.semantic_search_enabled,
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
+            container.db_path.clone(),
         )
     };
 
     // 인덱싱 상태를 'indexing'으로 설정
     let path_str = canonical_path.to_string_lossy().to_string();
-    {
-        let container = state.lock()?;
-        if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "indexing");
-        }
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "indexing");
     }
 
     // IndexService로 재인덱싱 위임
@@ -256,11 +241,8 @@ pub async fn reindex_folder(
     refresh_filename_cache(&state);
 
     // 인덱싱 완료 상태로 업데이트
-    {
-        let container = state.lock()?;
-        if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
-        }
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
     }
 
     // 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
@@ -305,13 +287,9 @@ pub async fn resume_indexing(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb) = {
+    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
+        let settings = container.get_settings();
         (
             container.index_service(),
             settings.include_subfolders,
@@ -320,6 +298,7 @@ pub async fn resume_indexing(
             settings.semantic_search_enabled,
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
+            container.db_path.clone(),
         )
     };
 
@@ -348,11 +327,8 @@ pub async fn resume_indexing(
     let _ = start_file_watching(&state, &canonical_path);
 
     // 인덱싱 완료 상태로 업데이트
-    {
-        let container = state.lock()?;
-        if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
-        }
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
     }
 
     // 벡터 인덱싱 (백그라운드)
@@ -426,11 +402,7 @@ pub async fn start_vector_indexing(
 
     let (service, semantic_enabled, intensity) = {
         let container = state.lock()?;
-        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-        let settings = app_data_dir
-            .as_ref()
-            .map(|dir| get_settings_sync(dir))
-            .unwrap_or_default();
+        let settings = container.get_settings();
         (container.index_service(), settings.semantic_search_enabled, settings.indexing_intensity.clone())
     };
 
@@ -498,18 +470,15 @@ pub async fn clear_all_data(
     // 잠시 대기 후 IndexService로 클리어
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    let service = {
+    // 단일 lock 스코프에서 service와 filename_cache 추출
+    let (service, filename_cache) = {
         let container = state.lock()?;
-        container.index_service()
+        (container.index_service(), container.get_filename_cache())
     };
     let result = service.clear_all().map_err(ApiError::from);
 
-    // FilenameCache 클리어
-    {
-        let container = state.lock()?;
-        container.get_filename_cache().clear();
-        tracing::info!("FilenameCache cleared");
-    }
+    filename_cache.clear();
+    tracing::info!("FilenameCache cleared");
 
     result
 }

@@ -47,17 +47,17 @@ export class ErrorBoundary extends Component<Props, State> {
       // 기본 에러 UI
       return (
         <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
-          <div className="max-w-md w-full mx-4 p-6 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border-primary)] text-center">
+          <div className="max-w-md w-full mx-4 p-6 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] text-center">
             <div className="text-5xl mb-4">⚠️</div>
             <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
               오류가 발생했습니다
             </h1>
-            <p className="text-[var(--text-secondary)] mb-4">
+            <p className="text-[var(--color-text-secondary)] mb-4">
               예기치 않은 오류가 발생했습니다. 문제가 지속되면 앱을 다시 시작해 주세요.
             </p>
             {this.state.error && (
-              <details className="text-left mb-4 p-3 bg-[var(--bg-tertiary)] rounded text-sm">
-                <summary className="cursor-pointer text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+              <details className="text-left mb-4 p-3 bg-[var(--color-bg-tertiary)] rounded text-sm">
+                <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--text-primary)]">
                   오류 상세 정보
                 </summary>
                 <pre className="mt-2 text-xs text-red-500 whitespace-pre-wrap break-words">
@@ -68,13 +68,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex gap-3 justify-center">
               <button
                 onClick={this.handleReset}
-                className="px-4 py-2 bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded hover:bg-[var(--bg-hover)] transition-colors"
+                className="px-4 py-2 bg-[var(--color-bg-tertiary)] text-[var(--text-primary)] rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
               >
                 다시 시도
               </button>
               <button
                 onClick={this.handleReload}
-                className="px-4 py-2 bg-[var(--accent-primary)] text-white rounded hover:bg-[var(--accent-hover)] transition-colors"
+                className="px-4 py-2 bg-[var(--color-accent)] text-white rounded hover:bg-[var(--color-accent-hover)] transition-colors"
               >
                 앱 새로고침
               </button>

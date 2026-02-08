@@ -104,7 +104,7 @@ impl VectorIndex {
         Ok(vector_index)
     }
 
-    /// 벡터 추가
+    /// 벡터 추가 (원자적 연산: 모든 write lock을 한번에 획득)
     pub fn add(&self, chunk_id: i64, embedding: &[f32]) -> Result<(), VectorError> {
         if embedding.len() != EMBEDDING_DIM {
             return Err(VectorError::IndexError(format!(
@@ -114,84 +114,62 @@ impl VectorIndex {
             )));
         }
 
-        // 이미 존재하면 먼저 삭제
-        if self
-            .id_map
-            .read()
-            .map_err(|_| VectorError::LockPoisoned)?
-            .contains_key(&chunk_id)
-        {
-            self.remove(chunk_id)?;
+        // 모든 write lock을 한번에 획득 (TOCTOU 방지, 원자적 연산 보장)
+        // 락 순서: index → id_map → key_map → next_key (데드락 방지를 위해 고정 순서)
+        let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut next_key = self.next_key.write().map_err(|_| VectorError::LockPoisoned)?;
+
+        // 이미 존재하면 먼저 삭제 (인라인 처리 - self.remove() 호출 시 데드락)
+        if let Some(&old_key) = id_map.get(&chunk_id) {
+            let _ = index.remove(old_key); // best-effort
+            id_map.remove(&chunk_id);
+            key_map.remove(&old_key);
         }
 
         // 새 key 할당
-        let key = {
-            let mut next = self
-                .next_key
-                .write()
-                .map_err(|_| VectorError::LockPoisoned)?;
-            let k = *next;
-            *next += 1;
-            k
-        };
+        let key = *next_key;
+        *next_key += 1;
 
-        // usearch 인덱스에 추가 (쓰기 락 필요)
-        {
-            let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
-
-            // 용량 확보 (필요시 확장)
-            let current_size = index.size();
-            let current_capacity = index.capacity();
-            if current_size >= current_capacity {
-                let new_capacity = (current_capacity + 1).max(100).max(current_capacity * 2);
-                index
-                    .reserve(new_capacity)
-                    .map_err(|e| VectorError::IndexError(format!("Reserve failed: {:?}", e)))?;
-            }
-
-            // usearch에 추가
+        // 용량 확보 (필요시 확장)
+        let current_size = index.size();
+        let current_capacity = index.capacity();
+        if current_size >= current_capacity {
+            let new_capacity = (current_capacity + 1).max(100).max(current_capacity * 2);
             index
-                .add(key, embedding)
-                .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+                .reserve(new_capacity)
+                .map_err(|e| VectorError::IndexError(format!("Reserve failed: {:?}", e)))?;
         }
 
-        // 매핑 저장
-        self.id_map
-            .write()
-            .map_err(|_| VectorError::LockPoisoned)?
-            .insert(chunk_id, key);
-        self.key_map
-            .write()
-            .map_err(|_| VectorError::LockPoisoned)?
-            .insert(key, chunk_id);
+        // usearch에 추가
+        index
+            .add(key, embedding)
+            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+
+        // 매핑 저장 (이미 write lock 보유)
+        id_map.insert(chunk_id, key);
+        key_map.insert(key, chunk_id);
 
         Ok(())
     }
 
-    /// 벡터 삭제
+    /// 벡터 삭제 (원자적 연산)
     pub fn remove(&self, chunk_id: i64) -> Result<(), VectorError> {
-        let key = {
-            let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
-            id_map.get(&chunk_id).copied()
-        };
+        // 모든 write lock을 한번에 획득 (add와 동일 순서)
+        let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
 
-        if let Some(key) = key {
+        if let Some(&key) = id_map.get(&chunk_id) {
             // usearch에서 삭제 (mark as removed)
-            self.index
-                .write()
-                .map_err(|_| VectorError::LockPoisoned)?
+            index
                 .remove(key)
                 .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
             // 매핑 삭제
-            self.id_map
-                .write()
-                .map_err(|_| VectorError::LockPoisoned)?
-                .remove(&chunk_id);
-            self.key_map
-                .write()
-                .map_err(|_| VectorError::LockPoisoned)?
-                .remove(&key);
+            id_map.remove(&chunk_id);
+            key_map.remove(&key);
         }
 
         Ok(())

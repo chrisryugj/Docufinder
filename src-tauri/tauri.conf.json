@@ -27,7 +27,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -39,6 +39,9 @@
       "models/multilingual-e5-small/*": "models/multilingual-e5-small/"
     },
     "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
       "wix": {
         "language": "ko-KR"
       }

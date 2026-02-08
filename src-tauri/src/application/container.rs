@@ -4,6 +4,7 @@
 //! 기존 AppState를 대체하여 클린 아키텍처 적용
 
 use crate::application::services::{FolderService, IndexService, SearchService};
+use crate::commands::settings::{self, Settings};
 use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager};
 use crate::indexer::vector_worker::VectorWorker;
@@ -47,6 +48,8 @@ pub struct AppContainer {
     // Shared State
     // ============================================
     indexing_cancel_flag: Arc<AtomicBool>,
+    /// 인메모리 설정 캐시 (디스크 I/O 제거)
+    settings_cache: RwLock<Settings>,
 }
 
 impl AppContainer {
@@ -55,6 +58,9 @@ impl AppContainer {
         let db_path = app_data_dir.join("docufinder.db");
         let vector_index_path = app_data_dir.join("vectors.usearch");
         let models_dir = app_data_dir.join("models");
+
+        // 디스크에서 설정 로드 (1회만, 이후 캐시 사용)
+        let cached_settings = settings::get_settings_sync(app_data_dir);
 
         Self {
             db_path,
@@ -68,6 +74,7 @@ impl AppContainer {
             reranker: OnceCell::new(),
             filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
+            settings_cache: RwLock::new(cached_settings),
         }
     }
 
@@ -140,8 +147,9 @@ impl AppContainer {
                 }
 
                 // ONNX Runtime DLL 경로 설정
+                // SAFETY: OnceCell이 1회만 실행을 보장하며, Embedder 초기화 전에 설정 필수
                 if dll_path.exists() {
-                    std::env::set_var("ORT_DYLIB_PATH", &dll_path);
+                    unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
                     tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
                 }
 
@@ -233,6 +241,18 @@ impl AppContainer {
     pub fn is_reranker_available(&self) -> bool {
         let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
         model_path.exists()
+    }
+
+    /// 캐시된 설정 조회 (디스크 I/O 없음)
+    pub fn get_settings(&self) -> Settings {
+        self.settings_cache.read().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// 설정 캐시 갱신 (update_settings 커맨드에서 호출)
+    pub fn update_settings_cache(&self, settings: Settings) {
+        if let Ok(mut cache) = self.settings_cache.write() {
+            *cache = settings;
+        }
     }
 
     /// 파일명 캐시 가져오기

@@ -13,3 +13,4 @@ export { useToast } from "./useToast";
 export { useTheme } from "./useTheme";
 export type { Theme, ResolvedTheme } from "./useTheme";
 export { useCollapsibleSearch } from "./useCollapsibleSearch";
+export { useIMEComposition } from "./useIMEComposition";

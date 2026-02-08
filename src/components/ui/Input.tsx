@@ -11,16 +11,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="relative">
         {leftIcon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">
+          <div className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }}>
             {leftIcon}
           </div>
         )}
         <input
           ref={ref}
           className={`
-            w-full bg-gray-800 border border-gray-700 rounded-lg
-            text-white placeholder-gray-500
-            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+            w-full rounded-lg border
+            focus:outline-none focus:ring-2 focus:border-transparent
             disabled:opacity-50 disabled:cursor-not-allowed
             ${leftIcon ? "pl-12" : "pl-4"}
             ${rightIcon ? "pr-12" : "pr-4"}
@@ -28,6 +27,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ${error ? "border-red-500 focus:ring-red-500" : ""}
             ${className}
           `}
+          style={{
+            backgroundColor: "var(--color-bg-tertiary)",
+            color: "var(--color-text-primary)",
+            borderColor: error ? undefined : "var(--color-border)",
+            // @ts-expect-error CSS custom property for placeholder
+            "--tw-ring-color": "var(--color-accent)",
+          }}
           {...props}
         />
         {rightIcon && (

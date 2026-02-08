@@ -2,9 +2,12 @@
 //!
 //! Windows에서 WMI를 통해 디스크 유형을 감지하거나,
 //! 드라이브 문자로 추정 (C:=SSD, D:=HDD 패턴).
+//! 결과는 드라이브별로 캐싱되어 PowerShell 재실행 방지.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 /// 디스크 유형
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +23,9 @@ impl DiskType {
         matches!(self, DiskType::Hdd | DiskType::Unknown)
     }
 }
+
+/// 디스크 유형 캐시 (드라이브별 1회만 감지)
+static DISK_TYPE_CACHE: OnceLock<Mutex<HashMap<char, DiskType>>> = OnceLock::new();
 
 /// 경로에서 드라이브 문자 추출 (Windows)
 /// `\\?\C:\...`, `C:\...`, `c:\...` 모두 지원
@@ -82,24 +88,42 @@ fn guess_disk_type_by_letter(drive_letter: char) -> DiskType {
 
 /// 경로의 디스크 유형 감지
 ///
-/// 1. WMI로 정확한 MediaType 조회 시도
-/// 2. 실패 시 드라이브 문자로 추정
+/// 1. 캐시에서 조회
+/// 2. 미스 시 WMI로 정확한 MediaType 조회 시도
+/// 3. 실패 시 드라이브 문자로 추정
+/// 4. 결과를 캐시에 저장
 pub fn detect_disk_type(path: &Path) -> DiskType {
     let drive_letter = match get_drive_letter(path) {
-        Some(c) => c,
+        Some(c) => c.to_ascii_uppercase(),
         None => return DiskType::Unknown,
     };
 
-    // WMI 조회 시도 (캐시 가능하면 좋지만 일단 매번 조회)
-    if let Some(disk_type) = query_disk_type_wmi(drive_letter) {
-        tracing::debug!("Disk type for {}: {:?} (WMI)", drive_letter, disk_type);
-        return disk_type;
+    // 캐시 확인
+    let cache = DISK_TYPE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(map) = cache.lock() {
+        if let Some(&cached) = map.get(&drive_letter) {
+            tracing::debug!("Disk type for {}: {:?} (cached)", drive_letter, cached);
+            return cached;
+        }
     }
 
-    // fallback: 드라이브 문자로 추정
-    let guessed = guess_disk_type_by_letter(drive_letter);
-    tracing::debug!("Disk type for {}: {:?} (guessed)", drive_letter, guessed);
-    guessed
+    // WMI 조회 시도
+    let disk_type = if let Some(wmi_type) = query_disk_type_wmi(drive_letter) {
+        tracing::debug!("Disk type for {}: {:?} (WMI)", drive_letter, wmi_type);
+        wmi_type
+    } else {
+        // fallback: 드라이브 문자로 추정
+        let guessed = guess_disk_type_by_letter(drive_letter);
+        tracing::debug!("Disk type for {}: {:?} (guessed)", drive_letter, guessed);
+        guessed
+    };
+
+    // 캐시에 저장
+    if let Ok(mut map) = cache.lock() {
+        map.insert(drive_letter, disk_type);
+    }
+
+    disk_type
 }
 
 /// 디스크 유형에 따른 권장 설정

@@ -99,29 +99,40 @@ pub fn run() {
         eprintln!("╚══════════════════════════════════════════════════════════╝");
         eprintln!("Location: {}", location);
         eprintln!("Message: {}", message);
-        eprintln!("Please report this issue at: https://github.com/your-repo/issues");
+        eprintln!("Please contact the development team to report this issue.");
 
-        // 긴급 로그 flush (tracing이 초기화되지 않았을 수 있음)
+        // 긴급 로그 flush (append 모드로 이전 크래시 기록 보존)
         if let Some(data_dir) = dirs::data_dir() {
-            let crash_log = data_dir.join("com.anything.app").join("crash.log");
-            let _ = std::fs::write(&crash_log, format!(
+            let crash_dir = data_dir.join("com.anything.app");
+            let _ = std::fs::create_dir_all(&crash_dir);
+            let crash_log = crash_dir.join("crash.log");
+            let entry = format!(
                 "[{}] PANIC at {}: {}\n",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 location,
                 message
-            ));
+            );
+            // append 모드: 기존 크래시 기록 보존
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&crash_log)
+            {
+                let _ = file.write_all(entry.as_bytes());
+            }
         }
     }));
 
     // tokenizers 병렬 처리 비활성화 (rayon과의 데드락 방지)
-    std::env::set_var("TOKENIZERS_PARALLELISM", "false");
+    // SAFETY: run() 진입 직후, tauri::Builder 생성 전이므로 단일 스레드 컨텍스트
+    unsafe { std::env::set_var("TOKENIZERS_PARALLELISM", "false") };
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        // updater 비활성화 (사내 배포용 - 외부 통신 차단)
-        // .plugin(tauri_plugin_updater::Builder::new().build())
+        // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
+        // tauri-plugin-updater: 사내 배포용 비활성화 (외부 통신 차단)
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_window_state::Builder::new().build())
@@ -442,7 +453,12 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().expect("Default window icon must be set in tauri.conf.json").clone())
+                .icon(app.default_window_icon()
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        tracing::warn!("Default window icon not found, tray icon may not display correctly");
+                        tauri::image::Image::new(&[], 0, 0)
+                    }))
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .tooltip("Anything")
@@ -561,5 +577,17 @@ pub fn run() {
             commands::file::open_folder,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            eprintln!("Fatal: Tauri failed to start: {}", e);
+            // 크래시 로그에도 기록
+            if let Some(data_dir) = dirs::data_dir() {
+                let crash_log = data_dir.join("com.anything.app").join("crash.log");
+                let _ = std::fs::write(&crash_log, format!(
+                    "[{}] FATAL: Tauri failed to start: {}\n",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    e
+                ));
+            }
+            std::process::exit(1);
+        });
 }

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface ConfidenceBadgeProps {
   /** 신뢰도 (0-100) */
   confidence: number;
@@ -26,7 +28,7 @@ const levelColors: Record<ConfidenceLevel, string> = {
  * - 막대바 + 퍼센트 형태
  * - 높음(녹색) / 중간(주황) / 낮음(회색) 구분
  */
-export function ConfidenceBadge({
+export const ConfidenceBadge = memo(function ConfidenceBadge({
   confidence,
   showBar = true,
   compact = false,
@@ -70,4 +72,4 @@ export function ConfidenceBadge({
       </span>
     </div>
   );
-}
+});

@@ -1,27 +1,13 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { Settings, ViewDensity } from "./types/settings";
-
-// 색상 밝기 판단 헬퍼 (hex -> 밝은지 어두운지)
-function isLightColor(hex: string): boolean {
-  // hex -> rgb 변환
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!result) return true;
-
-  const r = parseInt(result[1], 16);
-  const g = parseInt(result[2], 16);
-  const b = parseInt(result[3], 16);
-
-  // 상대 밝기 계산 (YIQ 공식)
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness > 128;
-}
 
 // Hooks
 import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch } from "./hooks";
 import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
+import { useFileActions } from "./hooks/useFileActions";
+import { useAppSettings } from "./hooks/useAppSettings";
 
 // Components
 import { Header, StatusBar, ErrorBanner } from "./components/layout";
@@ -41,9 +27,6 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [minConfidence, setMinConfidence] = useState(0);
-  const [viewDensity, setViewDensity] = useState<ViewDensity>("compact");
-  const [semanticEnabled, setSemanticEnabled] = useState(false);
 
   // 스크롤 기반 검색 영역 축소
   const {
@@ -54,7 +37,7 @@ function App() {
     showScrollTopButton: showScrollTop,
     expand,
   } = useCollapsibleSearch({
-    threshold: 200,  // 200px 이상 스크롤 시 축소 (깜박임 방지)
+    threshold: 200,
     onCollapse: () => searchInputRef.current?.blur(),
   });
 
@@ -94,7 +77,7 @@ function App() {
     clearRefine,
     setComposing,
     invalidate: invalidateSearch,
-  } = useSearch({ minConfidence });
+  } = useSearch({ minConfidence: 0 });
 
   // 인덱스 상태
   const {
@@ -131,6 +114,32 @@ function App() {
     isRunning: isVectorIndexing,
   } = useVectorIndexing();
 
+  // 앱 설정 (minConfidence, viewDensity, semanticEnabled, 하이라이트 색상)
+  const {
+    minConfidence,
+    viewDensity,
+    setViewDensity,
+    semanticEnabled,
+    applySettings,
+  } = useAppSettings({ setSearchMode });
+
+  // 파일/폴더 액션 (열기, 복사, 추가, 제거)
+  const {
+    handleOpenFile,
+    handleCopyPath,
+    handleOpenFolder,
+    handleAddFolder,
+    handleRemoveFolder,
+  } = useFileActions({
+    query,
+    addSearch,
+    showToast,
+    updateToast,
+    addFolder,
+    removeFolder,
+    invalidateSearch,
+  });
+
   // 벡터 인덱싱 완료 시 토스트
   useEffect(() => {
     if (vectorJustCompleted) {
@@ -138,41 +147,6 @@ function App() {
       clearVectorCompleted();
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted]);
-
-  // 폴더 추가 래퍼 (파싱 실패 알림 포함)
-  const handleAddFolder = useCallback(async () => {
-    const result = await addFolder();
-    if (result) {
-      const { indexed_count, failed_count, errors } = result;
-      if (failed_count > 0) {
-        // 실패 파일이 있으면 경고 토스트
-        showToast(
-          `${indexed_count}개 인덱싱 완료, ${failed_count}개 파싱 실패`,
-          "error",
-          5000
-        );
-        // 콘솔에 상세 오류 (개발자용)
-        if ((import.meta as any).env.DEV && errors?.length) {
-          console.warn("[파싱 실패 목록]", errors.slice(0, 20));
-        }
-      } else if (indexed_count > 0) {
-        showToast(`${indexed_count}개 파일 인덱싱 완료`, "success");
-      }
-    }
-    return result;
-  }, [addFolder, showToast]);
-
-  // 폴더 제거 래퍼 (캐시 무효화 + 재검색 + 토스트)
-  const handleRemoveFolder = useCallback(async (path: string) => {
-    const toastId = showToast("폴더 제거 중...", "loading");
-    try {
-      await removeFolder(path);
-      invalidateSearch();
-      updateToast(toastId, { message: "폴더가 제거되었습니다", type: "success" });
-    } catch {
-      updateToast(toastId, { message: "폴더 제거 실패", type: "error" });
-    }
-  }, [removeFolder, invalidateSearch, showToast, updateToast]);
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
@@ -183,53 +157,6 @@ function App() {
     clearSearchError();
     clearIndexError();
   }, [clearSearchError, clearIndexError]);
-
-  // 하이라이트 색상 적용 함수
-  const applyHighlightColors = useCallback((settings: Settings) => {
-    const root = document.documentElement;
-
-    // 파일명 하이라이트 색상
-    if (settings.highlight_filename_color) {
-      root.style.setProperty("--color-highlight-filename-bg", settings.highlight_filename_color);
-      // 텍스트 색상은 배경 밝기에 따라 자동 조정 (밝으면 어두운 글자, 어두우면 밝은 글자)
-      const isLightBg = isLightColor(settings.highlight_filename_color);
-      root.style.setProperty("--color-highlight-filename-text", isLightBg ? "#0f172a" : "#fef3c7");
-    } else {
-      root.style.removeProperty("--color-highlight-filename-bg");
-      root.style.removeProperty("--color-highlight-filename-text");
-    }
-
-    // 문서 내용 하이라이트 색상
-    if (settings.highlight_content_color) {
-      root.style.setProperty("--color-highlight-bg", settings.highlight_content_color);
-      const isLightBg = isLightColor(settings.highlight_content_color);
-      root.style.setProperty("--color-highlight-text", isLightBg ? "#0f172a" : "#fef08a");
-    } else {
-      root.style.removeProperty("--color-highlight-bg");
-      root.style.removeProperty("--color-highlight-text");
-    }
-  }, []);
-
-  // 설정 로드 (검색 모드, 최소 신뢰도, 보기 밀도, 하이라이트 색상 적용)
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const settings = await invoke<Settings>("get_settings");
-        setSearchMode(settings.search_mode ?? "keyword");
-        setMinConfidence(settings.min_confidence ?? 0);
-        setViewDensity(settings.view_density ?? "compact");
-        setSemanticEnabled(settings.semantic_search_enabled ?? false);
-        applyHighlightColors(settings);
-      } catch (err) {
-        console.warn("Failed to load settings:", err);
-      }
-    };
-
-    loadSettings();
-  }, [setSearchMode, applyHighlightColors]);
-
-  // 초기 자동 포커스 제거 - 사용자가 클릭할 때만 포커스
-  // (자동 포커스 시 Windows IME 팝업 문제 발생)
 
   // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
   useEffect(() => {
@@ -262,8 +189,6 @@ function App() {
     const setup = async () => {
       const window = getCurrentWindow();
       try {
-        // 초기 로드 시에는 포커스 안 줌 (IME 팝업 위치 문제 방지)
-        // 창 복귀 시에만 포커스 재설정
         unlisten = await window.onFocusChanged(({ payload }) => {
           if (payload) {
             resetSearchFocus();
@@ -283,58 +208,13 @@ function App() {
     };
   }, [settingsOpen]);
 
-  // searchMode 변경 시 keywordOnly 필터 리셋 (무한 루프 방지)
+  // searchMode 변경 시 keywordOnly 필터 리셋
   useEffect(() => {
     if (searchMode !== "hybrid" && filters.keywordOnly) {
       setFilters({ ...filters, keywordOnly: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMode]); // filters 제외하여 무한 루프 방지
-
-  // 파일 열기 (검색 결과 클릭 시 최근 검색에 저장)
-  const handleOpenFile = useCallback(
-    async (filePath: string, page?: number | null) => {
-      // 검색 결과 클릭 시 최근 검색에 저장
-      const trimmedQuery = query.trim();
-      if (trimmedQuery.length >= 2) {
-        addSearch(trimmedQuery);
-      }
-
-      const toastId = showToast("파일 여는 중...", "loading");
-      try {
-        await invoke("open_file", { path: filePath, page: page ?? null });
-        updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
-      } catch (err) {
-        console.error("Failed to open file:", err);
-        updateToast(toastId, { message: "파일 열기 실패", type: "error" });
-      }
-    },
-    [query, addSearch, showToast, updateToast]
-  );
-
-  // 경로 복사 (\\?\ 접두사 제거)
-  const handleCopyPath = useCallback(async (path: string) => {
-    try {
-      const cleanPath = path.replace(/^\\\\\?\\/, "");
-      await navigator.clipboard.writeText(cleanPath);
-      showToast("경로가 복사되었습니다", "success");
-    } catch (err) {
-      console.error("Failed to copy path:", err);
-      showToast("경로 복사 실패", "error");
-    }
-  }, [showToast]);
-
-  // 폴더 열기 (\\?\ 접두사 제거)
-  const handleOpenFolder = useCallback(async (folderPath: string) => {
-    try {
-      const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
-      await invoke("open_folder", { path: cleanPath });
-      showToast("폴더를 열었습니다", "success");
-    } catch (err) {
-      console.error("Failed to open folder:", err);
-      showToast("폴더 열기 실패", "error");
-    }
-  }, [showToast]);
+  }, [searchMode]);
 
   // 사이드바 토글
   const toggleSidebar = useCallback(() => {
@@ -350,7 +230,7 @@ function App() {
     [setQuery]
   );
 
-  // 검색어 변경 (저장은 별도 로직에서 처리)
+  // 검색어 변경
   const handleQueryChange = useCallback(
     (newQuery: string) => {
       setQuery(newQuery);
@@ -360,19 +240,17 @@ function App() {
 
   // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
   useEffect(() => {
-    // 이전 타이머 취소
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
       searchTimerRef.current = null;
     }
 
-    // 검색어 2자 이상 + 결과 있을 때만 저장 예약
     const trimmedQuery = query.trim();
     if (trimmedQuery.length >= 2 && filteredResults.length > 0) {
       searchTimerRef.current = setTimeout(() => {
         addSearch(trimmedQuery);
         searchTimerRef.current = null;
-      }, 3000); // 3초 유지 시 저장
+      }, 3000);
     }
 
     return () => {
@@ -422,7 +300,7 @@ function App() {
     searchInputRef
   );
 
-  // 결과가 변경되면 선택 초기화 (useEffect로 이동하여 렌더 중 setState 방지)
+  // 결과가 변경되면 선택 초기화
   const prevResultsLength = useRef(filteredResults.length);
   useEffect(() => {
     if (prevResultsLength.current !== filteredResults.length) {
@@ -457,7 +335,7 @@ function App() {
         onClearSearches={clearSearches}
       />
 
-      {/* 메인 콘텐츠 (사이드바 열림에 따라 전체 이동) */}
+      {/* 메인 콘텐츠 */}
       <div
         className={`flex flex-col h-screen transition-all duration-300 ease-in-out
           ${sidebarOpen ? "pl-[var(--sidebar-width)]" : "pl-0"}`}
@@ -494,7 +372,7 @@ function App() {
           </div>
         )}
 
-        {/* Expanded Header (스크롤 상단에서 표시) */}
+        {/* Expanded Header */}
         {!isCollapsed && (
           <div className="sticky top-0 z-20 bg-[var(--color-bg-primary)]/90 backdrop-blur-md border-b" style={{ borderColor: 'var(--color-border)' }}>
             <Header
@@ -513,7 +391,7 @@ function App() {
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto overflow-x-hidden"
         >
-          {/* Search Bar + Filters Area (스크롤 상단에서만 표시) */}
+          {/* Search Bar + Filters Area */}
           {!isCollapsed && (
             <div className="px-4 pt-4 pb-2">
               <SearchBar
@@ -542,20 +420,13 @@ function App() {
                 >
                   <div className="flex items-center gap-2">
                     <div className="animate-spin h-3 w-3 border border-blue-400 border-t-transparent rounded-full" />
-                    <span>
-                      벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능
-                    </span>
+                    <span>벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능</span>
                   </div>
-                  <button
-                    onClick={cancelVectorIndexing}
-                    className="text-blue-400 hover:text-blue-300 font-medium"
-                  >
-                    취소
-                  </button>
+                  <button onClick={cancelVectorIndexing} className="text-blue-400 hover:text-blue-300 font-medium">취소</button>
                 </div>
               )}
 
-              {/* 필터 바 (검색바 바로 아래) */}
+              {/* 필터 바 */}
               {query && (results.length > 0 || filenameResults.length > 0) && (
                 <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
                   <SearchFilters
@@ -570,17 +441,14 @@ function App() {
                 </div>
               )}
 
-              {/* 에러 메시지 */}
               {error && <div className="mt-3"><ErrorBanner message={error} onDismiss={clearError} /></div>}
             </div>
           )}
 
-          {/* 에러 메시지 (컴팩트 모드) */}
           {isCollapsed && error && (
             <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
           )}
 
-          {/* Results Area */}
           <main className="px-6 pb-20 transition-all duration-150">
             <div className="max-w-4xl mx-auto mt-4">
               <SearchResultList
@@ -610,7 +478,6 @@ function App() {
           </main>
         </div>
 
-        {/* Status Bar (Fixed at bottom) */}
         <StatusBar
           status={status}
           progress={progress}
@@ -622,22 +489,15 @@ function App() {
         />
       </div>
 
-      {/* Settings Modal */}
       <SettingsModal
         isOpen={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onThemeChange={setTheme}
         onSettingsSaved={(settings) => {
-          setSearchMode(settings.search_mode ?? "keyword");
-          setMinConfidence(settings.min_confidence ?? 0);
-          setViewDensity(settings.view_density ?? "compact");
-          const newSemanticEnabled = settings.semantic_search_enabled ?? false;
-          setSemanticEnabled(newSemanticEnabled);
-          // 시맨틱 OFF로 변경 시 진행 중인 벡터 인덱싱 취소
-          if (!newSemanticEnabled && isVectorIndexing) {
+          applySettings(settings);
+          if (!(settings.semantic_search_enabled ?? false) && isVectorIndexing) {
             cancelVectorIndexing();
           }
-          applyHighlightColors(settings);
         }}
         onClearData={async () => {
           await invoke("clear_all_data");
@@ -646,27 +506,11 @@ function App() {
         }}
       />
 
-      {/* Help Modal */}
       <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
-
-      {/* Disclaimer Modal (첫 실행 시) */}
-      <DisclaimerModal
-        isOpen={showDisclaimer}
-        onAccept={acceptDisclaimer}
-        onExit={exitApp}
-      />
-
-      {/* Onboarding Modal (동의 후) */}
-      <OnboardingModal
-        isOpen={showOnboarding}
-        onComplete={completeOnboarding}
-        onSkip={skipOnboarding}
-      />
-
-      {/* Toast Container */}
+      <DisclaimerModal isOpen={showDisclaimer} onAccept={acceptDisclaimer} onExit={exitApp} />
+      <OnboardingModal isOpen={showOnboarding} onComplete={completeOnboarding} onSkip={skipOnboarding} />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Vector Indexing FAB (2단계 백그라운드 인덱싱 진행률) */}
       {vectorStatus?.is_running && (
         <VectorIndexingFAB
           progress={vectorProgress}
@@ -677,26 +521,14 @@ function App() {
         />
       )}
 
-      {/* Scroll to Top FAB */}
       {showScrollTop && !vectorStatus?.is_running && (
         <button
           onClick={scrollToTop}
           className="fixed bottom-20 right-6 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 z-40"
-          style={{
-            backgroundColor: "var(--color-bg-secondary)",
-            border: "1px solid var(--color-border)",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          }}
+          style={{ backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
           aria-label="맨 위로 스크롤"
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
-            viewBox="0 0 24 24"
-            style={{ color: "var(--color-text-muted)" }}
-          >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: "var(--color-text-muted)" }}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
           </svg>
         </button>

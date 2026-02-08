@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { IndexStatus, IndexingProgress, VectorIndexingStatus } from "../../types/index";
 
 interface StatusBarProps {
@@ -19,7 +20,7 @@ const phaseLabels: Record<string, string> = {
   cancelled: "취소됨",
 };
 
-export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, semanticEnabled }: StatusBarProps) {
+export const StatusBar = memo(function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, semanticEnabled }: StatusBarProps) {
   const isIndexing = progress && progress.phase !== "completed" && progress.phase !== "cancelled";
   const isVectorIndexing = vectorStatus && vectorStatus.is_running && vectorStatus.total_chunks > 0;
   const hasPendingVectors = (vectorStatus?.pending_chunks ?? 0) > 0;
@@ -243,4 +244,4 @@ export function StatusBar({ status, progress, vectorStatus, onCancelIndexing, on
       )}
     </footer>
   );
-}
+});

@@ -523,15 +523,21 @@ fn index_folder_fts_impl(
 
     let producer_handle = std::thread::spawn(move || {
         // 커스텀 ThreadPool (디스크 유형에 따른 스레드 수)
-        let pool = rayon::ThreadPoolBuilder::new()
+        let pool = match rayon::ThreadPoolBuilder::new()
             .num_threads(parallel_threads)
             .build()
-            .unwrap_or_else(|_| {
-                rayon::ThreadPoolBuilder::new()
-                    .num_threads(2)
-                    .build()
-                    .expect("Failed to create even a minimal 2-thread pool")
-            });
+            .or_else(|_| rayon::ThreadPoolBuilder::new().num_threads(2).build())
+        {
+            Ok(pool) => pool,
+            Err(e) => {
+                tracing::error!("Failed to create thread pool: {}", e);
+                let _ = sender.send(ParseResult::Failure {
+                    path: file_paths.first().cloned().unwrap_or_default(),
+                    error: format!("Thread pool creation failed: {}", e),
+                });
+                return;
+            }
+        };
 
         pool.install(|| {
             let _ = file_paths.par_iter().try_for_each(|path| {
@@ -809,13 +815,21 @@ pub fn sync_folder_fts(
     let throttle_ms = disk_settings.throttle_ms;
 
     let producer_handle = std::thread::spawn(move || {
-        let pool = rayon::ThreadPoolBuilder::new()
+        let pool = match rayon::ThreadPoolBuilder::new()
             .num_threads(parallel_threads)
             .build()
-            .unwrap_or_else(|_| {
-                rayon::ThreadPoolBuilder::new().num_threads(2).build()
-                    .expect("Failed to create thread pool")
-            });
+            .or_else(|_| rayon::ThreadPoolBuilder::new().num_threads(2).build())
+        {
+            Ok(pool) => pool,
+            Err(e) => {
+                tracing::error!("Failed to create thread pool for sync: {}", e);
+                let _ = sender.send(ParseResult::Failure {
+                    path: to_index.first().cloned().unwrap_or_default(),
+                    error: format!("Thread pool creation failed: {}", e),
+                });
+                return;
+            }
+        };
 
         pool.install(|| {
             let _ = to_index.par_iter().try_for_each(|path| {

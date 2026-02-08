@@ -1,4 +1,4 @@
-import { ReactNode, CSSProperties } from "react";
+import { memo, ReactNode, CSSProperties } from "react";
 
 type BadgeVariant =
   | "default"
@@ -98,7 +98,7 @@ const getVariantStyle = (variant: BadgeVariant): CSSProperties => {
   }
 };
 
-export function Badge({
+export const Badge = memo(function Badge({
   variant = "default",
   children,
   className = "",
@@ -113,7 +113,7 @@ export function Badge({
       {children}
     </span>
   );
-}
+});
 
 // 파일 확장자에서 Badge variant 추출
 export function getFileTypeBadgeVariant(fileName: string): BadgeVariant {
