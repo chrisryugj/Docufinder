@@ -158,14 +158,22 @@ function App() {
     clearIndexError();
   }, [clearSearchError, clearIndexError]);
 
-  // 윈도우 포커스 복귀 시 검색창 포커스 재설정 (IME 전환 안정화)
+  // 윈도우 포커스 복귀 시 검색창 포커스 재설정
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let lastResetTime = 0;
 
     const resetSearchFocus = () => {
       if (settingsOpen) return;
+
+      // 디바운스: 500ms 이내 중복 실행 방지 (IPC 이벤트 폭주 대응)
+      const now = Date.now();
+      if (now - lastResetTime < 500) return;
+      lastResetTime = now;
+
       const input = searchInputRef.current;
-      if (!input) return;
+      // DOM에 연결된 요소인지 확인 (unmount된 stale ref 방지)
+      if (!input || !input.isConnected) return;
 
       const activeElement = document.activeElement;
       const isEditable =
@@ -177,12 +185,15 @@ function App() {
         return;
       }
 
+      // 이미 검색창에 포커스 중이면 건너뜀
       if (activeElement === input) {
-        input.blur();
+        return;
       }
 
       requestAnimationFrame(() => {
-        input.focus();
+        if (input.isConnected) {
+          input.focus();
+        }
       });
     };
 
@@ -348,7 +359,7 @@ function App() {
               query={query}
               onQueryChange={handleQueryChange}
               onCompositionStart={() => setComposing(true)}
-              onCompositionEnd={() => setComposing(false)}
+              onCompositionEnd={(finalValue) => setComposing(false, finalValue)}
               searchMode={searchMode}
               onSearchModeChange={setSearchMode}
               isLoading={isLoading}
@@ -399,7 +410,7 @@ function App() {
                 query={query}
                 onQueryChange={handleQueryChange}
                 onCompositionStart={() => setComposing(true)}
-                onCompositionEnd={() => setComposing(false)}
+                onCompositionEnd={(finalValue) => setComposing(false, finalValue)}
                 searchMode={searchMode}
                 onSearchModeChange={setSearchMode}
                 isLoading={isLoading}
