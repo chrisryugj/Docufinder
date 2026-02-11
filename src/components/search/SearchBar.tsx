@@ -43,7 +43,6 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       onCompositionStart,
       onCompositionEnd,
       inputRef: innerRef,
-      enableWindowsIMEInit: true,
     });
 
     // 드롭다운 외부 클릭 시 닫기
@@ -75,6 +74,13 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       } else {
         ref.current = innerRef.current;
       }
+      return () => {
+        if (typeof ref === 'function') {
+          ref(null);
+        } else if (ref) {
+          ref.current = null;
+        }
+      };
     }, [ref]);
 
     const currentMode = SEARCH_MODES.find((m) => m.value === searchMode);

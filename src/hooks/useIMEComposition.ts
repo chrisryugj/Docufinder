@@ -6,8 +6,6 @@ interface UseIMECompositionOptions {
   onCompositionStart?: () => void;
   onCompositionEnd?: (finalValue: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  /** Windows 한영전환 IME 초기화 (첫 포커스 시 blur→focus 리셋) */
-  enableWindowsIMEInit?: boolean;
 }
 
 /**
@@ -15,7 +13,6 @@ interface UseIMECompositionOptions {
  * - onChange에서 isComposing 감지
  * - onCompositionStart/End 핸들링
  * - onBlur 시 미완료 조합 정리
- * - (선택) Windows IME 초기화
  */
 export function useIMEComposition({
   query,
@@ -23,10 +20,8 @@ export function useIMEComposition({
   onCompositionStart: onCompStart,
   onCompositionEnd: onCompEnd,
   inputRef,
-  enableWindowsIMEInit = false,
 }: UseIMECompositionOptions) {
   const isComposingRef = useRef(false);
-  const hasInitializedIME = useRef(false);
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,23 +71,6 @@ export function useIMEComposition({
     }
   }, [query, onQueryChange, onCompEnd, inputRef]);
 
-  // 첫 포커스 시 IME 초기화 (Windows 한영전환 문제 해결)
-  const handleFocus = useCallback(() => {
-    if (!enableWindowsIMEInit || hasInitializedIME.current) return;
-    hasInitializedIME.current = true;
-
-    const input = inputRef.current;
-    if (!input) return;
-
-    // blur 후 최소 딜레이로 다시 focus (Windows IME 리셋)
-    input.blur();
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        input.focus();
-      });
-    });
-  }, [enableWindowsIMEInit, inputRef]);
-
   return {
     isComposingRef,
     imeHandlers: {
@@ -100,7 +78,6 @@ export function useIMEComposition({
       onCompositionStart: handleCompositionStart,
       onCompositionEnd: handleCompositionEnd,
       onBlur: handleBlur,
-      onFocus: handleFocus,
     },
   };
 }

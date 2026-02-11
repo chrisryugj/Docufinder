@@ -102,6 +102,13 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
       } else {
         ref.current = innerRef.current;
       }
+      return () => {
+        if (typeof ref === "function") {
+          ref(null);
+        } else if (ref) {
+          ref.current = null;
+        }
+      };
     }, [ref]);
 
     // 입력값 동기화
