@@ -441,6 +441,7 @@ impl SearchService {
                 } else {
                     vector_only_chunks.get(&hr.chunk_id).map(|chunk| {
                         // 벡터 전용 결과 (DB 조회 결과 사용, ⚡ full_content 제거)
+                        // snippet: None → enrich_semantic_results에서 문장 하이라이트 추가
                         SearchResult {
                             file_path: chunk.file_path.clone(),
                             file_name: chunk.file_name.clone(),
@@ -454,7 +455,7 @@ impl SearchService {
                             page_number: chunk.page_number,
                             start_offset: chunk.start_offset,
                             location_hint: chunk.location_hint.clone(),
-                            snippet: Some(truncate_preview(&chunk.content, 200)),
+                            snippet: None,
                             modified_at: chunk.modified_at,
                         }
                     })
@@ -511,8 +512,8 @@ impl SearchService {
         let mut all_sentences: Vec<(usize, String, usize, usize)> = Vec::new();
 
         for (idx, result) in results.iter().take(results_to_process).enumerate() {
-            // 이미 snippet이 있으면 (FTS 매칭) 스킵
-            if result.snippet.is_some() {
+            // 이미 FTS 하이라이트 snippet이 있으면 스킵
+            if result.snippet.as_ref().is_some_and(|s| s.contains("[[HL]]")) {
                 continue;
             }
 
@@ -650,23 +651,31 @@ fn parse_highlight_ranges(marked: &str) -> Vec<(usize, usize)> {
 }
 
 /// FTS5 BM25 스코어를 confidence로 변환
+///
+/// min-max 정규화에 절대 스코어 기반 감쇠를 적용하여
+/// 약한 매칭만 있는 결과 집합에서도 과대평가를 방지
 fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
     if scores.is_empty() {
         return vec![];
     }
 
+    // BM25 스코어는 음수 (더 음수 = 더 좋은 매칭)
+    // 절대 스코어 기반 품질 감쇠: 최고 스코어의 절댓값이 낮으면 전체 감쇠
     let min = scores.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let best_abs = min.abs(); // min이 가장 음수 = 최고 매칭
+    let quality_factor = (best_abs / 5.0).min(1.0); // abs >= 5.0이면 감쇠 없음
 
     if (max - min).abs() < f64::EPSILON {
-        return vec![100; scores.len()];
+        let confidence = (quality_factor * 100.0).round().clamp(0.0, 100.0) as u8;
+        return vec![confidence; scores.len()];
     }
 
     scores
         .iter()
         .map(|&score| {
             let normalized = (max - score) / (max - min);
-            (normalized * 100.0).round().clamp(0.0, 100.0) as u8
+            (normalized * quality_factor * 100.0).round().clamp(0.0, 100.0) as u8
         })
         .collect()
 }

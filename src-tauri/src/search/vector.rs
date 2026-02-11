@@ -177,6 +177,9 @@ impl VectorIndex {
 
     /// 유사도 검색
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<VectorResult>, VectorError> {
+        /// 최소 코사인 유사도 임계값 (이 미만은 무관한 결과로 판단)
+        const MIN_SIMILARITY: f32 = 0.3;
+
         // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
         let results = {
             let index = self.index.read().map_err(|_| VectorError::LockPoisoned)?;
@@ -195,10 +198,13 @@ impl VectorIndex {
             if let Some(&chunk_id) = key_map.get(key) {
                 // 코사인 거리를 유사도로 변환 (1 - distance)
                 let score = 1.0 - distance;
-                vector_results.push(VectorResult {
-                    chunk_id,
-                    score,
-                });
+                // 최소 유사도 미만 결과 필터링 (무관한 결과 제거)
+                if score >= MIN_SIMILARITY {
+                    vector_results.push(VectorResult {
+                        chunk_id,
+                        score,
+                    });
+                }
             }
         }
 

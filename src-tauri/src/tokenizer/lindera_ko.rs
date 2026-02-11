@@ -56,8 +56,8 @@ impl LinderaKoTokenizer {
             if let Ok(tokens) = tokenizer.tokenize(text) {
                 for token in tokens {
                     let surface = token.surface.as_ref().to_string();
-                    // 1글자 이상이고, 아직 없는 토큰만 추가
-                    if surface.len() >= 2 && !result.contains(&surface) {
+                    // 2글자 이상이고, 아직 없는 토큰만 추가 (chars().count()로 한글 정확 처리)
+                    if surface.chars().count() >= 2 && !result.contains(&surface) {
                         result.push(surface);
                     }
                 }
@@ -267,5 +267,38 @@ mod tests {
         println!("Single token query: {}", query);
         // 단일 토큰이면 OR 없어야 함
         assert!(!query.contains(" OR "));
+    }
+
+    #[test]
+    fn test_single_char_morpheme_filtered() {
+        // "4차산업" 토큰화 시 1글자 형태소("차")가 포함되면 안 됨
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let tokens = tokenizer.tokenize("4차산업");
+
+        println!("4차산업 tokens: {:?}", tokens);
+        // 1글자 한글 형태소가 없어야 함
+        assert!(
+            !tokens.iter().any(|t| t.chars().count() == 1 && t.chars().all(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c))),
+            "Single-char Korean morpheme should be filtered: {:?}", tokens
+        );
+        // "산업"은 포함되어야 함
+        assert!(
+            tokens.iter().any(|t| t.contains("산업")),
+            "Expected '산업' in tokens"
+        );
+    }
+
+    #[test]
+    fn test_query_no_single_char_prefix() {
+        // "4차산업" 쿼리에 "차"* 같은 1글자 prefix 매칭이 없어야 함
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("4차산업");
+
+        println!("4차산업 query: {}", query);
+        // "차"* 패턴이 없어야 함 (차량, 차별 등 오매칭 방지)
+        assert!(
+            !query.contains("\"차\"*"),
+            "Query should not contain single-char prefix '차'*: {}", query
+        );
     }
 }
