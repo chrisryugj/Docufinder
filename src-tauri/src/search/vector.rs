@@ -213,10 +213,11 @@ impl VectorIndex {
 
     /// 인덱스 저장
     pub fn save(&self) -> Result<(), VectorError> {
-        // 인덱스 파일 저장 (쓰기 락으로 동시 수정 방지)
+        // 읽기 락으로 저장: save()는 인덱스 데이터를 변경하지 않으므로
+        // read lock으로 충분하며, 검색(read)과 동시 진행 가능
         let path_str = self.path.to_string_lossy();
         self.index
-            .write()
+            .read()
             .map_err(|_| VectorError::LockPoisoned)?
             .save(&path_str)
             .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;

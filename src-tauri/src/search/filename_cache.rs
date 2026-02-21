@@ -28,6 +28,8 @@ struct CacheData {
     entries: Vec<FilenameEntry>,
     /// file_id → entries 인덱스 매핑 (upsert/remove O(1))
     id_index: HashMap<i64, usize>,
+    /// DB 로드 시 MAX_CACHE_ENTRIES 초과로 잘렸는지 여부
+    truncated: bool,
 }
 
 impl CacheData {
@@ -35,6 +37,7 @@ impl CacheData {
         Self {
             entries: Vec::new(),
             id_index: HashMap::new(),
+            truncated: false,
         }
     }
 
@@ -87,9 +90,10 @@ impl FilenameCache {
         }
 
         let total = entries.len();
-        if total > MAX_CACHE_ENTRIES {
+        let was_truncated = total > MAX_CACHE_ENTRIES;
+        if was_truncated {
             tracing::warn!(
-                "FilenameCache: {} entries exceeds max {}. Truncating.",
+                "FilenameCache: {} entries exceeds max {}. Truncating. DB fallback will be used for filename search.",
                 total, MAX_CACHE_ENTRIES
             );
             entries.truncate(MAX_CACHE_ENTRIES);
@@ -98,6 +102,7 @@ impl FilenameCache {
         let count = entries.len();
         if let Ok(mut cache) = self.data.write() {
             cache.entries = entries;
+            cache.truncated = was_truncated;
             cache.rebuild_index();
         }
 
@@ -171,6 +176,11 @@ impl FilenameCache {
             cache.entries.retain(|e| !e.path.starts_with(path_prefix));
             cache.rebuild_index();
         }
+    }
+
+    /// DB 로드 시 truncated 되었는지 여부
+    pub fn is_truncated(&self) -> bool {
+        self.data.read().map(|c| c.truncated).unwrap_or(false)
     }
 
     /// 캐시 크기

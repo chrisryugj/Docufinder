@@ -39,9 +39,9 @@
       "models/kosimcse-roberta-multitask/*": "models/kosimcse-roberta-multitask/"
     },
     "windows": {
-      "certificateThumbprint": null,
+      "certificateThumbprint": "5674CABFCAD28D70087D03DD6422436501D02B91",
       "digestAlgorithm": "sha256",
-      "timestampUrl": "",
+      "timestampUrl": "http://timestamp.digicert.com",
       "wix": {
         "language": "ko-KR"
       }

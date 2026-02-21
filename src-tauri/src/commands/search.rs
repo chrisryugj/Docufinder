@@ -6,14 +6,14 @@
 use crate::application::dto::search::SearchResponse;
 use crate::error::{ApiError, ApiResult};
 use crate::AppContainer;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use tauri::State;
 
 /// 키워드 검색 (FTS5)
 #[tauri::command]
 pub async fn search_keyword(
     query: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     if query.trim().is_empty() {
         return Ok(SearchResponse {
@@ -25,7 +25,7 @@ pub async fn search_keyword(
     }
 
     let (service, max_results) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let max_results = container.get_settings().max_results;
         (container.search_service(), max_results)
     };
@@ -40,7 +40,7 @@ pub async fn search_keyword(
 #[tauri::command]
 pub async fn search_filename(
     query: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     if query.trim().is_empty() {
         return Ok(SearchResponse {
@@ -52,7 +52,7 @@ pub async fn search_filename(
     }
 
     let (service, max_results) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let max_results = container.get_settings().max_results;
         (container.search_service(), max_results)
     };
@@ -67,7 +67,7 @@ pub async fn search_filename(
 #[tauri::command]
 pub async fn search_semantic(
     query: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     if query.trim().is_empty() {
         return Ok(SearchResponse {
@@ -79,7 +79,7 @@ pub async fn search_semantic(
     }
 
     let (service, max_results, semantic_enabled) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };
@@ -99,7 +99,7 @@ pub async fn search_semantic(
 #[tauri::command]
 pub async fn search_hybrid(
     query: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     if query.trim().is_empty() {
         return Ok(SearchResponse {
@@ -111,7 +111,7 @@ pub async fn search_hybrid(
     }
 
     let (service, max_results, semantic_enabled) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (container.search_service(), settings.max_results, settings.semantic_search_enabled)
     };

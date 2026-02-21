@@ -185,11 +185,13 @@ impl AppContainer {
     pub fn get_watch_manager(&self) -> Result<Arc<RwLock<WatchManager>>, ApiError> {
         self.watch_manager
             .get_or_try_init(|| {
+                let settings = self.get_settings();
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
                     vector_index: self.get_vector_index().ok(),
                     filename_cache: self.filename_cache.clone(),
+                    max_file_size_mb: settings.max_file_size_mb,
                 };
 
                 WatchManager::new(ctx)

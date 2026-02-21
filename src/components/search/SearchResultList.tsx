@@ -1,5 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -35,8 +34,6 @@ interface SearchResultListProps {
   minConfidence?: number;
   /** 검색 소요 시간 (ms) */
   searchTime?: number | null;
-  /** 외부 스크롤 컨테이너 ref (가상화용) */
-  scrollContainerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function SearchResultList({
@@ -60,13 +57,13 @@ export function SearchResultList({
   totalResultCount,
   minConfidence = 0,
   searchTime,
-  scrollContainerRef,
 }: SearchResultListProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [isFilenameCollapsed, setIsFilenameCollapsed] = useState(false);
   // 그룹 뷰 펼침 상태 (file_path로 관리)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const isCompact = viewDensity === "compact";
+  const listRef = useRef<HTMLDivElement>(null);
 
   // 그룹 펼침 토글
   const handleToggleGroupExpand = useCallback((filePath: string) => {
@@ -81,39 +78,11 @@ export function SearchResultList({
     });
   }, []);
 
-  // 아이템 높이 추정 (컴팩트 vs 기본)
-  const estimatedItemHeight = isCompact ? 80 : 120;
-
-  // 가상화 설정 - scrollContainerRef.current가 마운트 후 설정되므로
-  // 첫 렌더링에서는 null일 수 있어 useState로 추적
-  const [scrollElementReady, setScrollElementReady] = useState(false);
-
-  useEffect(() => {
-    if (scrollContainerRef?.current && !scrollElementReady) {
-      setScrollElementReady(true);
-    }
-  }, [scrollContainerRef, scrollElementReady]);
-
-  // 50개 이상이면 가상화 활성화
-  // 파일명 섹션은 가상화 영역 밖에서 별도 렌더링되므로 offset에 영향 없음
-  const shouldVirtualize = results.length >= 50 && scrollElementReady;
-
-  const virtualizer = useVirtualizer({
-    count: results.length,
-    getScrollElement: () => scrollContainerRef?.current ?? null,
-    estimateSize: () => estimatedItemHeight,
-    overscan: 10, // 버퍼 아이템 수 증가
-    enabled: shouldVirtualize,
-  });
-
   // 검색 결과 변경 시 상태 초기화
   useEffect(() => {
     setExpandedIndex(null);
-    // 스크롤 위치 리셋 (외부 컨테이너 사용)
-    if (scrollContainerRef?.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
-  }, [results, scrollContainerRef]);
+    listRef.current?.scrollIntoView({ block: "start" });
+  }, [results]);
 
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
@@ -342,8 +311,8 @@ export function SearchResultList({
         {/* 결과 목록 */}
         {results.length > 0 && (
           viewMode === "grouped" && groupedResults.length > 0 ? (
-            // 그룹 뷰 (가상화 미적용)
-            <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+            // 그룹 뷰
+            <div ref={listRef} role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
               {groupedResults.map((group) => (
                 <GroupedSearchResultItem
                   key={group.file_path}
@@ -358,55 +327,9 @@ export function SearchResultList({
                 />
               ))}
             </div>
-          ) : shouldVirtualize ? (
-            // 플랫 뷰 + 가상화 (100개 이상: 외부 스크롤 컨테이너 사용)
-            <div
-              role="listbox"
-              aria-label="검색 결과"
-              style={{
-                height: `${virtualizer.getTotalSize()}px`,
-                width: "100%",
-                position: "relative",
-              }}
-            >
-              {virtualizer.getVirtualItems().map((virtualItem) => {
-                const result = results[virtualItem.index];
-                const index = virtualItem.index;
-                return (
-                  <div
-                    key={`${result.file_path}-${result.chunk_index}-${index}`}
-                    data-index={index}
-                    ref={virtualizer.measureElement}
-                    className="group"
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      transform: `translateY(${virtualItem.start}px)`,
-                      paddingBottom: isCompact ? "4px" : "12px",
-                    }}
-                  >
-                    <SearchResultItem
-                      result={result}
-                      index={index}
-                      isExpanded={expandedIndex === index}
-                      isSelected={selectedIndex === index}
-                      isCompact={isCompact}
-                      onToggleExpand={() => handleToggleExpand(index)}
-                      onOpenFile={onOpenFile}
-                      onCopyPath={onCopyPath}
-                      onOpenFolder={onOpenFolder}
-                      refineKeywords={refineKeywords}
-                      query={query}
-                    />
-                  </div>
-                );
-              })}
-            </div>
           ) : (
-            // 플랫 뷰 (50개 미만: 일반 렌더링)
-            <div role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
+            // 플랫 뷰
+            <div ref={listRef} role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
               {results.map((result, index) => (
                 <div
                   key={`${result.file_path}-${result.chunk_index}-${index}`}

@@ -15,8 +15,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// 시맨틱 검색 결과 enrich 설정 (⚡ 20→10 성능 최적화)
-const SEMANTIC_ENRICH_MAX_RESULTS: usize = 10;
+/// 시맨틱 검색 결과 enrich 설정
+/// 0 = 비활성화 (i3에서 500~1000ms 추가 지연 방지, content_preview로 충분)
+const SEMANTIC_ENRICH_MAX_RESULTS: usize = 0;
 
 /// 검색 서비스
 pub struct SearchService {
@@ -136,8 +137,8 @@ impl SearchService {
     pub async fn search_filename(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
-        // 캐시 사용 (있고 비어있지 않으면)
-        let use_cache = self.filename_cache.as_ref().is_some_and(|c| !c.is_empty());
+        // 캐시 사용 (있고, 비어있지 않고, truncated 아닐 때만)
+        let use_cache = self.filename_cache.as_ref().is_some_and(|c| !c.is_empty() && !c.is_truncated());
 
         let results: Vec<SearchResult> = if use_cache {
             // ⚡ 인메모리 캐시 검색 (~5ms)

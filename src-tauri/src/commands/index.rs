@@ -10,7 +10,7 @@ use crate::AppContainer;
 use super::settings::VectorIndexingMode;
 use serde::Serialize;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter, State};
 
 /// 프론트엔드 이벤트용 인덱싱 진행률
@@ -61,7 +61,7 @@ fn create_vector_progress_callback(app_handle: AppHandle) -> Arc<dyn Fn(VectorIn
 pub async fn add_folder(
     path: String,
     app_handle: AppHandle,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<AddFolderResult> {
     tracing::info!("Adding folder to watch: {}", path);
 
@@ -79,7 +79,7 @@ pub async fn add_folder(
 
     // 설정 및 서비스 준비 (단일 lock 스코프에서 필요한 데이터 전부 추출)
     let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (
             container.index_service(),
@@ -139,10 +139,19 @@ pub async fn add_folder(
 
     // 4. FTS 인덱싱 (느림, 백그라운드처럼 동작하지만 완료 대기)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = service
+    let result = match service
         .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
-        .map_err(ApiError::from)?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            // 실패 시 폴더 상태를 "failed"로 복구
+            if let Ok(conn) = crate::db::get_connection(&db_path) {
+                let _ = crate::db::set_folder_indexing_status(&conn, &path, "failed");
+            }
+            return Err(ApiError::from(e));
+        }
+    };
 
     // 5. 파일 감시 시작
     start_file_watching(&state, &canonical_path)?;
@@ -185,7 +194,7 @@ pub async fn add_folder(
 #[tauri::command]
 pub async fn remove_folder(
     path: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Removing folder from watch: {}", path);
 
@@ -194,7 +203,7 @@ pub async fn remove_folder(
 
     // FolderService로 DB/벡터 삭제 위임
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.folder_service()
     };
 
@@ -211,7 +220,7 @@ pub async fn remove_folder(
 pub async fn reindex_folder(
     path: String,
     app_handle: AppHandle,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<AddFolderResult> {
     tracing::info!("Reindexing folder: {}", path);
 
@@ -225,7 +234,7 @@ pub async fn reindex_folder(
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
     let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (
             container.index_service(),
@@ -247,10 +256,18 @@ pub async fn reindex_folder(
 
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = service
+    let result = match service
         .reindex_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
-        .map_err(ApiError::from)?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            if let Ok(conn) = crate::db::get_connection(&db_path) {
+                let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
+            }
+            return Err(ApiError::from(e));
+        }
+    };
 
     // FilenameCache 갱신
     refresh_filename_cache(&state);
@@ -289,7 +306,7 @@ pub async fn reindex_folder(
 pub async fn resume_indexing(
     path: String,
     app_handle: AppHandle,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<AddFolderResult> {
     tracing::info!("Syncing folder (resume): {}", path);
 
@@ -303,7 +320,7 @@ pub async fn resume_indexing(
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
     let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (
             container.index_service(),
@@ -330,10 +347,18 @@ pub async fn resume_indexing(
 
     // sync 기반 인덱싱 (추가/수정/삭제 감지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let sync_result = service
+    let sync_result = match service
         .sync_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
         .await
-        .map_err(ApiError::from)?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            if let Ok(conn) = crate::db::get_connection(&db_path) {
+                let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
+            }
+            return Err(ApiError::from(e));
+        }
+    };
 
     // FilenameCache 갱신
     refresh_filename_cache(&state);
@@ -383,9 +408,9 @@ pub async fn resume_indexing(
 
 /// 인덱스 상태 조회
 #[tauri::command]
-pub async fn get_index_status(state: State<'_, Mutex<AppContainer>>) -> ApiResult<IndexStatus> {
+pub async fn get_index_status(state: State<'_, RwLock<AppContainer>>) -> ApiResult<IndexStatus> {
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.index_service()
     };
     service.get_status().await.map_err(ApiError::from)
@@ -394,10 +419,10 @@ pub async fn get_index_status(state: State<'_, Mutex<AppContainer>>) -> ApiResul
 /// 벡터 인덱싱 상태 조회
 #[tauri::command]
 pub async fn get_vector_indexing_status(
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<VectorIndexingStatus> {
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.index_service()
     };
     service.get_vector_status().map_err(ApiError::from)
@@ -411,12 +436,12 @@ pub async fn get_vector_indexing_status(
 #[tauri::command]
 pub async fn start_vector_indexing(
     app_handle: AppHandle,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Manual vector indexing requested");
 
     let (service, semantic_enabled, intensity) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         let settings = container.get_settings();
         (container.index_service(), settings.semantic_search_enabled, settings.indexing_intensity.clone())
     };
@@ -437,10 +462,10 @@ pub async fn start_vector_indexing(
 
 /// 인덱싱 취소
 #[tauri::command]
-pub async fn cancel_indexing(state: State<'_, Mutex<AppContainer>>) -> ApiResult<()> {
+pub async fn cancel_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Cancelling indexing...");
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.index_service()
     };
     service.cancel_indexing();
@@ -450,11 +475,11 @@ pub async fn cancel_indexing(state: State<'_, Mutex<AppContainer>>) -> ApiResult
 /// 벡터 인덱싱 취소
 #[tauri::command]
 pub async fn cancel_vector_indexing(
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Cancelling vector indexing...");
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.index_service()
     };
     service.cancel_vector_indexing().map_err(ApiError::from)
@@ -467,13 +492,13 @@ pub async fn cancel_vector_indexing(
 /// 모든 데이터 초기화
 #[tauri::command]
 pub async fn clear_all_data(
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Clearing all data...");
 
     // 파일 감시 모두 중지
     {
-        let container = state.lock()?;
+        let container = state.read()?;
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
                 wm.unwatch_all();
@@ -487,7 +512,7 @@ pub async fn clear_all_data(
 
     // 단일 lock 스코프에서 service와 filename_cache 추출
     let (service, filename_cache) = {
-        let container = state.lock()?;
+        let container = state.read()?;
         (container.index_service(), container.get_filename_cache())
     };
     let result = service.clear_all().map_err(ApiError::from);
@@ -506,10 +531,10 @@ pub async fn clear_all_data(
 #[tauri::command]
 pub async fn get_folder_stats(
     path: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<FolderStats> {
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.folder_service()
     };
     service.get_folder_stats(&path).await.map_err(ApiError::from)
@@ -518,10 +543,10 @@ pub async fn get_folder_stats(
 /// 감시 폴더 목록 조회
 #[tauri::command]
 pub async fn get_folders_with_info(
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<Vec<WatchedFolderInfo>> {
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.folder_service()
     };
     service.get_folders_with_info().await.map_err(ApiError::from)
@@ -531,10 +556,10 @@ pub async fn get_folders_with_info(
 #[tauri::command]
 pub async fn toggle_favorite(
     path: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<bool> {
     let service = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.folder_service()
     };
     service.toggle_favorite(&path).await.map_err(ApiError::from)
@@ -558,12 +583,17 @@ pub struct DbDebugInfo {
 #[tauri::command]
 pub async fn get_db_debug_info(
     query: String,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<DbDebugInfo> {
+    // 프로덕션에서 디버그 커맨드 차단
+    if !cfg!(debug_assertions) {
+        return Err(ApiError::IndexingFailed("Debug command not available in release build".to_string()));
+    }
+
     use crate::db;
 
     let db_path = {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.db_path.clone()
     };
 
@@ -603,8 +633,8 @@ pub async fn get_db_debug_info(
 // Private Helpers
 // ============================================
 
-fn start_file_watching(state: &State<'_, Mutex<AppContainer>>, path: &Path) -> ApiResult<()> {
-    let container = state.lock()?;
+fn start_file_watching(state: &State<'_, RwLock<AppContainer>>, path: &Path) -> ApiResult<()> {
+    let container = state.read()?;
     if let Ok(wm) = container.get_watch_manager() {
         if let Ok(mut wm) = wm.write() {
             if let Err(e) = wm.watch(path) {
@@ -615,8 +645,8 @@ fn start_file_watching(state: &State<'_, Mutex<AppContainer>>, path: &Path) -> A
     Ok(())
 }
 
-fn stop_file_watching(state: &State<'_, Mutex<AppContainer>>, path: &Path) -> ApiResult<()> {
-    let container = state.lock()?;
+fn stop_file_watching(state: &State<'_, RwLock<AppContainer>>, path: &Path) -> ApiResult<()> {
+    let container = state.read()?;
     if let Ok(wm) = container.get_watch_manager() {
         if let Ok(mut wm) = wm.write() {
             let _ = wm.unwatch(path);
@@ -626,8 +656,8 @@ fn stop_file_watching(state: &State<'_, Mutex<AppContainer>>, path: &Path) -> Ap
 }
 
 /// FilenameCache 갱신 (인덱싱 완료 후 호출)
-fn refresh_filename_cache(state: &State<'_, Mutex<AppContainer>>) {
-    if let Ok(container) = state.lock() {
+fn refresh_filename_cache(state: &State<'_, RwLock<AppContainer>>) {
+    if let Ok(container) = state.read() {
         match container.load_filename_cache() {
             Ok(count) => tracing::info!("FilenameCache refreshed: {} entries", count),
             Err(e) => tracing::warn!("Failed to refresh FilenameCache: {}", e),

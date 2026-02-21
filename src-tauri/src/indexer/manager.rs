@@ -34,6 +34,8 @@ pub struct IndexContext {
     pub vector_index: Option<Arc<VectorIndex>>,
     /// 파일명 캐시 (증분 인덱싱 시 동기화)
     pub filename_cache: Arc<FilenameCache>,
+    /// 파일 크기 제한 (MB) — 초과 시 메타데이터만 저장
+    pub max_file_size_mb: u64,
 }
 
 impl WatchManager {
@@ -226,6 +228,28 @@ impl WatchManager {
                     tracing::info!("Deleted from index + cache: {}", path_str);
                 }
                 continue;
+            }
+
+            // 파일 크기 제한 체크 — 초과 시 메타데이터만 저장
+            if ctx.max_file_size_mb > 0 {
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    let size_mb = metadata.len() / (1024 * 1024);
+                    if size_mb > ctx.max_file_size_mb {
+                        tracing::info!(
+                            "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
+                            size_mb, ctx.max_file_size_mb, path.display()
+                        );
+                        match pipeline::save_file_metadata_and_cache(&conn, &path) {
+                            Ok(file_path_str) => {
+                                if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &file_path_str) {
+                                    ctx.filename_cache.upsert(entry);
+                                }
+                            }
+                            Err(e) => tracing::warn!("Failed to save metadata for {:?}: {}", path, e),
+                        }
+                        continue;
+                    }
+                }
             }
 
             // 확장자에 따라 파싱 인덱싱 또는 메타데이터만 저장

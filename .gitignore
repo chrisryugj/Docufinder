@@ -37,6 +37,10 @@ src-tauri/target/
 models/
 src-tauri/models/
 
+# Certificates (private keys)
+*.pfx
+*.p12
+
 # Test
 coverage/
 nul

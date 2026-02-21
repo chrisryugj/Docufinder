@@ -168,7 +168,8 @@ mod tests {
     fn test_get_drive_letter() {
         assert_eq!(get_drive_letter(Path::new("C:\\Users")), Some('C'));
         assert_eq!(get_drive_letter(Path::new("D:\\Data")), Some('D'));
-        assert_eq!(get_drive_letter(Path::new("/home/user")), Some('/'));
+        // `/`는 is_ascii_alphabetic() false → None
+        assert_eq!(get_drive_letter(Path::new("/home/user")), None);
         // \\?\ 접두사 처리
         assert_eq!(get_drive_letter(Path::new(r"\\?\C:\Users")), Some('C'));
         assert_eq!(get_drive_letter(Path::new(r"\\?\E:\Data")), Some('E'));

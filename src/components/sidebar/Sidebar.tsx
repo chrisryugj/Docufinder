@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
 import type { RecentSearch } from "../../types/search";
@@ -24,7 +24,7 @@ interface SidebarProps {
  * - 인덱싱된 폴더 목록
  * - 최근 검색 기록
  */
-export function Sidebar({
+export const Sidebar = memo(function Sidebar({
   isOpen,
   onToggle,
   watchedFolders,
@@ -191,4 +191,4 @@ export function Sidebar({
       )}
     </>
   );
-}
+});

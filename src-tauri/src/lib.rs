@@ -18,7 +18,7 @@ pub use error::{ApiError, ApiResult};
 pub use application::container::AppContainer;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 
 use tauri::{Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -50,11 +50,13 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
         let logs_dir = data_dir.join("logs");
         let _ = std::fs::create_dir_all(&logs_dir);
 
-        let file_appender = RollingFileAppender::new(
-            Rotation::DAILY,
-            &logs_dir,
-            "docufinder.log",
-        );
+        let file_appender = RollingFileAppender::builder()
+            .rotation(Rotation::DAILY)
+            .filename_prefix("docufinder")
+            .filename_suffix("log")
+            .max_log_files(7) // 7일분만 보존, C: 누적 방지
+            .build(&logs_dir)
+            .expect("Failed to create log file appender");
 
         let file_layer = fmt::layer()
             .with_ansi(false)
@@ -292,11 +294,11 @@ pub fn run() {
             }
 
             // Store app container
-            app.manage(Mutex::new(container));
+            app.manage(RwLock::new(container));
 
             // 미완료 벡터 인덱싱 자동 재개 (시맨틱 활성화 + 자동 모드일 때만)
-            if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
-                if let Ok(container) = container.lock() {
+            if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                if let Ok(container) = container.read() {
                     let startup_settings = container.db_path.parent()
                         .map(crate::commands::settings::get_settings_sync)
                         .unwrap_or_default();
@@ -345,11 +347,11 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
                     let (folders_to_sync, service, include_subfolders, max_file_size_mb) = {
-                        let container_state = match app_handle.try_state::<Mutex<AppContainer>>() {
+                        let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
                             Some(c) => c,
                             None => return,
                         };
-                        let container = match container_state.lock() {
+                        let container = match container_state.read() {
                             Ok(c) => c,
                             Err(_) => return,
                         };
@@ -429,8 +431,8 @@ pub fn run() {
 
                     // 변경이 있으면 FilenameCache 갱신
                     if total_added > 0 || total_deleted > 0 {
-                        if let Some(cs) = app_handle.try_state::<Mutex<AppContainer>>() {
-                            if let Ok(c) = cs.lock() {
+                        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(c) = cs.read() {
                                 let _ = c.load_filename_cache();
                             }
                         }
@@ -472,8 +474,8 @@ pub fn run() {
                         }
                         "quit" => {
                             // 벡터 워커 정리 + 인덱스 저장
-                            if let Some(container) = app.try_state::<Mutex<AppContainer>>() {
-                                if let Ok(container) = container.lock() {
+                            if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                                if let Ok(container) = container.read() {
                                     // 벡터 워커 취소 + 대기
                                     let vector_worker = container.get_vector_worker();
                                     if let Ok(mut worker) = vector_worker.write() {
@@ -539,8 +541,8 @@ pub fn run() {
                 }
                 // 앱 종료 시 벡터 인덱스 저장
                 tauri::WindowEvent::Destroyed => {
-                    if let Some(container) = window.try_state::<Mutex<AppContainer>>() {
-                        if let Ok(container) = container.lock() {
+                    if let Some(container) = window.try_state::<RwLock<AppContainer>>() {
+                        if let Ok(container) = container.read() {
                             if let Ok(vi) = container.get_vector_index() {
                                 if let Err(e) = vi.save() {
                                     tracing::error!("Failed to save vector index: {}", e);

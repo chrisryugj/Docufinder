@@ -17,14 +17,15 @@ use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-/// 벡터 인덱싱 배치 크기 (128로 증가하여 ONNX SIMD 효율 극대화)
-const EMBEDDING_BATCH_SIZE: usize = 128;
+/// 벡터 인덱싱 배치 크기
+/// 32로 축소: Embedder Mutex 점유 시간 ~400ms로 제한 → 검색 쿼리 인터리빙 가능
+const EMBEDDING_BATCH_SIZE: usize = 32;
 
 /// 벡터 인덱스 저장 주기 (청크 수) - I/O 최적화를 위해 1000으로 증가
 const SAVE_INTERVAL: usize = 1000;
 
-/// 프리페치 버퍼 크기 (배치 4개 분량)
-const PREFETCH_BUFFER_SIZE: usize = 4;
+/// 프리페치 버퍼 크기 (배치 2개 분량 — 파이프라인 유지 + 메모리 절약)
+const PREFETCH_BUFFER_SIZE: usize = 2;
 
 /// 프리페치된 배치 데이터
 struct PrefetchedBatch {
@@ -248,6 +249,7 @@ fn run_vector_indexing(
         match batch_rx.recv_timeout(recv_timeout) {
             Ok(prefetched) => {
                 let current_file = Some(prefetched.file_path.as_str());
+                let mut file_failed_chunks: usize = 0;
 
                 // 상태 업데이트
                 if let Ok(mut s) = status.write() {
@@ -273,6 +275,7 @@ fn run_vector_indexing(
                         Ok(emb) => emb,
                         Err(e) => {
                             tracing::warn!("[VectorWorker] Embedding failed: {}", e);
+                            file_failed_chunks += batch.len();
                             continue;
                         }
                     };
@@ -281,10 +284,14 @@ fn run_vector_indexing(
                     for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
                         if let Err(e) = vector_index.add(*chunk_id, embedding) {
                             tracing::warn!("[VectorWorker] Failed to add vector {}: {}", chunk_id, e);
+                            file_failed_chunks += 1;
                         }
                     }
 
                     processed += batch.len();
+
+                    // Embedder Mutex 양보: 검색 스레드가 끼어들 수 있도록
+                    std::thread::yield_now();
 
                     // 인덱싱 강도에 따른 쓰로틀링
                     match intensity {
@@ -308,10 +315,17 @@ fn run_vector_indexing(
                     }
                 }
 
-                // 파일 완료 표시 (취소된 경우 스킵 - 부분 처리 파일 방지)
+                // 파일 완료 표시: 실패 청크가 없을 때만 마킹 (실패 시 pending 유지 → 다음 사이클 재시도)
                 if !cancel_flag.load(Ordering::Relaxed) {
-                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                    if file_failed_chunks == 0 {
+                        if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
+                            tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                        }
+                    } else {
+                        tracing::warn!(
+                            "[VectorWorker] File '{}' has {} failed chunks, keeping pending for retry",
+                            prefetched.file_path, file_failed_chunks
+                        );
                     }
                 }
             }

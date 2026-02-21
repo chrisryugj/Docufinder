@@ -3,7 +3,7 @@ use crate::AppContainer;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::RwLock;
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -124,8 +124,8 @@ fn get_settings_path(app_data_dir: &Path) -> PathBuf {
 
 /// 설정 조회 (캐시에서 읽기, 디스크 I/O 없음)
 #[tauri::command]
-pub async fn get_settings(state: State<'_, Mutex<AppContainer>>) -> ApiResult<Settings> {
-    let container = state.lock()?;
+pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Settings> {
+    let container = state.read()?;
     Ok(container.get_settings())
 }
 
@@ -148,12 +148,12 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
 pub async fn update_settings(
     app: AppHandle,
     settings: Settings,
-    state: State<'_, Mutex<AppContainer>>,
+    state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Updating settings: {:?}", settings);
 
     let app_data_dir = {
-        let state = state.lock()?;
+        let state = state.read()?;
         state.db_path.parent().map(|p| p.to_path_buf())
     };
 
@@ -180,7 +180,7 @@ pub async fn update_settings(
 
     // 인메모리 캐시 갱신
     {
-        let container = state.lock()?;
+        let container = state.read()?;
         container.update_settings_cache(settings);
     }
 
