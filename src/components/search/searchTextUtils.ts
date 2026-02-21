@@ -155,30 +155,43 @@ export function buildPreviewContext(input: {
 }): { text: string; ranges: TextRange[] } {
   const previewText = input.previewText ?? "";
   const fullText = input.fullText ?? previewText;
-  const highlightRanges = input.highlightRanges ?? [];
   const contextBefore = input.contextBefore ?? DEFAULT_CONTEXT_BEFORE;
   const contextAfter = input.contextAfter ?? DEFAULT_CONTEXT_AFTER;
   const keywords = input.query ? extractSearchKeywords(input.query) : [];
 
-  // 결과 텍스트에 검색 키워드가 포함되어 있는지 확인
-  const hasKeyword = (text: string) =>
-    keywords.length === 0 ||
-    keywords.some((kw) => text.toLowerCase().includes(kw.toLowerCase()));
+  // snippet 파싱 (있으면)
+  const parsed = input.snippet?.includes("[[HL]]")
+    ? parseSnippetHighlights(input.snippet)
+    : null;
 
-  if (input.snippet && input.snippet.includes("[[HL]]")) {
-    const parsed = parseSnippetHighlights(input.snippet);
-    const result = buildContextWindow(parsed.text, parsed.ranges, contextBefore, contextAfter);
-    // 키워드가 있으면 반환, 없으면 fallback으로
-    if (hasKeyword(result.text)) return result;
+  // 1) snippet 텍스트에서 검색어 직접 찾기 (최우선 - 가장 정확한 앵커링)
+  if (parsed && keywords.length > 0) {
+    const kwRanges = findKeywordRanges(parsed.text, keywords);
+    if (kwRanges.length > 0) {
+      return buildContextWindow(parsed.text, kwRanges, contextBefore, contextAfter);
+    }
   }
 
-  if (fullText && highlightRanges.length > 0) {
-    const result = buildContextWindow(fullText, highlightRanges, contextBefore, contextAfter);
-    // 키워드가 있으면 반환, 없으면 fallback으로
-    if (hasKeyword(result.text)) return result;
+  // 2) fullText에서 검색어 직접 찾기 (snippet에 없지만 원본에는 있는 경우)
+  if (keywords.length > 0 && fullText) {
+    const kwRanges = findKeywordRanges(fullText, keywords);
+    if (kwRanges.length > 0) {
+      return buildContextWindow(fullText, kwRanges, contextBefore, contextAfter);
+    }
   }
 
-  // fallback: 키워드가 포함된 컨텍스트 직접 찾기
+  // 3) snippet 하이라이트 범위 사용 (검색어가 연속 문자열이 아닌 경우 - FTS5 토큰 매칭)
+  //    예: "김하늘" 검색 → "김" + "하늘" 개별 토큰 매칭 → 개별 토큰이라도 하이라이트
+  if (parsed && parsed.ranges.length > 0) {
+    return buildContextWindow(parsed.text, parsed.ranges, contextBefore, contextAfter);
+  }
+
+  // 4) highlight_ranges 폴백 (snippet 없는 시맨틱/하이브리드 결과용)
+  if (fullText && input.highlightRanges && input.highlightRanges.length > 0) {
+    return buildContextWindow(fullText, input.highlightRanges, contextBefore, contextAfter);
+  }
+
+  // 5) Final fallback - 키워드 기반 컨텍스트 추출
   const fallbackText = getPreviewWithKeyword(previewText, fullText, input.query ?? "", contextBefore, contextAfter);
   const fallbackRanges = keywords.length > 0 ? findKeywordRanges(fallbackText, keywords) : [];
   return { text: fallbackText, ranges: fallbackRanges };

@@ -547,7 +547,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     await onClearData();
                     onClose();
                   } catch (err) {
-                    setError(`초기화 실패: ${err}`);
+                    const message = err instanceof Error ? err.message : String(err);
+                    setError(`초기화 실패: ${message}`);
                   } finally {
                     setIsClearing(false);
                   }

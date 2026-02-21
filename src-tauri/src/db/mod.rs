@@ -217,6 +217,16 @@ fn current_timestamp() -> i64 {
         .unwrap_or(0)
 }
 
+/// 감시 폴더가 이미 등록되어 있는지 확인
+pub fn is_folder_watched(conn: &Connection, path: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM watched_folders WHERE path = ?",
+        params![path],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
 /// 감시 폴더 추가
 pub fn add_watched_folder(conn: &Connection, path: &str) -> Result<i64> {
     let now = current_timestamp();
@@ -847,11 +857,12 @@ pub struct PendingChunk {
     pub file_path: String,
 }
 
-/// 특정 파일의 pending 청크 조회 (DB 레벨 필터링)
+/// 특정 파일의 pending 청크 전체 조회 (DB 레벨 필터링)
+///
+/// LIMIT 없이 파일의 모든 청크를 반환하여 부분 처리 방지
 pub fn get_pending_vector_chunks_for_file(
     conn: &Connection,
     file_id: i64,
-    limit: usize,
 ) -> Result<Vec<PendingChunk>> {
     let mut stmt = conn.prepare(
         "SELECT c.id, fts.content, f.path
@@ -859,11 +870,10 @@ pub fn get_pending_vector_chunks_for_file(
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
          WHERE f.id = ? AND f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL
-         ORDER BY c.chunk_index
-         LIMIT ?"
+         ORDER BY c.chunk_index"
     )?;
 
-    let results = stmt.query_map(params![file_id, limit as i64], |row| {
+    let results = stmt.query_map(params![file_id], |row| {
         Ok(PendingChunk {
             chunk_id: row.get(0)?,
             content: row.get(1)?,

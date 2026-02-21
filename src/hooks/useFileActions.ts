@@ -11,6 +11,7 @@ interface UseFileActionsOptions {
   addFolder: ReturnType<typeof useIndexStatus>["addFolder"];
   removeFolder: ReturnType<typeof useIndexStatus>["removeFolder"];
   invalidateSearch: () => void;
+  refreshVectorStatus?: () => Promise<void>;
 }
 
 export function useFileActions({
@@ -21,6 +22,7 @@ export function useFileActions({
   addFolder,
   removeFolder,
   invalidateSearch,
+  refreshVectorStatus,
 }: UseFileActionsOptions) {
   const handleOpenFile = useCallback(
     async (filePath: string, page?: number | null) => {
@@ -95,12 +97,13 @@ export function useFileActions({
       try {
         await removeFolder(path);
         invalidateSearch();
+        await refreshVectorStatus?.();
         updateToast(toastId, { message: "폴더가 제거되었습니다", type: "success" });
       } catch {
         updateToast(toastId, { message: "폴더 제거 실패", type: "error" });
       }
     },
-    [removeFolder, invalidateSearch, showToast, updateToast]
+    [removeFolder, invalidateSearch, showToast, updateToast, refreshVectorStatus]
   );
 
   return {

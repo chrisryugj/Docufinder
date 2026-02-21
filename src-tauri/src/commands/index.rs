@@ -93,6 +93,21 @@ pub async fn add_folder(
         )
     };
 
+    // 이미 등록된 폴더면 인덱싱 스킵
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        if crate::db::is_folder_watched(&conn, &path).unwrap_or(false) {
+            tracing::info!("Folder already watched, skipping: {}", path);
+            return Ok(AddFolderResult {
+                success: true,
+                indexed_count: 0,
+                failed_count: 0,
+                vectors_count: 0,
+                message: "이미 등록된 폴더입니다. 재인덱싱하려면 '다시 인덱싱' 버튼을 사용하세요.".to_string(),
+                errors: vec![],
+            });
+        }
+    }
+
     // 1. 감시 폴더 등록
     service.add_watched_folder(&path).map_err(ApiError::from)?;
 

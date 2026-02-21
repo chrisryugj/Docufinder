@@ -8,7 +8,7 @@ mod error;
 mod indexer;
 mod infrastructure;   // 클린 아키텍처: Infrastructure Layer
 mod model_downloader; // 모델 자동 다운로드
-mod parsers;
+pub mod parsers;
 mod reranker;         // Cross-Encoder Reranking (Phase 5)
 mod search;
 mod tokenizer;        // 한국어 형태소 분석 (Phase 5)

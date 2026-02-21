@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
@@ -165,6 +166,25 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     }
   };
 
+  // 컨텍스트 메뉴 위치 경계 보정
+  useEffect(() => {
+    if (contextMenu.isOpen && contextMenuRef.current) {
+      const menu = contextMenuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const padding = 8;
+      let { x, y } = contextMenu;
+      if (x + rect.width > window.innerWidth - padding) {
+        x = Math.max(padding, window.innerWidth - rect.width - padding);
+      }
+      if (y + rect.height > window.innerHeight - padding) {
+        y = Math.max(padding, window.innerHeight - rect.height - padding);
+      }
+      if (x !== contextMenu.x || y !== contextMenu.y) {
+        setContextMenu((prev) => ({ ...prev, x, y }));
+      }
+    }
+  }, [contextMenu.isOpen, contextMenu.x, contextMenu.y]);
+
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -223,6 +243,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   }
 
   return (
+    <>
     <ul className="space-y-1" role="tree" aria-label="인덱싱된 폴더">
       {sortedFolders.map((folder) => {
         const isExpanded = expandedFolders.has(folder);
@@ -306,82 +327,84 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         );
       })}
 
-      {/* 컨텍스트 메뉴 */}
-      {contextMenu.isOpen && (
-        <div
-          ref={contextMenuRef}
-          className="fixed z-50 min-w-[140px] py-1 rounded-lg shadow-xl border"
-          style={{
-            left: contextMenu.x,
-            top: contextMenu.y,
-            backgroundColor: "var(--color-bg-secondary)",
-            borderColor: "var(--color-border)",
+    </ul>
+    {/* 컨텍스트 메뉴 - Portal로 body에 렌더링 (사이드바 overflow 회피) */}
+    {contextMenu.isOpen && createPortal(
+      <div
+        ref={contextMenuRef}
+        className="fixed z-[9999] min-w-[160px] py-1 rounded-lg shadow-xl border"
+        style={{
+          left: contextMenu.x,
+          top: contextMenu.y,
+          backgroundColor: "var(--color-bg-secondary)",
+          borderColor: "var(--color-border)",
+        }}
+      >
+        {/* 즐겨찾기 토글 */}
+        <button
+          onClick={handleToggleFavorite}
+          className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+          style={{ color: folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "rgba(250, 204, 21, 0.15)";
+            e.currentTarget.style.color = "#facc15";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.color = folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)";
           }}
         >
-          {/* 즐겨찾기 토글 */}
+          <svg className="w-4 h-4" fill={folderInfo[contextMenu.folderPath]?.is_favorite ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+          </svg>
+          {folderInfo[contextMenu.folderPath]?.is_favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+        </button>
+        {/* 재인덱싱 */}
+        <button
+          onClick={handleReindex}
+          className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
+          style={{ color: "var(--color-text-primary)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+            e.currentTarget.style.color = "var(--color-accent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.color = "var(--color-text-primary)";
+          }}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          재인덱싱
+        </button>
+        {onRemoveFolder && (
           <button
-            onClick={handleToggleFavorite}
+            onClick={() => {
+              const path = contextMenu.folderPath;
+              closeContextMenu();
+              onRemoveFolder(path);
+            }}
             className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
-            style={{ color: folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)" }}
+            style={{ color: "#f87171" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "rgba(250, 204, 21, 0.15)";
-              e.currentTarget.style.color = "#facc15";
+              e.currentTarget.style.backgroundColor = "rgba(248, 113, 113, 0.2)";
+              e.currentTarget.style.color = "#fca5a5";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = folderInfo[contextMenu.folderPath]?.is_favorite ? "#facc15" : "var(--color-text-primary)";
-            }}
-          >
-            <svg className="w-4 h-4" fill={folderInfo[contextMenu.folderPath]?.is_favorite ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-            </svg>
-            {folderInfo[contextMenu.folderPath]?.is_favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
-          </button>
-          {/* 재인덱싱 */}
-          <button
-            onClick={handleReindex}
-            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
-            style={{ color: "var(--color-text-primary)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-              e.currentTarget.style.color = "var(--color-accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--color-text-primary)";
+              e.currentTarget.style.color = "#f87171";
             }}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            재인덱싱
+            폴더 제거
           </button>
-          {onRemoveFolder && (
-            <button
-              onClick={() => {
-                const path = contextMenu.folderPath;
-                closeContextMenu();
-                onRemoveFolder(path);
-              }}
-              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
-              style={{ color: "#f87171" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(248, 113, 113, 0.2)";
-                e.currentTarget.style.color = "#fca5a5";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "#f87171";
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              폴더 제거
-            </button>
-          )}
-        </div>
-      )}
-    </ul>
+        )}
+      </div>,
+      document.body
+    )}
+    </>
   );
 }

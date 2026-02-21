@@ -3,10 +3,13 @@
 
 $ErrorActionPreference = "Stop"
 
-# === e5-small 임베딩 모델 ===
-$EMBED_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\multilingual-e5-small"
-$EMBED_MODEL_URL = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/onnx/model_int8.onnx"
-$EMBED_TOKENIZER_URL = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/tokenizer.json"
+# === KoSimCSE-roberta-multitask 임베딩 모델 ===
+# 주의: KoSimCSE ONNX 모델은 HuggingFace에 직접 배포되지 않으므로
+# model.onnx와 tokenizer.json을 수동으로 배치해야 합니다.
+# 번들 전용: tauri:build 시 이 디렉토리에서 리소스를 패키징합니다.
+$EMBED_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\kosimcse-roberta-multitask"
+$EMBED_MODEL_URL = ""
+$EMBED_TOKENIZER_URL = ""
 
 # === Cross-Encoder Reranking 모델 ===
 $RERANK_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\ms-marco-MiniLM-L6-v2"
@@ -50,22 +53,32 @@ if (-not (Test-Path $onnxDll)) {
     Write-Host "[1/3] ONNX Runtime 이미 존재" -ForegroundColor Gray
 }
 
-# 2. 모델 다운로드
+# 2. 임베딩 모델 확인 (KoSimCSE - 수동 배치 필요)
 $modelPath = Join-Path $MODEL_DIR "model.onnx"
 if (-not (Test-Path $modelPath)) {
-    Write-Host "[2/3] e5-small 모델 다운로드 중 (~90MB)..." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri $MODEL_URL -OutFile $modelPath
-    Write-Host "  -> model.onnx 다운로드 완료" -ForegroundColor Green
+    if ($MODEL_URL -eq "") {
+        Write-Host "[2/3] KoSimCSE model.onnx가 없습니다 (수동 배치 필요)" -ForegroundColor Red
+        Write-Host "  -> $MODEL_DIR\model.onnx 에 ONNX 모델 파일을 배치하세요" -ForegroundColor Yellow
+    } else {
+        Write-Host "[2/3] 임베딩 모델 다운로드 중..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri $MODEL_URL -OutFile $modelPath
+        Write-Host "  -> model.onnx 다운로드 완료" -ForegroundColor Green
+    }
 } else {
     Write-Host "[2/3] model.onnx 이미 존재" -ForegroundColor Gray
 }
 
-# 3. Tokenizer 다운로드
+# 3. Tokenizer 확인
 $tokenizerPath = Join-Path $MODEL_DIR "tokenizer.json"
 if (-not (Test-Path $tokenizerPath)) {
-    Write-Host "[3/3] Tokenizer 다운로드 중..." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri $TOKENIZER_URL -OutFile $tokenizerPath
-    Write-Host "  -> tokenizer.json 다운로드 완료" -ForegroundColor Green
+    if ($TOKENIZER_URL -eq "") {
+        Write-Host "[3/3] tokenizer.json이 없습니다 (수동 배치 필요)" -ForegroundColor Red
+        Write-Host "  -> $MODEL_DIR\tokenizer.json 에 토크나이저 파일을 배치하세요" -ForegroundColor Yellow
+    } else {
+        Write-Host "[3/3] Tokenizer 다운로드 중..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri $TOKENIZER_URL -OutFile $tokenizerPath
+        Write-Host "  -> tokenizer.json 다운로드 완료" -ForegroundColor Green
+    }
 } else {
     Write-Host "[3/3] tokenizer.json 이미 존재" -ForegroundColor Gray
 }

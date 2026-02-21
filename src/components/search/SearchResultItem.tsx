@@ -86,6 +86,25 @@ export const SearchResultItem = memo(function SearchResultItem({
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  // 컨텍스트 메뉴 위치 경계 보정
+  useEffect(() => {
+    if (contextMenu.isOpen && contextMenuRef.current) {
+      const menu = contextMenuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const padding = 8;
+      let { x, y } = contextMenu;
+      if (x + rect.width > window.innerWidth - padding) {
+        x = Math.max(padding, window.innerWidth - rect.width - padding);
+      }
+      if (y + rect.height > window.innerHeight - padding) {
+        y = Math.max(padding, window.innerHeight - rect.height - padding);
+      }
+      if (x !== contextMenu.x || y !== contextMenu.y) {
+        setContextMenu((prev) => ({ ...prev, x, y }));
+      }
+    }
+  }, [contextMenu.isOpen, contextMenu.x, contextMenu.y]);
+
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

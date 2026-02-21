@@ -109,6 +109,7 @@ function App() {
     progress: vectorProgress,
     justCompleted: vectorJustCompleted,
     clearCompleted: clearVectorCompleted,
+    refreshStatus: refreshVectorStatus,
     cancel: cancelVectorIndexing,
     startManual: startVectorIndexing,
     isRunning: isVectorIndexing,
@@ -138,6 +139,7 @@ function App() {
     addFolder,
     removeFolder,
     invalidateSearch,
+    refreshVectorStatus,
   });
 
   // 벡터 인덱싱 완료 시 토스트
@@ -517,7 +519,7 @@ function App() {
         onClearData={async () => {
           await invoke("clear_all_data");
           clearSearchCache();
-          await refreshStatus();
+          await Promise.all([refreshStatus(), refreshVectorStatus()]);
         }}
       />
 

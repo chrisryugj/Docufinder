@@ -376,8 +376,8 @@ fn run_prefetch_thread(
             break;
         }
 
-        // 해당 파일의 청크 로드 (DB 레벨 필터링)
-        let file_chunks = match db::get_pending_vector_chunks_for_file(&conn, file_id, EMBEDDING_BATCH_SIZE * 10) {
+        // 해당 파일의 전체 청크 로드 (LIMIT 없음 - 부분 처리 방지)
+        let file_chunks = match db::get_pending_vector_chunks_for_file(&conn, file_id) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("[Prefetch] Failed to get chunks for file {}: {}", file_id, e);

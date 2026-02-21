@@ -133,7 +133,11 @@ export const HighlightedText = memo(function HighlightedText({
     const parsed = useSnippet
       ? parseSnippetHighlights(snippet)
       : { text: text ?? '', ranges: ranges ?? [] };
-    const at = parsed.text;
+    // preview 모드: 줄바꿈→공백 (1:1 치환으로 range 오프셋 유지)
+    // line-clamp 안에서 하이라이트가 잘리는 문제 방지
+    const at = formatMode === "preview"
+      ? parsed.text.replace(/[\r\n]/g, " ")
+      : parsed.text;
     const ar = parsed.ranges;
 
     const keywords = searchQuery ? extractSearchKeywords(searchQuery) : [];
@@ -150,7 +154,7 @@ export const HighlightedText = memo(function HighlightedText({
       : mergeOverlappingRanges(ar);
 
     return { actualText: at, effectiveSearchRanges: esr, refineRanges: rr };
-  }, [text, ranges, snippet, refineKeywords, searchQuery]);
+  }, [text, ranges, snippet, refineKeywords, searchQuery, formatMode]);
 
   // 하이라이트 없으면 포매팅만 적용
   if (effectiveSearchRanges.length === 0 && refineRanges.length === 0) {
