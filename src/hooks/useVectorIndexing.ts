@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { VectorIndexingStatus, VectorIndexingProgress } from "../types/index";
 
@@ -20,6 +20,10 @@ interface UseVectorIndexingReturn {
   startManual: () => Promise<void>;
   /** 실행 중 여부 */
   isRunning: boolean;
+  /** 에러 메시지 */
+  error: string | null;
+  /** 에러 초기화 */
+  clearError: () => void;
 }
 
 /**
@@ -30,6 +34,9 @@ interface UseVectorIndexingReturn {
 export function useVectorIndexing(): UseVectorIndexingReturn {
   const [status, setStatus] = useState<VectorIndexingStatus | null>(null);
   const [justCompleted, setJustCompleted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const clearError = useCallback(() => setError(null), []);
 
   // 진행률 계산
   const progress = status?.total_chunks
@@ -41,7 +48,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
   // 상태 조회
   const refreshStatus = useCallback(async () => {
     try {
-      const result = await invoke<VectorIndexingStatus>("get_vector_indexing_status");
+      const result = await invokeWithTimeout<VectorIndexingStatus>("get_vector_indexing_status", undefined, IPC_TIMEOUT.SETTINGS);
       setStatus(result);
     } catch (err) {
       console.error("Failed to get vector indexing status:", err);
@@ -51,23 +58,25 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
   // 취소
   const cancel = useCallback(async () => {
     try {
-      await invoke("cancel_vector_indexing");
+      await invokeWithTimeout("cancel_vector_indexing", undefined, IPC_TIMEOUT.SETTINGS);
       // 즉시 UI 상태 반영 (백엔드 이벤트 대기 없이)
       setStatus((prev) =>
         prev ? { ...prev, is_running: false, current_file: null } : prev
       );
     } catch (err) {
-      console.error("Failed to cancel vector indexing:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`벡터 인덱싱 취소 실패: ${msg}`);
     }
   }, []);
 
   // 수동 시작
   const startManual = useCallback(async () => {
     try {
-      await invoke("start_vector_indexing");
+      await invokeWithTimeout("start_vector_indexing", undefined, IPC_TIMEOUT.SETTINGS);
       await refreshStatus();
     } catch (err) {
-      console.error("Failed to start vector indexing:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`벡터 인덱싱 시작 실패: ${msg}`);
     }
   }, [refreshStatus]);
 
@@ -118,5 +127,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
     cancel,
     startManual,
     isRunning,
+    error,
+    clearError,
   };
 }

@@ -9,12 +9,25 @@ use crate::AppContainer;
 use std::sync::RwLock;
 use tauri::State;
 
+const MAX_QUERY_LEN: usize = 1000;
+
+fn validate_query(query: &str) -> ApiResult<()> {
+    if query.len() > MAX_QUERY_LEN {
+        return Err(ApiError::Validation(format!(
+            "검색어가 너무 깁니다 (최대 {}자)",
+            MAX_QUERY_LEN
+        )));
+    }
+    Ok(())
+}
+
 /// 키워드 검색 (FTS5)
 #[tauri::command]
 pub async fn search_keyword(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
+    validate_query(&query)?;
     if query.trim().is_empty() {
         return Ok(SearchResponse {
             results: vec![],
@@ -42,6 +55,7 @@ pub async fn search_filename(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
+    validate_query(&query)?;
     if query.trim().is_empty() {
         return Ok(SearchResponse {
             results: vec![],
@@ -69,6 +83,7 @@ pub async fn search_semantic(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
+    validate_query(&query)?;
     if query.trim().is_empty() {
         return Ok(SearchResponse {
             results: vec![],
@@ -101,6 +116,7 @@ pub async fn search_hybrid(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
+    validate_query(&query)?;
     if query.trim().is_empty() {
         return Ok(SearchResponse {
             results: vec![],

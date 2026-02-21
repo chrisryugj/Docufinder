@@ -11,6 +11,11 @@ use thiserror::Error;
 #[derive(Debug, Error, Serialize)]
 #[serde(tag = "code", content = "message")]
 pub enum ApiError {
+    // ============ 입력 검증 ============
+    /// 입력값 검증 실패
+    #[error("{0}")]
+    Validation(String),
+
     // ============ 파일 시스템 ============
     /// 경로를 찾을 수 없음
     #[error("경로를 찾을 수 없습니다: {0}")]

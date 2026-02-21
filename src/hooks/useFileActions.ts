@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import type { useToast } from "./useToast";
 import type { useIndexStatus } from "./useIndexStatus";
 
@@ -33,7 +33,7 @@ export function useFileActions({
 
       const toastId = showToast("파일 여는 중...", "loading");
       try {
-        await invoke("open_file", { path: filePath, page: page ?? null });
+        await invokeWithTimeout("open_file", { path: filePath, page: page ?? null }, IPC_TIMEOUT.FILE_ACTION);
         updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
       } catch (err) {
         console.error("Failed to open file:", err);
@@ -61,7 +61,7 @@ export function useFileActions({
     async (folderPath: string) => {
       try {
         const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
-        await invoke("open_folder", { path: cleanPath });
+        await invokeWithTimeout("open_folder", { path: cleanPath }, IPC_TIMEOUT.FILE_ACTION);
         showToast("폴더를 열었습니다", "success");
       } catch (err) {
         console.error("Failed to open folder:", err);

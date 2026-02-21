@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import type {
   SearchResult,
   SearchResponse,
@@ -183,9 +183,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
       try {
         if (mode === "filename") {
-          const response = await invoke<SearchResponse>(SEARCH_COMMANDS[mode], {
+          const response = await invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], {
             query: searchQuery,
-          });
+          }, IPC_TIMEOUT.SEARCH);
           if (searchIdRef.current !== currentId) return;
           // 캐시 저장
           setToCache(cacheKey, {
@@ -200,10 +200,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           });
         } else {
           // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
-          const contentPromise = invoke<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery });
+          const contentPromise = invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }, IPC_TIMEOUT.SEARCH);
           const filenamePromise = filters.excludeFilename
             ? Promise.resolve({ results: [], search_time_ms: 0, total_count: 0 })
-            : invoke<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery });
+            : invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }, IPC_TIMEOUT.SEARCH);
 
           const [contentResponse, filenameResponse] = await Promise.all([
             contentPromise,

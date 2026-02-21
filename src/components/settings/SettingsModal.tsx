@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
@@ -92,7 +92,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       setIsLoading(true);
       setError(null);
       try {
-        const result = await invoke<Settings>("get_settings");
+        const result = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
         setSettings(result);
       } catch (err) {
         setError(`설정 로드 실패: ${err}`);
@@ -110,7 +110,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     setIsSaving(true);
     setError(null);
     try {
-      await invoke("update_settings", { settings });
+      await invokeWithTimeout("update_settings", { settings }, IPC_TIMEOUT.SETTINGS);
       onSettingsSaved?.(settings);
       onClose();
     } catch (err) {

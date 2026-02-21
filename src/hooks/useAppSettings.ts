@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import type { Settings, ViewDensity } from "../types/settings";
 import type { SearchMode } from "../types/search";
 
@@ -47,7 +47,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
   useEffect(() => {
     const loadSettings = async () => {
       try {
-        const settings = await invoke<Settings>("get_settings");
+        const settings = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
         setSearchMode(settings.search_mode ?? ("keyword" as SearchMode));
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");

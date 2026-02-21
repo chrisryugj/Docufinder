@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
 
@@ -46,7 +47,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   // 폴더 정보 조회 (즐겨찾기 포함)
   const fetchFolderInfo = useCallback(async () => {
     try {
-      const infos = await invoke<WatchedFolderInfo[]>("get_folders_with_info");
+      const infos = await invokeWithTimeout<WatchedFolderInfo[]>("get_folders_with_info", undefined, IPC_TIMEOUT.SETTINGS);
       const infoMap: Record<string, WatchedFolderInfo> = {};
       for (const info of infos) {
         infoMap[info.path] = info;
@@ -67,9 +68,9 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       const entries = await Promise.all(
         folders.map(async (folder) => {
           try {
-            const result = await invoke<FolderStats>("get_folder_stats", {
+            const result = await invokeWithTimeout<FolderStats>("get_folder_stats", {
               path: folder,
-            });
+            }, IPC_TIMEOUT.SETTINGS);
             return [folder, result] as const;
           } catch (e) {
             console.error(`Failed to get stats for ${folder}:`, e);
@@ -128,7 +129,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     const path = contextMenu.folderPath;
     closeContextMenu();
     try {
-      await invoke("toggle_favorite", { path });
+      await invokeWithTimeout("toggle_favorite", { path }, IPC_TIMEOUT.SETTINGS);
       await fetchFolderInfo();
       onFoldersChange?.();
     } catch (err) {

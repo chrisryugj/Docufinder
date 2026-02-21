@@ -8,6 +8,8 @@ import { getMatchTypeBadge } from "./matchType";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { ConfidenceBadge } from "../ui/ConfidenceBadge";
+import { Tooltip } from "../ui/Tooltip";
+import { formatRelativeTime } from "../../utils/formatRelativeTime";
 
 
 interface SearchResultItemProps {
@@ -49,6 +51,16 @@ export const SearchResultItem = memo(function SearchResultItem({
 
   // 경로에서 폴더 추출
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
+
+  // 수정일 포맷팅
+  const modifiedAtMs = result.modified_at ? result.modified_at * 1000 : null;
+  const relativeTime = modifiedAtMs ? formatRelativeTime(modifiedAtMs) : null;
+  const absoluteDate = modifiedAtMs
+    ? new Date(modifiedAtMs).toLocaleString("ko-KR", {
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit",
+      })
+    : null;
 
   // 컨텍스트 메뉴 상태
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -187,7 +199,10 @@ export const SearchResultItem = memo(function SearchResultItem({
           className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename transition-colors duration-200 ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(result.file_path, result.page_number)}
           onContextMenu={handleContextMenu}
-          title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기 (우클릭: 더 많은 옵션)"}
+          title={[
+            result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기",
+            absoluteDate ? `수정: ${relativeTime} (${absoluteDate})` : null,
+          ].filter(Boolean).join("\n")}
           style={{ color: "var(--color-text-primary)" }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = "var(--color-accent)";
@@ -203,6 +218,20 @@ export const SearchResultItem = memo(function SearchResultItem({
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
+          {relativeTime && (
+            <Tooltip
+              content={absoluteDate}
+              position="bottom"
+              delay={200}
+            >
+              <span
+                className="flex-shrink-0 text-[10px] font-normal"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                {relativeTime}
+              </span>
+            </Tooltip>
+          )}
           <svg
             className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
             fill="none"

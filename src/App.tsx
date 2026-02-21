@@ -113,6 +113,8 @@ function App() {
     cancel: cancelVectorIndexing,
     startManual: startVectorIndexing,
     isRunning: isVectorIndexing,
+    error: vectorError,
+    clearError: clearVectorError,
   } = useVectorIndexing();
 
   // 앱 설정 (minConfidence, viewDensity, semanticEnabled, 하이라이트 색상)
@@ -153,12 +155,13 @@ function App() {
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
 
-  // 에러 통합
-  const error = searchError || indexError;
+  // 에러 통합 (검색 + 인덱싱 + 벡터)
+  const error = searchError || indexError || vectorError;
   const clearError = useCallback(() => {
     clearSearchError();
     clearIndexError();
-  }, [clearSearchError, clearIndexError]);
+    clearVectorError();
+  }, [clearSearchError, clearIndexError, clearVectorError]);
 
   // 윈도우 포커스 복귀 시 검색창 포커스 재설정
   useEffect(() => {

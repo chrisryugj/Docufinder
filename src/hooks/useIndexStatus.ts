@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
 import { open, ask } from "@tauri-apps/plugin-dialog";
@@ -41,7 +42,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   // 상태 조회
   const refreshStatus = useCallback(async () => {
     try {
-      const result = await invoke<IndexStatus>("get_index_status");
+      const result = await invokeWithTimeout<IndexStatus>("get_index_status", undefined, IPC_TIMEOUT.SETTINGS);
       setStatus(result);
     } catch (err) {
       console.error("Failed to get status:", err);
@@ -148,7 +149,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const removeFolder = useCallback(async (path: string): Promise<void> => {
     try {
       setError(null);
-      await invoke("remove_folder", { path });
+      await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.SETTINGS);
       await refreshStatus();
     } catch (err) {
       console.error("Failed to remove folder:", err);
@@ -160,7 +161,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   // 인덱싱 취소 (FTS)
   const cancelIndexing = useCallback(async (): Promise<void> => {
     try {
-      await invoke("cancel_indexing");
+      await invokeWithTimeout("cancel_indexing", undefined, IPC_TIMEOUT.SETTINGS);
     } catch (err) {
       console.error("Failed to cancel indexing:", err);
     }

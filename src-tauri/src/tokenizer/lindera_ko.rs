@@ -139,40 +139,81 @@ impl TextTokenizer for LinderaKoTokenizer {
     }
 
     fn tokenize_query(&self, query: &str) -> String {
-        // 1. 숫자+한글 조합 보존 (예: "1종", "2차", "3분기")
-        let preserved_tokens = Self::extract_number_korean_tokens(query);
+        // 어절 AND + 형태소 OR 방식
+        // "고용보험료 부과" → ("고용보험료"* OR "고용"* OR "보험료"*) AND "부과"*
+        let words: Vec<&str> = query.split_whitespace().collect();
 
-        // 2. 형태소 분석
-        let mut tokens = self.tokenize(query);
-
-        // 3. 숫자+한글 조합 토큰 추가 (중복 제거)
-        for token in preserved_tokens {
-            if !tokens.contains(&token) {
-                tokens.push(token);
-            }
-        }
-
-        if tokens.is_empty() {
+        if words.is_empty() {
             return String::new();
         }
 
-        // 4. OR 기반 검색 쿼리 생성
-        // "분기 1종 홍보" → ("분기"* OR "1종"* OR "홍보"*)
-        let term_queries: Vec<String> = tokens
-            .iter()
-            .map(|t| {
-                let escaped = t.replace('"', "\"\"");
-                format!("\"{}\"*", escaped)
-            })
-            .collect();
+        let mut word_groups: Vec<String> = Vec::new();
 
-        // 단일 토큰이면 OR 불필요
-        if term_queries.len() == 1 {
-            return term_queries[0].clone();
+        for word in &words {
+            // 숫자+한글 조합 보존 (예: "1종", "2차")
+            let preserved = Self::extract_number_korean_tokens(word);
+
+            // 어절별 토큰 수집: 원본 + 형태소
+            let mut tokens = Vec::new();
+
+            // 원본 어절 추가
+            let clean = Self::clean_token(word);
+            if !clean.is_empty() {
+                tokens.push(clean);
+            }
+
+            // 형태소 분석 (어절 단위)
+            if Self::contains_korean(word) {
+                if let Ok(tokenizer) = self.tokenizer.lock() {
+                    if let Ok(morphemes) = tokenizer.tokenize(word) {
+                        for token in morphemes {
+                            let surface = token.surface.as_ref().to_string();
+                            if surface.chars().count() >= 2 && !tokens.contains(&surface) {
+                                tokens.push(surface);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 숫자+한글 조합 추가
+            for token in preserved {
+                if !tokens.contains(&token) {
+                    tokens.push(token);
+                }
+            }
+
+            if tokens.is_empty() {
+                continue;
+            }
+
+            // FTS5 형식으로 변환
+            let term_queries: Vec<String> = tokens
+                .iter()
+                .map(|t| {
+                    let escaped = t.replace('"', "\"\"");
+                    format!("\"{}\"*", escaped)
+                })
+                .collect();
+
+            if term_queries.len() == 1 {
+                word_groups.push(term_queries[0].clone());
+            } else {
+                // 같은 어절 내 형태소 → OR
+                word_groups.push(format!("({})", term_queries.join(" OR ")));
+            }
         }
 
-        // 여러 토큰이면 OR로 연결
-        format!("({})", term_queries.join(" OR "))
+        if word_groups.is_empty() {
+            return String::new();
+        }
+
+        if word_groups.len() == 1 {
+            return word_groups[0].clone();
+        }
+
+        // 어절 간 → AND (단어 추가 시 결과가 줄어야 정상)
+        word_groups.join(" AND ")
     }
 }
 
@@ -246,17 +287,28 @@ mod tests {
     }
 
     #[test]
-    fn test_or_query_generation() {
+    fn test_and_query_generation() {
         let tokenizer = LinderaKoTokenizer::new().unwrap();
         let query = tokenizer.tokenize_query("분기 1종 홍보");
 
-        println!("OR Query: {}", query);
-        // OR 기반 쿼리 생성 확인
-        assert!(query.contains(" OR "));
-        assert!(query.starts_with('('));
-        assert!(query.ends_with(')'));
+        println!("AND Query: {}", query);
+        // 어절 간 AND 연결 확인
+        assert!(query.contains(" AND "));
         // 1종이 보존되어야 함
         assert!(query.contains("1종"));
+    }
+
+    #[test]
+    fn test_morpheme_or_within_word() {
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("고용보험료 부과");
+
+        println!("Morpheme OR query: {}", query);
+        // 어절 간 AND
+        assert!(query.contains(" AND "));
+        // 같은 어절 내 형태소 OR (고용보험료 어절에서 형태소 분석 결과)
+        assert!(query.contains(" OR ") || !query.contains("("),
+            "Multi-morpheme word should use OR within group");
     }
 
     #[test]

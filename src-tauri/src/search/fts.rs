@@ -87,9 +87,10 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
     results.collect()
 }
 
-/// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + OR 검색)
+/// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + AND 검색)
 ///
 /// tokenizer가 Some이면 한국어 형태소 분석을 수행합니다.
+/// 어절 간 AND, 같은 어절 내 형태소는 OR로 연결합니다.
 fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> String {
     // 빈 쿼리 처리
     let trimmed = query.trim();
@@ -103,7 +104,6 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
     }
 
     // 기본 처리: 각 단어를 쌍따옴표로 감싸고 와일드카드 추가 (prefix match)
-    // OR 기반 검색으로 변경 - 모든 토큰이 없어도 부분 매칭 가능
     let terms: Vec<String> = trimmed
         .split_whitespace()
         .map(|word| {
@@ -112,13 +112,12 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
         })
         .collect();
 
-    // 단일 토큰이면 OR 불필요
     if terms.len() == 1 {
         return terms[0].clone();
     }
 
-    // 여러 토큰이면 OR로 연결
-    format!("({})", terms.join(" OR "))
+    // 여러 토큰이면 AND로 연결 (단어 추가 시 결과가 줄어야 정상)
+    terms.join(" AND ")
 }
 
 /// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
