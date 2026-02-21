@@ -153,11 +153,11 @@ pub fn run() {
             std::fs::create_dir_all(&models_dir).ok();
 
             // 번들된 모델 리소스를 app_data로 복사 (최초 1회)
-            let model_target = models_dir.join("multilingual-e5-small");
+            let model_target = models_dir.join("kosimcse-roberta-multitask");
             let model_marker = model_target.join("model.onnx");
             if !model_marker.exists() {
                 if let Ok(resource_dir) = app.path().resource_dir() {
-                    let resource_model = resource_dir.join("models").join("multilingual-e5-small");
+                    let resource_model = resource_dir.join("models").join("kosimcse-roberta-multitask");
                     if resource_model.exists() {
                         tracing::info!("Copying bundled model from {:?} to {:?}", resource_model, model_target);
                         std::fs::create_dir_all(&model_target).ok();
@@ -179,7 +179,7 @@ pub fn run() {
 
             // 모델이 없으면 자동 다운로드 (시맨틱 활성화 시에만)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
-            let e5_model = models_dir.join("multilingual-e5-small").join("model.onnx");
+            let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
             if setup_settings.semantic_search_enabled && (!e5_model.exists() || !reranker_model.exists()) {
@@ -222,7 +222,7 @@ pub fn run() {
             } else {
                 tracing::warn!(
                     "Semantic search: disabled (model not found at {:?})",
-                    container.models_dir.join("multilingual-e5-small")
+                    container.models_dir.join("kosimcse-roberta-multitask")
                 );
             }
 

@@ -15,8 +15,9 @@ use std::time::Duration;
 // ============================================================================
 
 const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
-const E5_MODEL_URL: &str = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/onnx/model_int8.onnx";
-const E5_TOKENIZER_URL: &str = "https://huggingface.co/Teradata/multilingual-e5-small/resolve/main/tokenizer.json";
+// KoSimCSE-roberta-multitask: 번들 전용 (다운로드 URL 미사용)
+const E5_MODEL_URL: &str = "";
+const E5_TOKENIZER_URL: &str = "";
 
 // Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)
 const RERANKER_MODEL_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
@@ -24,8 +25,8 @@ const RERANKER_TOKENIZER_URL: &str = "https://huggingface.co/Xenova/ms-marco-Min
 
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
-const E5_MODEL_SHA256: &str = "d9fc0fc39b4cbda21e88e2e0ba389d77f67af9dbe08d8b2d6c79d1c50ad18f7a";
-const E5_TOKENIZER_SHA256: &str = "3daa51bc3f81d91cf2cb5ab8a73dfe53f24ef65c3b6990fa5c8ad5f22b54c8a5";
+const E5_MODEL_SHA256: &str = "5a618657c6848eb991e3a169e6d02c66f104d6d31a7d41852b63ece63ff185d1";
+const E5_TOKENIZER_SHA256: &str = "2e0a1507c67d2e69d2d552dddd7bb219ab2ca82fc00a7e09d83afbcd46d9c974";
 const RERANKER_MODEL_SHA256: &str = "13d18cce0f3c0b1115f11ce42c2078cc73b6e0bbe7d8b4ba6e6b8b3dd1ebb49b";
 const RERANKER_TOKENIZER_SHA256: &str = "be4b6d26dbb2eca6b51ee2a51b8c94d179b36451c10ebfbc5f56fc9dc7a4df2e";
 // ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
@@ -51,7 +52,7 @@ pub struct DownloadResult {
 
 /// 필요한 모델 파일들을 확인하고 없으면 다운로드
 pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
-    let e5_dir = models_dir.join("multilingual-e5-small");
+    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
     fs::create_dir_all(&e5_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
 
     let dll_path = e5_dir.join("onnxruntime.dll");
@@ -325,7 +326,7 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
 
 /// 모델 파일 존재 여부 확인
 pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
-    let e5_dir = models_dir.join("multilingual-e5-small");
+    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
     (
         e5_dir.join("onnxruntime.dll").exists(),
         e5_dir.join("model.onnx").exists(),

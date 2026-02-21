@@ -137,7 +137,7 @@ impl AppContainer {
     pub fn get_embedder(&self) -> Result<Arc<Embedder>, ApiError> {
         self.embedder
             .get_or_try_init(|| {
-                let model_dir = self.models_dir.join("multilingual-e5-small");
+                let model_dir = self.models_dir.join("kosimcse-roberta-multitask");
                 let model_path = model_dir.join("model.onnx");
                 let tokenizer_path = model_dir.join("tokenizer.json");
                 let dll_path = model_dir.join("onnxruntime.dll");
@@ -177,7 +177,7 @@ impl AppContainer {
 
     /// 시맨틱 검색 가능 여부 확인
     pub fn is_semantic_available(&self) -> bool {
-        let model_path = self.models_dir.join("multilingual-e5-small").join("model.onnx");
+        let model_path = self.models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
         model_path.exists()
     }
 

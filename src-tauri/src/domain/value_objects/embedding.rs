@@ -2,8 +2,8 @@
 
 use crate::domain::errors::DomainError;
 
-/// 임베딩 차원 (e5-small: 384)
-pub const EMBEDDING_DIM: usize = 384;
+/// 임베딩 차원 (KoSimCSE-roberta-multitask: 768)
+pub const EMBEDDING_DIM: usize = 768;
 
 /// 임베딩 벡터 (불변, 검증된)
 #[derive(Debug, Clone)]

@@ -235,6 +235,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
                   e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
                   e.currentTarget.style.color = "var(--color-accent)";
                 }}
+                title="벡터 인덱싱을 시작합니다. 하이브리드/의미 검색에 필요합니다."
               >
                 시맨틱 시작
               </button>

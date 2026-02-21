@@ -50,7 +50,7 @@ impl VectorIndex {
         let options = IndexOptions {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos, // 코사인 유사도
-            quantization: ScalarKind::F32,
+            quantization: ScalarKind::F16,
             connectivity: 16,       // HNSW M parameter
             expansion_add: 128,     // efConstruction
             expansion_search: 64,   // efSearch
@@ -178,7 +178,7 @@ impl VectorIndex {
     /// 유사도 검색
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<VectorResult>, VectorError> {
         /// 최소 코사인 유사도 임계값 (이 미만은 무관한 결과로 판단)
-        const MIN_SIMILARITY: f32 = 0.3;
+        const MIN_SIMILARITY: f32 = 0.25;
 
         // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
         let results = {
@@ -332,7 +332,7 @@ impl VectorIndex {
         let options = IndexOptions {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos,
-            quantization: ScalarKind::F32,
+            quantization: ScalarKind::F16,
             connectivity: 16,
             expansion_add: 128,
             expansion_search: 64,

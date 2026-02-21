@@ -64,10 +64,8 @@ enum ParseResult {
 /// 폴더 탐색으로 파일 경로 수집
 fn collect_files(
     dir: &Path,
-    extensions: &[&str],
     recursive: bool,
     cancel_flag: &AtomicBool,
-    max_file_size_bytes: u64,
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -81,22 +79,21 @@ fn collect_files(
         if let Ok(canonical) = dir.canonicalize() {
             visited.insert(canonical);
         }
-        collect_files_recursive(dir, extensions, &mut files, &mut visited, cancel_flag, max_file_size_bytes);
+        collect_files_recursive(dir, &mut files, &mut visited, cancel_flag);
     } else {
         // 현재 폴더만 탐색
-        collect_files_shallow(dir, extensions, &mut files, cancel_flag, max_file_size_bytes);
+        collect_files_shallow(dir, &mut files, cancel_flag);
     }
 
     files
 }
 
 /// 현재 폴더만 탐색 (하위폴더 제외)
+/// 현재 폴더의 모든 파일 수집 (확장자 무관, 임시파일만 제외)
 fn collect_files_shallow(
     dir: &Path,
-    extensions: &[&str],
     files: &mut Vec<PathBuf>,
     cancel_flag: &AtomicBool,
-    max_file_size_bytes: u64,
 ) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
@@ -124,35 +121,17 @@ fn collect_files_shallow(
                 continue;
             }
 
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-
-            if extensions.contains(&ext.as_str()) {
-                // 파일 크기 제한 (0 = 무제한)
-                if max_file_size_bytes > 0 {
-                    if let Ok(meta) = path.metadata() {
-                        if meta.len() > max_file_size_bytes {
-                            tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, path);
-                            continue;
-                        }
-                    }
-                }
-                files.push(path);
-            }
+            files.push(path);
         }
     }
 }
 
+/// 재귀적으로 모든 파일 수집 (확장자 무관, 임시파일/숨김폴더만 제외)
 fn collect_files_recursive(
     dir: &Path,
-    extensions: &[&str],
     files: &mut Vec<PathBuf>,
     visited: &mut std::collections::HashSet<PathBuf>,
     cancel_flag: &AtomicBool,
-    max_file_size_bytes: u64,
 ) {
     if cancel_flag.load(Ordering::Relaxed) {
         return;
@@ -189,12 +168,12 @@ fn collect_files_recursive(
                 // 심볼릭 링크 순환 방지: 정규화된 경로로 중복 체크
                 if let Ok(canonical) = path.canonicalize() {
                     if visited.insert(canonical) {
-                        collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
+                        collect_files_recursive(&path, files, visited, cancel_flag);
                     } else {
                         tracing::debug!("Skipping already visited dir: {:?}", path);
                     }
                 } else if visited.insert(path.clone()) {
-                    collect_files_recursive(&path, extensions, files, visited, cancel_flag, max_file_size_bytes);
+                    collect_files_recursive(&path, files, visited, cancel_flag);
                 } else {
                     tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
                 }
@@ -206,29 +185,19 @@ fn collect_files_recursive(
                 continue;
             }
 
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-
-            if extensions.contains(&ext.as_str()) {
-                // 파일 크기 제한 (0 = 무제한)
-                if max_file_size_bytes > 0 {
-                    if let Ok(meta) = path.metadata() {
-                        if meta.len() > max_file_size_bytes {
-                            tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, path);
-                            continue;
-                        }
-                    }
-                }
-                files.push(path);
-            }
+            files.push(path);
         }
     }
 }
 
-/// 파싱 실패 시 파일 메타데이터만 저장 (파일명 검색용)
+/// 파일 메타데이터만 저장 (파일명 검색용) - 외부 호출용 래퍼
+/// 반환: 저장된 파일 경로 문자열
+pub fn save_file_metadata_and_cache(conn: &Connection, path: &Path) -> Result<String, IndexError> {
+    save_file_metadata_only(conn, path)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// 파일 메타데이터만 저장 (파일명 검색용)
 fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -473,16 +442,46 @@ fn index_folder_fts_impl(
         }
     };
 
-    // 1. 파일 스캔
+    // 1. 파일 스캔 (모든 파일 수집)
     send_progress("scanning", 0, 0, None, true); // force: 시작
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
-    let mut file_paths = collect_files(
+    let all_files = collect_files(
         folder_path,
-        SUPPORTED_EXTENSIONS,
         recursive,
         cancel_flag.as_ref(),
-        max_file_size_bytes,
     );
+
+    // 파싱 가능 파일 / 메타데이터 전용 파일 분리
+    let (mut file_paths, metadata_only): (Vec<_>, Vec<_>) = all_files.into_iter().partition(|p| {
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+            return false;
+        }
+        // 파싱 대상만 크기 제한 적용
+        if max_file_size_bytes > 0 {
+            if let Ok(meta) = p.metadata() {
+                if meta.len() > max_file_size_bytes {
+                    tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, p);
+                    return false;
+                }
+            }
+        }
+        true
+    });
+
+    // 메타데이터 전용 파일 배치 저장 (파일명 검색용, 콘텐츠 파싱 없음)
+    if !metadata_only.is_empty() {
+        tracing::info!("[FTS] Storing metadata for {} non-parseable files", metadata_only.len());
+        let _ = conn.execute_batch("BEGIN");
+        for (i, path) in metadata_only.iter().enumerate() {
+            if cancel_flag.load(Ordering::Relaxed) { break; }
+            let _ = save_file_metadata_only(conn, path);
+            if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
+                let _ = conn.execute_batch("COMMIT; BEGIN");
+            }
+        }
+        let _ = conn.execute_batch("COMMIT");
+    }
 
     // skip_indexed: 이미 인덱싱된 파일 제외 (resume 용)
     if skip_indexed {
@@ -698,10 +697,8 @@ pub fn sync_folder_fts(
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
     let fs_files = collect_files(
         folder_path,
-        SUPPORTED_EXTENSIONS,
         recursive,
         cancel_flag.as_ref(),
-        max_file_size_bytes,
     );
 
     if cancel_flag.load(Ordering::Relaxed) {
@@ -713,7 +710,7 @@ pub fn sync_folder_fts(
     }
 
     // 3. Diff 계산
-    let mut to_index: Vec<PathBuf> = Vec::new(); // 추가 + 수정
+    let mut to_update: Vec<PathBuf> = Vec::new(); // 추가 + 수정
     let mut unchanged = 0usize;
 
     let fs_path_set: std::collections::HashSet<String> = fs_files.iter()
@@ -731,7 +728,7 @@ pub fn sync_folder_fts(
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0);
                 if fs_modified != db_modified {
-                    to_index.push(path.clone()); // 수정됨
+                    to_update.push(path.clone()); // 수정됨
                 } else {
                     unchanged += 1;
                 }
@@ -739,7 +736,7 @@ pub fn sync_folder_fts(
                 unchanged += 1;
             }
         } else {
-            to_index.push(path.clone()); // 새 파일
+            to_update.push(path.clone()); // 새 파일
         }
     }
 
@@ -749,12 +746,27 @@ pub fn sync_folder_fts(
         .cloned()
         .collect();
 
+    // 파싱 가능 / 메타데이터 전용 분리
+    let (to_index, to_metadata): (Vec<_>, Vec<_>) = to_update.into_iter().partition(|p| {
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+            return false;
+        }
+        if max_file_size_bytes > 0 {
+            if let Ok(meta) = p.metadata() {
+                if meta.len() > max_file_size_bytes { return false; }
+            }
+        }
+        true
+    });
+
     let added_count = to_index.len();
+    let metadata_count = to_metadata.len();
     let delete_count = to_delete.len();
 
     tracing::info!(
-        "[Sync] {} - to_index: {}, to_delete: {}, unchanged: {}",
-        folder_str, added_count, delete_count, unchanged
+        "[Sync] {} - to_index: {}, metadata_only: {}, to_delete: {}, unchanged: {}",
+        folder_str, added_count, metadata_count, delete_count, unchanged
     );
 
     // 4. 삭제 처리
@@ -766,6 +778,19 @@ pub fn sync_folder_fts(
         } else {
             deleted += 1;
         }
+    }
+
+    // 4.5 메타데이터 전용 파일 저장
+    if !to_metadata.is_empty() {
+        let _ = conn.execute_batch("BEGIN");
+        for (i, path) in to_metadata.iter().enumerate() {
+            if cancel_flag.load(Ordering::Relaxed) { break; }
+            let _ = save_file_metadata_only(conn, path);
+            if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
+                let _ = conn.execute_batch("COMMIT; BEGIN");
+            }
+        }
+        let _ = conn.execute_batch("COMMIT");
     }
 
     // 5. 인덱싱할 파일이 없으면 바로 완료 (progress 이벤트 없이 조용히)

@@ -56,7 +56,7 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
             c.page_number,
             c.page_end,
             c.location_hint,
-            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 32) as snippet,
+            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 64) as snippet,
             f.modified_at
          FROM chunks_fts fts
          JOIN chunks c ON c.id = fts.rowid

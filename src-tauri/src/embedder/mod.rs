@@ -1,4 +1,4 @@
-//! 텍스트 임베딩 모듈 (e5-small ONNX)
+//! 텍스트 임베딩 모듈 (KoSimCSE-roberta-multitask ONNX)
 
 use ndarray::Array2;
 use ort::session::Session;
@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
-pub const EMBEDDING_DIM: usize = 384;
+pub const EMBEDDING_DIM: usize = 768;
 const MAX_LENGTH: usize = 512;
 
 #[derive(Error, Debug)]
@@ -244,13 +244,9 @@ impl Embedder {
         Ok(embeddings)
     }
 
-    /// e5 모델용 텍스트 전처리
-    fn prepare_text(&self, text: &str, is_query: bool) -> String {
-        if is_query {
-            format!("query: {}", text)
-        } else {
-            format!("passage: {}", text)
-        }
+    /// 텍스트 전처리 (KoSimCSE는 접두사 불필요)
+    fn prepare_text(&self, text: &str, _is_query: bool) -> String {
+        text.to_string()
     }
 }
 

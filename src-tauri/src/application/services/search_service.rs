@@ -82,25 +82,27 @@ impl SearchService {
         let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
         let confidences = normalize_fts_confidence(&scores);
 
-        // 결과 변환 (⚡ full_content 제거 - snippet만 전달)
-        // + 키워드 위치 기반 페이지 보간 (page_start~page_end 내에서)
+        // 결과 변환 + 키워드 위치 기반 페이지 보간 (page_start~page_end 내에서)
+        // snippet에 키워드가 없으면 content에서 찾아 대체
         let results: Vec<SearchResult> = fts_results
             .into_iter()
             .enumerate()
             .map(|(idx, r)| {
-                let highlight_ranges = parse_highlight_ranges(&r.snippet);
                 let page_number = interpolate_page_from_snippet(
                     r.page_number,
                     r.page_end,
                     &r.content,
                     &r.snippet,
                 );
+                let improved = ensure_keyword_in_snippet(&r.snippet, &r.content, query);
+                let highlight_ranges = parse_highlight_ranges(&improved);
+                let content_preview = strip_highlight_markers(&improved);
                 SearchResult {
                     file_path: r.file_path,
                     file_name: r.file_name,
                     chunk_index: r.chunk_index,
-                    content_preview: strip_highlight_markers(&r.snippet),
-                    full_content: String::new(), // ⚡ 성능 최적화: 빈 문자열
+                    content_preview,
+                    full_content: r.content,
                     score: r.score,
                     confidence: confidences.get(idx).copied().unwrap_or(50),
                     match_type: MatchType::Keyword,
@@ -108,7 +110,7 @@ impl SearchService {
                     page_number,
                     start_offset: r.start_offset,
                     location_hint: r.location_hint,
-                    snippet: Some(r.snippet),
+                    snippet: Some(improved),
                     modified_at: r.modified_at,
                 }
             })
@@ -410,24 +412,25 @@ impl SearchService {
                     (false, false) => MatchType::Hybrid,
                 };
 
-                // FTS 결과에서 직접 가져오기 (DB 조회 불필요, ⚡ full_content 제거)
+                // FTS 결과에서 직접 가져오기 (DB 조회 불필요)
+                // snippet에 키워드가 없으면 content에서 찾아 대체
                 if let Some(fts_r) = fts_map.get(&hr.chunk_id) {
-                    let snippet = Some(fts_r.snippet.clone());
-                    let content_preview = strip_highlight_markers(&fts_r.snippet);
-                    let highlight_ranges = parse_highlight_ranges(&fts_r.snippet);
                     let page_number = interpolate_page_from_snippet(
                         fts_r.page_number,
                         fts_r.page_end,
                         &fts_r.content,
                         &fts_r.snippet,
                     );
+                    let improved = ensure_keyword_in_snippet(&fts_r.snippet, &fts_r.content, query);
+                    let content_preview = strip_highlight_markers(&improved);
+                    let highlight_ranges = parse_highlight_ranges(&improved);
 
                     Some(SearchResult {
                         file_path: fts_r.file_path.clone(),
                         file_name: fts_r.file_name.clone(),
                         chunk_index: fts_r.chunk_index,
                         content_preview,
-                        full_content: String::new(), // ⚡ 성능 최적화
+                        full_content: fts_r.content.clone(),
                         score: hr.score as f64,
                         confidence: normalize_rrf_confidence(hr.score as f64, RRF_K as f64),
                         match_type,
@@ -435,7 +438,7 @@ impl SearchService {
                         page_number,
                         start_offset: fts_r.start_offset,
                         location_hint: fts_r.location_hint.clone(),
-                        snippet,
+                        snippet: Some(improved),
                         modified_at: fts_r.modified_at,
                     })
                 } else {
@@ -611,6 +614,79 @@ fn strip_highlight_markers(snippet: &str) -> String {
     snippet
         .replace("[[HL]]", "")
         .replace("[[/HL]]", "")
+}
+
+/// FTS5 snippet에 키워드가 없을 때 content에서 키워드를 찾아 커스텀 snippet 생성
+///
+/// 반환: "...앞문맥[[HL]]키워드[[/HL]]뒷문맥..." 형식
+fn create_keyword_snippet(content: &str, query: &str) -> Option<String> {
+    let query_trimmed = query.trim();
+    if query_trimmed.is_empty() || content.is_empty() {
+        return None;
+    }
+
+    let query_lower = query_trimmed.to_lowercase();
+    let content_lower = content.to_lowercase();
+
+    // 바이트 위치 → 문자 위치 변환 (한국어 안전)
+    let byte_pos = content_lower.find(&query_lower)?;
+    let char_pos = content_lower[..byte_pos].chars().count();
+    let kw_char_len = query_trimmed.chars().count();
+
+    let content_chars: Vec<char> = content.chars().collect();
+    let total_chars = content_chars.len();
+
+    if char_pos + kw_char_len > total_chars {
+        return None;
+    }
+
+    // 컨텍스트: 40자 전, 140자 후 (프론트엔드 기본값과 동일)
+    let start = char_pos.saturating_sub(40);
+    let end = (char_pos + kw_char_len + 140).min(total_chars);
+
+    let before: String = content_chars[start..char_pos].iter().collect();
+    let keyword: String = content_chars[char_pos..char_pos + kw_char_len].iter().collect();
+    let after: String = content_chars[char_pos + kw_char_len..end].iter().collect();
+
+    let prefix = if start > 0 { "..." } else { "" };
+    let suffix = if end < total_chars { "..." } else { "" };
+
+    Some(format!("{}{}[[HL]]{}[[/HL]]{}{}", prefix, before, keyword, after, suffix))
+}
+
+/// FTS5 snippet에 검색 키워드가 포함되어 있지 않으면 content에서 찾아 대체
+///
+/// 1. snippet에 키워드가 있으면 → 원본 반환
+/// 2. content에서 전체 쿼리 찾기 → 커스텀 snippet
+/// 3. content에서 개별 키워드 찾기 → 커스텀 snippet
+/// 4. 모두 실패 → 원본 반환
+fn ensure_keyword_in_snippet(fts_snippet: &str, content: &str, query: &str) -> String {
+    let query_trimmed = query.trim();
+    if query_trimmed.is_empty() {
+        return fts_snippet.to_string();
+    }
+
+    let stripped_lower = strip_highlight_markers(fts_snippet).to_lowercase();
+    let keywords: Vec<&str> = query_trimmed.split_whitespace().collect();
+
+    // snippet에 이미 키워드가 있으면 그대로 사용
+    if keywords.iter().any(|kw| stripped_lower.contains(&kw.to_lowercase())) {
+        return fts_snippet.to_string();
+    }
+
+    // content에서 전체 쿼리 찾기
+    if let Some(snippet) = create_keyword_snippet(content, query_trimmed) {
+        return snippet;
+    }
+
+    // 개별 키워드 시도
+    for kw in &keywords {
+        if let Some(snippet) = create_keyword_snippet(content, kw) {
+            return snippet;
+        }
+    }
+
+    fts_snippet.to_string()
 }
 
 /// highlight() 결과에서 하이라이트 범위 추출 (O(n) 최적화)

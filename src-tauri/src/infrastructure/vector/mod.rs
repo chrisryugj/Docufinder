@@ -32,7 +32,7 @@ impl UsearchVectorRepository {
         let options = IndexOptions {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos,
-            quantization: ScalarKind::F32,
+            quantization: ScalarKind::F16,
             connectivity: 16,
             expansion_add: 128,
             expansion_search: 64,

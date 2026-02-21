@@ -151,20 +151,9 @@ impl WatchManager {
         }
     }
 
-    /// 이벤트에서 처리할 파일 수집
+    /// 이벤트에서 처리할 파일 수집 (모든 확장자, 임시/숨김 파일만 제외)
     fn collect_files_from_event(event: &Event, pending: &mut HashSet<PathBuf>) {
         for path in &event.paths {
-            // 지원 확장자 확인 (삭제된 파일도 확장자로 판단 가능)
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-
-            if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
-                continue;
-            }
-
             // 숨김 파일 및 Office 임시 파일 (~$) 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.starts_with('.') || file_name.starts_with("~$") {
@@ -239,21 +228,37 @@ impl WatchManager {
                 continue;
             }
 
-            // 파일 인덱싱 (FTS만, 벡터는 백그라운드 워커가 처리)
-            match pipeline::index_file_fts_only(&conn, &path) {
-                Ok(result) => {
-                    // FilenameCache 갱신 - DB에서 파일 정보 조회
-                    if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &result.file_path) {
-                        ctx.filename_cache.upsert(entry);
+            // 확장자에 따라 파싱 인덱싱 또는 메타데이터만 저장
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+                // 파싱 가능: FTS 인덱싱 (벡터는 백그라운드 워커가 처리)
+                match pipeline::index_file_fts_only(&conn, &path) {
+                    Ok(result) => {
+                        if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &result.file_path) {
+                            ctx.filename_cache.upsert(entry);
+                        }
+                        tracing::info!(
+                            "[FTS] Indexed + cache updated: {} ({} chunks)",
+                            result.file_path,
+                            result.chunks_count
+                        );
                     }
-                    tracing::info!(
-                        "[FTS] Indexed + cache updated: {} ({} chunks)",
-                        result.file_path,
-                        result.chunks_count
-                    );
+                    Err(e) => {
+                        tracing::warn!("Failed to index {:?}: {}", path, e);
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to index {:?}: {}", path, e);
+            } else {
+                // 파싱 불가: 메타데이터만 저장 (파일명 검색용)
+                match pipeline::save_file_metadata_and_cache(&conn, &path) {
+                    Ok(file_path_str) => {
+                        if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &file_path_str) {
+                            ctx.filename_cache.upsert(entry);
+                        }
+                        tracing::debug!("[Metadata] Stored: {}", file_path_str);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
+                    }
                 }
             }
         }

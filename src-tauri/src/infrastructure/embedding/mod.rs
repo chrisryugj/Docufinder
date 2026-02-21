@@ -46,23 +46,14 @@ impl EmbedderPort for OnnxEmbedderAdapter {
     async fn embed_batch(
         &self,
         texts: &[String],
-        is_query: bool,
+        _is_query: bool,
     ) -> Result<Vec<Embedding>, DomainError> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
 
-        // e5 모델용 텍스트 전처리
-        let prepared: Vec<String> = texts
-            .iter()
-            .map(|t| {
-                if is_query {
-                    format!("query: {}", t)
-                } else {
-                    format!("passage: {}", t)
-                }
-            })
-            .collect();
+        // KoSimCSE는 접두사 불필요
+        let prepared: Vec<String> = texts.iter().map(|t| t.to_string()).collect();
 
         let vectors = self.embedder.embed_batch(&prepared).map_err(|e| DomainError::EmbeddingError {
             reason: e.to_string(),

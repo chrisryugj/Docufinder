@@ -121,13 +121,34 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   };
 
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    if (settings) {
-      setSettings({ ...settings, [key]: value });
+    if (!settings) return;
 
-      // 테마 변경 시 즉시 적용
-      if (key === "theme" && onThemeChange) {
-        onThemeChange(value as Settings["theme"]);
-      }
+    // 하이브리드/시맨틱 모드 선택 시 시맨틱 검색 활성화 안내
+    if (
+      key === "search_mode" &&
+      (value === "hybrid" || value === "semantic") &&
+      !(settings.semantic_search_enabled ?? false)
+    ) {
+      ask("이 검색 모드는 시맨틱 검색이 필요합니다.\n활성화하시겠습니까?", {
+        title: "시맨틱 검색 필요",
+        kind: "info",
+        okLabel: "활성화",
+        cancelLabel: "취소",
+      }).then((confirmed) => {
+        if (confirmed) {
+          setSettings({ ...settings, [key]: value, semantic_search_enabled: true });
+        } else {
+          setSettings({ ...settings, [key]: value });
+        }
+      });
+      return;
+    }
+
+    setSettings({ ...settings, [key]: value });
+
+    // 테마 변경 시 즉시 적용
+    if (key === "theme" && onThemeChange) {
+      onThemeChange(value as Settings["theme"]);
     }
   };
 

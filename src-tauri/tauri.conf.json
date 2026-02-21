@@ -36,7 +36,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "models/multilingual-e5-small/*": "models/multilingual-e5-small/"
+      "models/kosimcse-roberta-multitask/*": "models/kosimcse-roberta-multitask/"
     },
     "windows": {
       "certificateThumbprint": null,

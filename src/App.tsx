@@ -502,7 +502,11 @@ function App() {
 
       <SettingsModal
         isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => {
+          setSettingsOpen(false);
+          // Modal cleanup이 설정 버튼으로 포커스 복원한 후 검색창으로 이동
+          setTimeout(() => searchInputRef.current?.focus(), 0);
+        }}
         onThemeChange={setTheme}
         onSettingsSaved={(settings) => {
           applySettings(settings);
