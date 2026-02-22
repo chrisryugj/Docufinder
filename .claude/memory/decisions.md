@@ -621,3 +621,40 @@
 
 ### 계획 파일
 `~/.claude/plans/wobbly-sauteeing-horizon.md`
+
+## 2026-02-21 - 프로덕션 리뷰 2차: 타겟 HW 최적화 + 운영 안정성 6건
+
+**상황**: 다음 주 사내 배포를 앞두고, 타겟 환경(i3-12100, 8~16GB RAM, D: HDD)에 맞춘 2차 프로덕션 리뷰 수행. 3개 병렬 에이전트(Rust 백엔드, React 프론트엔드, 빌드/배포)로 심층 분석 후, 추가 코드 리뷰에서 운영 안정성 6건 발견.
+
+### 결정 18: 벡터 인덱싱 부분실패 시 완료 마킹 방지
+
+**문제**: 임베딩 실패/벡터 add 실패 시에도 `mark_file_vector_indexed()` 호출 → 실패한 청크가 영구적으로 검색 품질 저하
+**결정**: `file_failed_chunks` 카운터 추가, 0일 때만 완료 마킹
+**영향**: `indexer/vector_worker.rs:249-316`
+
+### 결정 19: 프리패치 버퍼 축소 (4→2)
+
+**문제**: 4배치 프리패치가 대용량 파일에서 메모리 과다 점유
+**결정**: `PREFETCH_BUFFER_SIZE = 2` (파이프라인 효과 유지하면서 메모리 절반)
+**영향**: `indexer/vector_worker.rs:27`
+
+### 결정 20: WatchManager 파일 크기 제한
+
+**문제**: watcher 경로에 대용량 파일(200MB+) 추가 시 파싱 시도 → 메모리 급증
+**결정**: `IndexContext`에 `max_file_size_mb` 추가, 초과 시 메타데이터만 저장
+**영향**: `indexer/manager.rs`, `application/container.rs`
+
+### 결정 21: FilenameCache truncated 시 DB fallback
+
+**문제**: 20만+ 파일 시 캐시 truncated → 캐시에 없는 파일 검색 불가 (무결과)
+**결정**: `CacheData.truncated` 플래그 + `is_truncated()` → DB LIKE 검색 전환
+**영향**: `search/filename_cache.rs`, `application/services/search_service.rs`
+
+### 결정 22: 인덱싱 실패 시 상태 복구
+
+**문제**: FTS 인덱싱 에러 시 폴더 상태가 "indexing"에 영구 고착
+**결정**: match 패턴으로 에러 캐치 → "failed" 상태 설정 후 에러 반환
+**영향**: `commands/index.rs` - add_folder(), reindex_folder(), resume_indexing()
+
+### 계획 파일
+`.claude/plans/production-review-6fixes.md`

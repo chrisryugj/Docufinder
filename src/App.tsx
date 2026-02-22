@@ -123,6 +123,7 @@ function App() {
     viewDensity,
     setViewDensity,
     semanticEnabled,
+    resultsPerPage,
     applySettings,
   } = useAppSettings({ setSearchMode });
 
@@ -488,6 +489,7 @@ function App() {
                 totalResultCount={results.length}
                 minConfidence={minConfidence}
                 searchTime={searchTime}
+                resultsPerPage={resultsPerPage}
               />
             </div>
           </main>

@@ -22,23 +22,23 @@
   "license": "MIT",
   "packageManager": "pnpm@10.20.0",
   "devDependencies": {
-    "sharp": "^0.33.5",
-    "png-to-ico": "^2.1.8",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "^2.9.6",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
+    "png-to-ico": "^2.1.8",
+    "sharp": "^0.33.5",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.1",
-    "lucide-react": "^0.469.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.3.4",
+    "lucide-react": "^0.469.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   }

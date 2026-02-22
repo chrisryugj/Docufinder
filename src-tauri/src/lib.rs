@@ -127,7 +127,9 @@ pub fn run() {
     }));
 
     // tokenizers 병렬 처리 비활성화 (rayon과의 데드락 방지)
-    // SAFETY: run() 진입 직후, tauri::Builder 생성 전이므로 단일 스레드 컨텍스트
+    // SAFETY: run() 진입 직후, main 스레드만 존재하는 단일 스레드 컨텍스트.
+    // tauri::Builder 생성 전이므로 다른 스레드가 환경변수를 읽을 수 없음.
+    // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
     unsafe { std::env::set_var("TOKENIZERS_PARALLELISM", "false") };
 
     tauri::Builder::default()

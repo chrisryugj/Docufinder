@@ -20,6 +20,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
   const [minConfidence, setMinConfidence] = useState(0);
   const [viewDensity, setViewDensity] = useState<ViewDensity>("compact");
   const [semanticEnabled, setSemanticEnabled] = useState(false);
+  const [resultsPerPage, setResultsPerPage] = useState(50);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
     const root = document.documentElement;
@@ -52,6 +53,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
+        setResultsPerPage(settings.results_per_page ?? 50);
         applyHighlightColors(settings);
       } catch (err) {
         console.warn("Failed to load settings:", err);
@@ -66,6 +68,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
       setMinConfidence(settings.min_confidence ?? 0);
       setViewDensity(settings.view_density ?? "compact");
       setSemanticEnabled(settings.semantic_search_enabled ?? false);
+      setResultsPerPage(settings.results_per_page ?? 50);
       applyHighlightColors(settings);
     },
     [setSearchMode, applyHighlightColors]
@@ -77,6 +80,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
     setViewDensity,
     semanticEnabled,
     setSemanticEnabled,
+    resultsPerPage,
     applySettings,
   };
 }

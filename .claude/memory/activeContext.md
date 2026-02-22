@@ -10,7 +10,7 @@
 - **Phase 5 배포**: ✅ **보안 강화 Phase 1~2 완료, 베타 배포 준비 완료**
 
 ## 마지막 업데이트
-2026-02-08 (프로덕션 리뷰 최종 완료 - 잔여 4건 수정, Match Rate 100%, 배포 준비 완료)
+2026-02-22 (프로덕션 리뷰 4차 88/100 + 결과 페이지네이션 + P1/P2 수정 완료)
 
 ---
 
@@ -85,14 +85,34 @@
 | **MSI 타겟 지정** | `tauri.conf.json:30` | "all" → ["msi"] |
 | **tokio features** | `Cargo.toml` | "full" → 선택적 features |
 
-### 📋 배포 후 점진 개선
-- [ ] C1: SearchBar/CompactSearchBar IME 중복 → 커스텀 훅
-- [ ] C2: App.tsx(708줄), SettingsModal(706줄) 분리
-- [ ] C3: React.memo 확대 (현재 3/25)
-- [ ] C10: Settings 파일 캐싱
-- [ ] C14: DB 스키마 버전 트래킹
-- [ ] DB 암호화 검토 (SQLCipher) - 정책 요구 시
-- [ ] CSP 강화 - 보안팀 요구 시
+### ✅ Phase 7: 프로덕션 종합 리뷰 3차 → 4차 (2026-02-22)
+
+**종합 점수**: 83 → **88/100**
+**계획 파일**: `.claude/plans/serialized-wishing-shore.md`
+
+#### ✅ 3차 P0 수정 (5건) - 완료
+- FTS OR→AND, IPC 타임아웃, 쿼리 제한, 에러 UI, 수정일 표시
+
+#### ✅ 4차 P1 수정 (5건) - 완료
+| # | 작업 | 상태 |
+|---|------|------|
+| P1-1 | DB VACUUM 추가 (index_service.rs) | ✅ |
+| P1-2 | unsafe set_var SAFETY 보강 | ✅ |
+| P1-3 | aria-activedescendant 추가 | ✅ |
+| P1-4 | SettingsModal 에러 처리 개선 | ✅ |
+| P1-5 | ort RC 버전 확인 (현상 유지) | ✅ |
+
+#### ✅ 4차 P2 수정 (3건) - 완료
+| # | 작업 | 상태 |
+|---|------|------|
+| P2-9 | SearchResultItem 분리 (629→475줄) | ✅ |
+| P2-11 | CI/CD 워크플로우 (GitHub Actions) | ✅ |
+| 추가 | 결과 페이지네이션 + 설정 연동 | ✅ |
+
+#### 📋 남은 P2 (3건)
+- [ ] 이중 FS 순회 통합 (index.rs, pipeline.rs)
+- [ ] data_root 설정 기능 (container.rs, settings.rs)
+- [ ] PDF timeout 5s→3s (parsers/pdf.rs)
 
 ---
 

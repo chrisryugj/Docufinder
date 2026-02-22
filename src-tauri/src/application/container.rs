@@ -147,7 +147,10 @@ impl AppContainer {
                 }
 
                 // ONNX Runtime DLL 경로 설정
-                // SAFETY: OnceCell이 1회만 실행을 보장하며, Embedder 초기화 전에 설정 필수
+                // SAFETY: OnceCell::get_or_try_init이 1회만 실행을 보장하며,
+                // Embedder::new() 호출 전에 환경변수 설정이 필수.
+                // 이 시점에서 ort 라이브러리가 아직 초기화되지 않았으므로
+                // 환경변수 경합이 발생하지 않음. Rust 1.81+ deprecated.
                 if dll_path.exists() {
                     unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
                     tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
