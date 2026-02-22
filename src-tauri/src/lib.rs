@@ -83,9 +83,6 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // [DEBUG] WebView2 프록시 설정 확인
-    eprintln!("[DEBUG] WEBVIEW2_ARGS={:?}", std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"));
-
     // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info.location()
@@ -136,11 +133,8 @@ pub fn run() {
     // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
     unsafe { std::env::set_var("TOKENIZERS_PARALLELISM", "false") };
 
-    // Dev mode: WebView2 프록시 비활성화는 package.json의 tauri:dev 스크립트에서
-    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--no-proxy-server로 설정.
-    // (Rust set_var는 WebView2 초기화 후 적용되어 효과 없음)
-
     // visible: false → page load 완료 후 창 표시 (검정화면 방지)
+    // Dev mode: WebView2 SmartScreen 비활성화는 package.json tauri:dev 스크립트에서 설정
     let show_on_load = Arc::new(AtomicBool::new(true));
     let show_on_load_flag = show_on_load.clone();
 
