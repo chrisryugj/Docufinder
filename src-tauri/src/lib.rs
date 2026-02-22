@@ -359,8 +359,8 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    // 앱 초기화 완료 대기 (UI 렌더링 우선)
-                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                    // 앱 초기화 완료 대기 (UI 렌더링 우선, 1초면 충분)
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
                     let (folders_to_sync, service, include_subfolders, max_file_size_mb) = {
                         let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {

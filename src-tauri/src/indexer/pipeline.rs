@@ -18,8 +18,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
-/// 스트리밍 파이프라인 채널 버퍼 크기 - 병렬 처리 효율화를 위해 64로 증가
-const CHANNEL_BUFFER_SIZE: usize = 64;
+/// 스트리밍 파이프라인 채널 버퍼 크기
+/// 32: 8GB RAM PC에서 대용량 문서(XLSX/PDF) 동시 버퍼링 시 메모리 피크 억제
+const CHANNEL_BUFFER_SIZE: usize = 32;
 
 /// FTS 배치 트랜잭션 크기 - fsync 오버헤드 감소 (3~5배 성능 향상)
 const TRANSACTION_BATCH_SIZE: usize = 200;

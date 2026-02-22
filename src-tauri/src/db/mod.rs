@@ -34,7 +34,6 @@ impl Drop for PooledConnection {
                 if let Ok(mut pool) = CONN_POOL.lock() {
                     if pool.len() < MAX_POOL_SIZE {
                         pool.push(conn);
-                        return;
                     }
                 }
             }

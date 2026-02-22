@@ -98,7 +98,9 @@ pub type ApiResult<T> = Result<T, ApiError>;
 
 impl From<rusqlite::Error> for ApiError {
     fn from(e: rusqlite::Error) -> Self {
-        ApiError::DatabaseQuery(e.to_string())
+        // DB 에러 상세는 로그에만 기록 (사용자에게 스키마 정보 노출 방지)
+        tracing::error!("Database error: {}", e);
+        ApiError::DatabaseQuery("데이터베이스 처리 중 오류가 발생했습니다".to_string())
     }
 }
 

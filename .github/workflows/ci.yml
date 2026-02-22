@@ -27,8 +27,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 1
+
   check-backend:
     name: Backend (Rust)
+    needs: check-frontend
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,16 +47,12 @@ jobs:
         with:
           workspaces: src-tauri
 
-      # 프론트엔드 빌드 (Tauri generate_context!()에 dist/ 필요)
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      # 프론트엔드 빌드 결과 다운로드 (중복 빌드 제거)
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
         with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
+          name: frontend-dist
+          path: dist/
 
       # 모델 파일은 .gitignore이므로 CI에서 placeholder 생성 (Tauri 빌드 스크립트 glob 매칭용)
       - name: Create model placeholder for Tauri build script
@@ -68,4 +72,3 @@ jobs:
       - name: Cargo clippy
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
-        continue-on-error: true

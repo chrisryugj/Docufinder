@@ -10,14 +10,11 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 
 // Components
-import { Header, StatusBar, ErrorBanner } from "./components/layout";
+import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import { Sidebar } from "./components/sidebar";
-import { SettingsModal } from "./components/settings/SettingsModal";
-import { HelpModal } from "./components/help/HelpModal";
 import { ToastContainer } from "./components/ui/Toast";
-import { VectorIndexingFAB } from "./components/ui/VectorIndexingFAB";
-import { DisclaimerModal, OnboardingModal } from "./components/onboarding";
+import type { Settings } from "./types/settings";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -335,6 +332,25 @@ function App() {
     setTimeout(() => searchInputRef.current?.focus(), 100);
   }, [expand, scrollToTop]);
 
+  // 설정 모달 콜백
+  const handleSettingsClose = useCallback(() => {
+    setSettingsOpen(false);
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleSettingsSaved = useCallback((settings: Settings) => {
+    applySettings(settings);
+    if (!(settings.semantic_search_enabled ?? false) && isVectorIndexing) {
+      cancelVectorIndexing();
+    }
+  }, [applySettings, isVectorIndexing, cancelVectorIndexing]);
+
+  const handleClearData = useCallback(async () => {
+    await invoke("clear_all_data");
+    clearSearchCache();
+    await Promise.all([refreshStatus(), refreshVectorStatus()]);
+  }, [refreshStatus, refreshVectorStatus]);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* 사이드바 */}
@@ -506,54 +522,30 @@ function App() {
         />
       </div>
 
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false);
-          // Modal cleanup이 설정 버튼으로 포커스 복원한 후 검색창으로 이동
-          setTimeout(() => searchInputRef.current?.focus(), 0);
-        }}
+      <AppModals
+        settingsOpen={settingsOpen}
+        onSettingsClose={handleSettingsClose}
         onThemeChange={setTheme}
-        onSettingsSaved={(settings) => {
-          applySettings(settings);
-          if (!(settings.semantic_search_enabled ?? false) && isVectorIndexing) {
-            cancelVectorIndexing();
-          }
-        }}
-        onClearData={async () => {
-          await invoke("clear_all_data");
-          clearSearchCache();
-          await Promise.all([refreshStatus(), refreshVectorStatus()]);
-        }}
+        onSettingsSaved={handleSettingsSaved}
+        onClearData={handleClearData}
+        helpOpen={helpOpen}
+        onHelpClose={() => setHelpOpen(false)}
+        showDisclaimer={showDisclaimer}
+        onAcceptDisclaimer={acceptDisclaimer}
+        onExitApp={exitApp}
+        showOnboarding={showOnboarding}
+        onCompleteOnboarding={completeOnboarding}
+        onSkipOnboarding={skipOnboarding}
       />
-
-      <HelpModal isOpen={helpOpen} onClose={() => setHelpOpen(false)} />
-      <DisclaimerModal isOpen={showDisclaimer} onAccept={acceptDisclaimer} onExit={exitApp} />
-      <OnboardingModal isOpen={showOnboarding} onComplete={completeOnboarding} onSkip={skipOnboarding} />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {vectorStatus?.is_running && (
-        <VectorIndexingFAB
-          progress={vectorProgress}
-          totalChunks={vectorStatus.total_chunks}
-          processedChunks={vectorStatus.processed_chunks}
-          currentFile={vectorStatus.current_file}
-          onCancel={cancelVectorIndexing}
-        />
-      )}
-
-      {showScrollTop && !vectorStatus?.is_running && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-20 right-6 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 hover:scale-105 z-40"
-          style={{ backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)", boxShadow: "0 2px 8px rgba(0,0,0,0.15)" }}
-          aria-label="맨 위로 스크롤"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color: "var(--color-text-muted)" }}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
-          </svg>
-        </button>
-      )}
+      <FloatingUI
+        vectorStatus={vectorStatus}
+        vectorProgress={vectorProgress}
+        onCancelVectorIndexing={cancelVectorIndexing}
+        showScrollTop={showScrollTop}
+        onScrollToTop={scrollToTop}
+      />
     </div>
   );
 }

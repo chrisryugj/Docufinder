@@ -1,6 +1,5 @@
 //! 텍스트 임베딩 모듈 (KoSimCSE-roberta-multitask ONNX)
 
-use ndarray::Array2;
 use ort::session::Session;
 use ort::value::Value;
 use std::path::Path;
@@ -111,31 +110,31 @@ impl Embedder {
             .max()
             .unwrap_or(0);
 
-        // 입력 텐서 생성 (owned arrays)
-        let mut input_ids = Array2::<i64>::zeros((batch_size, seq_len));
-        let mut attention_mask = Array2::<i64>::zeros((batch_size, seq_len));
+        // 입력 텐서 생성 (Array2 중간 복사 제거 - 직접 Vec 구축)
+        let total = batch_size * seq_len;
+        let mut input_ids_vec = vec![0i64; total];
+        let mut attention_mask_vec = vec![0i64; total];
 
         for (i, encoding) in encodings.iter().enumerate() {
             let ids = encoding.get_ids();
             let mask = encoding.get_attention_mask();
             let len = ids.len().min(seq_len);
+            let offset = i * seq_len;
 
             for j in 0..len {
-                input_ids[[i, j]] = ids[j] as i64;
-                attention_mask[[i, j]] = mask[j] as i64;
+                input_ids_vec[offset + j] = ids[j] as i64;
+                attention_mask_vec[offset + j] = mask[j] as i64;
             }
         }
 
-        // 입력 데이터를 Vec으로 변환
         let shape = [batch_size as i64, seq_len as i64];
-        let input_ids_vec: Vec<i64> = input_ids.iter().copied().collect();
-        let attention_mask_vec: Vec<i64> = attention_mask.iter().copied().collect();
 
         // ONNX 추론 (Session은 &mut self 필요 → Mutex 사용)
         // e5-small INT8 모델은 input_ids, attention_mask 2개 입력만 필요
         let input_ids_value = Value::from_array((shape, input_ids_vec))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
-        let attention_mask_value = Value::from_array((shape, attention_mask_vec))
+        // attention_mask_vec는 mean pooling에서 재사용 → clone 후 텐서에 전달
+        let attention_mask_value = Value::from_array((shape, attention_mask_vec.clone()))
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
 
         let embeddings = {
@@ -209,7 +208,7 @@ impl Embedder {
                     let mut count = 0.0f32;
 
                     for j in 0..model_seq_len.min(seq_len) {
-                        if j < seq_len && attention_mask[[i, j]] == 1 {
+                        if j < seq_len && attention_mask_vec[i * seq_len + j] == 1 {
                             let offset = i * model_seq_len * hidden_dim + j * hidden_dim;
                             for k in 0..EMBEDDING_DIM.min(hidden_dim) {
                                 if offset + k < out_data.len() {

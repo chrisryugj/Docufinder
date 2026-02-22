@@ -53,9 +53,17 @@ export function isApiError(err: unknown): err is ApiError {
 /**
  * 에러에서 사용자 친화적 메시지 추출
  */
+/** 내부 에러 코드에 대한 사용자 친화적 메시지 */
+const SANITIZED_MESSAGES: Partial<Record<ApiErrorCode, string>> = {
+  DatabaseConnection: "데이터베이스 연결에 실패했습니다",
+  DatabaseQuery: "데이터베이스 처리 중 오류가 발생했습니다",
+  LockFailed: "내부 처리 중 오류가 발생했습니다",
+  TaskJoinError: "작업 처리 중 오류가 발생했습니다",
+};
+
 export function getErrorMessage(err: unknown): string {
   if (isApiError(err)) {
-    return err.message;
+    return SANITIZED_MESSAGES[err.code] ?? err.message;
   }
   if (err instanceof Error) {
     return err.message;

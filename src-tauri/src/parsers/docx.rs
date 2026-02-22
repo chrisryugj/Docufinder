@@ -13,12 +13,25 @@ const MAX_ENTRY_UNCOMPRESSED_SIZE: u64 = 50 * 1024 * 1024;
 const MAX_TOTAL_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
 const MAX_ZIP_ENTRIES: usize = 1000;
 const MAX_COMPRESSION_RATIO: u64 = 100;
+/// 최대 DOCX 파일 크기 (200MB) - 8GB RAM PC OOM 방지
+const MAX_FILE_SIZE: u64 = 200 * 1024 * 1024;
 
 /// DOCX 파일 파싱
 /// DOCX는 OOXML 기반 ZIP 포맷
 /// 구조: word/document.xml
 /// 페이지 break (<w:br w:type="page"/>) 감지 지원
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    // 파일 크기 체크 (대용량 파일 메모리 보호)
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() > MAX_FILE_SIZE {
+            return Err(ParseError::ParseError(format!(
+                "DOCX 파일 크기 초과: {}MB (최대 {}MB)",
+                metadata.len() / 1024 / 1024,
+                MAX_FILE_SIZE / 1024 / 1024
+            )));
+        }
+    }
+
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     let mut archive =
