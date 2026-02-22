@@ -45,6 +45,10 @@ pub struct Settings {
     /// 검색 결과 더 보기 단위 (한 번에 표시할 개수)
     #[serde(default = "default_results_per_page")]
     pub results_per_page: usize,
+    /// 데이터 저장 경로 (DB, 벡터 인덱스)
+    /// None이면 기본 AppData 사용. 변경 시 앱 재시작 필요.
+    #[serde(default)]
+    pub data_root: Option<String>,
 }
 
 fn default_include_subfolders() -> bool {
@@ -121,6 +125,7 @@ impl Default for Settings {
             indexing_intensity: IndexingIntensity::Balanced,
             max_file_size_mb: 200,
             results_per_page: 50,
+            data_root: None,
         }
     }
 }

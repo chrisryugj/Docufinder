@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
-import { ask } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Dropdown } from "../ui/Dropdown";
@@ -90,6 +90,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const [isSaving, setIsSaving] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const originalDataRootRef = useRef<string | undefined>(undefined);
 
   // 설정 로드 (useEffect 내부에 함수 정의하여 의존성 문제 해결)
   useEffect(() => {
@@ -100,6 +101,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       setError(null);
       try {
         const result = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
+        originalDataRootRef.current = result.data_root;
         setSettings(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -120,6 +122,15 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     try {
       await invokeWithTimeout("update_settings", { settings }, IPC_TIMEOUT.SETTINGS);
       onSettingsSaved?.(settings);
+
+      // data_root 변경 시 재시작 안내
+      if (settings.data_root !== originalDataRootRef.current) {
+        await ask(
+          "데이터 저장 경로가 변경되었습니다.\n변경 사항을 적용하려면 앱을 재시작해주세요.",
+          { title: "재시작 필요", kind: "info", okLabel: "확인" }
+        );
+      }
+
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -538,6 +549,59 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             >
               데이터 관리
             </h3>
+          </div>
+
+          {/* 데이터 저장 경로 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              데이터 저장 경로
+            </label>
+            <div className="flex items-center gap-2">
+              <div
+                className="flex-1 px-3 py-2 rounded-lg text-sm truncate"
+                style={{
+                  backgroundColor: "var(--color-bg-primary)",
+                  border: "1px solid var(--color-border)",
+                  color: settings.data_root
+                    ? "var(--color-text-primary)"
+                    : "var(--color-text-muted)",
+                }}
+                title={settings.data_root || "기본 위치 (AppData)"}
+              >
+                {settings.data_root || "기본 위치 (AppData)"}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  const selected = await open({
+                    directory: true,
+                    multiple: false,
+                    title: "데이터 저장 폴더 선택",
+                  });
+                  if (selected) {
+                    handleChange("data_root", selected as string);
+                  }
+                }}
+              >
+                변경
+              </Button>
+              {settings.data_root && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleChange("data_root", undefined as unknown as string)}
+                >
+                  초기화
+                </Button>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              DB와 벡터 인덱스 저장 위치. 변경 시 앱 재시작 필요
+            </p>
           </div>
 
           {/* 모든 데이터 초기화 */}

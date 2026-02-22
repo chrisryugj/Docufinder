@@ -103,7 +103,7 @@ export function SearchResultList({
   // 결과가 있을 때
   if (hasResults) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-3" aria-busy={isLoading} aria-live="polite">
         {/* 툴바: 뷰 모드 + 결과 수 (좌측) | 복사/CSV (우측) */}
         <div className="flex items-center gap-3 mb-2">
           {/* 좌측: 뷰 모드 토글 + 결과 수 */}

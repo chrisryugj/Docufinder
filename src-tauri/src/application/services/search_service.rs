@@ -9,7 +9,6 @@ use crate::db::{self, ChunkInfo};
 use crate::reranker::Reranker;
 use crate::search::{filename, filename_cache::FilenameCache, fts, hybrid, sentence};
 use crate::tokenizer::TextTokenizer;
-use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -581,7 +580,7 @@ impl SearchService {
     // Private Helpers
     // ============================================
 
-    fn get_connection(&self) -> AppResult<Connection> {
+    fn get_connection(&self) -> AppResult<db::PooledConnection> {
         db::get_connection(&self.db_path)
             .map_err(|e| AppError::Internal(format!("DB connection failed: {}", e)))
     }

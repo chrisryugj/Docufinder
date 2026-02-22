@@ -54,17 +54,21 @@ export function useIndexStatus(): UseIndexStatusReturn {
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
-      unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
-        const p = event.payload;
-        setProgress(p);
+      try {
+        unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
+          const p = event.payload;
+          setProgress(p);
 
-        // 완료/취소 시 인덱싱 상태 업데이트
-        if (p.phase === "completed" || p.phase === "cancelled") {
-          setIsIndexing(false);
-          // 잠시 후 진행률 초기화
-          setTimeout(() => setProgress(null), 2000);
-        }
-      });
+          // 완료/취소 시 인덱싱 상태 업데이트
+          if (p.phase === "completed" || p.phase === "cancelled") {
+            setIsIndexing(false);
+            // 잠시 후 진행률 초기화
+            setTimeout(() => setProgress(null), 2000);
+          }
+        });
+      } catch (e) {
+        console.error("Failed to setup indexing-progress listener:", e);
+      }
     };
 
     setupListener();

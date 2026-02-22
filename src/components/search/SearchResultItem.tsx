@@ -323,12 +323,17 @@ export const SearchResultItem = memo(function SearchResultItem({
   );
 });
 
-/** 경로를 배열로 변환 (Windows 스타일) */
+/** 경로를 배열로 변환 (Windows 스타일) - 깊은 경로는 말줄임 */
 function formatPathToBadges(path: string): string[] {
   // Windows long path prefix 제거 및 백슬래시 통일
-  let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
+  const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
   // 드라이브 레터와 폴더 분리
-  return cleanPath.split(/[/\\]/).filter(Boolean);
+  const parts = cleanPath.split(/[/\\]/).filter(Boolean);
+  // 5개 초과 시 처음 2개 + ... + 마지막 2개
+  if (parts.length > 5) {
+    return [...parts.slice(0, 2), "\u2026", ...parts.slice(-2)];
+  }
+  return parts;
 }
 
 const EXPANDED_CONTEXT_BEFORE_CHARS = 300;

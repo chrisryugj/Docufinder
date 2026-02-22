@@ -111,6 +111,8 @@ export function ResultContextMenu({
   return createPortal(
     <div
       ref={contextMenuRef}
+      role="menu"
+      aria-label="파일 작업 메뉴"
       className="fixed min-w-[140px] py-1 rounded-lg shadow-xl border"
       style={{
         left: contextMenu.x,
@@ -121,6 +123,7 @@ export function ResultContextMenu({
       }}
     >
       <button
+        role="menuitem"
         onClick={() => { closeContextMenu(); onOpenFile(filePath, pageNumber); }}
         className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
         style={menuItemStyle}
@@ -135,6 +138,7 @@ export function ResultContextMenu({
 
       {onOpenFolder && (
         <button
+          role="menuitem"
           onClick={() => { closeContextMenu(); onOpenFolder(folderPath); }}
           className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors"
           style={menuItemStyle}
@@ -149,6 +153,7 @@ export function ResultContextMenu({
       )}
 
       <button
+        role="menuitem"
         onClick={() => {
           closeContextMenu();
           if (onCopyPath) { onCopyPath(filePath); } else { navigator.clipboard.writeText(filePath); }

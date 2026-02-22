@@ -2,7 +2,7 @@
 
 > 로컬 문서 검색 앱. 이 문서는 git clone 후 빌드까지의 전체 과정을 정리한 것.
 
-## 검증된 환경 (2026-02-10 기준)
+## 검증된 환경 (2026-02-22 기준)
 
 | 항목 | 버전 | 비고 |
 |------|------|------|
@@ -88,13 +88,14 @@ pnpm run download-model
 
 | 파일 | 경로 | 크기 | 출처 |
 |------|------|------|------|
-| `onnxruntime.dll` | `src-tauri/models/multilingual-e5-small/` | ~16MB | GitHub onnxruntime v1.20.1 |
-| `model.onnx` (e5-small) | `src-tauri/models/multilingual-e5-small/` | ~90MB | HuggingFace |
-| `tokenizer.json` (e5-small) | `src-tauri/models/multilingual-e5-small/` | ~700KB | HuggingFace |
+| `onnxruntime.dll` | `src-tauri/models/kosimcse-roberta-multitask/` | ~16MB | GitHub onnxruntime v1.20.1 |
+| `model.onnx` (KoSimCSE) | `src-tauri/models/kosimcse-roberta-multitask/` | ~350MB | HuggingFace |
+| `tokenizer.json` (KoSimCSE) | `src-tauri/models/kosimcse-roberta-multitask/` | ~700KB | HuggingFace |
 | `model.onnx` (reranker) | `src-tauri/models/ms-marco-MiniLM-L6-v2/` | ~23MB | HuggingFace |
 | `tokenizer.json` (reranker) | `src-tauri/models/ms-marco-MiniLM-L6-v2/` | ~700KB | HuggingFace |
 
 > **회사 프록시 환경**: PowerShell `Invoke-WebRequest`가 프록시를 탈 수 있음. 실패 시 수동 다운로드 후 위 경로에 배치.
+> **인터넷 차단 환경**: `src-tauri/models/kosimcse-roberta-multitask/` 디렉토리에 수동 배치.
 
 ---
 
@@ -117,6 +118,7 @@ pnpm tauri:build
 ```
 
 - 빌드 결과: `src-tauri/target/release/bundle/msi/Anything_0.1.0_x64_ko-KR.msi`
+- 코드 서명이 설정되어 있으면 자동으로 서명됨 (certificateThumbprint in tauri.conf.json)
 
 ---
 
@@ -132,7 +134,6 @@ pnpm tauri:build
 | `@tauri-apps/plugin-dialog` | ^2.6.0 | 네이티브 다이얼로그 |
 | `@tauri-apps/plugin-process` | ^2.3.1 | 프로세스 제어 |
 | `@tauri-apps/plugin-shell` | ^2.3.4 | 셸 명령 실행 |
-| `@tanstack/react-virtual` | ^3.11.2 | 가상 스크롤 |
 | `lucide-react` | ^0.469.0 | 아이콘 |
 | `typescript` | ^5.9.3 | 타입 체커 |
 | `vite` | ^7.3.1 | 번들러 |
@@ -158,17 +159,23 @@ pnpm tauri:build
 | `calamine` | 0.26 | Excel 파싱 |
 | `pdf-extract` | 0.7 | PDF 텍스트 추출 |
 | `ort` | =2.0.0-rc.11 | ONNX Runtime 바인딩 (**버전 고정**) |
-| `usearch` | 2.23 | 벡터 인덱스 |
+| `usearch` | 2.23 | 벡터 인덱스 (HNSW) |
 | `tokenizers` | 0.19 | HuggingFace 토크나이저 |
 | `ndarray` | 0.16 | 다차원 배열 |
-| `lindera` | 2.0 | 한국어 형태소 분석 |
+| `lindera` | 2.0 | 한국어 형태소 분석 (ko-dic 내장) |
 | `notify` | 8 | 파일 시스템 감시 |
 | `tokio` | 1 | 비동기 런타임 |
 | `rayon` | 1.10 | 병렬 처리 |
+| `crossbeam-channel` | 0.5 | 멀티스레드 채널 |
+| `once_cell` | 1 | 지연 초기화 |
+| `sha2` | 0.10 | SHA-256 해시 |
 | `ureq` | 3 | HTTP 클라이언트 |
 | `thiserror` | 2 | 에러 타입 |
 | `tracing` | 0.1 | 로깅 |
 | `chrono` | 0.4 | 날짜/시간 |
+| `dirs` | 5 | 시스템 디렉토리 |
+| `async-trait` | 0.1 | 비동기 trait |
+| `windows-sys` | 0.59 | Windows API (유휴 감지, 디스크 정보) |
 
 > **주의**: `ort = "=2.0.0-rc.11"`은 **정확한 버전 고정**(= prefix). RC 버전이지만 현재 최신이며, 다른 버전으로 변경 시 빌드 실패 가능.
 
@@ -199,7 +206,7 @@ pnpm tauri:dev
 ### 4. `model.onnx not found` 또는 시맨틱 검색 안됨
 
 **원인**: ONNX 모델 미다운로드
-**해결**: `pnpm run download-model` 실행
+**해결**: `pnpm run download-model` 실행 (KoSimCSE + Reranker 모델 다운로드)
 
 ### 5. `pnpm: command not found`
 

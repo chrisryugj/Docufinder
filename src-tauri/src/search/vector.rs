@@ -93,12 +93,19 @@ impl VectorIndex {
             map_size
         );
 
-        // 인덱스에 데이터가 있는데 매핑이 없으면 경고
+        // 인덱스/매핑 불일치 검증 → 불일치 시 자동 리셋
         if index_size > 0 && map_size == 0 {
             tracing::warn!(
-                "Vector index has {} vectors but mapping is empty! Semantic search will not work.",
+                "Vector index has {} vectors but mapping is empty. Resetting index.",
                 index_size
             );
+            vector_index.clear();
+        } else if index_size != map_size {
+            tracing::warn!(
+                "Vector index/mapping mismatch: index={}, map={}. Resetting index.",
+                index_size, map_size
+            );
+            vector_index.clear();
         }
 
         Ok(vector_index)

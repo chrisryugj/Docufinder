@@ -44,6 +44,9 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   // 자동 재인덱싱 트리거 추적 (중복 방지)
   const resumedRef = useRef<Set<string>>(new Set());
 
+  // 통계 요청 카운터 (stale 응답 방지)
+  const statsRequestIdRef = useRef(0);
+
   // 폴더 정보 조회 (즐겨찾기 포함)
   const fetchFolderInfo = useCallback(async () => {
     try {
@@ -62,7 +65,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   useEffect(() => {
     if (folders.length === 0) return;
 
-    let isMounted = true;
+    const requestId = ++statsRequestIdRef.current;
 
     const fetchStats = async () => {
       const entries = await Promise.all(
@@ -78,7 +81,8 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           }
         })
       );
-      if (isMounted) {
+      // stale 응답 무시 (이후 요청이 들어온 경우)
+      if (requestId === statsRequestIdRef.current) {
         const stats: Record<string, FolderStats> = {};
         for (const entry of entries) {
           if (entry) stats[entry[0]] = entry[1];
@@ -89,10 +93,6 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
     fetchStats();
     fetchFolderInfo();
-
-    return () => {
-      isMounted = false;
-    };
   }, [folders, fetchFolderInfo]);
 
   // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
