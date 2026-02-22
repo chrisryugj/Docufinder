@@ -85,23 +85,27 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
     let unlisten: UnlistenFn | null = null;
 
     const setupListener = async () => {
-      unlisten = await listen<VectorIndexingProgress>("vector-indexing-progress", (event) => {
-        const p = event.payload;
+      try {
+        unlisten = await listen<VectorIndexingProgress>("vector-indexing-progress", (event) => {
+          const p = event.payload;
 
-        setStatus({
-          is_running: !p.is_complete,
-          total_chunks: p.total_chunks,
-          processed_chunks: p.processed_chunks,
-          pending_chunks: Math.max(p.total_chunks - p.processed_chunks, 0),
-          current_file: p.current_file,
-          error: null,
+          setStatus({
+            is_running: !p.is_complete,
+            total_chunks: p.total_chunks,
+            processed_chunks: p.processed_chunks,
+            pending_chunks: Math.max(p.total_chunks - p.processed_chunks, 0),
+            current_file: p.current_file,
+            error: null,
+          });
+
+          // 완료 시 플래그 설정
+          if (p.is_complete) {
+            setJustCompleted(true);
+          }
         });
-
-        // 완료 시 플래그 설정
-        if (p.is_complete) {
-          setJustCompleted(true);
-        }
-      });
+      } catch (e) {
+        console.error("Failed to setup vector-indexing-progress listener:", e);
+      }
     };
 
     setupListener();

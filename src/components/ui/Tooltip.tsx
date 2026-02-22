@@ -1,4 +1,4 @@
-import { useState, ReactNode, useRef } from "react";
+import { useState, useEffect, ReactNode, useRef } from "react";
 
 interface TooltipProps {
   content: ReactNode;
@@ -38,6 +38,11 @@ export function Tooltip({
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 언마운트 시 타이머 정리 (메모리 누수 방지)
+  useEffect(() => () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+  }, []);
 
   const showTooltip = () => {
     timeoutRef.current = setTimeout(() => setIsVisible(true), delay);

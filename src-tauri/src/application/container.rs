@@ -54,13 +54,28 @@ pub struct AppContainer {
 
 impl AppContainer {
     /// 새 AppContainer 생성
+    /// data_root 설정이 있으면 DB/벡터를 해당 경로에 저장 (C: 부족 대응)
     pub fn new(app_data_dir: &Path) -> Self {
-        let db_path = app_data_dir.join("docufinder.db");
-        let vector_index_path = app_data_dir.join("vectors.usearch");
-        let models_dir = app_data_dir.join("models");
-
         // 디스크에서 설정 로드 (1회만, 이후 캐시 사용)
         let cached_settings = settings::get_settings_sync(app_data_dir);
+
+        // data_root가 설정되어 있으면 해당 경로에 DB/벡터 저장
+        let data_dir = if let Some(ref root) = cached_settings.data_root {
+            let p = PathBuf::from(root);
+            if p.exists() || std::fs::create_dir_all(&p).is_ok() {
+                tracing::info!("Using custom data_root: {:?}", p);
+                p
+            } else {
+                tracing::warn!("data_root {:?} is not accessible, falling back to app_data_dir", p);
+                app_data_dir.to_path_buf()
+            }
+        } else {
+            app_data_dir.to_path_buf()
+        };
+
+        let db_path = data_dir.join("docufinder.db");
+        let vector_index_path = data_dir.join("vectors.usearch");
+        let models_dir = app_data_dir.join("models"); // 모델은 항상 AppData (번들 복사 위치)
 
         Self {
             db_path,

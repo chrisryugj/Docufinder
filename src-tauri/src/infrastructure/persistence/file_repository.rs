@@ -19,7 +19,8 @@ impl SqliteFileRepository {
     /// 새 리포지토리 생성
     pub fn new(db_path: &Path) -> Result<Self, DomainError> {
         let conn = crate::db::get_connection(db_path)
-            .map_err(|e| DomainError::repository(format!("DB open failed: {}", e)))?;
+            .map_err(|e| DomainError::repository(format!("DB open failed: {}", e)))?
+            .into_inner(); // 풀에서 분리 (Repository가 장기 보유)
 
         Ok(Self {
             conn: Mutex::new(conn),

@@ -5,11 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
-/// PDF 파싱 타임아웃 (초) - 대부분 3초 내 완료, hang 방지
-const PDF_PARSE_TIMEOUT_SECS: u64 = 5;
+/// PDF 파싱 타임아웃 (초) - i3-12100 기준 대부분 2초 내 완료, hang 방지
+const PDF_PARSE_TIMEOUT_SECS: u64 = 3;
 
-/// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 20개 = ~160MB 상한)
-const MAX_DETACHED_THREADS: usize = 20;
+/// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 10개 = ~80MB 상한)
+/// 8GB RAM 환경에서 메모리 오버헤드 최소화
+const MAX_DETACHED_THREADS: usize = 10;
 
 /// Detach된 PDF 파싱 스레드 카운터 (리소스 모니터링용)
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미
@@ -65,7 +66,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
                 );
             }
             // 클린업 스레드: 원본 스레드 완료 시 카운터 감소 (최소 스택으로 오버헤드 최소화)
-            let _ = std::thread::Builder::new()
+            // spawn 실패 시 즉시 카운터 감소하여 누수 방지
+            let cleanup_result = std::thread::Builder::new()
                 .name("pdf-cleanup".into())
                 .stack_size(64 * 1024) // 64KB 최소 스택
                 .spawn(move || {
@@ -73,6 +75,10 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
                     DETACHED_THREAD_COUNT.fetch_sub(1, Ordering::Relaxed);
                     tracing::debug!("Detached PDF thread completed and reclaimed");
                 });
+            if cleanup_result.is_err() {
+                DETACHED_THREAD_COUNT.fetch_sub(1, Ordering::Relaxed);
+                tracing::error!("Failed to spawn PDF cleanup thread, counter corrected");
+            }
             return Err(ParseError::ParseError(format!(
                 "PDF parsing timed out after {}s (detached threads: {})",
                 PDF_PARSE_TIMEOUT_SECS,

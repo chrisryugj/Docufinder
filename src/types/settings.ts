@@ -30,4 +30,6 @@ export interface Settings {
   max_file_size_mb: number;
   /** 검색 결과 더 보기 단위 (한 번에 표시할 개수) */
   results_per_page: number;
+  /** 데이터 저장 경로 (DB, 벡터 인덱스). 미설정 시 기본 AppData 사용 */
+  data_root?: string;
 }

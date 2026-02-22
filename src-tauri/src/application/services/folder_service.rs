@@ -171,7 +171,7 @@ impl FolderService {
     // Private Helpers
     // ============================================
 
-    fn get_connection(&self) -> AppResult<rusqlite::Connection> {
+    fn get_connection(&self) -> AppResult<db::PooledConnection> {
         db::get_connection(&self.db_path)
             .map_err(|e| AppError::Internal(format!("DB connection failed: {}", e)))
     }

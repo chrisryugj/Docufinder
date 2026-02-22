@@ -1,5 +1,6 @@
 use rusqlite::{Connection, Result, params};
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// LIKE 패턴 특수문자 이스케이프 (SQL Injection 방지)
@@ -10,11 +11,66 @@ fn escape_like_pattern(s: &str) -> String {
      .replace('_', "\\_")
 }
 
-/// DB 연결 생성 (WAL 모드 + 동시성 최적화)
+// ==================== 커넥션 풀 ====================
+
+/// 커넥션 풀 (최대 8개, Drop 시 자동 반환)
+/// 매 쿼리마다 Connection::open + PRAGMA 8개 실행하던 오버헤드를 제거.
+/// HDD 환경에서 쿼리당 10-30ms 절감.
+static CONN_POOL: Mutex<Vec<Connection>> = Mutex::new(Vec::new());
+const MAX_POOL_SIZE: usize = 8;
+
+/// 풀에서 관리되는 DB 커넥션 래퍼
+/// Deref<Target=Connection>으로 기존 &Connection API 호환.
+/// Drop 시 트랜잭션이 없으면 풀에 자동 반환.
+pub struct PooledConnection {
+    inner: Option<Connection>,
+}
+
+impl Drop for PooledConnection {
+    fn drop(&mut self) {
+        if let Some(conn) = self.inner.take() {
+            // 열린 트랜잭션이 있으면 반환하지 않음 (안전)
+            if conn.is_autocommit() {
+                if let Ok(mut pool) = CONN_POOL.lock() {
+                    if pool.len() < MAX_POOL_SIZE {
+                        pool.push(conn);
+                        return;
+                    }
+                }
+            }
+            // 풀이 가득 차거나 트랜잭션 중이면 그냥 drop
+        }
+    }
+}
+
+impl PooledConnection {
+    /// 커넥션을 풀에서 분리하여 반환 (Drop 시 풀로 반환하지 않음)
+    /// 장기 보유하는 Repository 등에서 사용
+    pub fn into_inner(mut self) -> Connection {
+        self.inner.take().expect("PooledConnection already taken")
+    }
+}
+
+impl std::ops::Deref for PooledConnection {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        self.inner.as_ref().expect("PooledConnection used after take")
+    }
+}
+
+/// DB 연결 획득 (풀 우선, 없으면 새 연결 + PRAGMA 설정)
 ///
-/// PRAGMA를 execute_batch로 한 번에 실행하여 per-connection 오버헤드 최소화.
+/// 풀에 유휴 커넥션이 있으면 PRAGMA 없이 즉시 반환 (~0ms).
 /// HDD에서는 mmap_size=0으로 설정하여 랜덤 I/O 방지.
-pub fn get_connection(db_path: &Path) -> Result<Connection> {
+pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
+    // 풀에서 재사용 시도 (PRAGMA 스킵)
+    if let Ok(mut pool) = CONN_POOL.lock() {
+        if let Some(conn) = pool.pop() {
+            return Ok(PooledConnection { inner: Some(conn) });
+        }
+    }
+
+    // 새 커넥션 생성 + PRAGMA 설정
     let conn = Connection::open(db_path)?;
 
     // HDD 감지: mmap은 HDD에서 랜덤 I/O → 디스크 헤드 thrashing
@@ -34,7 +90,15 @@ pub fn get_connection(db_path: &Path) -> Result<Connection> {
         mmap_size
     ))?;
 
-    Ok(conn)
+    Ok(PooledConnection { inner: Some(conn) })
+}
+
+/// 앱 종료 시 풀 정리 (WAL checkpoint 보장)
+#[allow(dead_code)]
+pub fn drain_pool() {
+    if let Ok(mut pool) = CONN_POOL.lock() {
+        pool.clear();
+    }
 }
 
 /// 현재 스키마 버전

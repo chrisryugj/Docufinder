@@ -181,36 +181,50 @@ pub fn run() {
                 }
             }
 
-            // 모델이 없으면 자동 다운로드 (시맨틱 활성화 시에만)
+            // 모델이 없으면 비동기 자동 다운로드 (시맨틱 활성화 시에만, UI 블로킹 방지)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
             let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
             if setup_settings.semantic_search_enabled && (!e5_model.exists() || !reranker_model.exists()) {
-                tracing::info!("모델 파일이 없습니다. 자동 다운로드를 시작합니다...");
-                match model_downloader::ensure_models(&models_dir) {
-                    Ok(result) => {
-                        let any_downloaded = result.onnx_runtime_downloaded
-                            || result.model_downloaded
-                            || result.tokenizer_downloaded
-                            || result.reranker_model_downloaded
-                            || result.reranker_tokenizer_downloaded;
+                let download_models_dir = models_dir.clone();
+                let download_app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tracing::info!("모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
+                    let _ = download_app_handle.emit("model-download-status", "downloading");
 
-                        if any_downloaded {
-                            tracing::info!(
-                                "모델 다운로드 완료: ONNX Runtime={}, E5 Model={}, E5 Tokenizer={}, Reranker Model={}, Reranker Tokenizer={}",
-                                result.onnx_runtime_downloaded,
-                                result.model_downloaded,
-                                result.tokenizer_downloaded,
-                                result.reranker_model_downloaded,
-                                result.reranker_tokenizer_downloaded
-                            );
+                    match tokio::task::spawn_blocking(move || {
+                        model_downloader::ensure_models(&download_models_dir)
+                    }).await {
+                        Ok(Ok(result)) => {
+                            let any_downloaded = result.onnx_runtime_downloaded
+                                || result.model_downloaded
+                                || result.tokenizer_downloaded
+                                || result.reranker_model_downloaded
+                                || result.reranker_tokenizer_downloaded;
+
+                            if any_downloaded {
+                                tracing::info!(
+                                    "모델 다운로드 완료: ONNX Runtime={}, E5 Model={}, E5 Tokenizer={}, Reranker Model={}, Reranker Tokenizer={}",
+                                    result.onnx_runtime_downloaded,
+                                    result.model_downloaded,
+                                    result.tokenizer_downloaded,
+                                    result.reranker_model_downloaded,
+                                    result.reranker_tokenizer_downloaded
+                                );
+                            }
+                            let _ = download_app_handle.emit("model-download-status", "completed");
+                        }
+                        Ok(Err(e)) => {
+                            tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
+                            let _ = download_app_handle.emit("model-download-status", "failed");
+                        }
+                        Err(e) => {
+                            tracing::error!("모델 다운로드 태스크 실패: {}", e);
+                            let _ = download_app_handle.emit("model-download-status", "failed");
                         }
                     }
-                    Err(e) => {
-                        tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
-                    }
-                }
+                });
             }
 
             // Initialize database with AppContainer
