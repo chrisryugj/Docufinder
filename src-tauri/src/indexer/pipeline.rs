@@ -376,8 +376,9 @@ pub fn index_folder_fts_only(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
+    pre_collected_files: Option<Vec<PathBuf>>,
 ) -> Result<FolderIndexResult, IndexError> {
-    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, false)
+    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, false, pre_collected_files)
 }
 
 /// 폴더 인덱싱 재개 - 이미 인덱싱된 파일 스킵
@@ -389,9 +390,10 @@ pub fn resume_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
-    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, true)
+    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, true, None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn index_folder_fts_impl(
     conn: &Connection,
     folder_path: &Path,
@@ -400,6 +402,7 @@ fn index_folder_fts_impl(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     skip_indexed: bool,
+    pre_collected_files: Option<Vec<PathBuf>>,
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -443,14 +446,19 @@ fn index_folder_fts_impl(
         }
     };
 
-    // 1. 파일 스캔 (모든 파일 수집)
+    // 1. 파일 스캔 (메타데이터 스캔에서 이미 수집한 경우 재사용하여 이중 FS 순회 방지)
     send_progress("scanning", 0, 0, None, true); // force: 시작
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
-    let all_files = collect_files(
-        folder_path,
-        recursive,
-        cancel_flag.as_ref(),
-    );
+    let all_files = if let Some(files) = pre_collected_files {
+        tracing::info!("[FTS] Reusing {} pre-collected file paths (skipping FS walk)", files.len());
+        files
+    } else {
+        collect_files(
+            folder_path,
+            recursive,
+            cancel_flag.as_ref(),
+        )
+    };
 
     // 파싱 가능 파일 / 메타데이터 전용 파일 분리
     let (mut file_paths, metadata_only): (Vec<_>, Vec<_>) = all_files.into_iter().partition(|p| {
@@ -1054,6 +1062,8 @@ pub struct MetadataScanResult {
     pub folder_path: String,
     pub files_found: usize,
     pub errors: Vec<String>,
+    /// 스캔된 파일 경로 목록 (FTS 인덱싱에서 재사용하여 이중 FS 순회 방지)
+    pub file_paths: Vec<PathBuf>,
 }
 
 /// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
@@ -1098,6 +1108,7 @@ pub fn scan_metadata_only(
     let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
     let mut count = 0;
     let mut errors: Vec<String> = Vec::new();
+    let mut collected_paths: Vec<PathBuf> = Vec::new();
 
     // 배치 트랜잭션 (성능 최적화)
     conn.execute_batch("BEGIN")
@@ -1121,6 +1132,7 @@ pub fn scan_metadata_only(
                 folder_path: folder_str,
                 files_found: count,
                 errors: vec!["Cancelled".to_string()],
+                file_paths: collected_paths,
             });
         }
 
@@ -1182,6 +1194,7 @@ pub fn scan_metadata_only(
             continue;
         }
 
+        collected_paths.push(path.to_path_buf());
         count += 1;
         batch_count += 1;
         send_progress("scanning", count, false);
@@ -1207,6 +1220,7 @@ pub fn scan_metadata_only(
         folder_path: folder_str,
         files_found: count,
         errors,
+        file_paths: collected_paths,
     })
 }
 

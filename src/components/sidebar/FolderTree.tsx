@@ -100,7 +100,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     if (isIndexing) return; // 이미 인덱싱 중이면 스킵
 
     const incompleteFolders = Object.entries(folderInfo)
-      .filter(([path, info]) => info.indexing_status === "indexing" && !resumedRef.current.has(path))
+      .filter(([path, info]) => (info.indexing_status === "indexing" || info.indexing_status === "cancelled") && !resumedRef.current.has(path))
       .map(([path]) => path);
 
     if (incompleteFolders.length === 0) return;

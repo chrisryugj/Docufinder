@@ -101,7 +101,7 @@ pub fn drain_pool() {
 }
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 5;
+const CURRENT_SCHEMA_VERSION: i32 = 6;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -260,6 +260,18 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         tracing::info!("Schema migrated to v5 (page_end)");
     }
 
+    // === v6: last_synced_at 컬럼 (시작 sync 스킵용) ===
+    if current_version < 6 {
+        if let Err(e) = conn.execute(
+            "ALTER TABLE watched_folders ADD COLUMN last_synced_at INTEGER",
+            [],
+        ) {
+            tracing::trace!("Migration v6: last_synced_at already exists: {}", e);
+        }
+        set_schema_version(&conn, 6)?;
+        tracing::info!("Schema migrated to v6 (last_synced_at)");
+    }
+
     tracing::info!("Database initialized at {:?} (schema v{})", db_path, CURRENT_SCHEMA_VERSION);
     Ok(())
 }
@@ -334,12 +346,13 @@ pub struct WatchedFolderInfo {
     pub is_favorite: bool,
     pub added_at: Option<i64>,
     pub indexing_status: String,
+    pub last_synced_at: Option<i64>,
 }
 
 /// 감시 폴더 목록 조회 (상세 정보 포함)
 pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFolderInfo>> {
     let mut stmt = conn.prepare(
-        "SELECT path, COALESCE(is_favorite, 0), added_at, COALESCE(indexing_status, 'completed') FROM watched_folders ORDER BY is_favorite DESC, added_at DESC"
+        "SELECT path, COALESCE(is_favorite, 0), added_at, COALESCE(indexing_status, 'completed'), last_synced_at FROM watched_folders ORDER BY is_favorite DESC, added_at DESC"
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -348,6 +361,7 @@ pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFol
             is_favorite: row.get::<_, i32>(1)? == 1,
             added_at: row.get(2)?,
             indexing_status: row.get(3)?,
+            last_synced_at: row.get(4)?,
         })
     })?;
 
@@ -359,6 +373,15 @@ pub fn set_folder_indexing_status(conn: &Connection, path: &str, status: &str) -
     conn.execute(
         "UPDATE watched_folders SET indexing_status = ? WHERE path = ?",
         params![status, path],
+    )
+}
+
+/// 폴더 마지막 동기화 시각 업데이트
+pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
+    let now = current_timestamp();
+    conn.execute(
+        "UPDATE watched_folders SET last_synced_at = ? WHERE path = ?",
+        params![now, path],
     )
 }
 

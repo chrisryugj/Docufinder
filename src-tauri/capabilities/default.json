@@ -5,11 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-open",
     "dialog:allow-open",
     "dialog:allow-ask",
     "process:allow-restart",
     "process:allow-exit"
   ],
-  "_note": "shell:allow-open: 파일/폴더 열기는 커스텀 커맨드(file.rs)로 처리하며 경로+확장자 검증 완료. shell plugin은 Tauri 내부 호환성을 위해 유지."
+  "_note": "파일/폴더 열기는 커스텀 커맨드(file.rs)로 처리하며 경로+확장자 검증 완료. shell:allow-open 제거하여 공격 표면 축소."
 }

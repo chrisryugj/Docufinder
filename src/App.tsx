@@ -340,10 +340,11 @@ function App() {
 
   const handleSettingsSaved = useCallback((settings: Settings) => {
     applySettings(settings);
+    clearSearchCache(); // 설정 변경 시 캐시된 검색 결과 무효화
     if (!(settings.semantic_search_enabled ?? false) && isVectorIndexing) {
       cancelVectorIndexing();
     }
-  }, [applySettings, isVectorIndexing, cancelVectorIndexing]);
+  }, [applySettings, isVectorIndexing, cancelVectorIndexing, clearSearchCache]);
 
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");

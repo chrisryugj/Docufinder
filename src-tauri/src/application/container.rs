@@ -30,6 +30,8 @@ pub struct AppContainer {
     pub vector_index_path: PathBuf,
     /// 모델 디렉토리 경로
     pub models_dir: PathBuf,
+    /// 설정 파일 경로 (항상 AppData 고정, data_root와 무관)
+    pub app_data_dir: PathBuf,
 
     // ============================================
     // Infrastructure (Lazy Load)
@@ -81,6 +83,7 @@ impl AppContainer {
             db_path,
             vector_index_path,
             models_dir,
+            app_data_dir: app_data_dir.to_path_buf(),
             embedder: OnceCell::new(),
             vector_index: OnceCell::new(),
             watch_manager: OnceCell::new(),

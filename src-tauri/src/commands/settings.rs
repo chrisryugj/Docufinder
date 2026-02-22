@@ -167,11 +167,7 @@ pub async fn update_settings(
 
     let app_data_dir = {
         let state = state.read()?;
-        state.db_path.parent().map(|p| p.to_path_buf())
-    };
-
-    let Some(app_data_dir) = app_data_dir else {
-        return Err(ApiError::SettingsSave("앱 데이터 디렉토리를 찾을 수 없습니다".to_string()));
+        state.app_data_dir.clone()
     };
 
     // 자동 시작 설정 변경

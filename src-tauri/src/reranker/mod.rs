@@ -52,10 +52,10 @@ impl Reranker {
             ));
         }
 
-        // 동적 스레드 수 감지 (최대 8개, 최소 4개)
+        // 동적 스레드 수 감지 (최소 2, 최대 4 — 다른 워커와 경합 방지)
         let num_threads = std::thread::available_parallelism()
-            .map(|p| p.get().clamp(4, 8))
-            .unwrap_or(4);
+            .map(|p| p.get().clamp(2, 4))
+            .unwrap_or(2);
 
         tracing::debug!("Reranker using {} intra-op threads", num_threads);
 

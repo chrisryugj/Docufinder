@@ -50,6 +50,7 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
+        pre_collected_files: Option<Vec<PathBuf>>,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
         self.validate_path(path)?;
@@ -70,6 +71,7 @@ impl IndexService {
                 cancel_flag,
                 progress_callback,
                 max_file_size_mb,
+                pre_collected_files,
             )
         })
         .await
@@ -294,8 +296,8 @@ impl IndexService {
             tracing::info!("Deleted {} files for reindexing: {}", deleted, path_str);
         }
 
-        // 3. FTS 재인덱싱
-        self.index_folder_fts(path, include_subfolders, progress_callback, max_file_size_mb).await
+        // 3. FTS 재인덱싱 (재인덱싱은 메타 스캔 없이 직접 수행)
+        self.index_folder_fts(path, include_subfolders, progress_callback, max_file_size_mb, None).await
     }
 
     /// 시맨틱 검색 사용 가능 여부
@@ -313,9 +315,10 @@ impl IndexService {
 
     /// 모든 데이터 클리어 (벡터 + DB)
     pub fn clear_all(&self) -> AppResult<()> {
-        // 1. 벡터 워커 중지
-        if let Ok(worker) = self.vector_worker.read() {
+        // 1. 벡터 워커 중지 + 완전 종료 대기 (레이스 컨디션 방지)
+        if let Ok(mut worker) = self.vector_worker.write() {
             worker.cancel();
+            worker.join(); // embed_batch 완료까지 대기
         }
 
         // 2. 벡터 인덱스 클리어

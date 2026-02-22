@@ -131,16 +131,19 @@ pub async fn add_folder(
         .scan_metadata_only(&canonical_path, include_subfolders, None, max_file_size_mb)
         .await;
 
-    // 3. FilenameCache 즉시 갱신 (메타데이터 스캔 후)
-    if let Ok(ref meta) = metadata_result {
+    // 3. FilenameCache 즉시 갱신 + 메타 스캔에서 수집한 파일 목록 재사용
+    let pre_collected = if let Ok(ref meta) = metadata_result {
         refresh_filename_cache(&state);
         tracing::info!("FilenameCache ready: {} files (metadata scan)", meta.files_found);
-    }
+        Some(meta.file_paths.clone())
+    } else {
+        None
+    };
 
-    // 4. FTS 인덱싱 (느림, 백그라운드처럼 동작하지만 완료 대기)
+    // 4. FTS 인덱싱 (메타 스캔에서 수집한 파일 목록 재사용 → 이중 FS 순회 방지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match service
-        .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
+        .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb, pre_collected)
         .await
     {
         Ok(r) => r,
@@ -159,13 +162,19 @@ pub async fn add_folder(
     // 6. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
-    // 인덱싱 완료 상태로 업데이트 (db_path로 직접 접근, 재잠금 불필요)
+    // 취소 여부 먼저 확인 후 상태 결정
+    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
+
+    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
     if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let _ = crate::db::set_folder_indexing_status(&conn, &path, "completed");
+        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let _ = crate::db::set_folder_indexing_status(&conn, &path, status);
+        if !was_cancelled {
+            let _ = crate::db::update_last_synced_at(&conn, &path);
+        }
     }
 
     // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
-    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
     let auto_vector = semantic_enabled
         && semantic_available
         && vector_mode == VectorIndexingMode::Auto
@@ -272,13 +281,17 @@ pub async fn reindex_folder(
     // FilenameCache 갱신
     refresh_filename_cache(&state);
 
-    // 인덱싱 완료 상태로 업데이트
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
-    }
-
-    // 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
+    // 취소 여부 먼저 확인 후 상태 결정
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
+
+    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
+        if !was_cancelled {
+            let _ = crate::db::update_last_synced_at(&conn, &path_str);
+        }
+    }
     let auto_vector = semantic_enabled
         && semantic_available
         && vector_mode == VectorIndexingMode::Auto
@@ -366,13 +379,17 @@ pub async fn resume_indexing(
     // 파일 감시 시작 (미완료 폴더는 아직 감시 안 했을 수 있음)
     let _ = start_file_watching(&state, &canonical_path);
 
-    // 인덱싱 완료 상태로 업데이트
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "completed");
-    }
-
-    // 벡터 인덱싱 (백그라운드)
+    // 취소 여부 먼저 확인 후 상태 결정
     let was_cancelled = sync_result.errors.iter().any(|e| e.contains("Cancelled"));
+
+    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
+    if let Ok(conn) = crate::db::get_connection(&db_path) {
+        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
+        if !was_cancelled {
+            let _ = crate::db::update_last_synced_at(&conn, &path_str);
+        }
+    }
     let indexed_count = sync_result.added + sync_result.modified;
     let auto_vector = semantic_enabled
         && semantic_available
@@ -507,10 +524,7 @@ pub async fn clear_all_data(
         }
     }
 
-    // 잠시 대기 후 IndexService로 클리어
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-    // 단일 lock 스코프에서 service와 filename_cache 추출
+    // 단일 lock 스코프에서 service와 filename_cache 추출 (worker.join()이 동기적 대기를 보장)
     let (service, filename_cache) = {
         let container = state.read()?;
         (container.index_service(), container.get_filename_cache())

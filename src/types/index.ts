@@ -28,8 +28,8 @@ export interface WatchedFolderInfo {
   path: string;
   is_favorite: boolean;
   added_at: number | null;
-  /** 인덱싱 상태: "indexing" (미완료) | "completed" */
-  indexing_status: "indexing" | "completed";
+  /** 인덱싱 상태: "indexing" (미완료) | "completed" | "cancelled" (취소됨) | "failed" */
+  indexing_status: "indexing" | "completed" | "cancelled" | "failed";
 }
 
 /** 인덱싱 진행률 이벤트 (1단계: FTS) */

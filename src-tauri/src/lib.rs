@@ -315,9 +315,7 @@ pub fn run() {
             // 미완료 벡터 인덱싱 자동 재개 (시맨틱 활성화 + 자동 모드일 때만)
             if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
                 if let Ok(container) = container.read() {
-                    let startup_settings = container.db_path.parent()
-                        .map(crate::commands::settings::get_settings_sync)
-                        .unwrap_or_default();
+                    let startup_settings = container.get_settings();
                     let should_auto_resume = container.is_semantic_available()
                         && startup_settings.semantic_search_enabled
                         && startup_settings.vector_indexing_mode == crate::commands::settings::VectorIndexingMode::Auto;
@@ -362,7 +360,7 @@ pub fn run() {
                     // 앱 초기화 완료 대기 (UI 렌더링 우선, 1초면 충분)
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-                    let (folders_to_sync, service, include_subfolders, max_file_size_mb) = {
+                    let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path) = {
                         let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
                             Some(c) => c,
                             None => return,
@@ -375,25 +373,37 @@ pub fn run() {
                             Ok(c) => c,
                             Err(_) => return,
                         };
-                        // 완료된 폴더만 (미완료는 FolderTree가 resume_indexing으로 처리)
+                        // 완료된 폴더만 (미완료/취소는 FolderTree가 resume_indexing으로 처리)
                         let folder_infos = db::get_watched_folders_with_info(&conn).unwrap_or_default();
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        // 최근 5분 이내 동기화된 폴더는 스킵 (HDD 부하 방지)
+                        const SYNC_SKIP_SECS: i64 = 300;
                         let completed: Vec<String> = folder_infos.into_iter()
-                            .filter(|f| f.indexing_status == "completed")
+                            .filter(|f| {
+                                if f.indexing_status != "completed" { return false; }
+                                match f.last_synced_at {
+                                    Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
+                                        tracing::debug!("[Startup Sync] Skipping {} (synced {}s ago)", f.path, now - ts);
+                                        false
+                                    }
+                                    _ => true,
+                                }
+                            })
                             .map(|f| f.path)
                             .collect();
 
                         if completed.is_empty() { return; }
 
-                        let app_data_dir = container.db_path.parent().map(|p| p.to_path_buf());
-                        let settings = app_data_dir
-                            .as_ref()
-                            .map(|dir| crate::commands::settings::get_settings_sync(dir))
-                            .unwrap_or_default();
+                        let settings = container.get_settings();
                         (
                             completed,
                             container.index_service(),
                             settings.include_subfolders,
                             settings.max_file_size_mb,
+                            container.db_path.clone(),
                         )
                     };
 
@@ -432,6 +442,10 @@ pub fn run() {
                             Ok(result) => {
                                 total_added += result.added;
                                 total_deleted += result.deleted;
+                                // 동기화 완료 시각 기록 (다음 시작 시 스킵 판단용)
+                                if let Ok(conn) = db::get_connection(&db_path) {
+                                    let _ = db::update_last_synced_at(&conn, folder);
+                                }
                                 if result.added > 0 || result.deleted > 0 {
                                     tracing::info!(
                                         "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
