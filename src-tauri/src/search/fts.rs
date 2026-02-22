@@ -120,80 +120,8 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
     terms.join(" AND ")
 }
 
-/// 하이라이트 범위 계산 (문자 인덱스 반환, JavaScript 호환)
-#[allow(dead_code)]
-pub fn find_highlight_ranges(content: &str, query: &str) -> Vec<(usize, usize)> {
-    let trimmed = query.trim();
-    if trimmed.is_empty() {
-        return vec![];
-    }
-
-    let mut terms: Vec<String> = trimmed
-        .split_whitespace()
-        .map(|term| term.trim_matches('"').trim_matches('\''))
-        .filter(|term| !term.is_empty())
-        .map(|term| term.to_lowercase())
-        .collect();
-
-    if terms.is_empty() {
-        return vec![];
-    }
-
-    terms.sort();
-    terms.dedup();
-
-    let content_lower = content.to_lowercase();
-    let content_chars: Vec<char> = content_lower.chars().collect();
-    let content_len = content_chars.len();
-    let mut ranges: Vec<(usize, usize)> = Vec::new();
-
-    for term in terms {
-        let term_chars: Vec<char> = term.chars().collect();
-        if term_chars.is_empty() {
-            continue;
-        }
-
-        let term_len = term_chars.len();
-        if term_len > content_len {
-            continue;
-        }
-
-        let mut i = 0;
-        while i + term_len <= content_len {
-            if content_chars[i..i + term_len] == term_chars[..] {
-                ranges.push((i, i + term_len));
-                i += term_len;
-            } else {
-                i += 1;
-            }
-        }
-    }
-
-    if ranges.is_empty() {
-        return ranges;
-    }
-
-    ranges.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-
-    let mut merged = Vec::with_capacity(ranges.len());
-    let mut current = ranges[0];
-    for range in ranges.into_iter().skip(1) {
-        if range.0 <= current.1 {
-            if range.1 > current.1 {
-                current.1 = range.1;
-            }
-        } else {
-            merged.push(current);
-            current = range;
-        }
-    }
-    merged.push(current);
-
-    merged
-}
-
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // FTS 결과 필드 (일부만 현재 소비)
 pub struct FtsResult {
     pub chunk_id: i64,
     pub file_path: String,

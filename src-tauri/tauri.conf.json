@@ -5,7 +5,7 @@
   "identifier": "com.anything.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5173",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Anything",
+        "visible": false,
         "width": 1200,
         "height": 800,
         "resizable": true,

@@ -156,6 +156,26 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     }
 }
 
+/// 설정 값 범위 검증 (서버측 — 프론트엔드 우회 방지)
+fn validate_settings(settings: &Settings) -> ApiResult<()> {
+    if settings.max_results == 0 || settings.max_results > 500 {
+        return Err(ApiError::Validation("max_results는 1~500 범위여야 합니다".into()));
+    }
+    if settings.chunk_size < 256 || settings.chunk_size > 4096 {
+        return Err(ApiError::Validation("chunk_size는 256~4096 범위여야 합니다".into()));
+    }
+    if settings.chunk_overlap >= settings.chunk_size {
+        return Err(ApiError::Validation("chunk_overlap은 chunk_size보다 작아야 합니다".into()));
+    }
+    if settings.results_per_page == 0 || settings.results_per_page > 200 {
+        return Err(ApiError::Validation("results_per_page는 1~200 범위여야 합니다".into()));
+    }
+    if settings.max_file_size_mb > 500 {
+        return Err(ApiError::Validation("max_file_size_mb는 최대 500MB입니다".into()));
+    }
+    Ok(())
+}
+
 /// 설정 업데이트
 #[tauri::command]
 pub async fn update_settings(
@@ -163,6 +183,7 @@ pub async fn update_settings(
     settings: Settings,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
+    validate_settings(&settings)?;
     tracing::info!("Updating settings: {:?}", settings);
 
     let app_data_dir = {

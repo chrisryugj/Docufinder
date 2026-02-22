@@ -23,7 +23,15 @@
         }
       } catch(e) {}
     </script>
-    <div id="root"></div>
+    <style>
+      html { background: #F8FAFC; }
+      html.dark { background: #0F172A; }
+      .splash { display:flex; align-items:center; justify-content:center; height:100vh; }
+      .splash-spinner { width:32px; height:32px; border:3px solid #e2e8f0; border-top-color:#14b8a6; border-radius:50%; animation:spin .6s linear infinite; }
+      html.dark .splash-spinner { border-color:#334155; border-top-color:#14b8a6; }
+      @keyframes spin { to { transform:rotate(360deg); } }
+    </style>
+    <div id="root"><div class="splash"><div class="splash-spinner"></div></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

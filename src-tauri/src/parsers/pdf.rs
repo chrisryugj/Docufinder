@@ -5,8 +5,24 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
-/// PDF 파싱 타임아웃 (초) - i3-12100 기준 대부분 2초 내 완료, hang 방지
-const PDF_PARSE_TIMEOUT_SECS: u64 = 3;
+/// PDF 파싱 기본 타임아웃 (초)
+/// HDD에서 대용량 PDF는 디스크 읽기만으로 수 초 소요 → 여유있게 설정
+const PDF_PARSE_TIMEOUT_BASE_SECS: u64 = 5;
+
+/// MB당 추가 타임아웃 (초) — HDD 순차 읽기 ~100MB/s 감안, 안전 마진 포함
+const PDF_PARSE_TIMEOUT_PER_MB: f64 = 0.3;
+
+/// 최대 타임아웃 상한 (초) — 무한 대기 방지
+const PDF_PARSE_TIMEOUT_MAX_SECS: u64 = 30;
+
+/// 파일 크기 기반 동적 타임아웃 계산
+fn calc_timeout_secs(path: &Path) -> u64 {
+    let file_size_mb = std::fs::metadata(path)
+        .map(|m| m.len() as f64 / 1_048_576.0)
+        .unwrap_or(0.0);
+    let timeout = PDF_PARSE_TIMEOUT_BASE_SECS as f64 + file_size_mb * PDF_PARSE_TIMEOUT_PER_MB;
+    (timeout.ceil() as u64).min(PDF_PARSE_TIMEOUT_MAX_SECS)
+}
 
 /// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 10개 = ~80MB 상한)
 /// 8GB RAM 환경에서 메모리 오버헤드 최소화
@@ -31,6 +47,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     // pdf-extract가 일부 PDF에서 내부 스레드 panic 발생 → 메인 스레드 hang
     // 별도 스레드 + 타임아웃으로 방어
+    let timeout_secs = calc_timeout_secs(path);
     let path_owned = path.to_path_buf();
     let (tx, rx) = mpsc::channel();
 
@@ -39,8 +56,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         let _ = tx.send(result);
     });
 
-    // 타임아웃 대기
-    let raw_text = match rx.recv_timeout(Duration::from_secs(PDF_PARSE_TIMEOUT_SECS)) {
+    // 동적 타임아웃 대기 (파일 크기 기반)
+    let raw_text = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
         Ok(Ok(Ok(text))) => text,
         Ok(Ok(Err(e))) => {
             return Err(ParseError::ParseError(format!("PDF extraction failed: {}", e)));
@@ -55,7 +72,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             let count = DETACHED_THREAD_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
             tracing::warn!(
                 "PDF parsing timed out after {}s, thread detached (total: {}): {:?}",
-                PDF_PARSE_TIMEOUT_SECS,
+                timeout_secs,
                 count,
                 path
             );
@@ -81,7 +98,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             }
             return Err(ParseError::ParseError(format!(
                 "PDF parsing timed out after {}s (detached threads: {})",
-                PDF_PARSE_TIMEOUT_SECS,
+                timeout_secs,
                 count
             )));
         }

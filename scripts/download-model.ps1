@@ -92,7 +92,7 @@ if (-not (Test-Path $RERANK_MODEL_DIR)) {
     New-Item -ItemType Directory -Path $RERANK_MODEL_DIR | Out-Null
 }
 
-$RERANK_MODEL_SHA256 = "13d18cce0f3c0b1115f11ce42c2078cc73b6e0bbe7d8b4ba6e6b8b3dd1ebb49b"
+$RERANK_MODEL_SHA256 = "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe"
 
 $rerankModelPath = Join-Path $RERANK_MODEL_DIR "model.onnx"
 if (-not (Test-Path $rerankModelPath)) {

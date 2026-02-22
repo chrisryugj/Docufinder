@@ -7,6 +7,8 @@ interface UseCollapsibleSearchOptions {
   onCollapse?: () => void;
   /** 확장 시 콜백 */
   onExpand?: () => void;
+  /** 이 input에 포커스 중이면 collapse 하지 않음 */
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 interface UseCollapsibleSearchReturn {
@@ -27,7 +29,7 @@ interface UseCollapsibleSearchReturn {
 export function useCollapsibleSearch(
   options: UseCollapsibleSearchOptions = {}
 ): UseCollapsibleSearchReturn {
-  const { threshold = 100, onCollapse, onExpand } = options;
+  const { threshold = 100, onCollapse, onExpand, searchInputRef } = options;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
@@ -86,10 +88,14 @@ export function useCollapsibleSearch(
           return;
         }
 
+        // 검색 입력 중이면 collapse 하지 않음 (타이핑 중 포커스 이탈 방지)
+        const isSearchFocused = searchInputRef?.current != null &&
+          document.activeElement === searchInputRef.current;
+
         // 축소/확장 판단
         let shouldCollapse = prevCollapsed.current;
 
-        if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current) {
+        if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current && !isSearchFocused) {
           shouldCollapse = true;
         } else if (prevCollapsed.current && scrollDirectionUp.current && currentScrollTop < threshold / 2) {
           shouldCollapse = false;
@@ -107,7 +113,7 @@ export function useCollapsibleSearch(
         }
       });
     };
-  }, [threshold, onCollapse, onExpand]);
+  }, [threshold, onCollapse, onExpand, searchInputRef]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });

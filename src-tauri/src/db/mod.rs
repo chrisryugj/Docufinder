@@ -13,11 +13,12 @@ fn escape_like_pattern(s: &str) -> String {
 
 // ==================== 커넥션 풀 ====================
 
-/// 커넥션 풀 (최대 8개, Drop 시 자동 반환)
+/// 커넥션 풀 (최대 4개, Drop 시 자동 반환)
 /// 매 쿼리마다 Connection::open + PRAGMA 8개 실행하던 오버헤드를 제거.
 /// HDD 환경에서 쿼리당 10-30ms 절감.
+/// i3-12100 (4C) 기준 동시 DB 접근은 3-4개면 충분.
 static CONN_POOL: Mutex<Vec<Connection>> = Mutex::new(Vec::new());
-const MAX_POOL_SIZE: usize = 8;
+const MAX_POOL_SIZE: usize = 4;
 
 /// 풀에서 관리되는 DB 커넥션 래퍼
 /// Deref<Target=Connection>으로 기존 &Connection API 호환.
@@ -90,14 +91,6 @@ pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
     ))?;
 
     Ok(PooledConnection { inner: Some(conn) })
-}
-
-/// 앱 종료 시 풀 정리 (WAL checkpoint 보장)
-#[allow(dead_code)]
-pub fn drain_pool() {
-    if let Ok(mut pool) = CONN_POOL.lock() {
-        pool.clear();
-    }
 }
 
 /// 현재 스키마 버전
@@ -383,16 +376,6 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
         "UPDATE watched_folders SET last_synced_at = ? WHERE path = ?",
         params![now, path],
     )
-}
-
-/// 미완료 인덱싱 폴더 조회 (앱 재시작 시 사용)
-#[allow(dead_code)]
-pub fn get_incomplete_folders(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT path FROM watched_folders WHERE indexing_status = 'indexing'"
-    )?;
-    let rows = stmt.query_map([], |row| row.get(0))?;
-    rows.collect()
 }
 
 /// 폴더 내 파일 메타데이터 조회 (sync diff용)
@@ -825,7 +808,7 @@ pub fn get_folder_stats(conn: &Connection, folder_path: &str) -> Result<FolderSt
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 구조체 필드는 데이터 모델의 일부 (일부 필드만 현재 사용)
 pub struct ChunkInfo {
     pub chunk_id: i64,
     pub file_id: i64,
@@ -887,8 +870,6 @@ pub fn upsert_file_fts_only(
 
 /// 파일 메타데이터만 저장 (FTS 인덱싱 없이, 파일명 검색용)
 /// scan_metadata_only()에서 사용
-/// NOTE: 현재 미사용 (scan_metadata_only가 미사용)
-#[allow(dead_code)]
 pub fn insert_file_metadata_only(
     conn: &Connection,
     path: &str,

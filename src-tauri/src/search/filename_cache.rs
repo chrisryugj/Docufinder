@@ -208,34 +208,6 @@ impl Default for FilenameCache {
     }
 }
 
-/// 검색 결과 (filename.rs와 호환)
-/// NOTE: 현재 미사용 (SearchResponse 직접 사용 중)
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct FilenameSearchResult {
-    pub file_id: i64,
-    pub file_path: String,
-    pub file_name: String,
-    pub file_type: String,
-    pub size: i64,
-    pub modified_at: i64,
-    pub score: f64,
-}
-
-impl From<FilenameEntry> for FilenameSearchResult {
-    fn from(entry: FilenameEntry) -> Self {
-        Self {
-            file_id: entry.file_id,
-            file_path: entry.path,
-            file_name: entry.name,
-            file_type: entry.file_type,
-            size: entry.size,
-            modified_at: entry.modified_at,
-            score: 1.0,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

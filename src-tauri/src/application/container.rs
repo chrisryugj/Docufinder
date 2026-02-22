@@ -174,6 +174,15 @@ impl AppContainer {
                     tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
                 }
 
+                // 8GB RAM 환경 경고: ONNX 모델 ~350MB + Reranker ~100MB 상주
+                let sys_mem = sysinfo_total_memory_mb();
+                if sys_mem > 0 && sys_mem <= 8192 {
+                    tracing::warn!(
+                        "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
+                        sys_mem
+                    );
+                }
+
                 Embedder::new(&model_path, &tokenizer_path)
                     .map(Arc::new)
                     .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))
@@ -292,4 +301,24 @@ impl AppContainer {
             .load_from_db(&conn)
             .map_err(|e| ApiError::DatabaseQuery(format!("Failed to load filename cache: {}", e)))
     }
+}
+
+/// 시스템 총 메모리 조회 (MB 단위, 실패 시 0)
+#[cfg(windows)]
+fn sysinfo_total_memory_mb() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    unsafe {
+        let mut mem = std::mem::zeroed::<MEMORYSTATUSEX>();
+        mem.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if GlobalMemoryStatusEx(&mut mem) != 0 {
+            mem.ullTotalPhys / 1_048_576
+        } else {
+            0
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn sysinfo_total_memory_mb() -> u64 {
+    0
 }

@@ -119,6 +119,7 @@ export const SearchResultItem = memo(function SearchResultItem({
       } as React.CSSProperties}
       role="option"
       aria-selected={isSelected}
+      aria-label={`${result.file_name} - ${result.match_type} 검색 결과`}
       tabIndex={isSelected ? 0 : -1}
     >
       {/* 헤더 */}

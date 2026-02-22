@@ -5,6 +5,7 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-show",
     "dialog:allow-open",
     "dialog:allow-ask",
     "process:allow-restart",

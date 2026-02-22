@@ -139,6 +139,9 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
                 border: "1px solid var(--color-border)",
               }}
               title={currentMode?.desc}
+              aria-haspopup="listbox"
+              aria-expanded={showModeDropdown}
+              aria-label={`검색 모드: ${currentMode?.label}`}
             >
               {currentMode?.label}
               <svg

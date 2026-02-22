@@ -36,6 +36,7 @@ function App() {
   } = useCollapsibleSearch({
     threshold: 200,
     onCollapse: () => searchInputRef.current?.blur(),
+    searchInputRef,
   });
 
   // 테마
@@ -142,11 +143,26 @@ function App() {
     refreshVectorStatus,
   });
 
-  // 벡터 인덱싱 완료 시 토스트
+  // 렌더 완료 후 창 표시 + 포커스 (visible: false safety net)
+  useEffect(() => {
+    const win = getCurrentWindow();
+    win.show();
+    win.setFocus();
+  }, []);
+
+  // FTS 인덱싱 완료 시 검색 캐시 무효화 (stale 결과 방지)
+  useEffect(() => {
+    if (progress?.phase === "completed") {
+      clearSearchCache();
+    }
+  }, [progress?.phase]);
+
+  // 벡터 인덱싱 완료 시 토스트 + 캐시 무효화
   useEffect(() => {
     if (vectorJustCompleted) {
       showToast("시맨틱 검색 준비 완료!", "success");
       clearVectorCompleted();
+      clearSearchCache();
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted]);
 

@@ -5,9 +5,8 @@
 
 use crate::constants::SUPPORTED_EXTENSIONS;
 use crate::db;
-use crate::embedder::Embedder;
 use crate::parsers::{parse_file, ParsedDocument};
-use crate::search::vector::VectorIndex;
+
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -24,31 +23,6 @@ const CHANNEL_BUFFER_SIZE: usize = 32;
 
 /// FTS 배치 트랜잭션 크기 - fsync 오버헤드 감소 (3~5배 성능 향상)
 const TRANSACTION_BATCH_SIZE: usize = 200;
-
-/// 단일 파일 인덱싱 (FTS + 벡터)
-/// NOTE: 현재 미사용 (index_folder_streaming 사용 중)
-#[allow(dead_code)]
-pub fn index_file(
-    conn: &Connection,
-    path: &Path,
-    embedder: Option<&Arc<Embedder>>,
-    vector_index: Option<&Arc<VectorIndex>>,
-) -> Result<IndexResult, IndexError> {
-    // 1. 파일 파싱
-    let document = parse_file(path).map_err(|e| IndexError::ParseError(e.to_string()))?;
-    let total_chars = document.content.len();
-
-    // 2. DB 저장 (공통 로직)
-    let (chunks_count, vectors_count) =
-        save_document_to_db(conn, path, document, embedder, vector_index)?;
-
-    Ok(IndexResult {
-        file_path: path.to_string_lossy().to_string(),
-        chunks_count,
-        vectors_count,
-        total_chars,
-    })
-}
 
 /// 파싱 결과 (스트리밍 파이프라인용)
 enum ParseResult {
@@ -225,131 +199,6 @@ fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexEr
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     Ok(())
-}
-
-/// 파싱된 문서를 DB에 저장 (FTS + 벡터) - 공통 로직
-/// 반환: (chunks_count, vectors_count)
-/// NOTE: index_file에서만 사용 (현재 미사용)
-#[allow(dead_code)]
-fn save_document_to_db(
-    conn: &Connection,
-    path: &Path,
-    document: ParsedDocument,
-    embedder: Option<&Arc<Embedder>>,
-    vector_index: Option<&Arc<VectorIndex>>,
-) -> Result<(usize, usize), IndexError> {
-    let path_str = path.to_string_lossy().to_string();
-
-    // 파일 메타데이터 수집
-    let metadata = fs::metadata(path).map_err(|e| IndexError::IoError(e.to_string()))?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let file_type = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let size = metadata.len() as i64;
-    let modified_at = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    conn.execute_batch("BEGIN")
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    let result = (|| {
-        // 파일 정보 DB 저장
-        let file_id = db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
-            .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-        // 기존 청크 조회
-        let old_chunk_ids = db::get_chunk_ids_for_file(conn, file_id)
-            .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-        // _no_tx 버전 사용: 이미 BEGIN 트랜잭션 내에서 실행 중
-        db::delete_chunks_for_file_no_tx(conn, file_id)
-            .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-        // 청크 저장 + FTS 인덱싱
-        // 성능 최적화: into_iter()로 소비하여 clone() 제거 (메모리 20% 절감)
-        let chunks_count = document.chunks.len();
-        let mut chunk_ids: Vec<i64> = Vec::with_capacity(chunks_count);
-        let mut chunk_contents: Vec<String> = Vec::with_capacity(chunks_count);
-
-        for (idx, chunk) in document.chunks.into_iter().enumerate() {
-            let chunk_id = db::insert_chunk(
-                conn,
-                file_id,
-                idx,
-                &chunk.content,
-                chunk.start_offset,
-                chunk.end_offset,
-                chunk.page_number,
-                chunk.page_end,
-                chunk.location_hint.as_deref(),
-            )
-            .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-            chunk_ids.push(chunk_id);
-            chunk_contents.push(chunk.content);  // move, not clone
-        }
-
-        Ok((old_chunk_ids, chunk_ids, chunk_contents, chunks_count))
-    })();
-
-    let (old_chunk_ids, chunk_ids, chunk_contents, chunks_count) = match result {
-        Ok(data) => data,
-        Err(err) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(err);
-        }
-    };
-
-    if let Err(e) = conn.execute_batch("COMMIT") {
-        let _ = conn.execute_batch("ROLLBACK");
-        return Err(IndexError::DbError(e.to_string()));
-    }
-
-    if let Some(vi) = vector_index {
-        for chunk_id in &old_chunk_ids {
-            vi.remove(*chunk_id).ok();
-        }
-    }
-
-    // 벡터 인덱싱 (락 불필요 - &self로 호출)
-    let vectors_count = if let (Some(emb), Some(vi)) = (embedder, vector_index) {
-        match emb.embed_batch(&chunk_contents) {
-            Ok(embeddings) => {
-                for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
-                    if let Err(e) = vi.add(*chunk_id, embedding) {
-                        tracing::warn!("Failed to add vector for chunk {}: {}", chunk_id, e);
-                    }
-                }
-                chunk_ids.len()
-            }
-            Err(e) => {
-                tracing::warn!("Failed to embed chunks for {}: {}", path_str, e);
-                0
-            }
-        }
-    } else {
-        0
-    };
-
-    tracing::debug!(
-        "Indexed: {} ({} chunks, {} vectors)",
-        path_str,
-        chunks_count,
-        vectors_count
-    );
-
-    Ok((chunks_count, vectors_count))
 }
 
 // ==================== 2단계 인덱싱: FTS 전용 ====================
@@ -959,33 +808,6 @@ pub fn sync_folder_fts(
     })
 }
 
-/// 문서를 DB에 저장 - FTS만 (벡터 제외)
-#[allow(dead_code)]
-fn save_document_to_db_fts_only(
-    conn: &Connection,
-    path: &Path,
-    document: ParsedDocument,
-) -> Result<usize, IndexError> {
-    conn.execute_batch("BEGIN")
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    let result = save_document_to_db_fts_only_no_tx(conn, path, document);
-
-    match &result {
-        Ok(_) => {
-            if let Err(e) = conn.execute_batch("COMMIT") {
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(IndexError::DbError(e.to_string()));
-            }
-        }
-        Err(_) => {
-            let _ = conn.execute_batch("ROLLBACK");
-        }
-    }
-
-    result
-}
-
 /// 문서를 DB에 저장 - FTS만 (트랜잭션 없음, 배치용)
 fn save_document_to_db_fts_only_no_tx(
     conn: &Connection,
@@ -1045,10 +867,8 @@ fn save_document_to_db_fts_only_no_tx(
 }
 
 // ==================== Phase 2: 메타데이터 전용 스캔 ====================
-// NOTE: 현재 미사용 (향후 백그라운드 파싱 통합 예정)
 
 /// 메타데이터 스캔 진행률
-#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MetadataScanProgress {
     pub phase: String,
@@ -1256,7 +1076,7 @@ pub fn index_file_fts_only(conn: &Connection, path: &Path) -> Result<IndexResult
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 인덱싱 결과 메타데이터 (일부 필드만 현재 사용)
 pub struct IndexResult {
     pub file_path: String,
     pub chunks_count: usize,
@@ -1265,7 +1085,6 @@ pub struct IndexResult {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct FolderIndexResult {
     pub folder_path: String,
     pub indexed_count: usize,

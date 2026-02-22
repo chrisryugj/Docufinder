@@ -85,11 +85,10 @@ export function SearchResultList({
     });
   }, []);
 
-  // 검색 결과 변경 시 상태 초기화
+  // 검색 결과 변경 시 상태 초기화 (스크롤은 건드리지 않음 — 타이핑 중 포커스 이탈 방지)
   useEffect(() => {
     setExpandedIndex(null);
     setVisibleCount(pageSize);
-    listRef.current?.scrollIntoView({ block: "start" });
   }, [results, pageSize]);
 
   // 확장 토글 핸들러

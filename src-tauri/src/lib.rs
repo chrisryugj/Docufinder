@@ -19,6 +19,7 @@ pub use application::container::AppContainer;
 
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -82,6 +83,9 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // [DEBUG] WebView2 프록시 설정 확인
+    eprintln!("[DEBUG] WEBVIEW2_ARGS={:?}", std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"));
+
     // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info.location()
@@ -132,6 +136,14 @@ pub fn run() {
     // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
     unsafe { std::env::set_var("TOKENIZERS_PARALLELISM", "false") };
 
+    // Dev mode: WebView2 프록시 비활성화는 package.json의 tauri:dev 스크립트에서
+    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--no-proxy-server로 설정.
+    // (Rust set_var는 WebView2 초기화 후 적용되어 효과 없음)
+
+    // visible: false → page load 완료 후 창 표시 (검정화면 방지)
+    let show_on_load = Arc::new(AtomicBool::new(true));
+    let show_on_load_flag = show_on_load.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -140,7 +152,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .setup(|app| {
+        .setup(move |app| {
             // Initialize app data directory
             let app_data_dir = app
                 .path()
@@ -275,6 +287,19 @@ pub fn run() {
                     }
                 }
             }
+
+            // ⚡ 디스크 타입 사전 감지 (C:, D: — PowerShell 호출 1-3초를 앱 시작 시 흡수)
+            tauri::async_runtime::spawn(async {
+                tokio::task::spawn_blocking(|| {
+                    for letter in ['C', 'D', 'E'] {
+                        let path = format!("{}:\\", letter);
+                        if std::path::Path::new(&path).exists() {
+                            let _ = crate::utils::disk_info::detect_disk_type(std::path::Path::new(&path));
+                        }
+                    }
+                    tracing::debug!("Disk type pre-detection completed");
+                }).await.ok();
+            });
 
             // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색)
             match container.load_filename_cache() {
@@ -473,10 +498,12 @@ pub fn run() {
                 });
             }
 
-            // 개발 모드에서 DevTools 열기
+            // 개발 모드에서 DevTools 열기 (DEVTOOLS=1 환경변수로 제어)
             #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
+            if std::env::var("DEVTOOLS").unwrap_or_default() == "1" {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.open_devtools();
+                }
             }
 
             // 시스템 트레이 설정
@@ -553,13 +580,25 @@ pub fn run() {
             let settings = commands::settings::get_settings_sync(&app_data_dir);
 
             if minimized_arg || settings.start_minimized {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.hide();
-                    tracing::info!("Started minimized to tray");
-                }
+                // visible: false 상태이므로 on_page_load에서 show하지 않도록 플래그 설정
+                show_on_load.store(false, Ordering::Relaxed);
+                tracing::info!("Started minimized to tray");
             }
 
             Ok(())
+        })
+        .on_page_load(move |webview, payload| {
+            tracing::info!("[PERF] on_page_load: url={}, event={:?}", payload.url(), payload.event());
+            // page load 완료 시 창 표시 (visible: false → show)
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+                && show_on_load_flag.load(Ordering::Relaxed)
+            {
+                if let Some(window) = webview.app_handle().get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    tracing::info!("[PERF] Window shown after page load");
+                }
+            }
         })
         .on_window_event(|window, event| {
             match event {
@@ -611,14 +650,24 @@ pub fn run() {
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
             eprintln!("Fatal: Tauri failed to start: {}", e);
-            // 크래시 로그에도 기록
+            // 크래시 로그에도 기록 (append 모드: 이전 기록 보존)
             if let Some(data_dir) = dirs::data_dir() {
-                let crash_log = data_dir.join("com.anything.app").join("crash.log");
-                let _ = std::fs::write(&crash_log, format!(
+                let crash_dir = data_dir.join("com.anything.app");
+                let _ = std::fs::create_dir_all(&crash_dir);
+                let crash_log = crash_dir.join("crash.log");
+                let entry = format!(
                     "[{}] FATAL: Tauri failed to start: {}\n",
                     chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                     e
-                ));
+                );
+                use std::io::Write;
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&crash_log)
+                {
+                    let _ = file.write_all(entry.as_bytes());
+                }
             }
             std::process::exit(1);
         });

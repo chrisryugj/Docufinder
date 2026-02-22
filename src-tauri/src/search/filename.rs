@@ -87,7 +87,7 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Filena
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[allow(dead_code)] // 검색 결과 필드 (일부만 현재 소비)
 pub struct FilenameResult {
     pub file_id: i64,
     pub file_path: String,
