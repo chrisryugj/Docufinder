@@ -28,4 +28,6 @@ export interface Settings {
   indexing_intensity: IndexingIntensity;
   /** 단일 파일 최대 크기 (MB). 초과 시 스킵 */
   max_file_size_mb: number;
+  /** 검색 결과 더 보기 단위 (한 번에 표시할 개수) */
+  results_per_page: number;
 }

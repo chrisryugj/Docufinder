@@ -331,6 +331,14 @@ impl IndexService {
             .map_err(|e| AppError::Internal(e.to_string()))?;
         tracing::info!("Database cleared");
 
+        // 4. VACUUM - 삭제된 데이터의 디스크 공간 회수
+        // VACUUM은 트랜잭션 밖에서 실행해야 하므로 clear_all_data 완료 후 별도 실행
+        if let Err(e) = conn.execute_batch("VACUUM") {
+            tracing::warn!("VACUUM failed (non-critical): {}", e);
+        } else {
+            tracing::info!("Database vacuumed successfully");
+        }
+
         Ok(())
     }
 

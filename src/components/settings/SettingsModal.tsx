@@ -55,6 +55,13 @@ const INDEXING_INTENSITY_OPTIONS = [
   { value: "background", label: "백그라운드 (최소 부하)" },
 ];
 
+const RESULTS_PER_PAGE_OPTIONS = [
+  { value: "20", label: "20개" },
+  { value: "50", label: "50개 (기본)" },
+  { value: "100", label: "100개" },
+  { value: "200", label: "200개" },
+];
+
 const MAX_FILE_SIZE_OPTIONS = [
   { value: "50", label: "50 MB" },
   { value: "100", label: "100 MB" },
@@ -95,7 +102,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         const result = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
         setSettings(result);
       } catch (err) {
-        setError(`설정 로드 실패: ${err}`);
+        const message = err instanceof Error ? err.message : String(err);
+        setError(`설정을 불러올 수 없습니다: ${message}`);
       } finally {
         setIsLoading(false);
       }
@@ -114,7 +122,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       onSettingsSaved?.(settings);
       onClose();
     } catch (err) {
-      setError(`설정 저장 실패: ${err}`);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`설정 저장에 실패했습니다: ${message}`);
     } finally {
       setIsSaving(false);
     }
@@ -218,6 +227,25 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               onChange={(value) => handleChange("max_results", parseInt(value))}
               placeholder="결과 수 선택"
             />
+          </div>
+
+          {/* 더 보기 단위 */}
+          <div>
+            <label
+              className="block text-sm font-medium mb-2"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              결과 표시 단위
+            </label>
+            <Dropdown
+              options={RESULTS_PER_PAGE_OPTIONS}
+              value={String(settings.results_per_page ?? 50)}
+              onChange={(value) => handleChange("results_per_page", parseInt(value))}
+              placeholder="단위 선택"
+            />
+            <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+              한 번에 표시할 검색 결과 수. "더 보기"를 눌러 추가 로드
+            </p>
           </div>
 
           {/* 최소 신뢰도 */}

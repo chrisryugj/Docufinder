@@ -42,6 +42,9 @@ pub struct Settings {
     /// 단일 파일 최대 크기 (MB). 초과 시 스킵
     #[serde(default = "default_max_file_size_mb")]
     pub max_file_size_mb: u64,
+    /// 검색 결과 더 보기 단위 (한 번에 표시할 개수)
+    #[serde(default = "default_results_per_page")]
+    pub results_per_page: usize,
 }
 
 fn default_include_subfolders() -> bool {
@@ -50,6 +53,10 @@ fn default_include_subfolders() -> bool {
 
 fn default_max_file_size_mb() -> u64 {
     200
+}
+
+fn default_results_per_page() -> usize {
+    50
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -113,6 +120,7 @@ impl Default for Settings {
             vector_indexing_mode: VectorIndexingMode::Manual,
             indexing_intensity: IndexingIntensity::Balanced,
             max_file_size_mb: 200,
+            results_per_page: 50,
         }
     }
 }

@@ -34,7 +34,11 @@ interface SearchResultListProps {
   minConfidence?: number;
   /** 검색 소요 시간 (ms) */
   searchTime?: number | null;
+  /** 결과 표시 단위 (더 보기 개수) */
+  resultsPerPage?: number;
 }
+
+const DEFAULT_RESULTS_PER_PAGE = 50;
 
 export function SearchResultList({
   results,
@@ -57,11 +61,14 @@ export function SearchResultList({
   totalResultCount,
   minConfidence = 0,
   searchTime,
+  resultsPerPage = DEFAULT_RESULTS_PER_PAGE,
 }: SearchResultListProps) {
+  const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [isFilenameCollapsed, setIsFilenameCollapsed] = useState(false);
   // 그룹 뷰 펼침 상태 (file_path로 관리)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [visibleCount, setVisibleCount] = useState(pageSize);
   const isCompact = viewDensity === "compact";
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -81,8 +88,9 @@ export function SearchResultList({
   // 검색 결과 변경 시 상태 초기화
   useEffect(() => {
     setExpandedIndex(null);
+    setVisibleCount(pageSize);
     listRef.current?.scrollIntoView({ block: "start" });
-  }, [results]);
+  }, [results, pageSize]);
 
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
@@ -312,46 +320,64 @@ export function SearchResultList({
         {results.length > 0 && (
           viewMode === "grouped" && groupedResults.length > 0 ? (
             // 그룹 뷰
-            <div ref={listRef} role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
-              {groupedResults.map((group) => (
-                <GroupedSearchResultItem
-                  key={group.file_path}
-                  group={group}
-                  onOpenFile={onOpenFile}
-                  onCopyPath={onCopyPath}
-                  onOpenFolder={onOpenFolder}
-                  isCompact={isCompact}
-                  searchQuery={query}
-                  isExpanded={expandedGroups.has(group.file_path)}
-                  onToggleExpand={() => handleToggleGroupExpand(group.file_path)}
-                />
-              ))}
-            </div>
-          ) : (
-            // 플랫 뷰
-            <div ref={listRef} role="listbox" aria-label="검색 결과" className={isCompact ? "space-y-1" : "space-y-3"}>
-              {results.map((result, index) => (
-                <div
-                  key={`${result.file_path}-${result.chunk_index}-${index}`}
-                  className="group"
-                  style={{ contain: "layout style" }}
-                >
-                  <SearchResultItem
-                    result={result}
-                    index={index}
-                    isExpanded={expandedIndex === index}
-                    isSelected={selectedIndex === index}
-                    isCompact={isCompact}
-                    onToggleExpand={() => handleToggleExpand(index)}
+            <>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={isCompact ? "space-y-1" : "space-y-3"}>
+                {groupedResults.slice(0, visibleCount).map((group) => (
+                  <GroupedSearchResultItem
+                    key={group.file_path}
+                    group={group}
                     onOpenFile={onOpenFile}
                     onCopyPath={onCopyPath}
                     onOpenFolder={onOpenFolder}
-                    refineKeywords={refineKeywords}
-                    query={query}
+                    isCompact={isCompact}
+                    searchQuery={query}
+                    isExpanded={expandedGroups.has(group.file_path)}
+                    onToggleExpand={() => handleToggleGroupExpand(group.file_path)}
                   />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {groupedResults.length > visibleCount && (
+                <ShowMoreButton
+                  visibleCount={visibleCount}
+                  totalCount={groupedResults.length}
+                  onShowMore={() => setVisibleCount(prev => prev + pageSize)}
+                />
+              )}
+            </>
+          ) : (
+            // 플랫 뷰
+            <>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={isCompact ? "space-y-1" : "space-y-3"}>
+                {results.slice(0, visibleCount).map((result, index) => (
+                  <div
+                    key={`${result.file_path}-${result.chunk_index}-${index}`}
+                    className="group"
+                    style={{ contain: "layout style" }}
+                  >
+                    <SearchResultItem
+                      result={result}
+                      index={index}
+                      isExpanded={expandedIndex === index}
+                      isSelected={selectedIndex === index}
+                      isCompact={isCompact}
+                      onToggleExpand={() => handleToggleExpand(index)}
+                      onOpenFile={onOpenFile}
+                      onCopyPath={onCopyPath}
+                      onOpenFolder={onOpenFolder}
+                      refineKeywords={refineKeywords}
+                      query={query}
+                    />
+                  </div>
+                ))}
+              </div>
+              {results.length > visibleCount && (
+                <ShowMoreButton
+                  visibleCount={visibleCount}
+                  totalCount={results.length}
+                  onShowMore={() => setVisibleCount(prev => prev + pageSize)}
+                />
+              )}
+            </>
           )
         )}
       </div>
@@ -418,6 +444,43 @@ export function SearchResultList({
         <p>🧠 AI가 의미까지 파악하는 시맨틱 검색</p>
         <p>⚡ 폴더 추가하면 자동으로 변경사항 반영</p>
       </div>
+    </div>
+  );
+}
+
+/** 더 보기 버튼 */
+function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
+  visibleCount: number;
+  totalCount: number;
+  onShowMore: () => void;
+}) {
+  const remaining = totalCount - visibleCount;
+  return (
+    <div className="flex justify-center pt-2">
+      <button
+        onClick={onShowMore}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border"
+        style={{
+          backgroundColor: "var(--color-bg-secondary)",
+          borderColor: "var(--color-border)",
+          color: "var(--color-text-secondary)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-accent)";
+          e.currentTarget.style.color = "var(--color-accent)";
+          e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = "var(--color-border)";
+          e.currentTarget.style.color = "var(--color-text-secondary)";
+          e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+        }}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+        {remaining}개 더 보기
+      </button>
     </div>
   );
 }
