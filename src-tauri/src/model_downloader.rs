@@ -25,10 +25,10 @@ const RERANKER_TOKENIZER_URL: &str = "https://huggingface.co/Xenova/ms-marco-Min
 
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
-const E5_MODEL_SHA256: &str = "5a618657c6848eb991e3a169e6d02c66f104d6d31a7d41852b63ece63ff185d1";
-const E5_TOKENIZER_SHA256: &str = "2e0a1507c67d2e69d2d552dddd7bb219ab2ca82fc00a7e09d83afbcd46d9c974";
+const E5_MODEL_SHA256: &str = "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
+const E5_TOKENIZER_SHA256: &str = "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
 const RERANKER_MODEL_SHA256: &str = "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe";
-const RERANKER_TOKENIZER_SHA256: &str = "be4b6d26dbb2eca6b51ee2a51b8c94d179b36451c10ebfbc5f56fc9dc7a4df2e";
+const RERANKER_TOKENIZER_SHA256: &str = "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66";
 // ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
 const ONNX_RUNTIME_ZIP_SHA256: &str = "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
 

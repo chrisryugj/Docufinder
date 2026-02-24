@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "0.1.0"
+version = "1.0.0"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -88,7 +88,7 @@ devtools = ["tauri/devtools"]
 
 [profile.release]
 panic = "unwind"        # catch_unwind 활성화 (PDF/XLSX 파서 안정성 필수)
-codegen-units = 1
-lto = true
+codegen-units = 4       # 병렬 코드젠 (메모리 사용 분산)
+lto = "thin"            # Thin LTO (Full 대비 메모리 절반, 성능 차이 미미)
 opt-level = 3
 strip = "debuginfo"     # 백트레이스 함수명 유지, 디버그 심볼만 제거

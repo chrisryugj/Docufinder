@@ -63,8 +63,10 @@ impl AddFolderResult {
 /// 폴더 통계 DTO
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FolderStats {
-    /// 파일 수
+    /// 전체 파일 수 (메타데이터 포함)
     pub file_count: usize,
+    /// FTS 인덱싱된 문서 수
+    pub indexed_count: usize,
     /// 마지막 인덱싱 시간 (Unix timestamp)
     pub last_indexed: Option<i64>,
 }

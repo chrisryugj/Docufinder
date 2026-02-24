@@ -141,6 +141,7 @@ impl TextTokenizer for LinderaKoTokenizer {
     fn tokenize_query(&self, query: &str) -> String {
         // 어절 AND + 형태소 OR 방식
         // "고용보험료 부과" → ("고용보험료"* OR "고용"* OR "보험료"*) AND "부과"*
+        // 단, 숫자+한글 복합어(예: "12세대")는 형태소 분해 없이 원본만 사용
         let words: Vec<&str> = query.split_whitespace().collect();
 
         if words.is_empty() {
@@ -150,7 +151,7 @@ impl TextTokenizer for LinderaKoTokenizer {
         let mut word_groups: Vec<String> = Vec::new();
 
         for word in &words {
-            // 숫자+한글 조합 보존 (예: "1종", "2차")
+            // 숫자+한글 조합 보존 (예: "1종", "2차", "12세대")
             let preserved = Self::extract_number_korean_tokens(word);
 
             // 어절별 토큰 수집: 원본 + 형태소
@@ -159,27 +160,35 @@ impl TextTokenizer for LinderaKoTokenizer {
             // 원본 어절 추가
             let clean = Self::clean_token(word);
             if !clean.is_empty() {
-                tokens.push(clean);
+                tokens.push(clean.clone());
             }
 
-            // 형태소 분석 (어절 단위)
-            if Self::contains_korean(word) {
-                if let Ok(tokenizer) = self.tokenizer.lock() {
-                    if let Ok(morphemes) = tokenizer.tokenize(word) {
-                        for token in morphemes {
-                            let surface = token.surface.as_ref().to_string();
-                            if surface.chars().count() >= 2 && !tokens.contains(&surface) {
-                                tokens.push(surface);
+            // 숫자+한글 복합어 판별 (예: "12세대", "1종", "4차산업")
+            // 이 경우 형태소 분해하면 "세대"*, "12"* 같은 부분 매칭이 OR로 추가되어
+            // 관련 없는 결과가 상위에 올라오는 문제 발생
+            let is_number_korean_compound = !preserved.is_empty()
+                && preserved.iter().any(|t| t == &clean);
+
+            if !is_number_korean_compound {
+                // 형태소 분석 (어절 단위) - 숫자+한글 복합어가 아닌 경우만
+                if Self::contains_korean(word) {
+                    if let Ok(tokenizer) = self.tokenizer.lock() {
+                        if let Ok(morphemes) = tokenizer.tokenize(word) {
+                            for token in morphemes {
+                                let surface = token.surface.as_ref().to_string();
+                                if surface.chars().count() >= 2 && !tokens.contains(&surface) {
+                                    tokens.push(surface);
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // 숫자+한글 조합 추가
-            for token in preserved {
-                if !tokens.contains(&token) {
-                    tokens.push(token);
+                // 숫자+한글 조합 추가 (복합어가 아닌 경우만)
+                for token in preserved {
+                    if !tokens.contains(&token) {
+                        tokens.push(token);
+                    }
                 }
             }
 
@@ -349,5 +358,48 @@ mod tests {
             !query.contains("\"차\"*"),
             "Query should not contain single-char prefix '차'*: {}", query
         );
+    }
+
+    #[test]
+    fn test_number_korean_compound_no_sub_morphemes() {
+        // "12세대" 검색 시 "세대"* OR "12"* 같은 부분 매칭이 추가되면 안 됨
+        // 부분 매칭이 있으면 "세대" 관련 결과가 상위에 올라오는 문제 발생
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("12세대");
+
+        println!("12세대 query: {}", query);
+        assert_eq!(query, "\"12세대\"*",
+            "Number+Korean compound should only produce exact phrase query");
+        assert!(!query.contains(" OR "),
+            "Should not contain OR for number+Korean compound");
+    }
+
+    #[test]
+    fn test_number_korean_compound_with_other_words() {
+        // "12세대 인텔" → "12세대"* AND ("인텔"* OR ...)
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("12세대 인텔");
+
+        println!("12세대 인텔 query: {}", query);
+        assert!(query.contains("\"12세대\"*"),
+            "Should contain exact '12세대' phrase");
+        assert!(query.contains(" AND "),
+            "Multiple words should be joined with AND");
+        // "12세대" 부분에 "세대"* OR가 없어야 함
+        assert!(!query.contains("\"세대\"*"),
+            "Should not have '세대' as separate OR term");
+    }
+
+    #[test]
+    fn test_pure_korean_still_has_morphemes() {
+        // 순수 한글 어절은 여전히 형태소 분석 적용되어야 함
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("고용보험료");
+
+        println!("고용보험료 query: {}", query);
+        // 형태소 분석 결과가 OR로 포함되어야 함 (순수 한글이므로)
+        // "고용보험료"는 복합어 → 형태소 분해됨
+        assert!(query.contains("\"고용보험료\"*"),
+            "Should contain original word");
     }
 }

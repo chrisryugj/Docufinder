@@ -227,6 +227,8 @@ impl IndexService {
 
         let total_files = db::get_file_count(&conn)
             .map_err(|e| AppError::Internal(e.to_string()))?;
+        let indexed_files = db::get_indexed_file_count(&conn)
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         let watched_folders = db::get_watched_folders(&conn)
             .map_err(|e| AppError::Internal(e.to_string()))?;
         let vectors_count = self.vector_index
@@ -237,7 +239,7 @@ impl IndexService {
 
         Ok(IndexStatus {
             total_files,
-            indexed_files: total_files,
+            indexed_files,
             watched_folders,
             vectors_count,
             semantic_available,

@@ -1,4 +1,4 @@
-# 자체서명 코드서명 인증서 생성 스크립트
+﻿# 자체서명 코드서명 인증서 생성 스크립트
 # Docufinder MSI 서명용
 
 $certName = "Docufinder Code Signing"

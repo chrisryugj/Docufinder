@@ -297,7 +297,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 파일 수 배지 */}
               {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
                 <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-slate-400 flex-shrink-0">
-                  {folderStats[folder].file_count}
+                  {folderStats[folder].indexed_count}
                 </span>
               )}
             </div>
@@ -308,7 +308,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                 <div className="break-all font-mono">{displayPath}</div>
                 {folderStats[folder] && (
                   <div className="flex items-center gap-2 text-slate-400">
-                    <span>파일 {folderStats[folder].file_count}개</span>
+                    <span>{folderStats[folder].indexed_count} Documents / {folderStats[folder].file_count} 파일</span>
                     {folderStats[folder].last_indexed && (
                       <>
                         <span className="text-slate-600">•</span>
