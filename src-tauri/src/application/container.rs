@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
+type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
+
 
 /// DI 컨테이너 - 앱 전역 의존성 관리
 pub struct AppContainer {
@@ -53,7 +55,7 @@ pub struct AppContainer {
     /// 인메모리 설정 캐시 (디스크 I/O 제거)
     settings_cache: RwLock<Settings>,
     /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
-    incremental_update_callback: RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>,
+    incremental_update_callback: IncrementalCallback,
 }
 
 impl AppContainer {

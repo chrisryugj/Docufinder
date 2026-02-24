@@ -60,6 +60,19 @@ impl VectorIndex {
         let index =
             Index::new(&options).map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
+        // 생성 직후 차원 확인 + 초기 reserve (일부 usearch 버전에서 reserve 전 add 실패 방지)
+        tracing::info!(
+            "usearch Index created: dims={}, capacity={}, size={}",
+            index.dimensions(), index.capacity(), index.size()
+        );
+        index
+            .reserve(100)
+            .map_err(|e| VectorError::IndexError(format!("Initial reserve failed: {:?}", e)))?;
+        tracing::info!(
+            "usearch Index after reserve: dims={}, capacity={}, size={}",
+            index.dimensions(), index.capacity(), index.size()
+        );
+
         let mut vector_index = Self {
             path: path.to_path_buf(),
             index: RwLock::new(index),
@@ -69,43 +82,85 @@ impl VectorIndex {
         };
 
         // 기존 인덱스 로드 시도
-        if path.exists() {
-            tracing::info!("Loading existing vector index from {:?}", path);
+        let map_path = path.with_extension("map");
+        let usearch_exists = path.exists();
+        let map_exists = map_path.exists();
+
+        if usearch_exists && map_exists {
+            let usearch_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            let map_size_bytes = std::fs::metadata(&map_path).map(|m| m.len()).unwrap_or(0);
+            tracing::info!(
+                "Loading existing vector index from {:?} (usearch={}KB, map={}KB)",
+                path, usearch_size / 1024, map_size_bytes / 1024
+            );
             vector_index.load()?;
+
+            // 차원 검증: load()는 파일에서 차원을 덮어씀
+            // 모델 변경 등으로 차원이 다르면 전체 리빌드 필요
+            let loaded_dims = vector_index
+                .index
+                .read()
+                .map_err(|_| VectorError::LockPoisoned)?
+                .dimensions();
+            if loaded_dims != EMBEDDING_DIM {
+                tracing::warn!(
+                    "Loaded index has wrong dimensions ({} vs expected {}). Deleting stale files and recreating.",
+                    loaded_dims, EMBEDDING_DIM
+                );
+                // 잘못된 파일 삭제
+                let _ = std::fs::remove_file(path);
+                let _ = std::fs::remove_file(&map_path);
+                // 올바른 차원으로 새 인덱스 생성
+                let new_index = Index::new(&options)
+                    .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+                *vector_index.index.write().map_err(|_| VectorError::LockPoisoned)? = new_index;
+                vector_index.id_map.write().map_err(|_| VectorError::LockPoisoned)?.clear();
+                vector_index.key_map.write().map_err(|_| VectorError::LockPoisoned)?.clear();
+                *vector_index.next_key.write().map_err(|_| VectorError::LockPoisoned)? = 0;
+            }
         } else {
-            tracing::info!("Creating new vector index at {:?}", path);
+            tracing::info!(
+                "Creating new vector index at {:?} (usearch_exists={}, map_exists={})",
+                path, usearch_exists, map_exists
+            );
+            // 한쪽 파일만 있으면 불일치 → 삭제
+            if usearch_exists { let _ = std::fs::remove_file(path); }
+            if map_exists { let _ = std::fs::remove_file(&map_path); }
         }
 
         // 초기화 상태 로그
-        let index_size = vector_index
-            .index
-            .read()
-            .map_err(|_| VectorError::LockPoisoned)?
-            .size();
+        let (index_size, index_dims) = {
+            let idx = vector_index.index.read().map_err(|_| VectorError::LockPoisoned)?;
+            (idx.size(), idx.dimensions())
+        };
         let map_size = vector_index
             .id_map
             .read()
             .map_err(|_| VectorError::LockPoisoned)?
             .len();
         tracing::info!(
-            "VectorIndex initialized: index_size={}, id_map_count={}",
-            index_size,
-            map_size
+            "VectorIndex initialized: dims={}, index_size={}, id_map_count={}",
+            index_dims, index_size, map_size
         );
 
-        // 인덱스/매핑 불일치 검증 → 불일치 시 자동 리셋
+        // 인덱스/매핑 불일치 검증
         if index_size > 0 && map_size == 0 {
             tracing::warn!(
                 "Vector index has {} vectors but mapping is empty. Resetting index.",
                 index_size
             );
             vector_index.clear();
-        } else if index_size != map_size {
+        } else if map_size > index_size {
             tracing::warn!(
-                "Vector index/mapping mismatch: index={}, map={}. Resetting index.",
-                index_size, map_size
+                "Mapping ({}) > index ({}). Resetting to avoid stale references.",
+                map_size, index_size
             );
             vector_index.clear();
+        } else if index_size > map_size && map_size > 0 {
+            tracing::warn!(
+                "Vector index ({}) > mapping ({}). Keeping valid mapped data ({} orphan vectors).",
+                index_size, map_size, index_size - map_size
+            );
         }
 
         Ok(vector_index)
@@ -150,15 +205,38 @@ impl VectorIndex {
         }
 
         // usearch에 추가
-        index
-            .add(key, embedding)
-            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+        index.add(key, embedding).map_err(|e| {
+            // 차원 불일치 진단 (첫 실패 시에만 상세 로그)
+            if id_map.is_empty() {
+                tracing::error!(
+                    "First add() failed! index_dims={}, embedding_len={}, index_size={}, index_capacity={}, error={:?}",
+                    index.dimensions(), embedding.len(), index.size(), index.capacity(), e
+                );
+            }
+            VectorError::IndexError(format!("{:?}", e))
+        })?;
 
         // 매핑 저장 (이미 write lock 보유)
         id_map.insert(chunk_id, key);
         key_map.insert(key, chunk_id);
 
         Ok(())
+    }
+
+    /// 특정 chunk_id가 벡터 인덱스에 존재하는지 확인
+    pub fn contains_chunk(&self, chunk_id: i64) -> bool {
+        self.id_map
+            .read()
+            .map(|map| map.contains_key(&chunk_id))
+            .unwrap_or(false)
+    }
+
+    /// 벡터 인덱스에 저장된 청크 수
+    pub fn chunk_count(&self) -> usize {
+        self.id_map
+            .read()
+            .map(|map| map.len())
+            .unwrap_or(0)
     }
 
     /// 벡터 삭제 (원자적 연산)
@@ -220,6 +298,14 @@ impl VectorIndex {
 
     /// 인덱스 저장
     pub fn save(&self) -> Result<(), VectorError> {
+        let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
+        let map_len = id_map.len();
+
+        // 빈 인덱스는 저장하지 않음 (빈 파일이 다음 로드 시 에러 유발 가능)
+        if map_len == 0 {
+            return Ok(());
+        }
+
         // 읽기 락으로 저장: save()는 인덱스 데이터를 변경하지 않으므로
         // read lock으로 충분하며, 검색(read)과 동시 진행 가능
         let path_str = self.path.to_string_lossy();
@@ -231,7 +317,6 @@ impl VectorIndex {
 
         // 매핑 파일 저장
         let map_path = self.path.with_extension("map");
-        let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
         let next_key = *self
             .next_key
             .read()
@@ -245,6 +330,19 @@ impl VectorIndex {
         let json_str = serde_json::to_string(&map_data)
             .map_err(|e| VectorError::IndexError(format!("JSON serialization failed: {}", e)))?;
         std::fs::write(&map_path, json_str)?;
+
+        // 저장 확인 로그
+        if let (Ok(usearch_meta), Ok(map_meta)) = (
+            std::fs::metadata(&*self.path),
+            std::fs::metadata(&map_path),
+        ) {
+            tracing::debug!(
+                "Vector index saved: {} entries, usearch={}KB, map={}KB",
+                map_len,
+                usearch_meta.len() / 1024,
+                map_meta.len() / 1024,
+            );
+        }
 
         Ok(())
     }

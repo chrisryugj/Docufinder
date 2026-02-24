@@ -204,13 +204,17 @@ fn run_vector_indexing(
     let stats = db::get_vector_indexing_stats(&conn)
         .map_err(|e| format!("Failed to get stats: {}", e))?;
 
-    // 누적 진행률: 이미 완료된 청크 + 대기 청크 = 전체
-    let base_processed = stats.completed_chunks;
-    let total_chunks = stats.completed_chunks + stats.pending_chunks;
+    // 벡터 인덱스에 실제 존재하는 청크 수 (DB 마킹과 무관하게 실제 임베딩된 수)
+    let vectors_in_index = vector_index.chunk_count();
+
+    // 누적 진행률: DB 마킹 완료 + 벡터 인덱스에만 존재하는 청크 모두 포함
+    // DB에서 completed와 vector index 크기 중 큰 값 사용 (불일치 대응)
+    let base_processed = stats.completed_chunks.max(vectors_in_index);
+    let total_chunks = base_processed + stats.pending_chunks;
 
     tracing::info!(
-        "[VectorWorker] Starting pipeline. {} pending, {} already done, {} total",
-        stats.pending_chunks, base_processed, total_chunks
+        "[VectorWorker] Starting pipeline. {} pending, {} already done (db={}, index={}), {} total",
+        stats.pending_chunks, base_processed, stats.completed_chunks, vectors_in_index, total_chunks
     );
 
     // 상태 업데이트 (누적 기준)
@@ -271,12 +275,46 @@ fn run_vector_indexing(
 
                 send_progress(processed, current_file, false);
 
-                // 배치 단위로 임베딩
+                // 이미 벡터 인덱스에 존재하는 청크 필터링 (재시작 시 스킵)
                 let total_chunks_in_file = prefetched.chunks.len();
-                let mut processed_chunks_in_file: usize = 0;
+                let new_chunks: Vec<&PendingChunk> = prefetched.chunks.iter()
+                    .filter(|c| !vector_index.contains_chunk(c.chunk_id))
+                    .collect();
+                let skipped_in_file = total_chunks_in_file - new_chunks.len();
+
+                if skipped_in_file > 0 {
+                    tracing::debug!(
+                        "[VectorWorker] File '{}': {} chunks already in index, {} to embed",
+                        prefetched.file_path, skipped_in_file, new_chunks.len()
+                    );
+                }
+
+                // 스킵된 청크도 처리된 것으로 카운트
+                processed += skipped_in_file;
+
+                // 모든 청크가 이미 인덱스에 있으면 파일 마킹만 하고 넘어감
+                if new_chunks.is_empty() {
+                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
+                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                    }
+
+                    // 상태 업데이트
+                    if let Ok(mut s) = status.write() {
+                        s.processed_chunks = base_processed + processed;
+                        s.pending_chunks = total_chunks.saturating_sub(base_processed + processed);
+                    }
+                    send_progress(processed, current_file, false);
+                    continue;
+                }
+
+                // 배치 단위로 임베딩 (새 청크만)
+                let mut processed_chunks_in_file: usize = skipped_in_file;
                 let mut cancelled_mid_file = false;
 
-                for batch in prefetched.chunks.chunks(EMBEDDING_BATCH_SIZE) {
+                // new_chunks를 소유권 있는 벡터로 변환하여 chunks() 사용
+                let new_chunk_refs: Vec<&PendingChunk> = new_chunks;
+
+                for batch in new_chunk_refs.chunks(EMBEDDING_BATCH_SIZE) {
                     // 취소 확인
                     if cancel_flag.load(Ordering::Relaxed) {
                         cancelled_mid_file = true;
@@ -332,16 +370,13 @@ fn run_vector_indexing(
                     }
                 }
 
-                // 파일 완료 표시: 모든 청크가 성공적으로 처리되고 실패 없을 때만 마킹
-                // cancel 여부와 무관하게, 파일의 전체 청크를 처리 완료했으면 mark
+                // 파일 완료 표시: 모든 청크가 인덱스에 존재 (기존 + 신규)
                 let file_fully_processed = !cancelled_mid_file
                     && file_failed_chunks == 0
                     && processed_chunks_in_file == total_chunks_in_file;
 
                 if file_fully_processed {
                     // Crash consistency: save THEN mark
-                    // save 후 mark: 크래시 시 mark 안 됨 → 재처리 (안전)
-                    // mark 후 save: 크래시 시 mark 됨 → 벡터 없음 → 검색 누락!
                     if let Err(e) = vector_index.save() {
                         tracing::warn!("[VectorWorker] Failed to save index before marking file: {}", e);
                     } else {
@@ -370,11 +405,15 @@ fn run_vector_indexing(
     let _ = prefetch_handle.join();
 
     // 최종 저장
+    let final_chunk_count = vector_index.chunk_count();
     if let Err(e) = vector_index.save() {
         tracing::warn!("[VectorWorker] Final save failed: {}", e);
     }
 
-    tracing::info!("[VectorWorker] Completed. {} chunks processed", processed);
+    tracing::info!(
+        "[VectorWorker] Completed. {} chunks processed this session, {} total in index",
+        processed, final_chunk_count
+    );
 
     // 상태 업데이트 (누적)
     if let Ok(mut s) = status.write() {
