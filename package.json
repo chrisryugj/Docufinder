@@ -26,7 +26,7 @@
     "@tauri-apps/cli": "^2.9.6",
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-react": "^5.1.4",
     "png-to-ico": "^2.1.8",
     "sharp": "^0.33.5",
     "tailwindcss": "^4.1.18",
