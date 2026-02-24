@@ -314,22 +314,16 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
             {/* 상세 정보 (확장 시) */}
             {isExpanded && (
-              <div className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded bg-black/20 text-slate-500 space-y-1">
+              <div className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded bg-black/20 text-slate-500 space-y-0.5">
                 <div className="break-all font-mono">{displayPath}</div>
                 {folderStats[folder] && (
-                  <div className="flex items-center gap-2 text-slate-400">
-                    <span>{folderStats[folder].indexed_count} Documents / {folderStats[folder].file_count} 파일</span>
-                    {folderStats[folder].last_indexed && (
-                      <>
-                        <span className="text-slate-600">•</span>
-                        <span>
-                          마지막 인덱싱:{" "}
-                          {formatRelativeTime(
-                            folderStats[folder].last_indexed * 1000
-                          )}
-                        </span>
-                      </>
-                    )}
+                  <div className="text-slate-400">
+                    {folderStats[folder].indexed_count} 문서 / {folderStats[folder].file_count} 파일
+                  </div>
+                )}
+                {folderStats[folder]?.last_indexed && (
+                  <div className="text-slate-500">
+                    마지막 인덱싱 {formatRelativeTime(folderStats[folder].last_indexed * 1000)}
                   </div>
                 )}
               </div>
