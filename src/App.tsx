@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // Hooks
@@ -172,6 +173,30 @@ function App() {
       clearSearchCache();
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted]);
+
+  // 모델 다운로드 상태 이벤트 수신
+  useEffect(() => {
+    let toastId: string | null = null;
+    const unlisten = listen<string>("model-download-status", (event) => {
+      switch (event.payload) {
+        case "downloading":
+          toastId = showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
+          break;
+        case "completed":
+          if (toastId) {
+            updateToast(toastId, { message: "AI 모델 다운로드 완료!", type: "success" });
+          }
+          break;
+        case "failed":
+          if (toastId) {
+            updateToast(toastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 5000);
+          }
+          break;
+      }
+    });
+
+    return () => { unlisten.then((fn) => fn()); };
+  }, [showToast, updateToast]);
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
