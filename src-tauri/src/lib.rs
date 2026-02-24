@@ -162,37 +162,13 @@ pub fn run() {
             let models_dir = app_data_dir.join("models");
             std::fs::create_dir_all(&models_dir).ok();
 
-            // 번들된 모델 리소스를 app_data로 복사 (최초 1회)
-            let model_target = models_dir.join("kosimcse-roberta-multitask");
-            let model_marker = model_target.join("model.onnx");
-            if !model_marker.exists() {
-                if let Ok(resource_dir) = app.path().resource_dir() {
-                    let resource_model = resource_dir.join("models").join("kosimcse-roberta-multitask");
-                    if resource_model.exists() {
-                        tracing::info!("Copying bundled model from {:?} to {:?}", resource_model, model_target);
-                        std::fs::create_dir_all(&model_target).ok();
-
-                        // 모델 파일들 복사
-                        for entry in std::fs::read_dir(&resource_model).into_iter().flatten().flatten() {
-                            let src = entry.path();
-                            let dest = model_target.join(entry.file_name());
-                            if src.is_file() {
-                                if let Err(e) = std::fs::copy(&src, &dest) {
-                                    tracing::warn!("Failed to copy {:?}: {}", src, e);
-                                }
-                            }
-                        }
-                        tracing::info!("Model files copied successfully");
-                    }
-                }
-            }
-
             // 모델이 없으면 비동기 자동 다운로드 (시맨틱 활성화 시에만, UI 블로킹 방지)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
             let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
+            let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !reranker_model.exists()) {
+            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
                 let download_models_dir = models_dir.clone();
                 let download_app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
@@ -205,15 +181,17 @@ pub fn run() {
                         Ok(Ok(result)) => {
                             let any_downloaded = result.onnx_runtime_downloaded
                                 || result.model_downloaded
+                                || result.model_data_downloaded
                                 || result.tokenizer_downloaded
                                 || result.reranker_model_downloaded
                                 || result.reranker_tokenizer_downloaded;
 
                             if any_downloaded {
                                 tracing::info!(
-                                    "모델 다운로드 완료: ONNX Runtime={}, E5 Model={}, E5 Tokenizer={}, Reranker Model={}, Reranker Tokenizer={}",
+                                    "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}, Reranker={}, RerankerTokenizer={}",
                                     result.onnx_runtime_downloaded,
                                     result.model_downloaded,
+                                    result.model_data_downloaded,
                                     result.tokenizer_downloaded,
                                     result.reranker_model_downloaded,
                                     result.reranker_tokenizer_downloaded

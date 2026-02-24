@@ -15,9 +15,11 @@ use std::time::Duration;
 // ============================================================================
 
 const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
-// KoSimCSE-roberta-multitask: 번들 전용 (다운로드 URL 미사용)
-const E5_MODEL_URL: &str = "";
-const E5_TOKENIZER_URL: &str = "";
+// KoSimCSE-roberta-multitask (HuggingFace)
+// NOTE: HuggingFace 레포에 ONNX 모델 업로드 후 URL 확정 필요
+const E5_MODEL_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx";
+const E5_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx.data";
+const E5_TOKENIZER_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/tokenizer.json";
 
 // Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)
 const RERANKER_MODEL_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
@@ -26,6 +28,7 @@ const RERANKER_TOKENIZER_URL: &str = "https://huggingface.co/Xenova/ms-marco-Min
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
 const E5_MODEL_SHA256: &str = "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
+const E5_MODEL_DATA_SHA256: &str = "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
 const E5_TOKENIZER_SHA256: &str = "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
 const RERANKER_MODEL_SHA256: &str = "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe";
 const RERANKER_TOKENIZER_SHA256: &str = "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66";
@@ -34,8 +37,8 @@ const ONNX_RUNTIME_ZIP_SHA256: &str = "78d447051e48bd2e1e778bba378bec4ece11191c9
 
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
-const READ_TIMEOUT_SECS: u64 = 300; // 5분 (대용량 모델)
-const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024; // 500MB 상한
+const READ_TIMEOUT_SECS: u64 = 600; // 10분 (대용량 모델)
+const MAX_FILE_SIZE: u64 = 600 * 1024 * 1024; // 600MB 상한
 
 /// 모델 다운로드 진행률 콜백
 pub type ProgressCallback = Box<dyn Fn(u64, u64, &str) + Send>;
@@ -45,6 +48,7 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64, &str) + Send>;
 pub struct DownloadResult {
     pub onnx_runtime_downloaded: bool,
     pub model_downloaded: bool,
+    pub model_data_downloaded: bool,
     pub tokenizer_downloaded: bool,
     pub reranker_model_downloaded: bool,
     pub reranker_tokenizer_downloaded: bool,
@@ -57,11 +61,13 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
 
     let dll_path = e5_dir.join("onnxruntime.dll");
     let model_path = e5_dir.join("model.onnx");
+    let model_data_path = e5_dir.join("model.onnx.data");
     let tokenizer_path = e5_dir.join("tokenizer.json");
 
     let mut result = DownloadResult {
         onnx_runtime_downloaded: false,
         model_downloaded: false,
+        model_data_downloaded: false,
         tokenizer_downloaded: false,
         reranker_model_downloaded: false,
         reranker_tokenizer_downloaded: false,
@@ -75,25 +81,34 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
         tracing::info!("ONNX Runtime 다운로드 완료");
     }
 
-    // E5 임베딩 모델 다운로드 (SHA-256 검증)
+    // 임베딩 모델 다운로드 (SHA-256 검증)
     if !model_path.exists() {
-        tracing::info!("E5 모델 다운로드 중...");
+        tracing::info!("임베딩 모델 다운로드 중 (model.onnx)...");
         download_file_verified(E5_MODEL_URL, &model_path, E5_MODEL_SHA256)?;
         result.model_downloaded = true;
-        tracing::info!("E5 모델 다운로드 및 검증 완료");
+        tracing::info!("임베딩 모델 다운로드 및 검증 완료");
     } else {
-        // 기존 파일 무결성 검증
-        verify_existing_file(&model_path, E5_MODEL_SHA256, "E5 모델")?;
+        verify_existing_file(&model_path, E5_MODEL_SHA256, "임베딩 모델")?;
     }
 
-    // E5 토크나이저 다운로드 (SHA-256 검증)
+    // 임베딩 모델 외부 가중치 다운로드 (SHA-256 검증)
+    if !model_data_path.exists() {
+        tracing::info!("임베딩 모델 가중치 다운로드 중 (model.onnx.data)...");
+        download_file_verified(E5_MODEL_DATA_URL, &model_data_path, E5_MODEL_DATA_SHA256)?;
+        result.model_data_downloaded = true;
+        tracing::info!("임베딩 모델 가중치 다운로드 및 검증 완료");
+    } else {
+        verify_existing_file(&model_data_path, E5_MODEL_DATA_SHA256, "임베딩 모델 가중치")?;
+    }
+
+    // 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
-        tracing::info!("E5 토크나이저 다운로드 중...");
+        tracing::info!("토크나이저 다운로드 중...");
         download_file_verified(E5_TOKENIZER_URL, &tokenizer_path, E5_TOKENIZER_SHA256)?;
         result.tokenizer_downloaded = true;
-        tracing::info!("E5 토크나이저 다운로드 및 검증 완료");
+        tracing::info!("토크나이저 다운로드 및 검증 완료");
     } else {
-        verify_existing_file(&tokenizer_path, E5_TOKENIZER_SHA256, "E5 토크나이저")?;
+        verify_existing_file(&tokenizer_path, E5_TOKENIZER_SHA256, "토크나이저")?;
     }
 
     // Cross-Encoder Reranker 모델 다운로드

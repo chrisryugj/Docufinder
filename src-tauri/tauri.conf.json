@@ -36,9 +36,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "models/kosimcse-roberta-multitask/*": "models/kosimcse-roberta-multitask/"
-    },
+    "resources": {},
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
