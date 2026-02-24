@@ -4,10 +4,7 @@
 
 use super::TextTokenizer;
 use lindera::{
-    dictionary::load_dictionary,
-    mode::Mode,
-    segmenter::Segmenter,
-    tokenizer::Tokenizer,
+    dictionary::load_dictionary, mode::Mode, segmenter::Segmenter, tokenizer::Tokenizer,
 };
 use std::sync::Mutex;
 
@@ -166,8 +163,8 @@ impl TextTokenizer for LinderaKoTokenizer {
             // 숫자+한글 복합어 판별 (예: "12세대", "1종", "4차산업")
             // 이 경우 형태소 분해하면 "세대"*, "12"* 같은 부분 매칭이 OR로 추가되어
             // 관련 없는 결과가 상위에 올라오는 문제 발생
-            let is_number_korean_compound = !preserved.is_empty()
-                && preserved.iter().any(|t| t == &clean);
+            let is_number_korean_compound =
+                !preserved.is_empty() && preserved.iter().any(|t| t == &clean);
 
             if !is_number_korean_compound {
                 // 형태소 분석 (어절 단위) - 숫자+한글 복합어가 아닌 경우만
@@ -313,8 +310,10 @@ mod tests {
         // 어절 간 AND
         assert!(query.contains(" AND "));
         // 같은 어절 내 형태소 OR (고용보험료 어절에서 형태소 분석 결과)
-        assert!(query.contains(" OR ") || !query.contains("("),
-            "Multi-morpheme word should use OR within group");
+        assert!(
+            query.contains(" OR ") || !query.contains("("),
+            "Multi-morpheme word should use OR within group"
+        );
     }
 
     #[test]
@@ -336,8 +335,10 @@ mod tests {
         println!("4차산업 tokens: {:?}", tokens);
         // 1글자 한글 형태소가 없어야 함
         assert!(
-            !tokens.iter().any(|t| t.chars().count() == 1 && t.chars().all(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c))),
-            "Single-char Korean morpheme should be filtered: {:?}", tokens
+            !tokens.iter().any(|t| t.chars().count() == 1
+                && t.chars().all(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c))),
+            "Single-char Korean morpheme should be filtered: {:?}",
+            tokens
         );
         // "산업"은 포함되어야 함
         assert!(
@@ -356,7 +357,8 @@ mod tests {
         // "차"* 패턴이 없어야 함 (차량, 차별 등 오매칭 방지)
         assert!(
             !query.contains("\"차\"*"),
-            "Query should not contain single-char prefix '차'*: {}", query
+            "Query should not contain single-char prefix '차'*: {}",
+            query
         );
     }
 
@@ -368,10 +370,14 @@ mod tests {
         let query = tokenizer.tokenize_query("12세대");
 
         println!("12세대 query: {}", query);
-        assert_eq!(query, "\"12세대\"*",
-            "Number+Korean compound should only produce exact phrase query");
-        assert!(!query.contains(" OR "),
-            "Should not contain OR for number+Korean compound");
+        assert_eq!(
+            query, "\"12세대\"*",
+            "Number+Korean compound should only produce exact phrase query"
+        );
+        assert!(
+            !query.contains(" OR "),
+            "Should not contain OR for number+Korean compound"
+        );
     }
 
     #[test]
@@ -381,13 +387,19 @@ mod tests {
         let query = tokenizer.tokenize_query("12세대 인텔");
 
         println!("12세대 인텔 query: {}", query);
-        assert!(query.contains("\"12세대\"*"),
-            "Should contain exact '12세대' phrase");
-        assert!(query.contains(" AND "),
-            "Multiple words should be joined with AND");
+        assert!(
+            query.contains("\"12세대\"*"),
+            "Should contain exact '12세대' phrase"
+        );
+        assert!(
+            query.contains(" AND "),
+            "Multiple words should be joined with AND"
+        );
         // "12세대" 부분에 "세대"* OR가 없어야 함
-        assert!(!query.contains("\"세대\"*"),
-            "Should not have '세대' as separate OR term");
+        assert!(
+            !query.contains("\"세대\"*"),
+            "Should not have '세대' as separate OR term"
+        );
     }
 
     #[test]
@@ -399,7 +411,9 @@ mod tests {
         println!("고용보험료 query: {}", query);
         // 형태소 분석 결과가 OR로 포함되어야 함 (순수 한글이므로)
         // "고용보험료"는 복합어 → 형태소 분해됨
-        assert!(query.contains("\"고용보험료\"*"),
-            "Should contain original word");
+        assert!(
+            query.contains("\"고용보험료\"*"),
+            "Should contain original word"
+        );
     }
 }

@@ -2,12 +2,14 @@
 //!
 //! Tauri commands that delegate to IndexService and FolderService.
 
-use crate::application::dto::indexing::{AddFolderResult, FolderStats, IndexStatus, WatchedFolderInfo};
+use super::settings::VectorIndexingMode;
+use crate::application::dto::indexing::{
+    AddFolderResult, FolderStats, IndexStatus, WatchedFolderInfo,
+};
 use crate::error::{ApiError, ApiResult};
 use crate::indexer::pipeline::FtsIndexingProgress;
 use crate::indexer::vector_worker::{VectorIndexingProgress, VectorIndexingStatus};
 use crate::AppContainer;
-use super::settings::VectorIndexingMode;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -28,7 +30,9 @@ struct IndexingProgress {
 // FTS Progress Callback Helper
 // ============================================
 
-fn create_fts_progress_callback(app_handle: AppHandle) -> Box<dyn Fn(FtsIndexingProgress) + Send + Sync> {
+fn create_fts_progress_callback(
+    app_handle: AppHandle,
+) -> Box<dyn Fn(FtsIndexingProgress) + Send + Sync> {
     Box::new(move |progress: FtsIndexingProgress| {
         let legacy_progress = IndexingProgress {
             phase: progress.phase,
@@ -44,7 +48,9 @@ fn create_fts_progress_callback(app_handle: AppHandle) -> Box<dyn Fn(FtsIndexing
     })
 }
 
-fn create_vector_progress_callback(app_handle: AppHandle) -> Arc<dyn Fn(VectorIndexingProgress) + Send + Sync> {
+fn create_vector_progress_callback(
+    app_handle: AppHandle,
+) -> Arc<dyn Fn(VectorIndexingProgress) + Send + Sync> {
     Arc::new(move |progress: VectorIndexingProgress| {
         if let Err(e) = app_handle.emit("vector-indexing-progress", &progress) {
             tracing::warn!("Failed to emit vector progress: {}", e);
@@ -78,7 +84,16 @@ pub async fn add_folder(
     let path = canonical_path.to_string_lossy().to_string();
 
     // 설정 및 서비스 준비 (단일 lock 스코프에서 필요한 데이터 전부 추출)
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
+    let (
+        service,
+        include_subfolders,
+        semantic_available,
+        vector_mode,
+        semantic_enabled,
+        intensity,
+        max_file_size_mb,
+        db_path,
+    ) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
@@ -102,7 +117,8 @@ pub async fn add_folder(
                 indexed_count: 0,
                 failed_count: 0,
                 vectors_count: 0,
-                message: "이미 등록된 폴더입니다. 재인덱싱하려면 '다시 인덱싱' 버튼을 사용하세요.".to_string(),
+                message: "이미 등록된 폴더입니다. 재인덱싱하려면 '다시 인덱싱' 버튼을 사용하세요."
+                    .to_string(),
                 errors: vec![],
             });
         }
@@ -117,14 +133,17 @@ pub async fn add_folder(
     }
 
     // UI에 준비 중 상태 알림 (메타데이터 스캔 전)
-    let _ = app_handle.emit("indexing-progress", &IndexingProgress {
-        phase: "preparing".to_string(),
-        total_files: 0,
-        processed_files: 0,
-        current_file: None,
-        folder_path: path.clone(),
-        error: None,
-    });
+    let _ = app_handle.emit(
+        "indexing-progress",
+        &IndexingProgress {
+            phase: "preparing".to_string(),
+            total_files: 0,
+            processed_files: 0,
+            current_file: None,
+            folder_path: path.clone(),
+            error: None,
+        },
+    );
 
     // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
     let metadata_result = service
@@ -134,7 +153,10 @@ pub async fn add_folder(
     // 3. FilenameCache 즉시 갱신 + 메타 스캔에서 수집한 파일 목록 재사용
     let pre_collected = if let Ok(ref meta) = metadata_result {
         refresh_filename_cache(&state);
-        tracing::info!("FilenameCache ready: {} files (metadata scan)", meta.files_found);
+        tracing::info!(
+            "FilenameCache ready: {} files (metadata scan)",
+            meta.files_found
+        );
         Some(meta.file_paths.clone())
     } else {
         None
@@ -143,7 +165,13 @@ pub async fn add_folder(
     // 4. FTS 인덱싱 (메타 스캔에서 수집한 파일 목록 재사용 → 이중 FS 순회 방지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match service
-        .index_folder_fts(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb, pre_collected)
+        .index_folder_fts(
+            &canonical_path,
+            include_subfolders,
+            Some(progress_callback),
+            max_file_size_mb,
+            pre_collected,
+        )
         .await
     {
         Ok(r) => r,
@@ -167,7 +195,11 @@ pub async fn add_folder(
 
     // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
     if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path);
@@ -186,7 +218,12 @@ pub async fn add_folder(
     }
 
     // 결과 메시지 생성
-    let message = build_result_message(&result, was_cancelled, semantic_available && semantic_enabled, false);
+    let message = build_result_message(
+        &result,
+        was_cancelled,
+        semantic_available && semantic_enabled,
+        false,
+    );
     log_indexing_errors(&result.errors);
 
     Ok(AddFolderResult {
@@ -201,10 +238,7 @@ pub async fn add_folder(
 
 /// 감시 폴더 제거
 #[tauri::command]
-pub async fn remove_folder(
-    path: String,
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<()> {
+pub async fn remove_folder(path: String, state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Removing folder from watch: {}", path);
 
     // 파일 감시 중지
@@ -242,7 +276,16 @@ pub async fn reindex_folder(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
+    let (
+        service,
+        include_subfolders,
+        semantic_available,
+        vector_mode,
+        semantic_enabled,
+        intensity,
+        max_file_size_mb,
+        db_path,
+    ) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
@@ -266,7 +309,12 @@ pub async fn reindex_folder(
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match service
-        .reindex_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
+        .reindex_folder(
+            &canonical_path,
+            include_subfolders,
+            Some(progress_callback),
+            max_file_size_mb,
+        )
         .await
     {
         Ok(r) => r,
@@ -286,7 +334,11 @@ pub async fn reindex_folder(
 
     // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
     if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
@@ -302,7 +354,12 @@ pub async fn reindex_folder(
         let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
     }
 
-    let message = build_result_message(&result, was_cancelled, semantic_available && semantic_enabled, true);
+    let message = build_result_message(
+        &result,
+        was_cancelled,
+        semantic_available && semantic_enabled,
+        true,
+    );
 
     Ok(AddFolderResult {
         success: true,
@@ -332,7 +389,16 @@ pub async fn resume_indexing(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (service, include_subfolders, semantic_available, vector_mode, semantic_enabled, intensity, max_file_size_mb, db_path) = {
+    let (
+        service,
+        include_subfolders,
+        semantic_available,
+        vector_mode,
+        semantic_enabled,
+        intensity,
+        max_file_size_mb,
+        db_path,
+    ) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
@@ -349,19 +415,27 @@ pub async fn resume_indexing(
 
     // UI에 준비 중 상태 알림
     let path_str = canonical_path.to_string_lossy().to_string();
-    let _ = app_handle.emit("indexing-progress", &IndexingProgress {
-        phase: "preparing".to_string(),
-        total_files: 0,
-        processed_files: 0,
-        current_file: None,
-        folder_path: path_str.clone(),
-        error: None,
-    });
+    let _ = app_handle.emit(
+        "indexing-progress",
+        &IndexingProgress {
+            phase: "preparing".to_string(),
+            total_files: 0,
+            processed_files: 0,
+            current_file: None,
+            folder_path: path_str.clone(),
+            error: None,
+        },
+    );
 
     // sync 기반 인덱싱 (추가/수정/삭제 감지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let sync_result = match service
-        .sync_folder(&canonical_path, include_subfolders, Some(progress_callback), max_file_size_mb)
+        .sync_folder(
+            &canonical_path,
+            include_subfolders,
+            Some(progress_callback),
+            max_file_size_mb,
+        )
         .await
     {
         Ok(r) => r,
@@ -384,7 +458,11 @@ pub async fn resume_indexing(
 
     // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
     if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
@@ -406,7 +484,11 @@ pub async fn resume_indexing(
         sync_result.added,
         sync_result.deleted,
         sync_result.unchanged,
-        if sync_result.failed > 0 { format!(", {}개 실패", sync_result.failed) } else { String::new() }
+        if sync_result.failed > 0 {
+            format!(", {}개 실패", sync_result.failed)
+        } else {
+            String::new()
+        }
     );
 
     Ok(AddFolderResult {
@@ -460,7 +542,11 @@ pub async fn start_vector_indexing(
     let (service, semantic_enabled, intensity) = {
         let container = state.read()?;
         let settings = container.get_settings();
-        (container.index_service(), settings.semantic_search_enabled, settings.indexing_intensity.clone())
+        (
+            container.index_service(),
+            settings.semantic_search_enabled,
+            settings.indexing_intensity.clone(),
+        )
     };
 
     if !semantic_enabled {
@@ -491,9 +577,7 @@ pub async fn cancel_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResul
 
 /// 벡터 인덱싱 취소
 #[tauri::command]
-pub async fn cancel_vector_indexing(
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<()> {
+pub async fn cancel_vector_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Cancelling vector indexing...");
     let service = {
         let container = state.read()?;
@@ -508,9 +592,7 @@ pub async fn cancel_vector_indexing(
 
 /// 모든 데이터 초기화
 #[tauri::command]
-pub async fn clear_all_data(
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<()> {
+pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Clearing all data...");
 
     // 파일 감시 모두 중지
@@ -551,7 +633,10 @@ pub async fn get_folder_stats(
         let container = state.read()?;
         container.folder_service()
     };
-    service.get_folder_stats(&path).await.map_err(ApiError::from)
+    service
+        .get_folder_stats(&path)
+        .await
+        .map_err(ApiError::from)
 }
 
 /// 감시 폴더 목록 조회
@@ -563,7 +648,10 @@ pub async fn get_folders_with_info(
         let container = state.read()?;
         container.folder_service()
     };
-    service.get_folders_with_info().await.map_err(ApiError::from)
+    service
+        .get_folders_with_info()
+        .await
+        .map_err(ApiError::from)
 }
 
 /// 즐겨찾기 토글
@@ -601,7 +689,9 @@ pub async fn get_db_debug_info(
 ) -> ApiResult<DbDebugInfo> {
     // 프로덕션에서 디버그 커맨드 차단
     if !cfg!(debug_assertions) {
-        return Err(ApiError::IndexingFailed("Debug command not available in release build".to_string()));
+        return Err(ApiError::IndexingFailed(
+            "Debug command not available in release build".to_string(),
+        ));
     }
 
     use crate::db;
@@ -611,20 +701,36 @@ pub async fn get_db_debug_info(
         container.db_path.clone()
     };
 
-    let conn = db::get_connection(&db_path)
-        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+    let conn =
+        db::get_connection(&db_path).map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
 
-    let files_count: usize = conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap_or(0);
-    let chunks_count: usize = conn.query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0)).unwrap_or(0);
-    let chunks_fts_count: usize = conn.query_row("SELECT COUNT(*) FROM chunks_fts", [], |r| r.get(0)).unwrap_or(0);
-    let files_fts_count: usize = conn.query_row("SELECT COUNT(*) FROM files_fts", [], |r| r.get(0)).unwrap_or(0);
+    let files_count: usize = conn
+        .query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0))
+        .unwrap_or(0);
+    let chunks_count: usize = conn
+        .query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))
+        .unwrap_or(0);
+    let chunks_fts_count: usize = conn
+        .query_row("SELECT COUNT(*) FROM chunks_fts", [], |r| r.get(0))
+        .unwrap_or(0);
+    let files_fts_count: usize = conn
+        .query_row("SELECT COUNT(*) FROM files_fts", [], |r| r.get(0))
+        .unwrap_or(0);
 
     let safe_query = format!("\"{}\"*", query.replace('"', "\"\""));
     let fts_match_count: usize = conn
-        .query_row("SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH ?", [&safe_query], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH ?",
+            [&safe_query],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
     let filename_match_count: usize = conn
-        .query_row("SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH ?", [&safe_query], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM files_fts WHERE files_fts MATCH ?",
+            [&safe_query],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
 
     tracing::info!(
@@ -685,7 +791,11 @@ fn build_result_message(
     semantic_available: bool,
     is_reindex: bool,
 ) -> String {
-    let action = if is_reindex { "재인덱싱" } else { "인덱싱" };
+    let action = if is_reindex {
+        "재인덱싱"
+    } else {
+        "인덱싱"
+    };
 
     if was_cancelled {
         format!("{}이 취소되었습니다", action)
@@ -695,10 +805,17 @@ fn build_result_message(
             result.indexed_count,
             action,
             result.failed_count,
-            if semantic_available { " (시맨틱 검색 준비 중...)" } else { "" }
+            if semantic_available {
+                " (시맨틱 검색 준비 중...)"
+            } else {
+                ""
+            }
         )
     } else if semantic_available {
-        format!("{} 파일 {} 완료 (시맨틱 검색 준비 중...)", result.indexed_count, action)
+        format!(
+            "{} 파일 {} 완료 (시맨틱 검색 준비 중...)",
+            result.indexed_count, action
+        )
     } else {
         format!("{} 파일 {} 완료", result.indexed_count, action)
     }

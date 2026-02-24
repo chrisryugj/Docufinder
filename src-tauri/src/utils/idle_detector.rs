@@ -10,9 +10,9 @@
 use std::time::Duration;
 
 #[cfg(windows)]
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
-#[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
+#[cfg(windows)]
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
 
 /// 마지막 사용자 입력 이후 경과 시간
 #[cfg(windows)]

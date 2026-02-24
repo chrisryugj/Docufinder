@@ -86,10 +86,12 @@ impl UsearchVectorRepository {
         // 인덱스 파일 로드
         {
             let index = self.index.write().await;
-            index.load(&path_str).map_err(|e| DomainError::VectorIndexError {
-                operation: "load".to_string(),
-                reason: format!("{:?}", e),
-            })?;
+            index
+                .load(&path_str)
+                .map_err(|e| DomainError::VectorIndexError {
+                    operation: "load".to_string(),
+                    reason: format!("{:?}", e),
+                })?;
             tracing::debug!("Loaded vector index file: {} vectors", index.size());
         }
 
@@ -98,12 +100,11 @@ impl UsearchVectorRepository {
         if map_path.exists() {
             tracing::debug!("Loading mapping file from {:?}", map_path);
 
-            let map_content = std::fs::read_to_string(&map_path).map_err(|e| {
-                DomainError::VectorIndexError {
+            let map_content =
+                std::fs::read_to_string(&map_path).map_err(|e| DomainError::VectorIndexError {
                     operation: "load_map".to_string(),
                     reason: e.to_string(),
-                }
-            })?;
+                })?;
 
             let map_data: serde_json::Value =
                 serde_json::from_str(&map_content).unwrap_or_default();
@@ -141,10 +142,12 @@ impl UsearchVectorRepository {
     /// 내부 삭제 (데드락 방지를 위한 분리)
     async fn remove_internal(&self, key: u64) -> Result<(), DomainError> {
         let index = self.index.write().await;
-        index.remove(key).map_err(|e| DomainError::VectorIndexError {
-            operation: "remove".to_string(),
-            reason: format!("{:?}", e),
-        })?;
+        index
+            .remove(key)
+            .map_err(|e| DomainError::VectorIndexError {
+                operation: "remove".to_string(),
+                reason: format!("{:?}", e),
+            })?;
         Ok(())
     }
 }
@@ -195,16 +198,20 @@ impl VectorRepository for UsearchVectorRepository {
             let current_capacity = index.capacity();
             if current_size >= current_capacity {
                 let new_capacity = (current_capacity + 1).max(100).max(current_capacity * 2);
-                index.reserve(new_capacity).map_err(|e| DomainError::VectorIndexError {
-                    operation: "reserve".to_string(),
-                    reason: format!("{:?}", e),
-                })?;
+                index
+                    .reserve(new_capacity)
+                    .map_err(|e| DomainError::VectorIndexError {
+                        operation: "reserve".to_string(),
+                        reason: format!("{:?}", e),
+                    })?;
             }
 
-            index.add(key, vector).map_err(|e| DomainError::VectorIndexError {
-                operation: "add".to_string(),
-                reason: format!("{:?}", e),
-            })?;
+            index
+                .add(key, vector)
+                .map_err(|e| DomainError::VectorIndexError {
+                    operation: "add".to_string(),
+                    reason: format!("{:?}", e),
+                })?;
         }
 
         // 매핑 저장
@@ -257,10 +264,12 @@ impl VectorRepository for UsearchVectorRepository {
             if index.size() == 0 {
                 return Ok(vec![]);
             }
-            index.search(query_vector, limit).map_err(|e| DomainError::VectorIndexError {
-                operation: "search".to_string(),
-                reason: format!("{:?}", e),
-            })?
+            index
+                .search(query_vector, limit)
+                .map_err(|e| DomainError::VectorIndexError {
+                    operation: "search".to_string(),
+                    reason: format!("{:?}", e),
+                })?
         };
 
         let key_map = self.key_map.read().await;
@@ -292,10 +301,12 @@ impl VectorRepository for UsearchVectorRepository {
         // 인덱스 파일 저장
         {
             let index = self.index.write().await;
-            index.save(&path_str).map_err(|e| DomainError::VectorIndexError {
-                operation: "save".to_string(),
-                reason: format!("{:?}", e),
-            })?;
+            index
+                .save(&path_str)
+                .map_err(|e| DomainError::VectorIndexError {
+                    operation: "save".to_string(),
+                    reason: format!("{:?}", e),
+                })?;
         }
 
         // 매핑 파일 저장
@@ -308,17 +319,14 @@ impl VectorRepository for UsearchVectorRepository {
             "next_key": next_key,
         });
 
-        let map_json = serde_json::to_string(&map_data).map_err(|e| {
-            DomainError::VectorIndexError {
+        let map_json =
+            serde_json::to_string(&map_data).map_err(|e| DomainError::VectorIndexError {
                 operation: "serialize_map".to_string(),
                 reason: e.to_string(),
-            }
-        })?;
-        std::fs::write(&map_path, map_json).map_err(|e| {
-            DomainError::VectorIndexError {
-                operation: "save_map".to_string(),
-                reason: e.to_string(),
-            }
+            })?;
+        std::fs::write(&map_path, map_json).map_err(|e| DomainError::VectorIndexError {
+            operation: "save_map".to_string(),
+            reason: e.to_string(),
         })?;
 
         Ok(())

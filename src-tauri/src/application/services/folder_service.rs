@@ -39,8 +39,7 @@ impl FolderService {
         let path_str = canonical.to_string_lossy().to_string();
 
         let conn = self.get_connection()?;
-        db::add_watched_folder(&conn, &path_str)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        db::add_watched_folder(&conn, &path_str).map_err(|e| AppError::Internal(e.to_string()))?;
 
         // 파일 감시 시작
         if let Some(wm) = self.watch_manager.as_ref() {
@@ -93,8 +92,7 @@ impl FolderService {
         tracing::info!("Deleted {} files from folder: {}", deleted, path);
 
         // 4. 감시 폴더 삭제
-        db::remove_watched_folder(&conn, path)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        db::remove_watched_folder(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
 
         Ok(())
     }
@@ -102,8 +100,7 @@ impl FolderService {
     /// 감시 폴더 목록 조회
     pub async fn get_folders(&self) -> AppResult<Vec<String>> {
         let conn = self.get_connection()?;
-        db::get_watched_folders(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))
+        db::get_watched_folders(&conn).map_err(|e| AppError::Internal(e.to_string()))
     }
 
     /// 감시 폴더 상세 목록 조회
@@ -126,8 +123,8 @@ impl FolderService {
     /// 폴더 통계 조회
     pub async fn get_folder_stats(&self, path: &str) -> AppResult<FolderStats> {
         let conn = self.get_connection()?;
-        let stats = db::get_folder_stats(&conn, path)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let stats =
+            db::get_folder_stats(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
 
         Ok(FolderStats {
             file_count: stats.file_count,
@@ -139,8 +136,8 @@ impl FolderService {
     /// 즐겨찾기 토글
     pub async fn toggle_favorite(&self, path: &str) -> AppResult<bool> {
         let conn = self.get_connection()?;
-        let is_favorite = db::toggle_favorite(&conn, path)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let is_favorite =
+            db::toggle_favorite(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
 
         tracing::info!("Toggled favorite for {}: {}", path, is_favorite);
         Ok(is_favorite)
@@ -149,8 +146,8 @@ impl FolderService {
     /// 기존 감시 폴더들 자동 감시 시작
     pub async fn resume_watching(&self) -> AppResult<usize> {
         let conn = self.get_connection()?;
-        let folders = db::get_watched_folders(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let folders =
+            db::get_watched_folders(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
 
         let mut resumed = 0;
         if let Some(wm) = self.watch_manager.as_ref() {
@@ -182,7 +179,8 @@ impl FolderService {
             return Err(AppError::PathNotFound(path.display().to_string()));
         }
 
-        let canonical = path.canonicalize()
+        let canonical = path
+            .canonicalize()
             .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
 
         let path_str = canonical.to_string_lossy().to_lowercase();

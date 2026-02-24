@@ -3,7 +3,9 @@
 //! 다양한 검색 모드 (keyword, semantic, hybrid, filename)를 처리하고
 //! 결과를 정규화된 DTO로 반환합니다.
 
-use crate::application::dto::search::{MatchType, SearchQuery, SearchResponse, SearchResult, SearchMode};
+use crate::application::dto::search::{
+    MatchType, SearchMode, SearchQuery, SearchResponse, SearchResult,
+};
 use crate::application::errors::{AppError, AppResult};
 use crate::db::{self, ChunkInfo};
 use crate::reranker::Reranker;
@@ -64,7 +66,11 @@ impl SearchService {
     }
 
     /// 키워드 검색 (FTS5)
-    pub async fn search_keyword(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
+    pub async fn search_keyword(
+        &self,
+        query: &str,
+        max_results: usize,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
         let conn = self.get_connection()?;
@@ -121,7 +127,10 @@ impl SearchService {
 
         tracing::debug!(
             "Keyword search '{}': {} results in {}ms (tokenizer={})",
-            query, total_count, search_time_ms, use_tokenizer
+            query,
+            total_count,
+            search_time_ms,
+            use_tokenizer
         );
 
         Ok(SearchResponse {
@@ -133,44 +142,51 @@ impl SearchService {
     }
 
     /// 파일명 검색 (캐시 우선, fallback: LIKE 검색)
-    pub async fn search_filename(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
+    pub async fn search_filename(
+        &self,
+        query: &str,
+        max_results: usize,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
         // 캐시 사용 (있고, 비어있지 않고, truncated 아닐 때만)
-        let use_cache = self.filename_cache.as_ref().is_some_and(|c| !c.is_empty() && !c.is_truncated());
+        let use_cache = self
+            .filename_cache
+            .as_ref()
+            .is_some_and(|c| !c.is_empty() && !c.is_truncated());
 
         let results: Vec<SearchResult> = if use_cache {
             // ⚡ 인메모리 캐시 검색 (~5ms)
             let cache = match self.filename_cache.as_ref() {
                 Some(c) => c,
-                None => return Ok(SearchResponse {
-                    results: vec![],
-                    total_count: 0,
-                    search_time_ms: start.elapsed().as_millis() as u64,
-                    search_mode: "filename".to_string(),
-                }),
+                None => {
+                    return Ok(SearchResponse {
+                        results: vec![],
+                        total_count: 0,
+                        search_time_ms: start.elapsed().as_millis() as u64,
+                        search_mode: "filename".to_string(),
+                    })
+                }
             };
             let cache_results = cache.search(query, max_results);
 
             cache_results
                 .into_iter()
-                .map(|r| {
-                    SearchResult {
-                        file_path: r.path,
-                        file_name: r.name.clone(),
-                        chunk_index: 0,
-                        content_preview: r.name.clone(),
-                        full_content: String::new(),
-                        score: 1.0,
-                        confidence: 100,
-                        match_type: MatchType::Filename,
-                        highlight_ranges: vec![],
-                        page_number: None,
-                        start_offset: 0,
-                        location_hint: Some(r.file_type),
-                        snippet: Some(r.name),
-                        modified_at: Some(r.modified_at),
-                    }
+                .map(|r| SearchResult {
+                    file_path: r.path,
+                    file_name: r.name.clone(),
+                    chunk_index: 0,
+                    content_preview: r.name.clone(),
+                    full_content: String::new(),
+                    score: 1.0,
+                    confidence: 100,
+                    match_type: MatchType::Filename,
+                    highlight_ranges: vec![],
+                    page_number: None,
+                    start_offset: 0,
+                    location_hint: Some(r.file_type),
+                    snippet: Some(r.name),
+                    modified_at: Some(r.modified_at),
                 })
                 .collect()
         } else {
@@ -185,23 +201,21 @@ impl SearchService {
             filename_results
                 .into_iter()
                 .enumerate()
-                .map(|(idx, r)| {
-                    SearchResult {
-                        file_path: r.file_path,
-                        file_name: r.file_name.clone(),
-                        chunk_index: 0,
-                        content_preview: r.file_name.clone(),
-                        full_content: String::new(),
-                        score: r.score,
-                        confidence: confidences.get(idx).copied().unwrap_or(50),
-                        match_type: MatchType::Filename,
-                        highlight_ranges: vec![],
-                        page_number: None,
-                        start_offset: 0,
-                        location_hint: Some(r.file_type),
-                        snippet: Some(r.file_name),
-                        modified_at: r.modified_at,
-                    }
+                .map(|(idx, r)| SearchResult {
+                    file_path: r.file_path,
+                    file_name: r.file_name.clone(),
+                    chunk_index: 0,
+                    content_preview: r.file_name.clone(),
+                    full_content: String::new(),
+                    score: r.score,
+                    confidence: confidences.get(idx).copied().unwrap_or(50),
+                    match_type: MatchType::Filename,
+                    highlight_ranges: vec![],
+                    page_number: None,
+                    start_offset: 0,
+                    location_hint: Some(r.file_type),
+                    snippet: Some(r.file_name),
+                    modified_at: r.modified_at,
                 })
                 .collect()
         };
@@ -211,7 +225,10 @@ impl SearchService {
 
         tracing::debug!(
             "Filename search '{}': {} results in {}ms (cache={})",
-            query, total_count, search_time_ms, use_cache
+            query,
+            total_count,
+            search_time_ms,
+            use_cache
         );
 
         Ok(SearchResponse {
@@ -223,12 +240,20 @@ impl SearchService {
     }
 
     /// 시맨틱 검색 (벡터)
-    pub async fn search_semantic(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
+    pub async fn search_semantic(
+        &self,
+        query: &str,
+        max_results: usize,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
-        let embedder = self.embedder.as_ref()
+        let embedder = self
+            .embedder
+            .as_ref()
             .ok_or(AppError::SemanticSearchDisabled)?;
-        let vector_index = self.vector_index.as_ref()
+        let vector_index = self
+            .vector_index
+            .as_ref()
             .ok_or(AppError::SemanticSearchDisabled)?;
 
         // 벡터 인덱스 상태 확인
@@ -252,10 +277,8 @@ impl SearchService {
         let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
-        let chunk_map: HashMap<i64, ChunkInfo> = chunks
-            .into_iter()
-            .map(|c| (c.chunk_id, c))
-            .collect();
+        let chunk_map: HashMap<i64, ChunkInfo> =
+            chunks.into_iter().map(|c| (c.chunk_id, c)).collect();
 
         // 결과 변환 (⚡ full_content 제거)
         let mut results: Vec<SearchResult> = vector_results
@@ -290,7 +313,9 @@ impl SearchService {
 
         tracing::debug!(
             "Semantic search '{}': {} results in {}ms",
-            query, total_count, search_time_ms
+            query,
+            total_count,
+            search_time_ms
         );
 
         Ok(SearchResponse {
@@ -302,7 +327,11 @@ impl SearchService {
     }
 
     /// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
-    pub async fn search_hybrid(&self, query: &str, max_results: usize) -> AppResult<SearchResponse> {
+    pub async fn search_hybrid(
+        &self,
+        query: &str,
+        max_results: usize,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
         let use_reranker = self.reranker.is_some();
@@ -318,9 +347,9 @@ impl SearchService {
         };
 
         // 2. 벡터 검색 (가능한 경우, 락 불필요)
-        let (vector_results, query_embedding) = match (self.embedder.as_ref(), self.vector_index.as_ref()) {
-            (Some(emb), Some(vi)) => {
-                match emb.embed(query, true) {
+        let (vector_results, query_embedding) =
+            match (self.embedder.as_ref(), self.vector_index.as_ref()) {
+                (Some(emb), Some(vi)) => match emb.embed(query, true) {
                     Ok(qe) => {
                         let results = vi.search(&qe, max_results).unwrap_or_default();
                         (results, Some(qe))
@@ -329,17 +358,14 @@ impl SearchService {
                         tracing::warn!("Failed to embed query: {}", e);
                         (vec![], None)
                     }
-                }
-            }
-            _ => (vec![], None),
-        };
+                },
+                _ => (vec![], None),
+            };
 
         // 3. FTS 결과를 HashMap으로 변환 (DB 중복 조회 제거)
         // FtsResult에 이미 content, file_path 등 모든 정보가 있음
-        let fts_map: HashMap<i64, &fts::FtsResult> = fts_results
-            .iter()
-            .map(|r| (r.chunk_id, r))
-            .collect();
+        let fts_map: HashMap<i64, &fts::FtsResult> =
+            fts_results.iter().map(|r| (r.chunk_id, r)).collect();
         // vector_chunk_ids만 유지 (매치 타입 판별용)
         let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
@@ -363,7 +389,9 @@ impl SearchService {
                     match rr.rerank(query, &documents, documents.len()) {
                         Ok(reranked_indices) => {
                             // 상위 K개만 재정렬
-                            let top_results: Vec<_> = hybrid_results.drain(..documents.len().min(RERANK_TOP_K)).collect();
+                            let top_results: Vec<_> = hybrid_results
+                                .drain(..documents.len().min(RERANK_TOP_K))
+                                .collect();
                             let mut reranked: Vec<_> = reranked_indices
                                 .into_iter()
                                 .filter_map(|idx| top_results.get(idx).cloned())
@@ -478,7 +506,11 @@ impl SearchService {
 
         tracing::debug!(
             "Hybrid search '{}': {} results in {}ms (tokenizer={}, reranker={})",
-            query, total_count, search_time_ms, use_tokenizer, use_reranker
+            query,
+            total_count,
+            search_time_ms,
+            use_tokenizer,
+            use_reranker
         );
 
         Ok(SearchResponse {
@@ -516,7 +548,11 @@ impl SearchService {
 
         for (idx, result) in results.iter().take(results_to_process).enumerate() {
             // 이미 FTS 하이라이트 snippet이 있으면 스킵
-            if result.snippet.as_ref().is_some_and(|s| s.contains("[[HL]]")) {
+            if result
+                .snippet
+                .as_ref()
+                .is_some_and(|s| s.contains("[[HL]]"))
+            {
                 continue;
             }
 
@@ -544,7 +580,9 @@ impl SearchService {
         // 3. 각 청크별 최고 유사도 문장 선택
         let mut best_per_result: HashMap<usize, (String, f32, usize, usize)> = HashMap::new();
 
-        for ((result_idx, sentence_text, start, end), embedding) in all_sentences.iter().zip(embeddings.iter()) {
+        for ((result_idx, sentence_text, start, end), embedding) in
+            all_sentences.iter().zip(embeddings.iter())
+        {
             let sim = sentence::cosine_similarity(query_embedding, embedding);
 
             best_per_result
@@ -611,9 +649,7 @@ fn truncate_preview(content: &str, max_len: usize) -> String {
 
 /// snippet에서 하이라이트 마커 제거
 fn strip_highlight_markers(snippet: &str) -> String {
-    snippet
-        .replace("[[HL]]", "")
-        .replace("[[/HL]]", "")
+    snippet.replace("[[HL]]", "").replace("[[/HL]]", "")
 }
 
 /// FTS5 snippet에 키워드가 없을 때 content에서 키워드를 찾아 커스텀 snippet 생성
@@ -645,13 +681,18 @@ fn create_keyword_snippet(content: &str, query: &str) -> Option<String> {
     let end = (char_pos + kw_char_len + 140).min(total_chars);
 
     let before: String = content_chars[start..char_pos].iter().collect();
-    let keyword: String = content_chars[char_pos..char_pos + kw_char_len].iter().collect();
+    let keyword: String = content_chars[char_pos..char_pos + kw_char_len]
+        .iter()
+        .collect();
     let after: String = content_chars[char_pos + kw_char_len..end].iter().collect();
 
     let prefix = if start > 0 { "..." } else { "" };
     let suffix = if end < total_chars { "..." } else { "" };
 
-    Some(format!("{}{}[[HL]]{}[[/HL]]{}{}", prefix, before, keyword, after, suffix))
+    Some(format!(
+        "{}{}[[HL]]{}[[/HL]]{}{}",
+        prefix, before, keyword, after, suffix
+    ))
 }
 
 /// FTS5 snippet에 검색 키워드가 포함되어 있지 않으면 content에서 찾아 대체
@@ -670,7 +711,10 @@ fn ensure_keyword_in_snippet(fts_snippet: &str, content: &str, query: &str) -> S
     let keywords: Vec<&str> = query_trimmed.split_whitespace().collect();
 
     // snippet에 이미 키워드가 있으면 그대로 사용
-    if keywords.iter().any(|kw| stripped_lower.contains(&kw.to_lowercase())) {
+    if keywords
+        .iter()
+        .any(|kw| stripped_lower.contains(&kw.to_lowercase()))
+    {
         return fts_snippet.to_string();
     }
 
@@ -751,7 +795,9 @@ fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
         .iter()
         .map(|&score| {
             let normalized = (max - score) / (max - min);
-            (normalized * quality_factor * 100.0).round().clamp(0.0, 100.0) as u8
+            (normalized * quality_factor * 100.0)
+                .round()
+                .clamp(0.0, 100.0) as u8
         })
         .collect()
 }

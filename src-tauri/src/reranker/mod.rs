@@ -171,10 +171,15 @@ impl Reranker {
                 .or_else(|| outputs.get("scores"))
                 .or_else(|| {
                     // 첫 번째 출력 사용 (fallback)
-                    output_names.first().and_then(|name| outputs.get(name.as_str()))
+                    output_names
+                        .first()
+                        .and_then(|name| outputs.get(name.as_str()))
                 })
                 .ok_or_else(|| {
-                    RerankerError::OrtError(format!("No score output found. Available: {:?}", output_names))
+                    RerankerError::OrtError(format!(
+                        "No score output found. Available: {:?}",
+                        output_names
+                    ))
                 })?;
 
             let (_, out_data) = output
@@ -200,10 +205,7 @@ impl Reranker {
         let scores = self.score(query, documents)?;
 
         // (원본 인덱스, 점수) 쌍 생성
-        let mut indexed_scores: Vec<(usize, f32)> = scores
-            .into_iter()
-            .enumerate()
-            .collect();
+        let mut indexed_scores: Vec<(usize, f32)> = scores.into_iter().enumerate().collect();
 
         // 점수 기준 내림차순 정렬
         indexed_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -225,10 +227,7 @@ impl Reranker {
     ) -> Result<Vec<(usize, f32)>, RerankerError> {
         let scores = self.score(query, documents)?;
 
-        let mut indexed_scores: Vec<(usize, f32)> = scores
-            .into_iter()
-            .enumerate()
-            .collect();
+        let mut indexed_scores: Vec<(usize, f32)> = scores.into_iter().enumerate().collect();
 
         indexed_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 

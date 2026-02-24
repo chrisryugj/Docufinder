@@ -29,7 +29,10 @@ mod txt_tests {
 
         // 청크 검증
         for chunk in &doc.chunks {
-            assert!(!chunk.content.is_empty(), "Chunk content should not be empty");
+            assert!(
+                !chunk.content.is_empty(),
+                "Chunk content should not be empty"
+            );
             assert!(
                 chunk.end_offset > chunk.start_offset,
                 "end_offset should be greater than start_offset"
@@ -80,8 +83,14 @@ mod docx_tests {
 
         // 청크에 페이지 정보 확인
         for chunk in &doc.chunks {
-            assert!(chunk.page_number.is_some(), "DOCX chunks should have page_number");
-            assert!(chunk.location_hint.is_some(), "DOCX chunks should have location_hint");
+            assert!(
+                chunk.page_number.is_some(),
+                "DOCX chunks should have page_number"
+            );
+            assert!(
+                chunk.location_hint.is_some(),
+                "DOCX chunks should have location_hint"
+            );
         }
     }
 }
@@ -107,9 +116,16 @@ mod pdf_tests {
 
         // 청크에 페이지 정보 확인
         for chunk in &doc.chunks {
-            assert!(chunk.page_number.is_some(), "PDF chunks should have page_number");
             assert!(
-                chunk.location_hint.as_ref().map(|h| h.contains("페이지")).unwrap_or(false),
+                chunk.page_number.is_some(),
+                "PDF chunks should have page_number"
+            );
+            assert!(
+                chunk
+                    .location_hint
+                    .as_ref()
+                    .map(|h| h.contains("페이지"))
+                    .unwrap_or(false),
                 "PDF location_hint should contain '페이지'"
             );
         }
@@ -133,13 +149,23 @@ mod hwpx_tests {
 
         let doc = result.unwrap();
         assert!(!doc.content.is_empty(), "Content should not be empty");
-        assert!(doc.metadata.page_count.is_some(), "Should have section count");
+        assert!(
+            doc.metadata.page_count.is_some(),
+            "Should have section count"
+        );
 
         // 청크에 섹션 정보 확인
         for chunk in &doc.chunks {
-            assert!(chunk.page_number.is_some(), "HWPX chunks should have page_number");
             assert!(
-                chunk.location_hint.as_ref().map(|h| h.contains("섹션")).unwrap_or(false),
+                chunk.page_number.is_some(),
+                "HWPX chunks should have page_number"
+            );
+            assert!(
+                chunk
+                    .location_hint
+                    .as_ref()
+                    .map(|h| h.contains("섹션"))
+                    .unwrap_or(false),
                 "HWPX location_hint should contain '섹션'"
             );
         }
@@ -168,7 +194,11 @@ mod xlsx_tests {
         // 청크에 시트/행 정보 확인
         for chunk in &doc.chunks {
             assert!(
-                chunk.location_hint.as_ref().map(|h| h.contains("!행")).unwrap_or(false),
+                chunk
+                    .location_hint
+                    .as_ref()
+                    .map(|h| h.contains("!행"))
+                    .unwrap_or(false),
                 "XLSX location_hint should contain sheet and row info"
             );
         }

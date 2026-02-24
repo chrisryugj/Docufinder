@@ -51,9 +51,9 @@ impl VectorIndex {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos, // 코사인 유사도
             quantization: ScalarKind::F16,
-            connectivity: 16,       // HNSW M parameter
-            expansion_add: 128,     // efConstruction
-            expansion_search: 64,   // efSearch
+            connectivity: 16,     // HNSW M parameter
+            expansion_add: 128,   // efConstruction
+            expansion_search: 64, // efSearch
             multi: false,
         };
 
@@ -63,14 +63,18 @@ impl VectorIndex {
         // 생성 직후 차원 확인 + 초기 reserve (일부 usearch 버전에서 reserve 전 add 실패 방지)
         tracing::info!(
             "usearch Index created: dims={}, capacity={}, size={}",
-            index.dimensions(), index.capacity(), index.size()
+            index.dimensions(),
+            index.capacity(),
+            index.size()
         );
         index
             .reserve(100)
             .map_err(|e| VectorError::IndexError(format!("Initial reserve failed: {:?}", e)))?;
         tracing::info!(
             "usearch Index after reserve: dims={}, capacity={}, size={}",
-            index.dimensions(), index.capacity(), index.size()
+            index.dimensions(),
+            index.capacity(),
+            index.size()
         );
 
         let mut vector_index = Self {
@@ -91,7 +95,9 @@ impl VectorIndex {
             let map_size_bytes = std::fs::metadata(&map_path).map(|m| m.len()).unwrap_or(0);
             tracing::info!(
                 "Loading existing vector index from {:?} (usearch={}KB, map={}KB)",
-                path, usearch_size / 1024, map_size_bytes / 1024
+                path,
+                usearch_size / 1024,
+                map_size_bytes / 1024
             );
             vector_index.load()?;
 
@@ -113,24 +119,47 @@ impl VectorIndex {
                 // 올바른 차원으로 새 인덱스 생성
                 let new_index = Index::new(&options)
                     .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
-                *vector_index.index.write().map_err(|_| VectorError::LockPoisoned)? = new_index;
-                vector_index.id_map.write().map_err(|_| VectorError::LockPoisoned)?.clear();
-                vector_index.key_map.write().map_err(|_| VectorError::LockPoisoned)?.clear();
-                *vector_index.next_key.write().map_err(|_| VectorError::LockPoisoned)? = 0;
+                *vector_index
+                    .index
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)? = new_index;
+                vector_index
+                    .id_map
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)?
+                    .clear();
+                vector_index
+                    .key_map
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)?
+                    .clear();
+                *vector_index
+                    .next_key
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)? = 0;
             }
         } else {
             tracing::info!(
                 "Creating new vector index at {:?} (usearch_exists={}, map_exists={})",
-                path, usearch_exists, map_exists
+                path,
+                usearch_exists,
+                map_exists
             );
             // 한쪽 파일만 있으면 불일치 → 삭제
-            if usearch_exists { let _ = std::fs::remove_file(path); }
-            if map_exists { let _ = std::fs::remove_file(&map_path); }
+            if usearch_exists {
+                let _ = std::fs::remove_file(path);
+            }
+            if map_exists {
+                let _ = std::fs::remove_file(&map_path);
+            }
         }
 
         // 초기화 상태 로그
         let (index_size, index_dims) = {
-            let idx = vector_index.index.read().map_err(|_| VectorError::LockPoisoned)?;
+            let idx = vector_index
+                .index
+                .read()
+                .map_err(|_| VectorError::LockPoisoned)?;
             (idx.size(), idx.dimensions())
         };
         let map_size = vector_index
@@ -140,7 +169,9 @@ impl VectorIndex {
             .len();
         tracing::info!(
             "VectorIndex initialized: dims={}, index_size={}, id_map_count={}",
-            index_dims, index_size, map_size
+            index_dims,
+            index_size,
+            map_size
         );
 
         // 인덱스/매핑 불일치 검증
@@ -153,13 +184,16 @@ impl VectorIndex {
         } else if map_size > index_size {
             tracing::warn!(
                 "Mapping ({}) > index ({}). Resetting to avoid stale references.",
-                map_size, index_size
+                map_size,
+                index_size
             );
             vector_index.clear();
         } else if index_size > map_size && map_size > 0 {
             tracing::warn!(
                 "Vector index ({}) > mapping ({}). Keeping valid mapped data ({} orphan vectors).",
-                index_size, map_size, index_size - map_size
+                index_size,
+                map_size,
+                index_size - map_size
             );
         }
 
@@ -180,8 +214,14 @@ impl VectorIndex {
         // 락 순서: index → id_map → key_map → next_key (데드락 방지를 위해 고정 순서)
         let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
         let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
-        let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
-        let mut next_key = self.next_key.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut key_map = self
+            .key_map
+            .write()
+            .map_err(|_| VectorError::LockPoisoned)?;
+        let mut next_key = self
+            .next_key
+            .write()
+            .map_err(|_| VectorError::LockPoisoned)?;
 
         // 이미 존재하면 먼저 삭제 (인라인 처리 - self.remove() 호출 시 데드락)
         if let Some(&old_key) = id_map.get(&chunk_id) {
@@ -233,10 +273,7 @@ impl VectorIndex {
 
     /// 벡터 인덱스에 저장된 청크 수
     pub fn chunk_count(&self) -> usize {
-        self.id_map
-            .read()
-            .map(|map| map.len())
-            .unwrap_or(0)
+        self.id_map.read().map(|map| map.len()).unwrap_or(0)
     }
 
     /// 벡터 삭제 (원자적 연산)
@@ -244,7 +281,10 @@ impl VectorIndex {
         // 모든 write lock을 한번에 획득 (add와 동일 순서)
         let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
         let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
-        let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
+        let mut key_map = self
+            .key_map
+            .write()
+            .map_err(|_| VectorError::LockPoisoned)?;
 
         if let Some(&key) = id_map.get(&chunk_id) {
             // usearch에서 삭제 (mark as removed)
@@ -261,7 +301,11 @@ impl VectorIndex {
     }
 
     /// 유사도 검색
-    pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<VectorResult>, VectorError> {
+    pub fn search(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<VectorResult>, VectorError> {
         /// 최소 코사인 유사도 임계값 (이 미만은 무관한 결과로 판단)
         const MIN_SIMILARITY: f32 = 0.25;
 
@@ -285,10 +329,7 @@ impl VectorIndex {
                 let score = 1.0 - distance;
                 // 최소 유사도 미만 결과 필터링 (무관한 결과 제거)
                 if score >= MIN_SIMILARITY {
-                    vector_results.push(VectorResult {
-                        chunk_id,
-                        score,
-                    });
+                    vector_results.push(VectorResult { chunk_id, score });
                 }
             }
         }
@@ -332,10 +373,9 @@ impl VectorIndex {
         std::fs::write(&map_path, json_str)?;
 
         // 저장 확인 로그
-        if let (Ok(usearch_meta), Ok(map_meta)) = (
-            std::fs::metadata(&*self.path),
-            std::fs::metadata(&map_path),
-        ) {
+        if let (Ok(usearch_meta), Ok(map_meta)) =
+            (std::fs::metadata(&*self.path), std::fs::metadata(&map_path))
+        {
             tracing::debug!(
                 "Vector index saved: {} entries, usearch={}KB, map={}KB",
                 map_len,
@@ -374,7 +414,10 @@ impl VectorIndex {
 
             if let Some(pairs) = map_data.get("id_map").and_then(|v| v.as_array()) {
                 let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
-                let mut key_map = self.key_map.write().map_err(|_| VectorError::LockPoisoned)?;
+                let mut key_map = self
+                    .key_map
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)?;
 
                 for pair in pairs {
                     if let (Some(chunk_id), Some(key)) = (

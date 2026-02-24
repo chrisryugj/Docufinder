@@ -75,8 +75,8 @@ struct DefaultStyle {
 impl Default for DefaultStyle {
     fn default() -> Self {
         Self {
-            font_size: 1000,    // 10pt
-            line_spacing: 160,  // 160%
+            font_size: 1000,   // 10pt
+            line_spacing: 160, // 160%
         }
     }
 }
@@ -84,8 +84,8 @@ impl Default for DefaultStyle {
 /// 스타일별 속성 (styles.xml에서 파싱)
 #[derive(Debug, Clone)]
 struct StyleData {
-    font_size: Option<u32>,     // hwpunit (1pt = 100)
-    line_spacing: Option<u32>,  // %
+    font_size: Option<u32>,    // hwpunit (1pt = 100)
+    line_spacing: Option<u32>, // %
 }
 
 /// LineSeg (HWP 렌더러가 계산한 줄 레이아웃)
@@ -224,11 +224,7 @@ impl LayoutSimulator {
                 }
 
                 // 마지막 라인 처리
-                self.advance_line_with(
-                    page_starts,
-                    para.char_offset + line_start_offset,
-                    line_h,
-                );
+                self.advance_line_with(page_starts, para.char_offset + line_start_offset, line_h);
             }
         }
 
@@ -250,10 +246,7 @@ impl LayoutSimulator {
         styles: &HashMap<String, StyleData>,
         default_style: &DefaultStyle,
     ) -> (f32, f32) {
-        let style_data = para
-            .style_id
-            .as_ref()
-            .and_then(|id| styles.get(id));
+        let style_data = para.style_id.as_ref().and_then(|id| styles.get(id));
 
         let font_sz = style_data
             .and_then(|s| s.font_size)
@@ -309,7 +302,9 @@ impl PageMap {
     }
 
     fn page_for_offset(&self, char_offset: usize) -> usize {
-        let idx = self.page_starts.partition_point(|&start| start <= char_offset);
+        let idx = self
+            .page_starts
+            .partition_point(|&start| start <= char_offset);
         idx.max(1)
     }
 }
@@ -364,8 +359,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive =
-        ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
+    let mut archive = ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
     // ========================================================================
     // 압축 폭탄 방어: 사전 검증
@@ -375,7 +369,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     if archive.len() > MAX_ZIP_ENTRIES {
         return Err(ParseError::ParseError(format!(
             "ZIP 엔트리 수 초과: {} (최대 {})",
-            archive.len(), MAX_ZIP_ENTRIES
+            archive.len(),
+            MAX_ZIP_ENTRIES
         )));
     }
 
@@ -390,7 +385,9 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             if uncompressed > MAX_ENTRY_UNCOMPRESSED_SIZE {
                 return Err(ParseError::ParseError(format!(
                     "ZIP 엔트리 크기 초과: {} bytes (최대 {} bytes) - {}",
-                    uncompressed, MAX_ENTRY_UNCOMPRESSED_SIZE, entry.name()
+                    uncompressed,
+                    MAX_ENTRY_UNCOMPRESSED_SIZE,
+                    entry.name()
                 )));
             }
 
@@ -398,7 +395,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             if compressed > 0 && uncompressed / compressed > MAX_COMPRESSION_RATIO {
                 return Err(ParseError::ParseError(format!(
                     "의심스러운 압축 비율: {}:1 - 압축 폭탄 가능성 ({})",
-                    uncompressed / compressed, entry.name()
+                    uncompressed / compressed,
+                    entry.name()
                 )));
             }
 
@@ -537,10 +535,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     // lineSeg 커버리지가 50% 이상이면 시뮬레이션 신뢰도 높음 → fallback 스킵
     // lineSeg 없이 페이지당 250자 미만이면 시뮬레이션 오류로 판단
-    let is_unreasonable = total_chars > 0
-        && estimated_pages > 1
-        && chars_per_page < 250
-        && lineseg_coverage < 0.5;
+    let is_unreasonable =
+        total_chars > 0 && estimated_pages > 1 && chars_per_page < 250 && lineseg_coverage < 0.5;
 
     let (page_map, page_count) = if is_unreasonable {
         tracing::warn!(
@@ -800,10 +796,8 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                 }
 
                 // 페이지 브레이크 감지
-                let mut is_page_break = matches!(
-                    name_l.as_str(),
-                    "pagebreak" | "pgbreak" | "page-break"
-                );
+                let mut is_page_break =
+                    matches!(name_l.as_str(), "pagebreak" | "pgbreak" | "page-break");
                 let mut is_line_break = false;
 
                 if name_l == "br" || name_l == "colpr" || name_l == "break" {

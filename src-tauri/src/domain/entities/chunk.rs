@@ -195,9 +195,7 @@ mod tests {
         assert!(Chunk::new(FileId::new(1), 0, "".to_string(), 0, 1, None, None).is_err());
 
         // 잘못된 오프셋 범위
-        assert!(
-            Chunk::new(FileId::new(1), 0, "Hello".to_string(), 10, 5, None, None).is_err()
-        );
+        assert!(Chunk::new(FileId::new(1), 0, "Hello".to_string(), 10, 5, None, None).is_err());
     }
 
     #[test]

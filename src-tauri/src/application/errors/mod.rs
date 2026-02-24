@@ -44,7 +44,9 @@ impl fmt::Display for AppError {
             AppError::SearchFailed(e) => write!(f, "Search failed: {}", e),
             AppError::EmbeddingFailed(e) => write!(f, "Embedding failed: {}", e),
             AppError::VectorIndexEmpty => write!(f, "Vector index is empty"),
-            AppError::SemanticSearchDisabled => write!(f, "Semantic search is disabled (model not found)"),
+            AppError::SemanticSearchDisabled => {
+                write!(f, "Semantic search is disabled (model not found)")
+            }
             AppError::Internal(e) => write!(f, "Internal error: {}", e),
         }
     }

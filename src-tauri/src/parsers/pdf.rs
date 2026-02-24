@@ -60,7 +60,10 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let raw_text = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
         Ok(Ok(Ok(text))) => text,
         Ok(Ok(Err(e))) => {
-            return Err(ParseError::ParseError(format!("PDF extraction failed: {}", e)));
+            return Err(ParseError::ParseError(format!(
+                "PDF extraction failed: {}",
+                e
+            )));
         }
         Ok(Err(_)) => {
             return Err(ParseError::ParseError(
@@ -98,8 +101,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             }
             return Err(ParseError::ParseError(format!(
                 "PDF parsing timed out after {}s (detached threads: {})",
-                timeout_secs,
-                count
+                timeout_secs, count
             )));
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -129,7 +131,13 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         let page_number = page_idx + 1; // 1-based
 
         // 페이지별 청크 생성
-        let page_chunks = chunk_text_with_page(&cleaned, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP, page_number, global_offset);
+        let page_chunks = chunk_text_with_page(
+            &cleaned,
+            super::DEFAULT_CHUNK_SIZE,
+            super::DEFAULT_CHUNK_OVERLAP,
+            page_number,
+            global_offset,
+        );
         chunks.extend(page_chunks);
 
         if !all_text.is_empty() {

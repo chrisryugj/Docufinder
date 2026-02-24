@@ -34,8 +34,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive =
-        ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
+    let mut archive = ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
     // ========================================================================
     // 압축 폭탄 방어
@@ -57,7 +56,11 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     }
 
     // 페이지별 청크 생성
-    let chunks = chunk_pages(&pages, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP);
+    let chunks = chunk_pages(
+        &pages,
+        super::DEFAULT_CHUNK_SIZE,
+        super::DEFAULT_CHUNK_OVERLAP,
+    );
     let page_count = pages.len();
 
     Ok(ParsedDocument {
@@ -66,7 +69,11 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             title: path.file_stem().and_then(|s| s.to_str()).map(String::from),
             author: None,
             created_at: None,
-            page_count: if page_count > 1 { Some(page_count) } else { None },
+            page_count: if page_count > 1 {
+                Some(page_count)
+            } else {
+                None
+            },
         },
         chunks,
     })
@@ -195,7 +202,11 @@ fn extract_text_with_pages(xml_content: &str) -> Result<(Vec<PageText>, String),
     }
 
     // 전체 텍스트 생성
-    let total_text = pages.iter().map(|p| p.text.as_str()).collect::<Vec<_>>().join("\n");
+    let total_text = pages
+        .iter()
+        .map(|p| p.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     Ok((pages, total_text))
 }
@@ -240,12 +251,15 @@ fn chunk_pages(pages: &[PageText], chunk_size: usize, overlap: usize) -> Vec<Doc
 }
 
 /// ZIP 아카이브 압축 폭탄 방어 검증
-fn validate_zip_archive<R: std::io::Read + std::io::Seek>(archive: &mut ZipArchive<R>) -> Result<(), ParseError> {
+fn validate_zip_archive<R: std::io::Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+) -> Result<(), ParseError> {
     // 엔트리 수 제한
     if archive.len() > MAX_ZIP_ENTRIES {
         return Err(ParseError::ParseError(format!(
             "ZIP 엔트리 수 초과: {} (최대 {})",
-            archive.len(), MAX_ZIP_ENTRIES
+            archive.len(),
+            MAX_ZIP_ENTRIES
         )));
     }
 

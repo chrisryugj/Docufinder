@@ -144,8 +144,8 @@ impl DiskSettings {
                 parallel_threads: num_cpus::get().min(4),
             },
             DiskType::Hdd | DiskType::Unknown => Self {
-                throttle_ms: 10,  // HDD 부하 최소화 (50ms → 10ms)
-                parallel_threads: 2,  // 약간의 병렬 허용
+                throttle_ms: 10,     // HDD 부하 최소화 (50ms → 10ms)
+                parallel_threads: 2, // 약간의 병렬 허용
             },
         }
     }

@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{params, Connection, Result};
 use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// %, _, \ 문자를 이스케이프하여 리터럴로 처리
 fn escape_like_pattern(s: &str) -> String {
     s.replace('\\', "\\\\")
-     .replace('%', "\\%")
-     .replace('_', "\\_")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 // ==================== 커넥션 풀 ====================
@@ -54,7 +54,9 @@ impl PooledConnection {
 impl std::ops::Deref for PooledConnection {
     type Target = Connection;
     fn deref(&self) -> &Connection {
-        self.inner.as_ref().expect("PooledConnection used after take")
+        self.inner
+            .as_ref()
+            .expect("PooledConnection used after take")
     }
 }
 
@@ -193,8 +195,14 @@ pub fn init_database(db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)",
+            [],
+        )?;
 
         set_schema_version(&conn, 1)?;
         tracing::info!("Schema migrated to v1 (base tables)");
@@ -237,8 +245,14 @@ pub fn init_database(db_path: &Path) -> Result<()> {
             "UPDATE files SET fts_indexed_at = indexed_at WHERE fts_indexed_at IS NULL AND indexed_at IS NOT NULL",
             [],
         );
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_fts_indexed ON files(fts_indexed_at)", [])?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_files_vector_indexed ON files(vector_indexed_at)", [])?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_fts_indexed ON files(fts_indexed_at)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_vector_indexed ON files(vector_indexed_at)",
+            [],
+        )?;
 
         set_schema_version(&conn, 4)?;
         tracing::info!("Schema migrated to v4 (two-phase indexing)");
@@ -265,7 +279,11 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         tracing::info!("Schema migrated to v6 (last_synced_at)");
     }
 
-    tracing::info!("Database initialized at {:?} (schema v{})", db_path, CURRENT_SCHEMA_VERSION);
+    tracing::info!(
+        "Database initialized at {:?} (schema v{})",
+        db_path,
+        CURRENT_SCHEMA_VERSION
+    );
     Ok(())
 }
 
@@ -379,7 +397,10 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
 }
 
 /// 폴더 내 파일 메타데이터 조회 (sync diff용)
-pub fn get_file_metadata_in_folder(conn: &Connection, folder_path: &str) -> Result<std::collections::HashMap<String, (i64, Option<i64>)>> {
+pub fn get_file_metadata_in_folder(
+    conn: &Connection,
+    folder_path: &str,
+) -> Result<std::collections::HashMap<String, (i64, Option<i64>)>> {
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -405,7 +426,10 @@ pub fn get_file_metadata_in_folder(conn: &Connection, folder_path: &str) -> Resu
 }
 
 /// 폴더 내 이미 FTS 인덱싱 완료된 파일 경로 조회 (resume 시 스킵용)
-pub fn get_fts_indexed_paths_in_folder(conn: &Connection, folder_path: &str) -> Result<std::collections::HashSet<String>> {
+pub fn get_fts_indexed_paths_in_folder(
+    conn: &Connection,
+    folder_path: &str,
+) -> Result<std::collections::HashSet<String>> {
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -532,14 +556,16 @@ pub fn get_indexed_file_count(conn: &Connection) -> Result<usize> {
 }
 
 /// 폴더 내 파일 ID와 청크 ID 조회 (벡터 삭제용)
-pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) -> Result<Vec<(i64, Vec<i64>)>> {
+pub fn get_file_and_chunk_ids_in_folder(
+    conn: &Connection,
+    folder_path: &str,
+) -> Result<Vec<(i64, Vec<i64>)>> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
 
-    let mut stmt = conn.prepare(
-        "SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'"
-    )?;
+    let mut stmt = conn
+        .prepare("SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'")?;
 
     // Windows/Unix 경로 모두 지원
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -746,7 +772,10 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     );
 
     let mut stmt = conn.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::ToSql> = chunk_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+    let params: Vec<&dyn rusqlite::ToSql> = chunk_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
 
     let results = stmt.query_map(params.as_slice(), |row| {
         Ok(ChunkInfo {
@@ -780,7 +809,7 @@ pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>>
     let mut stmt = conn.prepare(
         "SELECT c.id FROM chunks c
          JOIN files f ON c.file_id = f.id
-         WHERE f.path = ?"
+         WHERE f.path = ?",
     )?;
     let rows = stmt.query_map(params![path], |row| row.get(0))?;
     rows.collect()
@@ -940,7 +969,7 @@ pub fn get_pending_vector_chunks_for_file(
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
          WHERE f.id = ? AND f.fts_indexed_at IS NOT NULL AND f.vector_indexed_at IS NULL
-         ORDER BY c.chunk_index"
+         ORDER BY c.chunk_index",
     )?;
 
     let results = stmt.query_map(params![file_id], |row| {
@@ -979,11 +1008,7 @@ pub struct VectorIndexingStats {
 
 /// 벡터 인덱싱 통계 조회
 pub fn get_vector_indexing_stats(conn: &Connection) -> Result<VectorIndexingStats> {
-    let total_files: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM files",
-        [],
-        |row| row.get(0),
-    )?;
+    let total_files: i64 = conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
 
     let fts_only_files: i64 = conn.query_row(
         "SELECT COUNT(*) FROM files WHERE fts_indexed_at IS NOT NULL AND vector_indexed_at IS NULL",

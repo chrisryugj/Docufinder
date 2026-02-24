@@ -32,7 +32,9 @@ impl SqliteFileRepository {
     where
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
     {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| DomainError::repository(format!("Lock failed: {}", e)))?;
 
         f(&conn).map_err(|e| DomainError::repository(format!("Query failed: {}", e)))

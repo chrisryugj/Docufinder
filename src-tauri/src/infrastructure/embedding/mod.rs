@@ -18,11 +18,10 @@ pub struct OnnxEmbedderAdapter {
 impl OnnxEmbedderAdapter {
     /// 새 어댑터 생성
     pub fn new(model_path: &Path, tokenizer_path: &Path) -> Result<Self, DomainError> {
-        let embedder = Embedder::new(model_path, tokenizer_path).map_err(|e| {
-            DomainError::EmbeddingError {
+        let embedder =
+            Embedder::new(model_path, tokenizer_path).map_err(|e| DomainError::EmbeddingError {
                 reason: e.to_string(),
-            }
-        })?;
+            })?;
 
         Ok(Self { embedder })
     }
@@ -36,9 +35,12 @@ impl OnnxEmbedderAdapter {
 #[async_trait]
 impl EmbedderPort for OnnxEmbedderAdapter {
     async fn embed(&self, text: &str, is_query: bool) -> Result<Embedding, DomainError> {
-        let vector = self.embedder.embed(text, is_query).map_err(|e| DomainError::EmbeddingError {
-            reason: e.to_string(),
-        })?;
+        let vector =
+            self.embedder
+                .embed(text, is_query)
+                .map_err(|e| DomainError::EmbeddingError {
+                    reason: e.to_string(),
+                })?;
 
         Embedding::new(vector)
     }
@@ -55,9 +57,12 @@ impl EmbedderPort for OnnxEmbedderAdapter {
         // KoSimCSE는 접두사 불필요
         let prepared: Vec<String> = texts.iter().map(|t| t.to_string()).collect();
 
-        let vectors = self.embedder.embed_batch(&prepared).map_err(|e| DomainError::EmbeddingError {
-            reason: e.to_string(),
-        })?;
+        let vectors =
+            self.embedder
+                .embed_batch(&prepared)
+                .map_err(|e| DomainError::EmbeddingError {
+                    reason: e.to_string(),
+                })?;
 
         vectors.into_iter().map(Embedding::new).collect()
     }

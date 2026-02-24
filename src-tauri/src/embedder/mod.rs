@@ -162,10 +162,15 @@ impl Embedder {
                 .or_else(|| outputs.get("token_embeddings"))
                 .or_else(|| {
                     // 첫 번째 출력 사용 (fallback)
-                    output_names.first().and_then(|name| outputs.get(name.as_str()))
+                    output_names
+                        .first()
+                        .and_then(|name| outputs.get(name.as_str()))
                 })
                 .ok_or_else(|| {
-                    EmbedderError::OrtError(format!("No embedding output found. Available: {:?}", output_names))
+                    EmbedderError::OrtError(format!(
+                        "No embedding output found. Available: {:?}",
+                        output_names
+                    ))
                 })?;
 
             let (out_shape, out_data) = output
@@ -176,7 +181,10 @@ impl Embedder {
 
             if dims == 2 {
                 // 2D: [batch, hidden_dim] - 이미 pooling된 sentence embedding
-                let hidden_dim = out_shape.get(1).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
+                let hidden_dim = out_shape
+                    .get(1)
+                    .map(|&d| d as usize)
+                    .unwrap_or(EMBEDDING_DIM);
                 let mut embeddings = Vec::with_capacity(batch_size);
 
                 for i in 0..batch_size {
@@ -200,7 +208,10 @@ impl Embedder {
             } else {
                 // 3D: [batch, seq_len, hidden_dim] - mean pooling 필요
                 let model_seq_len = out_shape.get(1).map(|&d| d as usize).unwrap_or(seq_len);
-                let hidden_dim = out_shape.get(2).map(|&d| d as usize).unwrap_or(EMBEDDING_DIM);
+                let hidden_dim = out_shape
+                    .get(2)
+                    .map(|&d| d as usize)
+                    .unwrap_or(EMBEDDING_DIM);
 
                 let mut embeddings = Vec::with_capacity(batch_size);
                 for i in 0..batch_size {

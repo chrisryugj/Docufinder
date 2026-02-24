@@ -143,18 +143,12 @@ impl VectorWorker {
 
     /// 현재 상태 조회
     pub fn get_status(&self) -> VectorIndexingStatus {
-        self.status
-            .read()
-            .map(|s| s.clone())
-            .unwrap_or_default()
+        self.status.read().map(|s| s.clone()).unwrap_or_default()
     }
 
     /// 실행 중 여부
     pub fn is_running(&self) -> bool {
-        self.status
-            .read()
-            .map(|s| s.is_running)
-            .unwrap_or(false)
+        self.status.read().map(|s| s.is_running).unwrap_or(false)
     }
 
     /// 취소 요청
@@ -197,12 +191,11 @@ fn run_vector_indexing(
     progress_callback: Option<VectorProgressCallback>,
     intensity: &IndexingIntensity,
 ) -> Result<(), String> {
-    let conn = db::get_connection(db_path)
-        .map_err(|e| format!("DB connection failed: {}", e))?;
+    let conn = db::get_connection(db_path).map_err(|e| format!("DB connection failed: {}", e))?;
 
     // 통계 조회
-    let stats = db::get_vector_indexing_stats(&conn)
-        .map_err(|e| format!("Failed to get stats: {}", e))?;
+    let stats =
+        db::get_vector_indexing_stats(&conn).map_err(|e| format!("Failed to get stats: {}", e))?;
 
     // 벡터 인덱스에 실제 존재하는 청크 수 (DB 마킹과 무관하게 실제 임베딩된 수)
     let vectors_in_index = vector_index.chunk_count();
@@ -214,7 +207,11 @@ fn run_vector_indexing(
 
     tracing::info!(
         "[VectorWorker] Starting pipeline. {} pending, {} already done (db={}, index={}), {} total",
-        stats.pending_chunks, base_processed, stats.completed_chunks, vectors_in_index, total_chunks
+        stats.pending_chunks,
+        base_processed,
+        stats.completed_chunks,
+        vectors_in_index,
+        total_chunks
     );
 
     // 상태 업데이트 (누적 기준)
@@ -277,7 +274,9 @@ fn run_vector_indexing(
 
                 // 이미 벡터 인덱스에 존재하는 청크 필터링 (재시작 시 스킵)
                 let total_chunks_in_file = prefetched.chunks.len();
-                let new_chunks: Vec<&PendingChunk> = prefetched.chunks.iter()
+                let new_chunks: Vec<&PendingChunk> = prefetched
+                    .chunks
+                    .iter()
                     .filter(|c| !vector_index.contains_chunk(c.chunk_id))
                     .collect();
                 let skipped_in_file = total_chunks_in_file - new_chunks.len();
@@ -285,7 +284,9 @@ fn run_vector_indexing(
                 if skipped_in_file > 0 {
                     tracing::debug!(
                         "[VectorWorker] File '{}': {} chunks already in index, {} to embed",
-                        prefetched.file_path, skipped_in_file, new_chunks.len()
+                        prefetched.file_path,
+                        skipped_in_file,
+                        new_chunks.len()
                     );
                 }
 
@@ -295,7 +296,11 @@ fn run_vector_indexing(
                 // 모든 청크가 이미 인덱스에 있으면 파일 마킹만 하고 넘어감
                 if new_chunks.is_empty() {
                     if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                        tracing::warn!(
+                            "[VectorWorker] Failed to mark file {}: {}",
+                            prefetched.file_id,
+                            e
+                        );
                     }
 
                     // 상태 업데이트
@@ -337,7 +342,11 @@ fn run_vector_indexing(
                     // 벡터 인덱스에 추가
                     for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
                         if let Err(e) = vector_index.add(*chunk_id, embedding) {
-                            tracing::warn!("[VectorWorker] Failed to add vector {}: {}", chunk_id, e);
+                            tracing::warn!(
+                                "[VectorWorker] Failed to add vector {}: {}",
+                                chunk_id,
+                                e
+                            );
                             file_failed_chunks += 1;
                         }
                     }
@@ -351,8 +360,12 @@ fn run_vector_indexing(
                     // 인덱싱 강도에 따른 쓰로틀링
                     match intensity {
                         IndexingIntensity::Fast => {} // sleep 없음
-                        IndexingIntensity::Balanced => std::thread::sleep(Duration::from_millis(200)),
-                        IndexingIntensity::Background => std::thread::sleep(Duration::from_millis(500)),
+                        IndexingIntensity::Balanced => {
+                            std::thread::sleep(Duration::from_millis(200))
+                        }
+                        IndexingIntensity::Background => {
+                            std::thread::sleep(Duration::from_millis(500))
+                        }
                     }
 
                     // 상태 업데이트 (누적)
@@ -378,17 +391,25 @@ fn run_vector_indexing(
                 if file_fully_processed {
                     // Crash consistency: save THEN mark
                     if let Err(e) = vector_index.save() {
-                        tracing::warn!("[VectorWorker] Failed to save index before marking file: {}", e);
+                        tracing::warn!(
+                            "[VectorWorker] Failed to save index before marking file: {}",
+                            e
+                        );
                     } else {
                         last_save = processed;
                     }
                     if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                        tracing::warn!(
+                            "[VectorWorker] Failed to mark file {}: {}",
+                            prefetched.file_id,
+                            e
+                        );
                     }
                 } else if file_failed_chunks > 0 {
                     tracing::warn!(
                         "[VectorWorker] File '{}' has {} failed chunks, keeping pending for retry",
-                        prefetched.file_path, file_failed_chunks
+                        prefetched.file_path,
+                        file_failed_chunks
                     );
                 }
             }
@@ -412,7 +433,8 @@ fn run_vector_indexing(
 
     tracing::info!(
         "[VectorWorker] Completed. {} chunks processed this session, {} total in index",
-        processed, final_chunk_count
+        processed,
+        final_chunk_count
     );
 
     // 상태 업데이트 (누적)
@@ -461,7 +483,11 @@ fn run_prefetch_thread(
         let file_chunks = match db::get_pending_vector_chunks_for_file(&conn, file_id) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!("[Prefetch] Failed to get chunks for file {}: {}", file_id, e);
+                tracing::warn!(
+                    "[Prefetch] Failed to get chunks for file {}: {}",
+                    file_id,
+                    e
+                );
                 continue;
             }
         };
@@ -496,8 +522,8 @@ fn run_prefetch_thread(
 #[cfg(target_os = "windows")]
 fn set_thread_priority(intensity: &IndexingIntensity) {
     use windows_sys::Win32::System::Threading::{
-        GetCurrentThread, SetThreadPriority,
-        THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_IDLE, THREAD_PRIORITY_NORMAL,
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_IDLE,
+        THREAD_PRIORITY_NORMAL,
     };
 
     let priority = match intensity {

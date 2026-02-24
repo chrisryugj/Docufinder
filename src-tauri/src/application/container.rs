@@ -20,7 +20,6 @@ use std::sync::{Arc, RwLock};
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
 
-
 /// DI 컨테이너 - 앱 전역 의존성 관리
 pub struct AppContainer {
     // ============================================
@@ -72,7 +71,10 @@ impl AppContainer {
                 tracing::info!("Using custom data_root: {:?}", p);
                 p
             } else {
-                tracing::warn!("data_root {:?} is not accessible, falling back to app_data_dir", p);
+                tracing::warn!(
+                    "data_root {:?} is not accessible, falling back to app_data_dir",
+                    p
+                );
                 app_data_dir.to_path_buf()
             }
         } else {
@@ -212,7 +214,10 @@ impl AppContainer {
 
     /// 시맨틱 검색 가능 여부 확인
     pub fn is_semantic_available(&self) -> bool {
-        let model_path = self.models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
+        let model_path = self
+            .models_dir
+            .join("kosimcse-roberta-multitask")
+            .join("model.onnx");
         model_path.exists()
     }
 
@@ -228,7 +233,9 @@ impl AppContainer {
         self.watch_manager
             .get_or_try_init(|| {
                 let settings = self.get_settings();
-                let callback = self.incremental_update_callback.read()
+                let callback = self
+                    .incremental_update_callback
+                    .read()
                     .ok()
                     .and_then(|cb| cb.clone());
                 let ctx = IndexContext {
@@ -287,13 +294,19 @@ impl AppContainer {
 
     /// Reranker 모델 사용 가능 여부 확인
     pub fn is_reranker_available(&self) -> bool {
-        let model_path = self.models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+        let model_path = self
+            .models_dir
+            .join("ms-marco-MiniLM-L6-v2")
+            .join("model.onnx");
         model_path.exists()
     }
 
     /// 캐시된 설정 조회 (디스크 I/O 없음)
     pub fn get_settings(&self) -> Settings {
-        self.settings_cache.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.settings_cache
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// 설정 캐시 갱신 (update_settings 커맨드에서 호출)

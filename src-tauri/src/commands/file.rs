@@ -5,8 +5,7 @@ use tauri::{AppHandle, Manager};
 
 /// 허용된 파일 확장자 (대소문자 무관)
 const ALLOWED_EXTENSIONS: &[&str] = &[
-    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt",
-    "hwp", "hwpx", "txt", "md", "rtf", "csv",
+    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "hwp", "hwpx", "txt", "md", "rtf", "csv",
     "jpg", "jpeg", "png", "gif", "bmp", "webp",
 ];
 
@@ -63,7 +62,6 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
 
         // PDF는 SumatraPDF로 페이지 지정 열기 시도
         if let (true, Some(page_num)) = (extension == "pdf", page) {
-
             // SumatraPDF 경로 확인
             let sumatra_paths = [
                 r"C:\Program Files\SumatraPDF\SumatraPDF.exe",

@@ -6,7 +6,9 @@ use crate::application::dto::indexing::IndexStatus;
 use crate::application::errors::{AppError, AppResult};
 use crate::constants::BLOCKED_PATH_PATTERNS;
 use crate::db;
-use crate::indexer::pipeline::{self, FolderIndexResult, FtsProgressCallback, MetadataScanProgress, MetadataScanResult};
+use crate::indexer::pipeline::{
+    self, FolderIndexResult, FtsProgressCallback, MetadataScanProgress, MetadataScanResult,
+};
 use crate::indexer::vector_worker::{VectorIndexingStatus, VectorProgressCallback, VectorWorker};
 use crate::search::vector::VectorIndex;
 use std::path::{Path, PathBuf};
@@ -184,23 +186,30 @@ impl IndexService {
         progress_callback: Option<VectorProgressCallback>,
         intensity: Option<crate::commands::settings::IndexingIntensity>,
     ) -> AppResult<()> {
-        let embedder = self.embedder.as_ref()
+        let embedder = self
+            .embedder
+            .as_ref()
             .ok_or(AppError::SemanticSearchDisabled)?;
-        let vector_index = self.vector_index.as_ref()
+        let vector_index = self
+            .vector_index
+            .as_ref()
             .ok_or(AppError::SemanticSearchDisabled)?;
 
-        let mut worker = self.vector_worker.write()
+        let mut worker = self
+            .vector_worker
+            .write()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
 
         if !worker.is_running() {
-            worker.start(
-                self.db_path.clone(),
-                embedder.clone(),
-                vector_index.clone(),
-                progress_callback,
-                intensity,
-            )
-            .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+            worker
+                .start(
+                    self.db_path.clone(),
+                    embedder.clone(),
+                    vector_index.clone(),
+                    progress_callback,
+                    intensity,
+                )
+                .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
         }
 
         Ok(())
@@ -214,7 +223,9 @@ impl IndexService {
 
     /// 벡터 인덱싱 취소
     pub fn cancel_vector_indexing(&self) -> AppResult<()> {
-        let worker = self.vector_worker.read()
+        let worker = self
+            .vector_worker
+            .read()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
         worker.cancel();
         tracing::info!("Vector indexing cancelled");
@@ -225,16 +236,13 @@ impl IndexService {
     pub async fn get_status(&self) -> AppResult<IndexStatus> {
         let conn = self.get_connection()?;
 
-        let total_files = db::get_file_count(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        let indexed_files = db::get_indexed_file_count(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        let watched_folders = db::get_watched_folders(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        let vectors_count = self.vector_index
-            .as_ref()
-            .map(|vi| vi.size())
-            .unwrap_or(0);
+        let total_files =
+            db::get_file_count(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
+        let indexed_files =
+            db::get_indexed_file_count(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
+        let watched_folders =
+            db::get_watched_folders(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
+        let vectors_count = self.vector_index.as_ref().map(|vi| vi.size()).unwrap_or(0);
         let semantic_available = self.embedder.is_some();
 
         Ok(IndexStatus {
@@ -248,7 +256,9 @@ impl IndexService {
 
     /// 벡터 인덱싱 상태 조회
     pub fn get_vector_status(&self) -> AppResult<VectorIndexingStatus> {
-        let worker = self.vector_worker.read()
+        let worker = self
+            .vector_worker
+            .read()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
         let mut status = worker.get_status();
 
@@ -300,7 +310,14 @@ impl IndexService {
         }
 
         // 3. FTS 재인덱싱 (재인덱싱은 메타 스캔 없이 직접 수행)
-        self.index_folder_fts(path, include_subfolders, progress_callback, max_file_size_mb, None).await
+        self.index_folder_fts(
+            path,
+            include_subfolders,
+            progress_callback,
+            max_file_size_mb,
+            None,
+        )
+        .await
     }
 
     /// 시맨틱 검색 사용 가능 여부
@@ -333,8 +350,7 @@ impl IndexService {
 
         // 3. DB 클리어
         let conn = self.get_connection()?;
-        db::clear_all_data(&conn)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+        db::clear_all_data(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
         tracing::info!("Database cleared");
 
         // 4. VACUUM - 삭제된 데이터의 디스크 공간 회수
@@ -363,7 +379,8 @@ impl IndexService {
         }
 
         // 경로 정규화 (심볼릭 링크 해결)
-        let canonical = path.canonicalize()
+        let canonical = path
+            .canonicalize()
             .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
 
         // 시스템 폴더 블랙리스트 검증

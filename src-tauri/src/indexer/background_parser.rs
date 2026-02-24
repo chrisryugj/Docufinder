@@ -43,8 +43,8 @@ pub struct BackgroundParserConfig {
 impl Default for BackgroundParserConfig {
     fn default() -> Self {
         Self {
-            idle_threshold_ms: 3000,  // 3초 유휴
-            hdd_throttle_ms: 50,      // HDD: 50ms 대기
+            idle_threshold_ms: 3000, // 3초 유휴
+            hdd_throttle_ms: 50,     // HDD: 50ms 대기
             batch_size: 10,
         }
     }
@@ -97,7 +97,9 @@ impl BackgroundParser {
 
     /// 실행 중인지 확인
     pub fn is_running(&self) -> bool {
-        self.worker_handle.as_ref().is_some_and(|h| !h.is_finished())
+        self.worker_handle
+            .as_ref()
+            .is_some_and(|h| !h.is_finished())
     }
 
     /// 종료 대기
@@ -120,7 +122,9 @@ impl BackgroundParser {
         let is_hdd = disk_type.is_hdd();
         tracing::info!(
             "BackgroundParser: folder={:?}, disk_type={:?}, is_hdd={}",
-            folder_path, disk_type, is_hdd
+            folder_path,
+            disk_type,
+            is_hdd
         );
 
         let conn = match db::get_connection(&db_path) {
@@ -131,17 +135,18 @@ impl BackgroundParser {
             }
         };
 
-        let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>, is_idle: bool| {
-            if let Some(ref cb) = progress_callback {
-                cb(BackgroundParsingProgress {
-                    phase: phase.to_string(),
-                    total_pending: total,
-                    processed,
-                    current_file: current.map(String::from),
-                    is_idle,
-                });
-            }
-        };
+        let send_progress =
+            |phase: &str, total: usize, processed: usize, current: Option<&str>, is_idle: bool| {
+                if let Some(ref cb) = progress_callback {
+                    cb(BackgroundParsingProgress {
+                        phase: phase.to_string(),
+                        total_pending: total,
+                        processed,
+                        current_file: current.map(String::from),
+                        is_idle,
+                    });
+                }
+            };
 
         // 미처리 파일 수 조회
         let total_pending = match get_pending_files_count(&conn, &folder_path) {
@@ -193,7 +198,13 @@ impl BackgroundParser {
                 }
             };
 
-            send_progress("parsing", total_pending, processed, Some(&pending_file.name), true);
+            send_progress(
+                "parsing",
+                total_pending,
+                processed,
+                Some(&pending_file.name),
+                true,
+            );
 
             // 파일 파싱 + FTS 인덱싱
             let path = Path::new(&pending_file.path);
@@ -201,13 +212,15 @@ impl BackgroundParser {
                 Ok(chunks) => {
                     tracing::debug!(
                         "BackgroundParser: indexed {} ({} chunks)",
-                        pending_file.name, chunks
+                        pending_file.name,
+                        chunks
                     );
                 }
                 Err(e) => {
                     tracing::warn!(
                         "BackgroundParser: failed to parse {}: {}",
-                        pending_file.path, e
+                        pending_file.path,
+                        e
                     );
                     // 실패해도 fts_indexed_at 마킹하여 재시도 방지
                     let _ = mark_file_fts_indexed(&conn, pending_file.id);
@@ -234,7 +247,10 @@ struct PendingFile {
 }
 
 /// 미처리 파일 수 조회 (fts_indexed_at IS NULL)
-fn get_pending_files_count(conn: &Connection, folder_path: &Path) -> Result<usize, rusqlite::Error> {
+fn get_pending_files_count(
+    conn: &Connection,
+    folder_path: &Path,
+) -> Result<usize, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
     let pattern = format!("{}%", folder_str);
 
@@ -248,12 +264,15 @@ fn get_pending_files_count(conn: &Connection, folder_path: &Path) -> Result<usiz
 }
 
 /// 다음 미처리 파일 조회
-fn get_next_pending_file(conn: &Connection, folder_path: &Path) -> Result<Option<PendingFile>, rusqlite::Error> {
+fn get_next_pending_file(
+    conn: &Connection,
+    folder_path: &Path,
+) -> Result<Option<PendingFile>, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
     let pattern = format!("{}%", folder_str);
 
     let mut stmt = conn.prepare(
-        "SELECT id, path, name FROM files WHERE path LIKE ? AND fts_indexed_at IS NULL LIMIT 1"
+        "SELECT id, path, name FROM files WHERE path LIKE ? AND fts_indexed_at IS NULL LIMIT 1",
     )?;
 
     let mut rows = stmt.query(rusqlite::params![pattern])?;
@@ -290,7 +309,8 @@ fn parse_and_index_file(conn: &Connection, path: &Path, file_id: i64) -> Result<
             chunk.page_number,
             chunk.page_end,
             chunk.location_hint.as_deref(),
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     // fts_indexed_at 마킹

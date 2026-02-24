@@ -141,9 +141,7 @@ impl WatchManager {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // 디바운스 시간이 지났고 대기 중인 파일이 있으면 처리
-                    if !pending_files.is_empty()
-                        && last_event_time.elapsed() >= debounce_duration
-                    {
+                    if !pending_files.is_empty() && last_event_time.elapsed() >= debounce_duration {
                         Self::process_pending_files(&mut pending_files, &ctx);
                     }
                 }
@@ -206,7 +204,9 @@ impl WatchManager {
 
                 // 1. file_id 조회 (캐시 삭제용)
                 let file_id: Option<i64> = conn
-                    .query_row("SELECT id FROM files WHERE path = ?", [&path_str], |row| row.get(0))
+                    .query_row("SELECT id FROM files WHERE path = ?", [&path_str], |row| {
+                        row.get(0)
+                    })
                     .ok();
 
                 // 2. 벡터 인덱스에서 삭제 (DB 삭제 전에 chunk_ids 조회 필요)
@@ -240,15 +240,21 @@ impl WatchManager {
                     if size_mb > ctx.max_file_size_mb {
                         tracing::info!(
                             "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
-                            size_mb, ctx.max_file_size_mb, path.display()
+                            size_mb,
+                            ctx.max_file_size_mb,
+                            path.display()
                         );
                         match pipeline::save_file_metadata_and_cache(&conn, &path) {
                             Ok(file_path_str) => {
-                                if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &file_path_str) {
+                                if let Ok(entry) =
+                                    Self::get_filename_entry_from_db(&conn, &file_path_str)
+                                {
                                     ctx.filename_cache.upsert(entry);
                                 }
                             }
-                            Err(e) => tracing::warn!("Failed to save metadata for {:?}: {}", path, e),
+                            Err(e) => {
+                                tracing::warn!("Failed to save metadata for {:?}: {}", path, e)
+                            }
                         }
                         continue;
                     }
@@ -256,12 +262,18 @@ impl WatchManager {
             }
 
             // 확장자에 따라 파싱 인덱싱 또는 메타데이터만 저장
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
             if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
                 // 파싱 가능: FTS 인덱싱 (벡터는 백그라운드 워커가 처리)
                 match pipeline::index_file_fts_only(&conn, &path) {
                     Ok(result) => {
-                        if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &result.file_path) {
+                        if let Ok(entry) =
+                            Self::get_filename_entry_from_db(&conn, &result.file_path)
+                        {
                             ctx.filename_cache.upsert(entry);
                         }
                         tracing::info!(

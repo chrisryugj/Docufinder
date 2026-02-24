@@ -127,12 +127,7 @@ mod tests {
         };
         embedding.normalize();
 
-        let expected_norm: f32 = embedding
-            .vector
-            .iter()
-            .map(|x| x * x)
-            .sum::<f32>()
-            .sqrt();
+        let expected_norm: f32 = embedding.vector.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((expected_norm - 1.0).abs() < 0.001);
     }
 }

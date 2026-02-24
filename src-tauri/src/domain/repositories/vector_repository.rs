@@ -18,10 +18,7 @@ pub trait VectorRepository: Send + Sync {
     async fn add(&self, chunk_id: ChunkId, embedding: Embedding) -> Result<(), DomainError>;
 
     /// 벡터 배치 추가 (성능 최적화)
-    async fn add_batch(
-        &self,
-        items: &[(ChunkId, Embedding)],
-    ) -> Result<(), DomainError>;
+    async fn add_batch(&self, items: &[(ChunkId, Embedding)]) -> Result<(), DomainError>;
 
     /// 벡터 삭제
     async fn remove(&self, chunk_id: ChunkId) -> Result<(), DomainError>;

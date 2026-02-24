@@ -1,9 +1,13 @@
 use crate::tokenizer::TextTokenizer;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 
 /// FTS5 키워드 검색 (파일 정보 포함)
 /// snippet()으로 매칭 컨텍스트 자동 추출
-pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
+pub fn search(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (특수문자 이스케이프, 토크나이저 미사용)
     let safe_query = sanitize_fts_query(query, None);
 
@@ -35,7 +39,11 @@ pub fn search_with_tokenizer(
 }
 
 /// FTS5 검색 내부 구현
-fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<Vec<FtsResult>, rusqlite::Error> {
+fn search_internal(
+    conn: &Connection,
+    safe_query: &str,
+    limit: usize,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
     if safe_query.is_empty() {
         return Ok(vec![]);
     }
@@ -63,7 +71,7 @@ fn search_internal(conn: &Connection, safe_query: &str, limit: usize) -> Result<
          JOIN files f ON f.id = c.file_id
          WHERE chunks_fts MATCH ?
          ORDER BY score
-         LIMIT ?"
+         LIMIT ?",
     )?;
 
     let results = stmt.query_map(params![safe_query, limit as i64], |row| {

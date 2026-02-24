@@ -17,23 +17,32 @@ use std::time::Duration;
 const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
 // KoSimCSE-roberta-multitask (HuggingFace)
 // NOTE: HuggingFace 레포에 ONNX 모델 업로드 후 URL 확정 필요
-const E5_MODEL_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx";
+const E5_MODEL_URL: &str =
+    "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx";
 const E5_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx.data";
-const E5_TOKENIZER_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/tokenizer.json";
+const E5_TOKENIZER_URL: &str =
+    "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/tokenizer.json";
 
 // Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)
-const RERANKER_MODEL_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
-const RERANKER_TOKENIZER_URL: &str = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/tokenizer.json";
+const RERANKER_MODEL_URL: &str =
+    "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
+const RERANKER_TOKENIZER_URL: &str =
+    "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/tokenizer.json";
 
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
 const E5_MODEL_SHA256: &str = "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
-const E5_MODEL_DATA_SHA256: &str = "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
-const E5_TOKENIZER_SHA256: &str = "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
-const RERANKER_MODEL_SHA256: &str = "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe";
-const RERANKER_TOKENIZER_SHA256: &str = "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66";
+const E5_MODEL_DATA_SHA256: &str =
+    "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
+const E5_TOKENIZER_SHA256: &str =
+    "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
+const RERANKER_MODEL_SHA256: &str =
+    "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe";
+const RERANKER_TOKENIZER_SHA256: &str =
+    "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66";
 // ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
-const ONNX_RUNTIME_ZIP_SHA256: &str = "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
+const ONNX_RUNTIME_ZIP_SHA256: &str =
+    "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
 
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
@@ -143,11 +152,19 @@ pub fn ensure_reranker_model(models_dir: &Path) -> Result<(bool, bool), String> 
     // Reranker 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
         tracing::info!("Reranker 토크나이저 다운로드 중...");
-        download_file_verified(RERANKER_TOKENIZER_URL, &tokenizer_path, RERANKER_TOKENIZER_SHA256)?;
+        download_file_verified(
+            RERANKER_TOKENIZER_URL,
+            &tokenizer_path,
+            RERANKER_TOKENIZER_SHA256,
+        )?;
         tokenizer_downloaded = true;
         tracing::info!("Reranker 토크나이저 다운로드 및 검증 완료");
     } else {
-        verify_existing_file(&tokenizer_path, RERANKER_TOKENIZER_SHA256, "Reranker 토크나이저")?;
+        verify_existing_file(
+            &tokenizer_path,
+            RERANKER_TOKENIZER_SHA256,
+            "Reranker 토크나이저",
+        )?;
     }
 
     Ok((model_downloaded, tokenizer_downloaded))
@@ -173,8 +190,7 @@ fn download_file_verified(url: &str, dest: &Path, expected_hash: &str) -> Result
     }
 
     // 검증 성공 - 최종 위치로 이동
-    fs::rename(&temp_path, dest)
-        .map_err(|e| format!("파일 이동 실패: {}", e))?;
+    fs::rename(&temp_path, dest).map_err(|e| format!("파일 이동 실패: {}", e))?;
 
     tracing::info!("SHA-256 검증 성공: {}", dest.display());
     Ok(())
@@ -186,25 +202,30 @@ fn verify_existing_file(path: &Path, expected_hash: &str, name: &str) -> Result<
     if actual_hash != expected_hash {
         tracing::warn!(
             "{} 무결성 불일치 - 예상: {}, 실제: {}. 파일을 삭제하고 재다운로드합니다.",
-            name, expected_hash, actual_hash
+            name,
+            expected_hash,
+            actual_hash
         );
         // 손상된 파일 삭제 (다음 실행 시 재다운로드)
         let _ = fs::remove_file(path);
-        return Err(format!("{} 파일이 손상되었습니다. 앱을 재시작하여 다시 다운로드하세요.", name));
+        return Err(format!(
+            "{} 파일이 손상되었습니다. 앱을 재시작하여 다시 다운로드하세요.",
+            name
+        ));
     }
     Ok(())
 }
 
 /// SHA-256 해시 계산
 fn compute_sha256(path: &Path) -> Result<String, String> {
-    let mut file = File::open(path)
-        .map_err(|e| format!("파일 열기 실패: {}", e))?;
+    let mut file = File::open(path).map_err(|e| format!("파일 열기 실패: {}", e))?;
 
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 8192];
 
     loop {
-        let bytes_read = file.read(&mut buffer)
+        let bytes_read = file
+            .read(&mut buffer)
             .map_err(|e| format!("파일 읽기 실패: {}", e))?;
         if bytes_read == 0 {
             break;
@@ -224,7 +245,8 @@ fn download_file_with_timeout(url: &str, dest: &Path) -> Result<(), String> {
         .build();
     let agent = ureq::Agent::new_with_config(config);
 
-    let response = agent.get(url)
+    let response = agent
+        .get(url)
         .call()
         .map_err(|e| format!("다운로드 실패 ({}): {}", url, e))?;
 
@@ -240,15 +262,15 @@ fn download_file_with_timeout(url: &str, dest: &Path) -> Result<(), String> {
         }
     }
 
-    let mut file = File::create(dest)
-        .map_err(|e| format!("파일 생성 실패: {}", e))?;
+    let mut file = File::create(dest).map_err(|e| format!("파일 생성 실패: {}", e))?;
 
     let mut reader = response.into_body().into_reader();
     let mut total_bytes: u64 = 0;
     let mut buffer = [0u8; 8192];
 
     loop {
-        let bytes_read = reader.read(&mut buffer)
+        let bytes_read = reader
+            .read(&mut buffer)
             .map_err(|e| format!("읽기 실패: {}", e))?;
         if bytes_read == 0 {
             break;
@@ -275,19 +297,19 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
         .build();
     let agent = ureq::Agent::new_with_config(config);
 
-    let response = agent.get(ONNX_RUNTIME_URL)
+    let response = agent
+        .get(ONNX_RUNTIME_URL)
         .call()
         .map_err(|e| format!("ONNX Runtime 다운로드 실패: {}", e))?;
 
     // 임시 파일에 저장
     let temp_path = dest_dir.join("onnxruntime_temp.zip");
     {
-        let mut file = File::create(&temp_path)
-            .map_err(|e| format!("임시 파일 생성 실패: {}", e))?;
+        let mut file =
+            File::create(&temp_path).map_err(|e| format!("임시 파일 생성 실패: {}", e))?;
 
         let mut reader = response.into_body().into_reader();
-        io::copy(&mut reader, &mut file)
-            .map_err(|e| format!("파일 쓰기 실패: {}", e))?;
+        io::copy(&mut reader, &mut file).map_err(|e| format!("파일 쓰기 실패: {}", e))?;
     }
 
     // SHA-256 무결성 검증
@@ -302,24 +324,24 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
     tracing::info!("ONNX Runtime ZIP SHA-256 검증 성공");
 
     // ZIP 압축 해제
-    let file = File::open(&temp_path)
-        .map_err(|e| format!("ZIP 파일 열기 실패: {}", e))?;
-    let mut archive = zip::ZipArchive::new(file)
-        .map_err(|e| format!("ZIP 아카이브 열기 실패: {}", e))?;
+    let file = File::open(&temp_path).map_err(|e| format!("ZIP 파일 열기 실패: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|e| format!("ZIP 아카이브 열기 실패: {}", e))?;
 
     // onnxruntime.dll 찾아서 추출
     let dll_name = "onnxruntime.dll";
     let mut dll_found = false;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i)
+        let mut file = archive
+            .by_index(i)
             .map_err(|e| format!("ZIP 엔트리 읽기 실패: {}", e))?;
 
         let name = file.name().to_string();
         if name.ends_with(dll_name) {
             let dest_path = dest_dir.join(dll_name);
-            let mut dest_file = File::create(&dest_path)
-                .map_err(|e| format!("DLL 파일 생성 실패: {}", e))?;
+            let mut dest_file =
+                File::create(&dest_path).map_err(|e| format!("DLL 파일 생성 실패: {}", e))?;
 
             io::copy(&mut file, &mut dest_file)
                 .map_err(|e| format!("DLL 파일 쓰기 실패: {}", e))?;

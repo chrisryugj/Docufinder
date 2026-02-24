@@ -51,9 +51,8 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
 
         if is_delimiter || is_newline {
             // 줄바꿈은 무조건 문장 종결, 구두점은 다음이 공백이거나 끝이면 종결
-            let is_sentence_end = is_newline
-                || char_idx + 1 >= chars.len()
-                || chars[char_idx + 1].is_whitespace();
+            let is_sentence_end =
+                is_newline || char_idx + 1 >= chars.len() || chars[char_idx + 1].is_whitespace();
 
             if is_sentence_end {
                 let sentence_end = byte_pos + char_len;

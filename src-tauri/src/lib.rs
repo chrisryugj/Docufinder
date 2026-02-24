@@ -1,32 +1,32 @@
-mod application;      // 클린 아키텍처: Application Layer
+mod application; // 클린 아키텍처: Application Layer
 mod commands;
 mod constants;
 mod db;
-mod domain;           // 클린 아키텍처: Domain Layer
+mod domain; // 클린 아키텍처: Domain Layer
 mod embedder;
 mod error;
 mod indexer;
-mod infrastructure;   // 클린 아키텍처: Infrastructure Layer
+mod infrastructure; // 클린 아키텍처: Infrastructure Layer
 mod model_downloader; // 모델 자동 다운로드
 pub mod parsers;
-mod reranker;         // Cross-Encoder Reranking (Phase 5)
+mod reranker; // Cross-Encoder Reranking (Phase 5)
 mod search;
-mod tokenizer;        // 한국어 형태소 분석 (Phase 5)
-mod utils;            // 유틸리티 (idle_detector, disk_info)
+mod tokenizer; // 한국어 형태소 분석 (Phase 5)
+mod utils; // 유틸리티 (idle_detector, disk_info)
 
-pub use error::{ApiError, ApiResult};
 pub use application::container::AppContainer;
+pub use error::{ApiError, ApiResult};
 
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 
-use tauri::{Emitter, Manager};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::MacosLauncher;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// 로깅 초기화 (파일 + 콘솔)
 fn init_logging(app_data_dir: Option<&PathBuf>) {
@@ -37,8 +37,8 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
         "docufinder=info,tauri=warn"
     };
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default_filter));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
 
     // 콘솔 출력 레이어
     let stdout_layer = fmt::layer()
@@ -85,7 +85,8 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 pub fn run() {
     // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
     std::panic::set_hook(Box::new(|panic_info| {
-        let location = panic_info.location()
+        let location = panic_info
+            .location()
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown".to_string());
 

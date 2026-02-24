@@ -37,11 +37,7 @@ enum ParseResult {
 }
 
 /// 폴더 탐색으로 파일 경로 수집
-fn collect_files(
-    dir: &Path,
-    recursive: bool,
-    cancel_flag: &AtomicBool,
-) -> Vec<PathBuf> {
+fn collect_files(dir: &Path, recursive: bool, cancel_flag: &AtomicBool) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
     if cancel_flag.load(Ordering::Relaxed) {
@@ -65,11 +61,7 @@ fn collect_files(
 
 /// 현재 폴더만 탐색 (하위폴더 제외)
 /// 현재 폴더의 모든 파일 수집 (확장자 무관, 임시파일만 제외)
-fn collect_files_shallow(
-    dir: &Path,
-    files: &mut Vec<PathBuf>,
-    cancel_flag: &AtomicBool,
-) {
+fn collect_files_shallow(dir: &Path, files: &mut Vec<PathBuf>, cancel_flag: &AtomicBool) {
     let entries = match fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) => {
@@ -227,7 +219,16 @@ pub fn index_folder_fts_only(
     max_file_size_mb: u64,
     pre_collected_files: Option<Vec<PathBuf>>,
 ) -> Result<FolderIndexResult, IndexError> {
-    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, false, pre_collected_files)
+    index_folder_fts_impl(
+        conn,
+        folder_path,
+        recursive,
+        cancel_flag,
+        progress_callback,
+        max_file_size_mb,
+        false,
+        pre_collected_files,
+    )
 }
 
 /// 폴더 인덱싱 재개 - 이미 인덱싱된 파일 스킵
@@ -239,7 +240,16 @@ pub fn resume_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
 ) -> Result<FolderIndexResult, IndexError> {
-    index_folder_fts_impl(conn, folder_path, recursive, cancel_flag, progress_callback, max_file_size_mb, true, None)
+    index_folder_fts_impl(
+        conn,
+        folder_path,
+        recursive,
+        cancel_flag,
+        progress_callback,
+        max_file_size_mb,
+        true,
+        None,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -274,7 +284,11 @@ fn index_folder_fts_impl(
     const PROGRESS_THROTTLE_MS: u64 = 100;
     const PROGRESS_THROTTLE_FILES: usize = 10;
 
-    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
+    let send_progress = |phase: &str,
+                         total: usize,
+                         processed: usize,
+                         current: Option<&str>,
+                         force: bool| {
         if let Some(ref cb) = progress_callback {
             // throttle: 100ms 또는 10파일마다, 또는 force=true일 때만 전송
             let now = std::time::Instant::now();
@@ -297,21 +311,28 @@ fn index_folder_fts_impl(
 
     // 1. 파일 스캔 (메타데이터 스캔에서 이미 수집한 경우 재사용하여 이중 FS 순회 방지)
     send_progress("scanning", 0, 0, None, true); // force: 시작
-    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
+    let max_file_size_bytes = if max_file_size_mb > 0 {
+        max_file_size_mb * 1_048_576
+    } else {
+        0
+    };
     let all_files = if let Some(files) = pre_collected_files {
-        tracing::info!("[FTS] Reusing {} pre-collected file paths (skipping FS walk)", files.len());
+        tracing::info!(
+            "[FTS] Reusing {} pre-collected file paths (skipping FS walk)",
+            files.len()
+        );
         files
     } else {
-        collect_files(
-            folder_path,
-            recursive,
-            cancel_flag.as_ref(),
-        )
+        collect_files(folder_path, recursive, cancel_flag.as_ref())
     };
 
     // 파싱 가능 파일 / 메타데이터 전용 파일 분리
     let (mut file_paths, metadata_only): (Vec<_>, Vec<_>) = all_files.into_iter().partition(|p| {
-        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        let ext = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
             return false;
         }
@@ -319,7 +340,11 @@ fn index_folder_fts_impl(
         if max_file_size_bytes > 0 {
             if let Ok(meta) = p.metadata() {
                 if meta.len() > max_file_size_bytes {
-                    tracing::debug!("Skipping large file ({} MB): {:?}", meta.len() / 1_048_576, p);
+                    tracing::debug!(
+                        "Skipping large file ({} MB): {:?}",
+                        meta.len() / 1_048_576,
+                        p
+                    );
                     return false;
                 }
             }
@@ -329,10 +354,15 @@ fn index_folder_fts_impl(
 
     // 메타데이터 전용 파일 배치 저장 (파일명 검색용, 콘텐츠 파싱 없음)
     if !metadata_only.is_empty() {
-        tracing::info!("[FTS] Storing metadata for {} non-parseable files", metadata_only.len());
+        tracing::info!(
+            "[FTS] Storing metadata for {} non-parseable files",
+            metadata_only.len()
+        );
         let _ = conn.execute_batch("BEGIN");
         for (i, path) in metadata_only.iter().enumerate() {
-            if cancel_flag.load(Ordering::Relaxed) { break; }
+            if cancel_flag.load(Ordering::Relaxed) {
+                break;
+            }
             let _ = save_file_metadata_only(conn, path);
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
                 let _ = conn.execute_batch("COMMIT; BEGIN");
@@ -343,8 +373,8 @@ fn index_folder_fts_impl(
 
     // skip_indexed: 이미 인덱싱된 파일 제외 (resume 용)
     if skip_indexed {
-        let already_indexed = crate::db::get_fts_indexed_paths_in_folder(conn, &folder_str)
-            .unwrap_or_default();
+        let already_indexed =
+            crate::db::get_fts_indexed_paths_in_folder(conn, &folder_str).unwrap_or_default();
         if !already_indexed.is_empty() {
             let before = file_paths.len();
             file_paths.retain(|p| {
@@ -440,7 +470,10 @@ fn index_folder_fts_impl(
 
     // 배치 트랜잭션 시작
     if let Err(e) = conn.execute_batch("BEGIN") {
-        return Err(IndexError::DbError(format!("Failed to begin transaction: {}", e)));
+        return Err(IndexError::DbError(format!(
+            "Failed to begin transaction: {}",
+            e
+        )));
     }
 
     {
@@ -481,7 +514,8 @@ fn index_folder_fts_impl(
                             }
                             failed += 1;
                             errors.push(format!("{:?}: {}", path, error));
-                            send_progress("indexing", total, processed, None, false); // throttled
+                            send_progress("indexing", total, processed, None, false);
+                            // throttled
                         }
                     }
 
@@ -510,7 +544,11 @@ fn index_folder_fts_impl(
         let _ = producer_handle.join();
     }
 
-    let phase = if was_cancelled { "cancelled" } else { "completed" };
+    let phase = if was_cancelled {
+        "cancelled"
+    } else {
+        "completed"
+    };
     send_progress(phase, total, processed, None, true); // force: 완료
 
     Ok(FolderIndexResult {
@@ -552,17 +590,21 @@ pub fn sync_folder_fts(
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     // 2. 파일시스템 스캔
-    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
-    let fs_files = collect_files(
-        folder_path,
-        recursive,
-        cancel_flag.as_ref(),
-    );
+    let max_file_size_bytes = if max_file_size_mb > 0 {
+        max_file_size_mb * 1_048_576
+    } else {
+        0
+    };
+    let fs_files = collect_files(folder_path, recursive, cancel_flag.as_ref());
 
     if cancel_flag.load(Ordering::Relaxed) {
         return Ok(SyncResult {
             folder_path: folder_str,
-            added: 0, modified: 0, deleted: 0, failed: 0, unchanged: 0,
+            added: 0,
+            modified: 0,
+            deleted: 0,
+            failed: 0,
+            unchanged: 0,
             errors: vec!["Cancelled".to_string()],
         });
     }
@@ -571,7 +613,8 @@ pub fn sync_folder_fts(
     let mut to_update: Vec<PathBuf> = Vec::new(); // 추가 + 수정
     let mut unchanged = 0usize;
 
-    let fs_path_set: std::collections::HashSet<String> = fs_files.iter()
+    let fs_path_set: std::collections::HashSet<String> = fs_files
+        .iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
 
@@ -580,7 +623,8 @@ pub fn sync_folder_fts(
         if let Some(&(db_modified, _db_size)) = db_files.get(&path_str) {
             // DB에 있음 → modified_at 비교
             if let Ok(meta) = fs::metadata(path) {
-                let fs_modified = meta.modified()
+                let fs_modified = meta
+                    .modified()
                     .ok()
                     .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                     .map(|d| d.as_secs() as i64)
@@ -599,20 +643,27 @@ pub fn sync_folder_fts(
     }
 
     // 삭제된 파일: DB에는 있지만 파일시스템에 없음
-    let to_delete: Vec<String> = db_files.keys()
+    let to_delete: Vec<String> = db_files
+        .keys()
         .filter(|db_path| !fs_path_set.contains(*db_path))
         .cloned()
         .collect();
 
     // 파싱 가능 / 메타데이터 전용 분리
     let (to_index, to_metadata): (Vec<_>, Vec<_>) = to_update.into_iter().partition(|p| {
-        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        let ext = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
             return false;
         }
         if max_file_size_bytes > 0 {
             if let Ok(meta) = p.metadata() {
-                if meta.len() > max_file_size_bytes { return false; }
+                if meta.len() > max_file_size_bytes {
+                    return false;
+                }
             }
         }
         true
@@ -624,13 +675,19 @@ pub fn sync_folder_fts(
 
     tracing::info!(
         "[Sync] {} - to_index: {}, metadata_only: {}, to_delete: {}, unchanged: {}",
-        folder_str, added_count, metadata_count, delete_count, unchanged
+        folder_str,
+        added_count,
+        metadata_count,
+        delete_count,
+        unchanged
     );
 
     // 4. 삭제 처리
     let mut deleted = 0;
     for path in &to_delete {
-        if cancel_flag.load(Ordering::Relaxed) { break; }
+        if cancel_flag.load(Ordering::Relaxed) {
+            break;
+        }
         if let Err(e) = db::delete_file(conn, path) {
             tracing::warn!("Failed to delete stale file {}: {}", path, e);
         } else {
@@ -642,7 +699,9 @@ pub fn sync_folder_fts(
     if !to_metadata.is_empty() {
         let _ = conn.execute_batch("BEGIN");
         for (i, path) in to_metadata.iter().enumerate() {
-            if cancel_flag.load(Ordering::Relaxed) { break; }
+            if cancel_flag.load(Ordering::Relaxed) {
+                break;
+            }
             let _ = save_file_metadata_only(conn, path);
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
                 let _ = conn.execute_batch("COMMIT; BEGIN");
@@ -655,7 +714,11 @@ pub fn sync_folder_fts(
     if to_index.is_empty() {
         return Ok(SyncResult {
             folder_path: folder_str,
-            added: 0, modified: 0, deleted, failed: 0, unchanged,
+            added: 0,
+            modified: 0,
+            deleted,
+            failed: 0,
+            unchanged,
             errors: vec![],
         });
     }
@@ -670,24 +733,25 @@ pub fn sync_folder_fts(
     let last_progress_time = Cell::new(std::time::Instant::now());
     let last_progress_count = Cell::new(0usize);
 
-    let send_progress = |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
-        if let Some(ref cb) = progress_callback {
-            let now = std::time::Instant::now();
-            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
-            let files_since = processed.saturating_sub(last_progress_count.get());
-            if force || elapsed >= 100 || files_since >= 10 {
-                cb(FtsIndexingProgress {
-                    phase: phase.to_string(),
-                    total_files: total,
-                    processed_files: processed,
-                    current_file: current.map(|s| s.to_string()),
-                    folder_path: folder_str.clone(),
-                });
-                last_progress_time.set(now);
-                last_progress_count.set(processed);
+    let send_progress =
+        |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
+            if let Some(ref cb) = progress_callback {
+                let now = std::time::Instant::now();
+                let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
+                let files_since = processed.saturating_sub(last_progress_count.get());
+                if force || elapsed >= 100 || files_since >= 10 {
+                    cb(FtsIndexingProgress {
+                        phase: phase.to_string(),
+                        total_files: total,
+                        processed_files: processed,
+                        current_file: current.map(|s| s.to_string()),
+                        folder_path: folder_str.clone(),
+                    });
+                    last_progress_time.set(now);
+                    last_progress_count.set(processed);
+                }
             }
-        }
-    };
+        };
 
     send_progress("indexing", total, 0, None, true);
 
@@ -716,13 +780,24 @@ pub fn sync_folder_fts(
 
         pool.install(|| {
             let _ = to_index.par_iter().try_for_each(|path| {
-                if cancel_flag_producer.load(Ordering::Relaxed) { return Err(()); }
+                if cancel_flag_producer.load(Ordering::Relaxed) {
+                    return Err(());
+                }
 
                 let path_clone = path.clone();
                 let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
-                    Ok(Ok(doc)) => ParseResult::Success { path: path.clone(), document: doc },
-                    Ok(Err(e)) => ParseResult::Failure { path: path.clone(), error: e.to_string() },
-                    Err(_) => ParseResult::Failure { path: path.clone(), error: "Parser panicked".to_string() },
+                    Ok(Ok(doc)) => ParseResult::Success {
+                        path: path.clone(),
+                        document: doc,
+                    },
+                    Ok(Err(e)) => ParseResult::Failure {
+                        path: path.clone(),
+                        error: e.to_string(),
+                    },
+                    Err(_) => ParseResult::Failure {
+                        path: path.clone(),
+                        error: "Parser panicked".to_string(),
+                    },
                 };
 
                 if throttle_ms > 0 {
@@ -742,7 +817,10 @@ pub fn sync_folder_fts(
     let recv_timeout = Duration::from_millis(100);
 
     if let Err(e) = conn.execute_batch("BEGIN") {
-        return Err(IndexError::DbError(format!("Failed to begin transaction: {}", e)));
+        return Err(IndexError::DbError(format!(
+            "Failed to begin transaction: {}",
+            e
+        )));
     }
 
     let mut batch_count = 0;
@@ -759,7 +837,10 @@ pub fn sync_folder_fts(
 
                 match result {
                     ParseResult::Success { path, document } => {
-                        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
+                        let file_name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown");
                         send_progress("indexing", total, processed, Some(file_name), false);
                         match save_document_to_db_fts_only_no_tx(conn, &path, document) {
                             Ok(_) => indexed += 1,
@@ -836,8 +917,9 @@ fn save_document_to_db_fts_only_no_tx(
         .unwrap_or(0);
 
     // upsert_file_fts_only 사용 (vector_indexed_at = NULL)
-    let file_id = db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let file_id =
+        db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     // _no_tx 버전 사용: 호출자(index_folder_fts_only)가 이미 트랜잭션을 관리하므로
     // 중첩 BEGIN 방지 (SQLite는 중첩 트랜잭션 미지원)
@@ -925,7 +1007,11 @@ pub fn scan_metadata_only(
 
     send_progress("scanning", 0, true);
 
-    let max_file_size_bytes = if max_file_size_mb > 0 { max_file_size_mb * 1_048_576 } else { 0 };
+    let max_file_size_bytes = if max_file_size_mb > 0 {
+        max_file_size_mb * 1_048_576
+    } else {
+        0
+    };
     let mut count = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut collected_paths: Vec<PathBuf> = Vec::new();
@@ -1002,14 +1088,9 @@ pub fn scan_metadata_only(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
-        if let Err(e) = db::insert_file_metadata_only(
-            conn,
-            &path_str,
-            file_name,
-            &file_type,
-            size,
-            modified_at,
-        ) {
+        if let Err(e) =
+            db::insert_file_metadata_only(conn, &path_str, file_name, &file_type, size, modified_at)
+        {
             errors.push(format!("{}: {}", path_str, e));
             continue;
         }

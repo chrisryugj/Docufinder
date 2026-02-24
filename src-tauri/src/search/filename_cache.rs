@@ -68,7 +68,7 @@ impl FilenameCache {
         let mut stmt = conn.prepare(
             "SELECT id, path, name, file_type, COALESCE(size, 0), COALESCE(modified_at, 0)
              FROM files
-             ORDER BY name"
+             ORDER BY name",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -106,7 +106,11 @@ impl FilenameCache {
             cache.rebuild_index();
         }
 
-        tracing::info!("FilenameCache: loaded {} entries (total in DB: {})", count, total);
+        tracing::info!(
+            "FilenameCache: loaded {} entries (total in DB: {})",
+            count,
+            total
+        );
         Ok(count)
     }
 
@@ -133,7 +137,8 @@ impl FilenameCache {
         };
 
         // O(n) 스캔 - 모든 검색어가 포함된 파일만
-        cache.entries
+        cache
+            .entries
             .iter()
             .filter(|e| terms.iter().all(|term| e.name_lower.contains(term)))
             .take(limit)

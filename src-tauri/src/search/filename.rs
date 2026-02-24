@@ -9,7 +9,11 @@ fn escape_like_pattern(s: &str) -> String {
 
 /// 파일명 검색 (LIKE 기반 - 부분문자열 매칭 지원)
 /// FTS5 unicode61은 한글 부분문자열 매칭이 안 되므로 LIKE 사용
-pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<FilenameResult>, rusqlite::Error> {
+pub fn search(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<FilenameResult>, rusqlite::Error> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return Ok(vec![]);
@@ -75,7 +79,7 @@ pub fn search(conn: &Connection, query: &str, limit: usize) -> Result<Vec<Filena
                 file_type: row.get(3)?,
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
-                score: 1.0, // LIKE 검색은 스코어 없음
+                score: 1.0,           // LIKE 검색은 스코어 없음
                 highlight: file_name, // 하이라이트는 프론트엔드에서 처리
             });
         }

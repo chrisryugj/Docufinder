@@ -31,7 +31,9 @@ impl SqliteChunkRepository {
     where
         F: FnOnce(&Connection) -> Result<T, rusqlite::Error>,
     {
-        let conn = self.conn.lock()
+        let conn = self
+            .conn
+            .lock()
             .map_err(|e| DomainError::repository(format!("Lock failed: {}", e)))?;
 
         f(&conn).map_err(|e| DomainError::repository(format!("Query failed: {}", e)))
@@ -250,7 +252,10 @@ impl ChunkRepository for SqliteChunkRepository {
     async fn delete(&self, id: ChunkId) -> Result<(), DomainError> {
         self.with_conn(|conn| {
             // FTS 삭제
-            conn.execute("DELETE FROM chunks_fts WHERE rowid = ?", params![id.value()])?;
+            conn.execute(
+                "DELETE FROM chunks_fts WHERE rowid = ?",
+                params![id.value()],
+            )?;
             // 청크 삭제
             conn.execute("DELETE FROM chunks WHERE id = ?", params![id.value()])?;
             Ok(())
@@ -322,7 +327,7 @@ impl ChunkRepository for SqliteChunkRepository {
                  JOIN chunks c ON c.id = fts.rowid
                  WHERE chunks_fts MATCH ?
                  ORDER BY score
-                 LIMIT ?"
+                 LIMIT ?",
             )?;
 
             let rows = stmt.query_map(params![escaped_query, limit as i64], |row| {

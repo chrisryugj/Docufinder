@@ -13,7 +13,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         if metadata.len() > MAX_FILE_SIZE {
             return Err(ParseError::ParseError(format!(
                 "파일 크기 초과: {} bytes (최대 {} bytes)",
-                metadata.len(), MAX_FILE_SIZE
+                metadata.len(),
+                MAX_FILE_SIZE
             )));
         }
     }
@@ -80,10 +81,7 @@ fn extract_text_with_location(
     for (row_idx, row) in range.rows().enumerate() {
         let actual_row = start_row + row_idx + 1; // 1-based Excel row
 
-        let cells: Vec<String> = row
-            .iter()
-            .filter_map(cell_to_string)
-            .collect();
+        let cells: Vec<String> = row.iter().filter_map(cell_to_string).collect();
 
         if !cells.is_empty() {
             let row_text = cells.join("\t");
@@ -95,7 +93,13 @@ fn extract_text_with_location(
     let full_text = all_rows_text.join("\n");
 
     // 행 단위로 청크 생성
-    let chunks = create_chunks_with_rows(&row_infos, sheet_name, base_offset, super::DEFAULT_CHUNK_SIZE, super::DEFAULT_CHUNK_OVERLAP);
+    let chunks = create_chunks_with_rows(
+        &row_infos,
+        sheet_name,
+        base_offset,
+        super::DEFAULT_CHUNK_SIZE,
+        super::DEFAULT_CHUNK_OVERLAP,
+    );
 
     (full_text, chunks)
 }
@@ -131,7 +135,8 @@ fn create_chunks_with_rows(
             && !current_chunk_text.is_empty()
         {
             // 현재 청크 저장
-            let location = format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
+            let location =
+                format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
             chunks.push(DocumentChunk {
                 content: current_chunk_text.clone(),
                 start_offset: current_offset,
@@ -162,7 +167,8 @@ fn create_chunks_with_rows(
 
     // 마지막 청크 저장
     if !current_chunk_text.is_empty() {
-        let location = format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
+        let location =
+            format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
         chunks.push(DocumentChunk {
             content: current_chunk_text.clone(),
             start_offset: current_offset,

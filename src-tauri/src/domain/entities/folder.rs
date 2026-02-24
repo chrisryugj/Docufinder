@@ -113,7 +113,9 @@ impl WatchedFolder {
 
     /// 지원되는 파일 확장자 목록
     pub fn supported_extensions() -> &'static [&'static str] {
-        &["hwpx", "hwp", "docx", "doc", "xlsx", "xls", "pdf", "txt", "md"]
+        &[
+            "hwpx", "hwp", "docx", "doc", "xlsx", "xls", "pdf", "txt", "md",
+        ]
     }
 
     /// 경로가 지원되는 파일인지 확인
@@ -135,11 +137,8 @@ mod tests {
 
     #[test]
     fn test_folder_creation() {
-        let folder = WatchedFolder::new(
-            PathBuf::from("C:\\Users\\Test\\Documents"),
-            1234567890,
-        )
-        .unwrap();
+        let folder =
+            WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\Documents"), 1234567890).unwrap();
 
         assert_eq!(folder.name(), "Documents");
         assert!(!folder.is_favorite());
@@ -148,18 +147,10 @@ mod tests {
     #[test]
     fn test_blocked_paths() {
         // Windows 시스템 폴더
-        assert!(WatchedFolder::new(
-            PathBuf::from("C:\\Windows\\System32"),
-            0
-        )
-        .is_err());
+        assert!(WatchedFolder::new(PathBuf::from("C:\\Windows\\System32"), 0).is_err());
 
         // node_modules
-        assert!(WatchedFolder::new(
-            PathBuf::from("C:\\project\\node_modules"),
-            0
-        )
-        .is_err());
+        assert!(WatchedFolder::new(PathBuf::from("C:\\project\\node_modules"), 0).is_err());
 
         // .git
         assert!(WatchedFolder::new(PathBuf::from("C:\\project\\.git"), 0).is_err());
@@ -167,11 +158,8 @@ mod tests {
 
     #[test]
     fn test_favorite_toggle() {
-        let mut folder = WatchedFolder::new(
-            PathBuf::from("C:\\Users\\Test\\Documents"),
-            0,
-        )
-        .unwrap();
+        let mut folder =
+            WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\Documents"), 0).unwrap();
 
         assert!(!folder.is_favorite());
         folder.toggle_favorite();
@@ -182,11 +170,7 @@ mod tests {
 
     #[test]
     fn test_contains_path() {
-        let folder = WatchedFolder::new(
-            PathBuf::from("C:\\Users\\Test\\Documents"),
-            0,
-        )
-        .unwrap();
+        let folder = WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\Documents"), 0).unwrap();
 
         assert!(folder.contains_path(Path::new("C:\\Users\\Test\\Documents\\file.txt")));
         assert!(folder.contains_path(Path::new("C:\\Users\\Test\\Documents\\sub\\file.txt")));

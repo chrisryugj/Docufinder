@@ -96,7 +96,11 @@ pub async fn search_semantic(
     let (service, max_results, semantic_enabled) = {
         let container = state.read()?;
         let settings = container.get_settings();
-        (container.search_service(), settings.max_results, settings.semantic_search_enabled)
+        (
+            container.search_service(),
+            settings.max_results,
+            settings.semantic_search_enabled,
+        )
     };
 
     if !semantic_enabled {
@@ -129,7 +133,11 @@ pub async fn search_hybrid(
     let (service, max_results, semantic_enabled) = {
         let container = state.read()?;
         let settings = container.get_settings();
-        (container.search_service(), settings.max_results, settings.semantic_search_enabled)
+        (
+            container.search_service(),
+            settings.max_results,
+            settings.semantic_search_enabled,
+        )
     };
 
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
