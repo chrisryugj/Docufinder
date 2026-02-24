@@ -187,7 +187,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               <span style={{ color: "var(--color-text-secondary)" }}>
                 {status?.indexed_files ?? 0}
               </span>
-              {" Documents"}
+              {" 문서"}
               {status && status.total_files > status.indexed_files && (
                 <span style={{ color: "var(--color-text-muted)" }}>
                   {" / "}{status.total_files} 파일
