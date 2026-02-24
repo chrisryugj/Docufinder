@@ -260,6 +260,15 @@ pub fn run() {
                 );
             }
 
+            // 증분 인덱싱 완료 시 프론트엔드 알림 콜백 설정
+            {
+                let app_handle = app.handle().clone();
+                container.set_incremental_update_callback(Arc::new(move |count| {
+                    tracing::info!("[WatchManager] Incremental update: {} files", count);
+                    let _ = app_handle.emit("incremental-index-updated", count);
+                }));
+            }
+
             // 기존 감시 폴더들 자동 감시 시작
             if let Ok(conn) = db::get_connection(&container.db_path) {
                 if let Ok(folders) = db::get_watched_folders(&conn) {

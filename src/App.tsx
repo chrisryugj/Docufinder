@@ -365,12 +365,23 @@ function App() {
   }, []);
 
   const handleSettingsSaved = useCallback((settings: Settings) => {
+    const wasEnabled = semanticEnabled;
     applySettings(settings);
     clearSearchCache(); // 설정 변경 시 캐시된 검색 결과 무효화
-    if (!(settings.semantic_search_enabled ?? false) && isVectorIndexing) {
+    const nowEnabled = settings.semantic_search_enabled ?? false;
+    if (!nowEnabled && isVectorIndexing) {
       cancelVectorIndexing();
     }
-  }, [applySettings, isVectorIndexing, cancelVectorIndexing, clearSearchCache]);
+    // 시맨틱 검색 켜질 때 + 자동 모드 → 벡터 인덱싱 자동 재개
+    if (nowEnabled && !wasEnabled && !isVectorIndexing) {
+      // 상태 갱신 후 pending 확인 → 자동 시작
+      refreshVectorStatus().then(() => {
+        if ((vectorStatus?.pending_chunks ?? 0) > 0) {
+          startVectorIndexing();
+        }
+      });
+    }
+  }, [applySettings, semanticEnabled, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, vectorStatus, startVectorIndexing]);
 
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");

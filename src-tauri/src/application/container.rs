@@ -52,6 +52,8 @@ pub struct AppContainer {
     indexing_cancel_flag: Arc<AtomicBool>,
     /// 인메모리 설정 캐시 (디스크 I/O 제거)
     settings_cache: RwLock<Settings>,
+    /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
+    incremental_update_callback: RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>,
 }
 
 impl AppContainer {
@@ -93,6 +95,7 @@ impl AppContainer {
             filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             settings_cache: RwLock::new(cached_settings),
+            incremental_update_callback: RwLock::new(None),
         }
     }
 
@@ -211,17 +214,28 @@ impl AppContainer {
         model_path.exists()
     }
 
+    /// 증분 인덱싱 완료 시 호출할 콜백 설정 (WatchManager 초기화 전에 호출해야 함)
+    pub fn set_incremental_update_callback(&self, callback: Arc<dyn Fn(usize) + Send + Sync>) {
+        if let Ok(mut cb) = self.incremental_update_callback.write() {
+            *cb = Some(callback);
+        }
+    }
+
     /// 파일 감시 매니저 가져오기 (lazy load) - Arc 참조 반환
     pub fn get_watch_manager(&self) -> Result<Arc<RwLock<WatchManager>>, ApiError> {
         self.watch_manager
             .get_or_try_init(|| {
                 let settings = self.get_settings();
+                let callback = self.incremental_update_callback.read()
+                    .ok()
+                    .and_then(|cb| cb.clone());
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
                     vector_index: self.get_vector_index().ok(),
                     filename_cache: self.filename_cache.clone(),
                     max_file_size_mb: settings.max_file_size_mb,
+                    on_incremental_update: callback,
                 };
 
                 WatchManager::new(ctx)

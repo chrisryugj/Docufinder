@@ -88,6 +88,11 @@ impl VectorWorker {
             return Err("Vector indexing already running".to_string());
         }
 
+        // 이전 스레드가 남아있으면 안전하게 종료 대기
+        if let Some(handle) = self.thread.take() {
+            let _ = handle.join();
+        }
+
         // 취소 플래그 리셋
         self.cancel_flag.store(false, Ordering::Relaxed);
 
@@ -199,22 +204,28 @@ fn run_vector_indexing(
     let stats = db::get_vector_indexing_stats(&conn)
         .map_err(|e| format!("Failed to get stats: {}", e))?;
 
-    let total_chunks = stats.pending_chunks;
+    // 누적 진행률: 이미 완료된 청크 + 대기 청크 = 전체
+    let base_processed = stats.completed_chunks;
+    let total_chunks = stats.completed_chunks + stats.pending_chunks;
 
-    tracing::info!("[VectorWorker] Starting pipeline. {} chunks pending", total_chunks);
+    tracing::info!(
+        "[VectorWorker] Starting pipeline. {} pending, {} already done, {} total",
+        stats.pending_chunks, base_processed, total_chunks
+    );
 
-    // 상태 업데이트
+    // 상태 업데이트 (누적 기준)
     if let Ok(mut s) = status.write() {
         s.total_chunks = total_chunks;
-        s.pending_chunks = total_chunks;
+        s.processed_chunks = base_processed;
+        s.pending_chunks = stats.pending_chunks;
     }
 
-    // 진행률 알림
+    // 진행률 알림 (base_processed를 더해 누적 진행률 표시)
     let send_progress = |processed: usize, current_file: Option<&str>, is_complete: bool| {
         if let Some(ref cb) = progress_callback {
             cb(VectorIndexingProgress {
                 total_chunks,
-                processed_chunks: processed,
+                processed_chunks: base_processed + processed,
                 current_file: current_file.map(|s| s.to_string()),
                 is_complete,
             });
@@ -251,11 +262,11 @@ fn run_vector_indexing(
                 let current_file = Some(prefetched.file_path.as_str());
                 let mut file_failed_chunks: usize = 0;
 
-                // 상태 업데이트
+                // 상태 업데이트 (누적)
                 if let Ok(mut s) = status.write() {
                     s.current_file = Some(prefetched.file_path.clone());
-                    s.processed_chunks = processed;
-                    s.pending_chunks = total_chunks.saturating_sub(processed);
+                    s.processed_chunks = base_processed + processed;
+                    s.pending_chunks = total_chunks.saturating_sub(base_processed + processed);
                 }
 
                 send_progress(processed, current_file, false);
@@ -306,10 +317,10 @@ fn run_vector_indexing(
                         IndexingIntensity::Background => std::thread::sleep(Duration::from_millis(500)),
                     }
 
-                    // 상태 업데이트
+                    // 상태 업데이트 (누적)
                     if let Ok(mut s) = status.write() {
-                        s.processed_chunks = processed;
-                        s.pending_chunks = total_chunks.saturating_sub(processed);
+                        s.processed_chunks = base_processed + processed;
+                        s.pending_chunks = total_chunks.saturating_sub(base_processed + processed);
                     }
 
                     // 주기적 저장
@@ -365,9 +376,9 @@ fn run_vector_indexing(
 
     tracing::info!("[VectorWorker] Completed. {} chunks processed", processed);
 
-    // 상태 업데이트
+    // 상태 업데이트 (누적)
     if let Ok(mut s) = status.write() {
-        s.processed_chunks = processed;
+        s.processed_chunks = base_processed + processed;
         s.current_file = None;
         s.pending_chunks = 0;
     }
