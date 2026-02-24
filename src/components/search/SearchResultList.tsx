@@ -222,12 +222,15 @@ export function SearchResultList({
 
         {/* 파일명 매치 섹션 (토글 가능) */}
         {filenameResults.length > 0 && (
-          <div className="mb-4">
+          <div className="mb-2">
             <button
               type="button"
               onClick={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2 w-full text-left transition-colors"
-              style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+              className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left transition-colors"
+              style={{
+                borderLeft: "3px solid var(--color-text-muted)",
+                backgroundColor: "var(--color-bg-tertiary)",
+              }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = "var(--color-bg-subtle)";
               }}
@@ -236,20 +239,26 @@ export function SearchResultList({
               }}
             >
               <svg
-                className={`w-4 h-4 transition-transform ${isFilenameCollapsed ? "" : "rotate-90"}`}
+                className={`w-3.5 h-3.5 transition-transform ${isFilenameCollapsed ? "" : "rotate-90"}`}
                 style={{ color: "var(--color-text-muted)" }}
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
                 <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
-              <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
-              <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              <span className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
                 파일명 매치
               </span>
-              <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-accent-light)", color: "var(--color-accent)" }}>
+              <span
+                className="text-xs px-1.5 py-0.5 rounded-full"
+                style={{
+                  border: "1px solid var(--color-border-hover)",
+                  color: "var(--color-text-muted)",
+                }}
+              >
                 {filenameResults.length}
               </span>
               {isFilenameCollapsed && (
@@ -297,19 +306,33 @@ export function SearchResultList({
           </div>
         )}
 
+        {/* 섹션 구분선 */}
+        {filenameResults.length > 0 && results.length > 0 && (
+          <div className="my-4" style={{ borderTop: "1px solid var(--color-border)" }} />
+        )}
+
         {/* 내용 매치 섹션 헤더 */}
         {filenameResults.length > 0 && results.length > 0 && (
           <div
-            className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2"
-            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+            className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2"
+            style={{
+              borderLeft: "3px solid var(--color-accent)",
+              backgroundColor: "var(--color-accent-subtle)",
+            }}
           >
-            <svg className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
               내용 매치
             </span>
-            <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                backgroundColor: "var(--color-accent-subtle)",
+                color: "var(--color-accent)",
+              }}
+            >
               {results.length}
             </span>
           </div>
