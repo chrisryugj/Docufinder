@@ -52,10 +52,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // 기본 에러 UI
       return (
-        <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)]">
+        <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg-primary)]">
           <div className="max-w-md w-full mx-4 p-6 bg-[var(--color-bg-secondary)] rounded-lg border border-[var(--color-border)] text-center">
             <div className="text-5xl mb-4">⚠️</div>
-            <h1 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+            <h1 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
               오류가 발생했습니다
             </h1>
             <p className="text-[var(--color-text-secondary)] mb-4">
@@ -63,7 +63,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </p>
             {this.state.error && (
               <details className="text-left mb-4 p-3 bg-[var(--color-bg-tertiary)] rounded text-sm">
-                <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--text-primary)]">
+                <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
                   오류 상세 정보
                 </summary>
                 <pre className="mt-2 text-xs text-red-500 whitespace-pre-wrap break-words">
@@ -74,7 +74,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex gap-3 justify-center">
               <button
                 onClick={this.handleReset}
-                className="px-4 py-2 bg-[var(--color-bg-tertiary)] text-[var(--text-primary)] rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                className="px-4 py-2 bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)] rounded hover:opacity-80 transition-colors"
               >
                 다시 시도
               </button>

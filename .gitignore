@@ -44,3 +44,9 @@ src-tauri/models/
 # Test
 coverage/
 nul
+
+# Lock file (pnpm 전용 프로젝트)
+package-lock.json
+
+# Test target directories
+src-tauri/target-test*/

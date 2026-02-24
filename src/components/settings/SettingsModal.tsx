@@ -593,7 +593,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => handleChange("data_root", undefined as unknown as string)}
+                  onClick={() => handleChange("data_root", undefined)}
                 >
                   초기화
                 </Button>

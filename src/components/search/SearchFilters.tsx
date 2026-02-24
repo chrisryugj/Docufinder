@@ -178,18 +178,7 @@ export const SearchFilters = memo(function SearchFilters({
       {hasActiveFilters && (
         <button
           onClick={handleReset}
-          className="px-2 py-1 transition-colors border border-transparent rounded-md text-xs font-medium"
-          style={{
-            color: "var(--color-text-muted)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--color-error)";
-            e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--color-text-muted)";
-            e.currentTarget.style.backgroundColor = "transparent";
-          }}
+          className="px-2 py-1 border border-transparent rounded-md text-xs font-medium btn-reset-hover"
           aria-label="필터 초기화"
         >
           초기화

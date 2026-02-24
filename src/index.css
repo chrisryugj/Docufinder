@@ -695,3 +695,136 @@ body,
     animation: spin 1.5s linear infinite !important;
   }
 }
+
+/* ============================================
+   Reusable Hover Utilities
+   (인라인 onMouseEnter/onMouseLeave 대체)
+   ============================================ */
+
+/* 컨텍스트 메뉴 아이템 */
+.ctx-menu-item {
+  color: var(--color-text-primary);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item:hover {
+  background-color: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+/* 컨텍스트 메뉴 위험 액션 (삭제/제거) */
+.ctx-menu-item-danger {
+  color: #f87171;
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item-danger:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+}
+
+/* 닫기/아이콘 버튼 hover */
+.btn-icon-hover {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-icon-hover:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+/* 파일명 hover (텍스트 → 액센트) */
+.hover-accent-text {
+  color: var(--color-text-primary);
+  transition: color 0.15s;
+}
+.hover-accent-text:hover {
+  color: var(--color-accent);
+}
+
+/* 결과 아이템 hover (배경색 전환) */
+.result-item-hover {
+  background-color: var(--color-bg-secondary);
+  transition: background-color 0.15s;
+}
+.result-item-hover:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* 즐겨찾기 토글 메뉴 아이템 */
+.ctx-menu-item-favorite {
+  color: var(--color-text-primary);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item-favorite--active {
+  color: #facc15;
+}
+.ctx-menu-item-favorite:hover {
+  background-color: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
+/* 아웃라인 버튼 hover (액센트 전환) */
+.btn-outline-accent-hover {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-outline-accent-hover:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background-color: var(--color-accent-light);
+}
+
+/* 취소 버튼 hover */
+.btn-cancel-hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-cancel-hover:hover {
+  background-color: var(--color-error);
+  color: white;
+}
+
+/* 시맨틱 시작 버튼 hover */
+.btn-accent-start-hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-accent);
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-accent-start-hover:hover {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+/* 초기화 버튼 hover */
+.btn-reset-hover {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-reset-hover:hover {
+  color: var(--color-error);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* transparent → tertiary hover */
+.hover-bg-tertiary {
+  background-color: transparent;
+  transition: background-color 0.15s;
+}
+.hover-bg-tertiary:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* tertiary → subtle hover */
+.hover-bg-subtle {
+  transition: background-color 0.15s;
+}
+.hover-bg-subtle:hover {
+  background-color: var(--color-bg-subtle);
+}

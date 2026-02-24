@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -40,7 +40,7 @@ interface SearchResultListProps {
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
 
-export function SearchResultList({
+export const SearchResultList = memo(function SearchResultList({
   results,
   filenameResults = [],
   groupedResults = [],
@@ -167,22 +167,7 @@ export function SearchResultList({
           <div className="flex gap-2 ml-auto">
             <button
               onClick={onCopyAll}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors border font-medium"
-              style={{
-                backgroundColor: "var(--color-bg-secondary)",
-                borderColor: "var(--color-border)",
-                color: "var(--color-text-secondary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-accent)";
-                e.currentTarget.style.color = "var(--color-accent)";
-                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-border)";
-                e.currentTarget.style.color = "var(--color-text-secondary)";
-                e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
               title="검색 결과 클립보드 복사"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,22 +178,7 @@ export function SearchResultList({
             </button>
             <button
               onClick={onExportCSV}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors border font-medium"
-              style={{
-                backgroundColor: "var(--color-bg-secondary)",
-                borderColor: "var(--color-border)",
-                color: "var(--color-text-secondary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-accent)";
-                e.currentTarget.style.color = "var(--color-accent)";
-                e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-border)";
-                e.currentTarget.style.color = "var(--color-text-secondary)";
-                e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
               title="CSV 파일로 내보내기"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -226,16 +196,10 @@ export function SearchResultList({
             <button
               type="button"
               onClick={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
-              className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left transition-colors"
+              className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left hover-bg-subtle"
               style={{
                 borderLeft: "3px solid var(--color-text-muted)",
                 backgroundColor: "var(--color-bg-tertiary)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-subtle)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
               }}
             >
               <svg
@@ -272,14 +236,16 @@ export function SearchResultList({
                 {filenameResults.map((result, index) => (
                   <div
                     key={`filename-${result.file_path}-${index}`}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors"
+                    className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-[var(--color-bg-tertiary)]"
                     style={{ backgroundColor: "var(--color-bg-secondary)" }}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onOpenFile(result.file_path)}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenFile(result.file_path);
+                      }
                     }}
                   >
                     <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -468,7 +434,7 @@ export function SearchResultList({
       </div>
     </div>
   );
-}
+});
 
 /** 더 보기 버튼 */
 function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
@@ -481,22 +447,7 @@ function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
     <div className="flex justify-center pt-2">
       <button
         onClick={onShowMore}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border"
-        style={{
-          backgroundColor: "var(--color-bg-secondary)",
-          borderColor: "var(--color-border)",
-          color: "var(--color-text-secondary)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = "var(--color-accent)";
-          e.currentTarget.style.color = "var(--color-accent)";
-          e.currentTarget.style.backgroundColor = "var(--color-accent-light)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = "var(--color-border)";
-          e.currentTarget.style.color = "var(--color-text-secondary)";
-          e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
-        }}
+        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border btn-outline-accent-hover"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

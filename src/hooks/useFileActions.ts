@@ -81,7 +81,7 @@ export function useFileActions({
           "error",
           5000
         );
-        if ((import.meta as any).env.DEV && errors?.length) {
+        if (import.meta.env.DEV && errors?.length) {
           console.warn("[파싱 실패 목록]", errors.slice(0, 20));
         }
       } else if (indexed_count > 0) {

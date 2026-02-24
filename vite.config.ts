@@ -31,7 +31,6 @@ export default defineConfig({
       "@tauri-apps/api/event",
       "@tauri-apps/plugin-dialog",
       "@tauri-apps/plugin-process",
-      "@tauri-apps/plugin-shell",
       "lucide-react",
     ],
   },

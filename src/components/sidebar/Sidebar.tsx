@@ -65,12 +65,12 @@ export const Sidebar = memo(function Sidebar({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-6 shrink-0">
-          <h2 className="text-sm font-bold tracking-widest text-[#94A3B8] uppercase">
+          <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase">
             메뉴
           </h2>
           <button
             onClick={onToggle}
-            className="p-2 rounded-lg transition-all duration-200 text-[#64748B] hover:text-white hover:bg-white/10 active:scale-95"
+            className="p-2 rounded-lg transition-all duration-200 text-slate-500 hover:text-white hover:bg-white/10 active:scale-95"
             aria-label="사이드바 닫기"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,7 +87,7 @@ export const Sidebar = memo(function Sidebar({
             <div className="flex items-center justify-between px-2 mb-3">
               <button
                 onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold text-[#64748B] uppercase tracking-wider hover:text-white transition-colors"
+                className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-white transition-colors"
                 aria-expanded={isFoldersExpanded}
               >
                 <svg
@@ -103,7 +103,7 @@ export const Sidebar = memo(function Sidebar({
               </button>
               <button
                 onClick={onAddFolder}
-                className="p-1.5 rounded-md text-[#64748B] hover:text-white hover:bg-white/10 transition-all duration-200"
+                className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-200"
                 aria-label="폴더 추가"
                 title="폴더 추가"
               >
@@ -128,7 +128,7 @@ export const Sidebar = memo(function Sidebar({
             <div className="flex items-center justify-between px-2 mb-3">
               <button
                 onClick={() => setIsSearchesExpanded(!isSearchesExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold text-[#64748B] uppercase tracking-wider hover:text-white transition-colors"
+                className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-white transition-colors"
                 aria-expanded={isSearchesExpanded}
               >
                 <svg
@@ -145,7 +145,7 @@ export const Sidebar = memo(function Sidebar({
               {recentSearches.length > 0 && (
                 <button
                   onClick={onClearSearches}
-                  className="p-1.5 rounded-md text-[#64748B] hover:text-red-400 hover:bg-white/10 transition-all duration-200"
+                  className="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-white/10 transition-all duration-200"
                   aria-label="전체 삭제"
                   title="검색 기록 전체 삭제"
                 >
@@ -170,7 +170,7 @@ export const Sidebar = memo(function Sidebar({
         {/* Footer - 저작권 */}
         <div className="p-4 border-t border-white/5 bg-black/20 shrink-0">
           <div className="text-center text-xs text-slate-500 space-y-0.5">
-            <p>© 2025 개친절한 류주임</p>
+            <p>© 2025–{new Date().getFullYear()} 개친절한 류주임</p>
             <p>광진구청 AI 동호회 (AI.Do)</p>
           </div>
         </div>

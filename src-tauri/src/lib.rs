@@ -139,7 +139,6 @@ pub fn run() {
     let show_on_load_flag = show_on_load.clone();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         // tauri-plugin-updater: 사내 배포용 비활성화 (외부 통신 차단)

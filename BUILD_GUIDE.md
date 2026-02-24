@@ -117,7 +117,7 @@ pnpm tauri:dev
 pnpm tauri:build
 ```
 
-- 빌드 결과: `src-tauri/target/release/bundle/msi/Anything_0.1.0_x64_ko-KR.msi`
+- 빌드 결과: `src-tauri/target/release/bundle/msi/Anything_1.0.0_x64_ko-KR.msi`
 - 코드 서명이 설정되어 있으면 자동으로 서명됨 (certificateThumbprint in tauri.conf.json)
 
 ---
@@ -133,7 +133,6 @@ pnpm tauri:build
 | `@tauri-apps/api` | ^2.9.1 | Tauri IPC 통신 |
 | `@tauri-apps/plugin-dialog` | ^2.6.0 | 네이티브 다이얼로그 |
 | `@tauri-apps/plugin-process` | ^2.3.1 | 프로세스 제어 |
-| `@tauri-apps/plugin-shell` | ^2.3.4 | 셸 명령 실행 |
 | `lucide-react` | ^0.469.0 | 아이콘 |
 | `typescript` | ^5.9.3 | 타입 체커 |
 | `vite` | ^7.3.1 | 번들러 |
@@ -148,7 +147,6 @@ pnpm tauri:build
 |----------|------|------|
 | `tauri` | ^2.10 | 앱 프레임워크 |
 | `tauri-build` | ^2.5 | 빌드 스크립트 |
-| `tauri-plugin-shell` | ^2.3 | 셸 플러그인 |
 | `tauri-plugin-dialog` | ^2.6 | 다이얼로그 플러그인 |
 | `tauri-plugin-process` | ^2.3 | 프로세스 플러그인 |
 | `tauri-plugin-autostart` | ^2.5 | 자동 시작 |

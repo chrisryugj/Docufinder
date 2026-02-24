@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, memo, useEffect, useRef, useState } from "react";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -17,7 +17,7 @@ interface SearchBarProps {
   onCompositionEnd?: (finalValue: string) => void;
 }
 
-export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
+export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
   (
     {
       query,
@@ -209,6 +209,6 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
       </div>
     );
   }
-);
+));
 
 SearchBar.displayName = "SearchBar";
