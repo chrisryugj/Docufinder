@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: asset: https://asset.localhost; script-src 'self'"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: asset: https://asset.localhost; script-src 'self'"
     }
   },
   "bundle": {
@@ -48,9 +48,5 @@
     },
     "createUpdaterArtifacts": false
   },
-  "plugins": {
-    "shell": {
-      "open": false
-    }
-  }
+  "plugins": {}
 }

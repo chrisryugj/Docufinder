@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 interface HighlightedFilenameProps {
   filename: string;
   query: string;
@@ -6,8 +8,10 @@ interface HighlightedFilenameProps {
 /**
  * 파일명에서 검색어 매칭 부분을 하이라이트
  * Everything 스타일 실시간 하이라이트
+ *
+ * memo() 적용: 결과당 regex 실행하므로 동일 props 시 재계산 방지
  */
-export function HighlightedFilename({ filename, query }: HighlightedFilenameProps) {
+export const HighlightedFilename = memo(function HighlightedFilename({ filename, query }: HighlightedFilenameProps) {
   if (!query.trim()) {
     return <>{filename}</>;
   }
@@ -78,4 +82,4 @@ export function HighlightedFilename({ filename, query }: HighlightedFilenameProp
   }
 
   return <>{parts}</>;
-}
+});

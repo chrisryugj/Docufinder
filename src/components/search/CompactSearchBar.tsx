@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useRef, useEffect, useState } from "react";
+import { forwardRef, memo, useCallback, useRef, useEffect, useState } from "react";
 import { useIMEComposition } from "../../hooks/useIMEComposition";
 import type { SearchMode } from "../../types/search";
 import { SEARCH_MODES } from "../../types/search";
@@ -41,7 +41,7 @@ interface CompactSearchBarProps {
   onCompositionEnd?: (finalValue: string) => void;
 }
 
-export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarProps>(
+export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchBarProps>(
   (
     {
       query,
@@ -382,6 +382,6 @@ export const CompactSearchBar = forwardRef<HTMLInputElement, CompactSearchBarPro
       </div>
     );
   }
-);
+));
 
 CompactSearchBar.displayName = "CompactSearchBar";

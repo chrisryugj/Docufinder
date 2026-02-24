@@ -15,7 +15,6 @@ tauri-build = { version = "^2.5", features = [] }
 [dependencies]
 # Tauri 프레임워크 (^2.10: tauri 2.10.2+)
 tauri = { version = "^2.10", features = ["tray-icon"] }
-tauri-plugin-shell = "^2.3"
 tauri-plugin-dialog = "^2.6"
 # tauri-plugin-fs = "^2.4"  # 프론트엔드에서 미사용 (capabilities 미부여)
 # tauri-plugin-updater = "2"  # 사내 배포용: 비활성화

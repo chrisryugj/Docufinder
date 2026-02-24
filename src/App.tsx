@@ -275,8 +275,7 @@ function App() {
     if (searchMode !== "hybrid" && filters.keywordOnly) {
       setFilters({ ...filters, keywordOnly: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMode]);
+  }, [searchMode, filters.keywordOnly]); // filters.keywordOnly만 의존
 
   // 사이드바 토글
   const toggleSidebar = useCallback(() => {

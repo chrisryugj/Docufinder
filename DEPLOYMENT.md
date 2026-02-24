@@ -14,7 +14,7 @@ pnpm install
 pnpm run download-model
 pnpm tauri:build
 ```
-결과물: `src-tauri/target/release/bundle/msi/Anything_0.1.0_x64_ko-KR.msi`
+결과물: `src-tauri/target/release/bundle/msi/Anything_1.0.0_x64_ko-KR.msi`
 
 ### 3. 모델 파일
 빌드 시 `pnpm run download-model`로 ONNX 모델을 다운로드합니다.
@@ -34,14 +34,14 @@ pnpm tauri:build
 - 사내 보안 정책에서 미서명 실행 파일 차단 가능
 
 ### 현재 설정
-`tauri.conf.json`에 코드 서명이 설정되어 있음:
+`tauri.conf.json`에 코드 서명 설정:
 ```json
 {
   "bundle": {
     "windows": {
-      "certificateThumbprint": "5674CABFCAD28D70087D03DD6422436501D02B91",
+      "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
-      "timestampUrl": "http://timestamp.digicert.com",
+      "timestampUrl": "https://timestamp.digicert.com",
       "wix": {
         "language": "ko-KR"
       }

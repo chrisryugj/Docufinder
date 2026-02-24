@@ -125,20 +125,13 @@ export const SearchResultItem = memo(function SearchResultItem({
       {/* 헤더 */}
       <div className={`flex items-start justify-between ${isCompact ? "mb-1" : "mb-2"}`}>
         <div
-          className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename transition-colors duration-200 ${isCompact ? "gap-2" : "gap-2.5"}`}
+          className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(result.file_path, result.page_number)}
           onContextMenu={handleContextMenu}
           title={[
             result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기",
             absoluteDate ? `수정: ${relativeTime} (${absoluteDate})` : null,
           ].filter(Boolean).join("\n")}
-          style={{ color: "var(--color-text-primary)" }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--color-accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--color-text-primary)";
-          }}
         >
           <FileIcon fileName={result.file_name} size={isCompact ? "sm" : "md"} />
           <span
@@ -178,14 +171,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             {/* 경로 복사 */}
             <button
               onClick={handleCopyPath}
-              className="p-1 rounded transition-colors"
-              style={{ color: "var(--color-text-muted)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = "var(--color-text-secondary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = "var(--color-text-muted)";
-              }}
+              className="p-1 rounded btn-icon-hover"
               title="경로 복사"
               aria-label="파일 경로 복사"
             >
@@ -198,14 +184,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             {onOpenFolder && (
               <button
                 onClick={handleOpenFolder}
-                className="p-1 rounded transition-colors"
-                style={{ color: "var(--color-text-muted)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "var(--color-text-secondary)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "var(--color-text-muted)";
-                }}
+                className="p-1 rounded btn-icon-hover"
                 title="폴더 열기"
                 aria-label="상위 폴더 열기"
               >
@@ -234,15 +213,8 @@ export const SearchResultItem = memo(function SearchResultItem({
 
       {/* 내용 */}
       <div
-        className={`cursor-pointer rounded-md transition-colors flex gap-2 ${isCompact ? "p-1 -mx-1" : "p-2 -mx-2"}`}
+        className={`cursor-pointer rounded-md flex gap-2 hover-bg-tertiary ${isCompact ? "p-1 -mx-1" : "p-2 -mx-2"}`}
         onClick={onToggleExpand}
-        style={{ backgroundColor: "transparent" }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-        }}
       >
         {/* 토글 아이콘 */}
         <svg

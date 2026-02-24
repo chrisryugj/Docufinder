@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
@@ -113,12 +112,12 @@ export function useIndexStatus(): UseIndexStatusReturn {
         setIsIndexing(true);
         setError(null);
 
-        const result = await invoke<AddFolderResult>("add_folder", {
+        const result = await invokeWithTimeout<AddFolderResult>("add_folder", {
           path: selected,
-        });
+        }, IPC_TIMEOUT.INDEXING);
 
         // 개발 모드에서만 로깅
-        if ((import.meta as any).env.DEV) {
+        if (import.meta.env.DEV) {
           console.log("Indexing result:", result);
         }
 

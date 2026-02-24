@@ -63,19 +63,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               {onCancelIndexing && (
                 <button
                   onClick={onCancelIndexing}
-                  className="px-2 py-0.5 text-xs rounded transition-colors"
-                  style={{
-                    backgroundColor: "var(--color-bg-tertiary)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-error)";
-                    e.currentTarget.style.color = "white";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                    e.currentTarget.style.color = "var(--color-text-secondary)";
-                  }}
+                  className="px-2 py-0.5 text-xs rounded btn-cancel-hover"
                 >
                   취소
                 </button>
@@ -133,19 +121,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               {onCancelVectorIndexing && (
                 <button
                   onClick={onCancelVectorIndexing}
-                  className="px-2 py-0.5 text-xs rounded transition-colors"
-                  style={{
-                    backgroundColor: "var(--color-bg-tertiary)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-error)";
-                    e.currentTarget.style.color = "white";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                    e.currentTarget.style.color = "var(--color-text-secondary)";
-                  }}
+                  className="px-2 py-0.5 text-xs rounded btn-cancel-hover"
                 >
                   취소
                 </button>
@@ -228,19 +204,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             {semanticEnabled && onStartVectorIndexing && !isVectorIndexing && hasPendingVectors && (
               <button
                 onClick={onStartVectorIndexing}
-                className="px-2 py-0.5 text-xs rounded transition-colors"
-                style={{
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  color: "var(--color-accent)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "var(--color-accent)";
-                  e.currentTarget.style.color = "white";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                  e.currentTarget.style.color = "var(--color-accent)";
-                }}
+                className="px-2 py-0.5 text-xs rounded btn-accent-start-hover"
                 title="벡터 인덱싱을 시작합니다. 하이브리드/의미 검색에 필요합니다."
               >
                 시맨틱 시작

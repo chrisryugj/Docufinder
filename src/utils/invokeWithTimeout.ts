@@ -24,10 +24,16 @@ export async function invokeWithTimeout<T>(
   args?: Record<string, unknown>,
   timeoutMs: number = IPC_TIMEOUT.SETTINGS,
 ): Promise<T> {
-  return Promise.race([
-    args ? invoke<T>(command, args) : invoke<T>(command),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new IpcTimeoutError(command, timeoutMs)), timeoutMs),
-    ),
-  ]);
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new IpcTimeoutError(command, timeoutMs)), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      args ? invoke<T>(command, args) : invoke<T>(command),
+      timeoutPromise,
+    ]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
 }

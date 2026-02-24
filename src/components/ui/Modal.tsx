@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useRef, useCallback, useId, type ReactNode } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 export function Modal({ isOpen, onClose, title, children, size = "md", closable = true }: ModalProps) {
+  const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
 
@@ -98,7 +99,7 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
     >
       <div
         ref={modalRef}
@@ -115,7 +116,7 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
           style={{ borderColor: "var(--color-border)" }}
         >
           <h2
-            id="modal-title"
+            id={titleId}
             className="text-lg font-semibold"
             style={{ color: "var(--color-text-primary)" }}
           >
@@ -124,16 +125,7 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
           {closable && (
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md transition-all duration-200"
-              style={{ color: "var(--color-text-muted)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                e.currentTarget.style.color = "var(--color-text-primary)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "var(--color-text-muted)";
-              }}
+              className="p-1.5 rounded-md btn-icon-hover"
               aria-label="닫기"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
