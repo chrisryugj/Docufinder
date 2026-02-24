@@ -9,6 +9,8 @@ interface UseCollapsibleSearchOptions {
   onExpand?: () => void;
   /** 이 input에 포커스 중이면 collapse 하지 않음 */
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
+  /** 검색 쿼리 - 최근 타이핑 중 collapse 방지용 */
+  query?: string;
 }
 
 interface UseCollapsibleSearchReturn {
@@ -29,7 +31,7 @@ interface UseCollapsibleSearchReturn {
 export function useCollapsibleSearch(
   options: UseCollapsibleSearchOptions = {}
 ): UseCollapsibleSearchReturn {
-  const { threshold = 100, onCollapse, onExpand, searchInputRef } = options;
+  const { threshold = 100, onCollapse, onExpand, searchInputRef, query } = options;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
@@ -37,6 +39,14 @@ export function useCollapsibleSearch(
   const prevCollapsed = useRef(false);
   const lastScrollTop = useRef(0);
   const scrollDirectionUp = useRef(false);
+
+  // 최근 타이핑 활동 추적 (포커스 일시 이탈 시에도 collapse 방지)
+  const lastTypingTimeRef = useRef(0);
+  const prevQueryRef = useRef(query);
+  if (prevQueryRef.current !== query) {
+    prevQueryRef.current = query;
+    lastTypingTimeRef.current = Date.now();
+  }
 
   // 쓰로틀링을 위한 RAF 플래그
   const rafPending = useRef(false);
@@ -91,11 +101,13 @@ export function useCollapsibleSearch(
         // 검색 입력 중이면 collapse 하지 않음 (타이핑 중 포커스 이탈 방지)
         const isSearchFocused = searchInputRef?.current != null &&
           document.activeElement === searchInputRef.current;
+        // 최근 1초 이내 타이핑이 있었으면 collapse 방지 (모달 닫기 후 포커스 경쟁 상태 방어)
+        const recentlyTyped = Date.now() - lastTypingTimeRef.current < 1000;
 
         // 축소/확장 판단
         let shouldCollapse = prevCollapsed.current;
 
-        if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current && !isSearchFocused) {
+        if (!prevCollapsed.current && currentScrollTop > threshold && !scrollDirectionUp.current && !isSearchFocused && !recentlyTyped) {
           shouldCollapse = true;
         } else if (prevCollapsed.current && scrollDirectionUp.current && currentScrollTop < threshold / 2) {
           shouldCollapse = false;

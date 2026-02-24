@@ -8,6 +8,7 @@ import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
+import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
@@ -24,20 +25,6 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-
-  // 스크롤 기반 검색 영역 축소
-  const {
-    isCollapsed,
-    handleScroll,
-    scrollToTop,
-    scrollContainerRef,
-    showScrollTopButton: showScrollTop,
-    expand,
-  } = useCollapsibleSearch({
-    threshold: 200,
-    onCollapse: () => searchInputRef.current?.blur(),
-    searchInputRef,
-  });
 
   // 테마
   const { setTheme } = useTheme();
@@ -76,6 +63,21 @@ function App() {
     setComposing,
     invalidate: invalidateSearch,
   } = useSearch({ minConfidence: 0 });
+
+  // 스크롤 기반 검색 영역 축소 (query 의존 → useSearch 뒤에 배치)
+  const {
+    isCollapsed,
+    handleScroll,
+    scrollToTop,
+    scrollContainerRef,
+    showScrollTopButton: showScrollTop,
+    expand,
+  } = useCollapsibleSearch({
+    threshold: 200,
+    onCollapse: () => searchInputRef.current?.blur(),
+    searchInputRef,
+    query,
+  });
 
   // 인덱스 상태
   const {
@@ -143,11 +145,16 @@ function App() {
     refreshVectorStatus,
   });
 
+  // 글로벌 에러 핸들러 등록 (프론트엔드 에러 → Rust 로그 파일)
+  useEffect(() => {
+    setupGlobalErrorHandlers();
+  }, []);
+
   // 렌더 완료 후 창 표시 + 포커스 (visible: false safety net)
   useEffect(() => {
     const win = getCurrentWindow();
     win.show();
-    win.setFocus();
+    win.setFocus().catch(() => {});
   }, []);
 
   // FTS 인덱싱 완료 시 검색 캐시 무효화 (stale 결과 방지)
@@ -351,7 +358,10 @@ function App() {
   // 설정 모달 콜백
   const handleSettingsClose = useCallback(() => {
     setSettingsOpen(false);
-    setTimeout(() => searchInputRef.current?.focus(), 0);
+    // Modal cleanup 후 검색창 포커스 복원 (rAF로 페인트 이후 보장)
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
   }, []);
 
   const handleSettingsSaved = useCallback((settings: Settings) => {
