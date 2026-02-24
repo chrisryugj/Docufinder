@@ -122,6 +122,17 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
 
   const isRunning = status?.is_running ?? false;
 
+  // 진행 중일 때 주기적 폴링 (이벤트 누락 fallback)
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const interval = setInterval(() => {
+      refreshStatus();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isRunning, refreshStatus]);
+
   return {
     status,
     progress,
