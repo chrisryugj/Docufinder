@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { IndexStatus, IndexingProgress, VectorIndexingStatus } from "../../types/index";
+import { cleanPath } from "../../utils/cleanPath";
 
 interface StatusBarProps {
   status: IndexStatus | null;
@@ -108,9 +109,9 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             <div
               className="text-xs truncate"
               style={{ color: "var(--color-text-muted)" }}
-              title={progress.current_file}
+              title={cleanPath(progress.current_file)}
             >
-              {progress.current_file}
+              {cleanPath(progress.current_file)}
             </div>
           )}
         </div>
@@ -171,9 +172,9 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             <div
               className="text-xs truncate"
               style={{ color: "var(--color-text-muted)" }}
-              title={vectorStatus.current_file}
+              title={cleanPath(vectorStatus.current_file)}
             >
-              {vectorStatus.current_file}
+              {cleanPath(vectorStatus.current_file)}
             </div>
           )}
         </div>
