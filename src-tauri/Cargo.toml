@@ -30,7 +30,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # File parsing
 zip = "2"
 quick-xml = "0.37"
-calamine = "0.26"  # Excel
+calamine = "0.33"  # Excel
 pdf-extract = "0.7"  # PDF
 
 # Async
