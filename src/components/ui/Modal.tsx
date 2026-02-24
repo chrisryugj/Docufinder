@@ -75,8 +75,8 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
 
-      // 모달 닫힐 때 이전 포커스 복원
-      if (previousActiveElement.current) {
+      // 모달 닫힐 때 이전 포커스 복원 (DOM에서 제거된 요소 방어)
+      if (previousActiveElement.current?.isConnected) {
         previousActiveElement.current.focus();
       }
     };
