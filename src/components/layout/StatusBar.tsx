@@ -184,10 +184,15 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
         >
           <div className="flex items-center gap-2">
             <span>
-              문서:{" "}
               <span style={{ color: "var(--color-text-secondary)" }}>
-                {status?.total_files ?? 0}개
+                {status?.indexed_files ?? 0}
               </span>
+              {" Documents"}
+              {status && status.total_files > status.indexed_files && (
+                <span style={{ color: "var(--color-text-muted)" }}>
+                  {" / "}{status.total_files} 파일
+                </span>
+              )}
             </span>
             {/* 시맨틱 분석 대기 상태 표시 */}
             {semanticEnabled && hasPendingVectors && !isVectorIndexing && (

@@ -12,7 +12,7 @@ interface HeaderProps {
 export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, isIndexing, isSidebarOpen }: HeaderProps) {
   return (
     <header
-      className={`py-2 flex justify-between items-center bg-transparent transition-all duration-300 ${isSidebarOpen ? "px-6" : "pl-20 pr-6"
+      className={`py-2 flex justify-between items-center bg-transparent transition-all duration-300 ${isSidebarOpen ? "px-6" : "pl-16 pr-6"
         }`}
     >
       <div className="flex items-center gap-3">

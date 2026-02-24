@@ -20,6 +20,7 @@ export interface AddFolderResult {
 /** 폴더별 인덱싱 통계 */
 export interface FolderStats {
   file_count: number;
+  indexed_count: number;
   last_indexed: number | null;
 }
 

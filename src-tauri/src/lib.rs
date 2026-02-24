@@ -602,10 +602,20 @@ pub fn run() {
                     let _ = window.hide();
                     tracing::debug!("Window hidden to tray");
                 }
-                // 앱 종료 시 벡터 인덱스 저장
+                // 앱 종료 시 벡터 워커 정리 + 인덱스 저장
                 tauri::WindowEvent::Destroyed => {
                     if let Some(container) = window.try_state::<RwLock<AppContainer>>() {
                         if let Ok(container) = container.read() {
+                            // 벡터 워커 취소 + 대기 (quit 핸들러와 동일)
+                            let vector_worker = container.get_vector_worker();
+                            if let Ok(mut worker) = vector_worker.write() {
+                                if worker.is_running() {
+                                    tracing::info!("Stopping vector worker on window destroy...");
+                                    worker.cancel();
+                                    worker.join();
+                                }
+                            }
+                            // 벡터 인덱스 저장
                             if let Ok(vi) = container.get_vector_index() {
                                 if let Err(e) = vi.save() {
                                     tracing::error!("Failed to save vector index: {}", e);
@@ -640,6 +650,9 @@ pub fn run() {
             commands::settings::update_settings,
             commands::file::open_file,
             commands::file::open_folder,
+            commands::file::log_frontend_error,
+            commands::file::get_log_dir,
+            commands::file::open_log_dir,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

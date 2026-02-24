@@ -131,6 +131,7 @@ impl FolderService {
 
         Ok(FolderStats {
             file_count: stats.file_count,
+            indexed_count: stats.indexed_count,
             last_indexed: stats.last_indexed,
         })
     }

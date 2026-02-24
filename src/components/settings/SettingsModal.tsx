@@ -604,6 +604,35 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             </p>
           </div>
 
+          {/* 로그 폴더 열기 */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label
+                className="text-sm font-medium"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                로그 폴더
+              </label>
+              <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                오류 추적용 로그 파일 위치 (7일 보존)
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await invokeWithTimeout("open_log_dir", undefined, IPC_TIMEOUT.FILE_ACTION);
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : String(err);
+                  setError(`로그 폴더 열기 실패: ${message}`);
+                }
+              }}
+            >
+              폴더 열기
+            </Button>
+          </div>
+
           {/* 모든 데이터 초기화 */}
           <div className="flex items-center justify-between">
             <div>

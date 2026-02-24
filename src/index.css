@@ -689,4 +689,9 @@ body,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* 기능적 스피너는 reduced-motion에서도 동작해야 함 */
+  .animate-spin {
+    animation: spin 1.5s linear infinite !important;
+  }
 }

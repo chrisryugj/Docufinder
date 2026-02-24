@@ -522,6 +522,15 @@ pub fn get_file_count(conn: &Connection) -> Result<usize> {
     conn.query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
 }
 
+/// FTS 인덱싱 완료된 파일 개수 (문서 수)
+pub fn get_indexed_file_count(conn: &Connection) -> Result<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM files WHERE fts_indexed_at IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )
+}
+
 /// 폴더 내 파일 ID와 청크 ID 조회 (벡터 삭제용)
 pub fn get_file_and_chunk_ids_in_folder(conn: &Connection, folder_path: &str) -> Result<Vec<(i64, Vec<i64>)>> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
@@ -781,6 +790,7 @@ pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>>
 #[derive(Debug, Clone)]
 pub struct FolderStats {
     pub file_count: usize,
+    pub indexed_count: usize,
     pub last_indexed: Option<i64>,
 }
 
@@ -793,13 +803,16 @@ pub fn get_folder_stats(conn: &Connection, folder_path: &str) -> Result<FolderSt
     let pattern_win = format!("{}\\\\%", escaped_win);
 
     let result = conn.query_row(
-        "SELECT COUNT(*) as file_count, MAX(indexed_at) as last_indexed
+        "SELECT COUNT(*) as file_count,
+                SUM(CASE WHEN fts_indexed_at IS NOT NULL THEN 1 ELSE 0 END) as indexed_count,
+                MAX(indexed_at) as last_indexed
          FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
         params![pattern_unix, pattern_win],
         |row| {
             Ok(FolderStats {
                 file_count: row.get::<_, i64>(0)? as usize,
-                last_indexed: row.get(1)?,
+                indexed_count: row.get::<_, i64>(1)? as usize,
+                last_indexed: row.get(2)?,
             })
         },
     )?;

@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from "react";
+import { logToBackend } from "../utils/errorLogger";
 
 interface Props {
   children: ReactNode;
@@ -25,8 +26,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // 에러 로깅 (프로덕션에서는 에러 리포팅 서비스로 전송 가능)
     console.error("ErrorBoundary caught an error:", error, errorInfo);
+    logToBackend(
+      "error",
+      error.message,
+      error.stack || errorInfo.componentStack || undefined,
+      "ErrorBoundary",
+    );
   }
 
   handleReload = () => {

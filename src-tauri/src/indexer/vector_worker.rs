@@ -261,9 +261,14 @@ fn run_vector_indexing(
                 send_progress(processed, current_file, false);
 
                 // 배치 단위로 임베딩
+                let total_chunks_in_file = prefetched.chunks.len();
+                let mut processed_chunks_in_file: usize = 0;
+                let mut cancelled_mid_file = false;
+
                 for batch in prefetched.chunks.chunks(EMBEDDING_BATCH_SIZE) {
                     // 취소 확인
                     if cancel_flag.load(Ordering::Relaxed) {
+                        cancelled_mid_file = true;
                         break;
                     }
 
@@ -289,6 +294,7 @@ fn run_vector_indexing(
                     }
 
                     processed += batch.len();
+                    processed_chunks_in_file += batch.len();
 
                     // Embedder Mutex 양보: 검색 스레드가 끼어들 수 있도록
                     std::thread::yield_now();
@@ -315,18 +321,29 @@ fn run_vector_indexing(
                     }
                 }
 
-                // 파일 완료 표시: 실패 청크가 없을 때만 마킹 (실패 시 pending 유지 → 다음 사이클 재시도)
-                if !cancel_flag.load(Ordering::Relaxed) {
-                    if file_failed_chunks == 0 {
-                        if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                            tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
-                        }
+                // 파일 완료 표시: 모든 청크가 성공적으로 처리되고 실패 없을 때만 마킹
+                // cancel 여부와 무관하게, 파일의 전체 청크를 처리 완료했으면 mark
+                let file_fully_processed = !cancelled_mid_file
+                    && file_failed_chunks == 0
+                    && processed_chunks_in_file == total_chunks_in_file;
+
+                if file_fully_processed {
+                    // Crash consistency: save THEN mark
+                    // save 후 mark: 크래시 시 mark 안 됨 → 재처리 (안전)
+                    // mark 후 save: 크래시 시 mark 됨 → 벡터 없음 → 검색 누락!
+                    if let Err(e) = vector_index.save() {
+                        tracing::warn!("[VectorWorker] Failed to save index before marking file: {}", e);
                     } else {
-                        tracing::warn!(
-                            "[VectorWorker] File '{}' has {} failed chunks, keeping pending for retry",
-                            prefetched.file_path, file_failed_chunks
-                        );
+                        last_save = processed;
                     }
+                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
+                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", prefetched.file_id, e);
+                    }
+                } else if file_failed_chunks > 0 {
+                    tracing::warn!(
+                        "[VectorWorker] File '{}' has {} failed chunks, keeping pending for retry",
+                        prefetched.file_path, file_failed_chunks
+                    );
                 }
             }
             Err(RecvTimeoutError::Timeout) => continue,

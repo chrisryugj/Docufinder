@@ -1,4 +1,4 @@
-# 시맨틱 검색 모델 다운로드 스크립트
+﻿# 시맨틱 검색 모델 다운로드 스크립트
 # Usage: .\scripts\download-model.ps1
 
 $ErrorActionPreference = "Stop"
