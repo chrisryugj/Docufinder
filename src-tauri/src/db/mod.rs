@@ -973,6 +973,8 @@ pub struct VectorIndexingStats {
     pub fts_only_files: usize,
     pub vector_indexed_files: usize,
     pub pending_chunks: usize,
+    /// 이미 벡터 인덱싱 완료된 청크 수 (누적 진행률 계산용)
+    pub completed_chunks: usize,
 }
 
 /// 벡터 인덱싱 통계 조회
@@ -1003,11 +1005,20 @@ pub fn get_vector_indexing_stats(conn: &Connection) -> Result<VectorIndexingStat
         |row| row.get(0),
     )?;
 
+    let completed_chunks: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         WHERE f.vector_indexed_at IS NOT NULL",
+        [],
+        |row| row.get(0),
+    )?;
+
     Ok(VectorIndexingStats {
         total_files: total_files as usize,
         fts_only_files: fts_only_files as usize,
         vector_indexed_files: vector_indexed_files as usize,
         pending_chunks: pending_chunks as usize,
+        completed_chunks: completed_chunks as usize,
     })
 }
 

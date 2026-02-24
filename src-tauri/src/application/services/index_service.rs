@@ -253,12 +253,13 @@ impl IndexService {
         let mut status = worker.get_status();
 
         if !status.is_running {
+            // 누적 진행률: 완료된 청크 + 대기 청크 = 전체
             let conn = self.get_connection()?;
             let stats = db::get_vector_indexing_stats(&conn)
                 .map_err(|e| AppError::Internal(e.to_string()))?;
             status.pending_chunks = stats.pending_chunks;
-            status.total_chunks = stats.pending_chunks;
-            status.processed_chunks = 0;
+            status.total_chunks = stats.completed_chunks + stats.pending_chunks;
+            status.processed_chunks = stats.completed_chunks;
         }
 
         Ok(status)

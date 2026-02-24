@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
@@ -62,38 +63,47 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   }, []);
 
   // 폴더 통계 조회
-  useEffect(() => {
+  const fetchStats = useCallback(async () => {
     if (folders.length === 0) return;
 
     const requestId = ++statsRequestIdRef.current;
 
-    const fetchStats = async () => {
-      const entries = await Promise.all(
-        folders.map(async (folder) => {
-          try {
-            const result = await invokeWithTimeout<FolderStats>("get_folder_stats", {
-              path: folder,
-            }, IPC_TIMEOUT.SETTINGS);
-            return [folder, result] as const;
-          } catch (e) {
-            console.error(`Failed to get stats for ${folder}:`, e);
-            return null;
-          }
-        })
-      );
-      // stale 응답 무시 (이후 요청이 들어온 경우)
-      if (requestId === statsRequestIdRef.current) {
-        const stats: Record<string, FolderStats> = {};
-        for (const entry of entries) {
-          if (entry) stats[entry[0]] = entry[1];
+    const entries = await Promise.all(
+      folders.map(async (folder) => {
+        try {
+          const result = await invokeWithTimeout<FolderStats>("get_folder_stats", {
+            path: folder,
+          }, IPC_TIMEOUT.SETTINGS);
+          return [folder, result] as const;
+        } catch (e) {
+          console.error(`Failed to get stats for ${folder}:`, e);
+          return null;
         }
-        setFolderStats(stats);
+      })
+    );
+    // stale 응답 무시 (이후 요청이 들어온 경우)
+    if (requestId === statsRequestIdRef.current) {
+      const stats: Record<string, FolderStats> = {};
+      for (const entry of entries) {
+        if (entry) stats[entry[0]] = entry[1];
       }
-    };
+      setFolderStats(stats);
+    }
+  }, [folders]);
 
+  useEffect(() => {
     fetchStats();
     fetchFolderInfo();
-  }, [folders, fetchFolderInfo]);
+  }, [folders, fetchFolderInfo, fetchStats]);
+
+  // 증분 인덱싱 완료 시 통계 새로고침
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<number>("incremental-index-updated", () => {
+      fetchStats();
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); };
+  }, [fetchStats]);
 
   // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
   useEffect(() => {

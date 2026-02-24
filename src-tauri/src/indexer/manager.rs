@@ -36,6 +36,8 @@ pub struct IndexContext {
     pub filename_cache: Arc<FilenameCache>,
     /// 파일 크기 제한 (MB) — 초과 시 메타데이터만 저장
     pub max_file_size_mb: u64,
+    /// 증분 인덱싱 완료 시 호출되는 콜백 (프론트엔드 알림용)
+    pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
 }
 
 impl WatchManager {
@@ -186,7 +188,8 @@ impl WatchManager {
             return;
         }
 
-        tracing::info!("Processing {} changed files", pending.len());
+        let file_count = pending.len();
+        tracing::info!("Processing {} changed files", file_count);
 
         let conn = match db::get_connection(&ctx.db_path) {
             Ok(c) => c,
@@ -287,6 +290,11 @@ impl WatchManager {
             }
         }
         // 벡터는 vector_worker가 백그라운드에서 처리 (pending 상태)
+
+        // 프론트엔드에 증분 인덱싱 완료 알림
+        if let Some(ref callback) = ctx.on_incremental_update {
+            callback(file_count);
+        }
     }
 
     /// DB에서 파일 정보 조회하여 FilenameEntry 생성
