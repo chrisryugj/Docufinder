@@ -155,7 +155,13 @@ pub async fn add_folder(
 
     // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
     let metadata_result = service
-        .scan_metadata_only(&canonical_path, include_subfolders, None, max_file_size_mb, exclude_dirs.clone())
+        .scan_metadata_only(
+            &canonical_path,
+            include_subfolders,
+            None,
+            max_file_size_mb,
+            exclude_dirs.clone(),
+        )
         .await;
 
     // 3. FilenameCache 즉시 갱신 + 메타 스캔에서 수집한 파일 목록 재사용
@@ -222,7 +228,10 @@ pub async fn add_folder(
         normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
     };
     if is_drive_root {
-        tracing::info!("Drive root detected: skipping auto vector indexing for {}", path);
+        tracing::info!(
+            "Drive root detected: skipping auto vector indexing for {}",
+            path
+        );
     }
 
     // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만 (드라이브 루트 제외)
