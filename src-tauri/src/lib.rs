@@ -153,7 +153,15 @@ pub fn run() {
         // tauri-plugin-updater: 사내 배포용 비활성화 (외부 통신 차단)
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                // VISIBLE 복원 제외: start_minimized 설정을 무시하고 창을 띄우는 문제 방지
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
         .setup(move |app| {
             // Initialize app data directory
             let app_data_dir = app
@@ -576,23 +584,33 @@ pub fn run() {
             let settings = commands::settings::get_settings_sync(&app_data_dir);
 
             if minimized_arg || settings.start_minimized {
-                // visible: false 상태이므로 on_page_load에서 show하지 않도록 플래그 설정
+                // on_page_load에서 show하지 않도록 플래그 설정
                 show_on_load.store(false, Ordering::Relaxed);
+                // setup 시점에도 명시적으로 숨김 (window-state나 Tauri 내부에서 show될 수 있으므로)
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.hide();
+                }
                 tracing::info!("Started minimized to tray");
             }
 
             Ok(())
         })
         .on_page_load(move |webview, payload| {
-            tracing::info!("[PERF] on_page_load: url={}, event={:?}", payload.url(), payload.event());
-            // page load 완료 시 창 표시 (visible: false → show)
-            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
-                && show_on_load_flag.load(Ordering::Relaxed)
-            {
-                if let Some(window) = webview.app_handle().get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                    tracing::info!("[PERF] Window shown after page load");
+            let event = payload.event();
+            tracing::info!("[PERF] on_page_load: url={}, event={:?}", payload.url(), event);
+
+            if let Some(window) = webview.app_handle().get_webview_window("main") {
+                if show_on_load_flag.load(Ordering::Relaxed) {
+                    // 일반 시작: Finished 이벤트에서 창 표시 (검정화면 방지)
+                    if matches!(event, tauri::webview::PageLoadEvent::Finished) {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        tracing::info!("[PERF] Window shown after page load");
+                    }
+                } else {
+                    // start_minimized: Started/Finished 이벤트 모두에서 즉시 숨김
+                    let _ = window.hide();
+                    tracing::info!("[PERF] Window hidden (start minimized, event={:?})", event);
                 }
             }
         })

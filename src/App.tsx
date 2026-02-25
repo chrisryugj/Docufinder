@@ -155,10 +155,17 @@ function App() {
   }, []);
 
   // 렌더 완료 후 창 표시 + 포커스 (visible: false safety net)
+  // start_minimized인 경우 백엔드에서 이미 hide()했으므로, visible 상태일 때만 show
   useEffect(() => {
     const win = getCurrentWindow();
-    win.show();
-    win.setFocus().catch(() => {});
+    win.isVisible().then((visible) => {
+      if (visible) {
+        win.setFocus().catch(() => {});
+      }
+    }).catch(() => {
+      win.show();
+      win.setFocus().catch(() => {});
+    });
   }, []);
 
   // FTS 인덱싱 완료 시 검색 캐시 무효화 (stale 결과 방지)
