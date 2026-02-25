@@ -1,10 +1,11 @@
 use crate::error::{ApiError, ApiResult};
+use crate::model_downloader;
 use crate::AppContainer;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -224,9 +225,38 @@ pub async fn update_settings(
     // 인메모리 캐시 갱신
     {
         let container = state.read()?;
-        container.update_settings_cache(settings);
+        container.update_settings_cache(settings.clone());
     }
 
     tracing::info!("Settings saved to {:?}", settings_path);
+
+    // 시맨틱 검색 활성화 시 모델이 없으면 백그라운드 다운로드 시작
+    if settings.semantic_search_enabled {
+        let models_dir = app_data_dir.join("models");
+        let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
+        let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
+        let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+
+        if !e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists() {
+            let download_models_dir = models_dir.clone();
+            let download_app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = download_app.emit("model-download-status", "downloading");
+                match tokio::task::spawn_blocking(move || {
+                    model_downloader::ensure_models(&download_models_dir)
+                })
+                .await
+                {
+                    Ok(Ok(_)) => {
+                        let _ = download_app.emit("model-download-status", "completed");
+                    }
+                    _ => {
+                        let _ = download_app.emit("model-download-status", "failed");
+                    }
+                }
+            });
+        }
+    }
+
     Ok(())
 }
