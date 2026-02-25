@@ -89,6 +89,7 @@ function App() {
     clearError: clearIndexError,
     refreshStatus,
     addFolder,
+    addFolderByPath,
     removeFolder,
     cancelIndexing,
   } = useIndexStatus();
@@ -134,6 +135,7 @@ function App() {
     handleCopyPath,
     handleOpenFolder,
     handleAddFolder,
+    handleAddFolderByPath,
     handleRemoveFolder,
   } = useFileActions({
     query,
@@ -141,6 +143,7 @@ function App() {
     showToast,
     updateToast,
     addFolder,
+    addFolderByPath,
     removeFolder,
     invalidateSearch,
     refreshVectorStatus,
@@ -421,6 +424,7 @@ function App() {
         onToggle={toggleSidebar}
         watchedFolders={status?.watched_folders ?? []}
         onAddFolder={handleAddFolder}
+        onAddFolderByPath={handleAddFolderByPath}
         onRemoveFolder={handleRemoveFolder}
         isIndexing={isIndexing}
         onFoldersChange={refreshStatus}

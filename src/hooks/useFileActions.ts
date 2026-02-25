@@ -9,6 +9,7 @@ interface UseFileActionsOptions {
   showToast: ReturnType<typeof useToast>["showToast"];
   updateToast: ReturnType<typeof useToast>["updateToast"];
   addFolder: ReturnType<typeof useIndexStatus>["addFolder"];
+  addFolderByPath: ReturnType<typeof useIndexStatus>["addFolderByPath"];
   removeFolder: ReturnType<typeof useIndexStatus>["removeFolder"];
   invalidateSearch: () => void;
   refreshVectorStatus?: () => Promise<void>;
@@ -20,6 +21,7 @@ export function useFileActions({
   showToast,
   updateToast,
   addFolder,
+  addFolderByPath,
   removeFolder,
   invalidateSearch,
   refreshVectorStatus,
@@ -72,24 +74,48 @@ export function useFileActions({
   );
 
   const handleAddFolder = useCallback(async () => {
-    const result = await addFolder();
-    if (result) {
-      const { indexed_count, failed_count, errors } = result;
-      if (failed_count > 0) {
+    const results = await addFolder();
+    if (results && results.length > 0) {
+      const totalIndexed = results.reduce((sum, r) => sum + r.indexed_count, 0);
+      const totalFailed = results.reduce((sum, r) => sum + r.failed_count, 0);
+
+      if (totalFailed > 0) {
         showToast(
-          `${indexed_count}개 인덱싱 완료, ${failed_count}개 파싱 실패`,
+          `${totalIndexed}개 인덱싱 완료, ${totalFailed}개 파싱 실패`,
           "error",
           5000
         );
-        if (import.meta.env.DEV && errors?.length) {
-          console.warn("[파싱 실패 목록]", errors.slice(0, 20));
+        if (import.meta.env.DEV) {
+          results.forEach((r) => {
+            if (r.errors?.length) console.warn("[파싱 실패 목록]", r.errors.slice(0, 20));
+          });
         }
-      } else if (indexed_count > 0) {
-        showToast(`${indexed_count}개 파일 인덱싱 완료`, "success");
+      } else if (totalIndexed > 0) {
+        const folderCount = results.length;
+        const msg = folderCount > 1
+          ? `${folderCount}개 폴더, ${totalIndexed}개 파일 인덱싱 완료`
+          : `${totalIndexed}개 파일 인덱싱 완료`;
+        showToast(msg, "success");
+      }
+    }
+    return results;
+  }, [addFolder, showToast]);
+
+  const handleAddFolderByPath = useCallback(async (path: string) => {
+    const result = await addFolderByPath(path);
+    if (result) {
+      if (result.failed_count > 0) {
+        showToast(
+          `${result.indexed_count}개 인덱싱 완료, ${result.failed_count}개 파싱 실패`,
+          "error",
+          5000
+        );
+      } else if (result.indexed_count > 0) {
+        showToast(`${result.indexed_count}개 파일 인덱싱 완료`, "success");
       }
     }
     return result;
-  }, [addFolder, showToast]);
+  }, [addFolderByPath, showToast]);
 
   const handleRemoveFolder = useCallback(
     async (path: string) => {
@@ -111,6 +137,7 @@ export function useFileActions({
     handleCopyPath,
     handleOpenFolder,
     handleAddFolder,
+    handleAddFolderByPath,
     handleRemoveFolder,
   };
 }

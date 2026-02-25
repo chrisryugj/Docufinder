@@ -7,6 +7,29 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &["txt", "md", "hwpx", "docx", "xlsx",
 // 보안 관련 상수
 // ============================================
 
+/// 인덱싱 시 기본 제외 디렉토리 이름 (대소문자 무시 비교)
+///
+/// 드라이브 단위 인덱싱 시 시스템/빌드/캐시 폴더를 자동 건너뛰기
+pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
+    // Windows 시스템
+    "windows",
+    "program files",
+    "program files (x86)",
+    "programdata",
+    "$recycle.bin",
+    "system volume information",
+    "recovery",
+    // 개발 도구
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "target",
+    ".tox",
+    // 사용자 캐시
+    "appdata",
+];
+
 /// 접근 차단 경로 패턴 (Path Traversal 방지)
 ///
 /// Windows 시스템 폴더 및 보호된 영역을 블랙리스트로 관리

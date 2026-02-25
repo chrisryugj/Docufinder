@@ -238,6 +238,11 @@ impl AppContainer {
                     .read()
                     .ok()
                     .and_then(|cb| cb.clone());
+                let mut excluded_dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
+                excluded_dirs.extend(settings.exclude_dirs.clone());
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
@@ -245,6 +250,7 @@ impl AppContainer {
                     filename_cache: self.filename_cache.clone(),
                     max_file_size_mb: settings.max_file_size_mb,
                     on_incremental_update: callback,
+                    excluded_dirs,
                 };
 
                 WatchManager::new(ctx)

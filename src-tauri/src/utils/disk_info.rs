@@ -5,9 +5,15 @@
 //! 결과는 드라이브별로 캐싱되어 PowerShell 재실행 방지.
 
 use std::collections::HashMap;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
+
+/// 콘솔 창 숨김 플래그 (Windows)
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// 디스크 유형
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,6 +64,7 @@ fn query_disk_type_wmi(drive_letter: char) -> Option<DiskType> {
 
     let output = Command::new("powershell")
         .args(["-NoProfile", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
 

@@ -20,6 +20,7 @@ tauri-plugin-dialog = "^2.6"
 # tauri-plugin-updater = "2"  # 사내 배포용: 비활성화
 tauri-plugin-process = "^2.3"
 tauri-plugin-autostart = "^2.5"
+tauri-plugin-single-instance = "^2"
 tauri-plugin-window-state = "^2.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

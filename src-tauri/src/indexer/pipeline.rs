@@ -37,7 +37,12 @@ enum ParseResult {
 }
 
 /// 폴더 탐색으로 파일 경로 수집
-fn collect_files(dir: &Path, recursive: bool, cancel_flag: &AtomicBool) -> Vec<PathBuf> {
+fn collect_files(
+    dir: &Path,
+    recursive: bool,
+    cancel_flag: &AtomicBool,
+    excluded_dirs: &[String],
+) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
     if cancel_flag.load(Ordering::Relaxed) {
@@ -50,7 +55,7 @@ fn collect_files(dir: &Path, recursive: bool, cancel_flag: &AtomicBool) -> Vec<P
         if let Ok(canonical) = dir.canonicalize() {
             visited.insert(canonical);
         }
-        collect_files_recursive(dir, &mut files, &mut visited, cancel_flag);
+        collect_files_recursive(dir, &mut files, &mut visited, cancel_flag, excluded_dirs);
     } else {
         // 현재 폴더만 탐색
         collect_files_shallow(dir, &mut files, cancel_flag);
@@ -93,12 +98,13 @@ fn collect_files_shallow(dir: &Path, files: &mut Vec<PathBuf>, cancel_flag: &Ato
     }
 }
 
-/// 재귀적으로 모든 파일 수집 (확장자 무관, 임시파일/숨김폴더만 제외)
+/// 재귀적으로 모든 파일 수집 (확장자 무관, 임시파일/숨김폴더/제외 디렉토리 제외)
 fn collect_files_recursive(
     dir: &Path,
     files: &mut Vec<PathBuf>,
     visited: &mut std::collections::HashSet<PathBuf>,
     cancel_flag: &AtomicBool,
+    excluded_dirs: &[String],
 ) {
     if cancel_flag.load(Ordering::Relaxed) {
         return;
@@ -125,25 +131,36 @@ fn collect_files_recursive(
         let path = entry.path();
 
         if file_type.is_dir() {
-            // 숨김 폴더 제외
-            if !path
+            let dir_name = path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with('.'))
-                .unwrap_or(false)
+                .unwrap_or("");
+
+            // 숨김 폴더 제외
+            if dir_name.starts_with('.') {
+                continue;
+            }
+
+            // 제외 디렉토리 목록에 포함된 폴더 스킵
+            if excluded_dirs
+                .iter()
+                .any(|ex| dir_name.eq_ignore_ascii_case(ex))
             {
-                // 심볼릭 링크 순환 방지: 정규화된 경로로 중복 체크
-                if let Ok(canonical) = path.canonicalize() {
-                    if visited.insert(canonical) {
-                        collect_files_recursive(&path, files, visited, cancel_flag);
-                    } else {
-                        tracing::debug!("Skipping already visited dir: {:?}", path);
-                    }
-                } else if visited.insert(path.clone()) {
-                    collect_files_recursive(&path, files, visited, cancel_flag);
+                tracing::debug!("Skipping excluded dir: {:?}", path);
+                continue;
+            }
+
+            // 심볼릭 링크 순환 방지: 정규화된 경로로 중복 체크
+            if let Ok(canonical) = path.canonicalize() {
+                if visited.insert(canonical) {
+                    collect_files_recursive(&path, files, visited, cancel_flag, excluded_dirs);
                 } else {
-                    tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
+                    tracing::debug!("Skipping already visited dir: {:?}", path);
                 }
+            } else if visited.insert(path.clone()) {
+                collect_files_recursive(&path, files, visited, cancel_flag, excluded_dirs);
+            } else {
+                tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
             }
         } else if file_type.is_file() {
             // Office 임시 파일 (~$로 시작) 제외
@@ -218,6 +235,7 @@ pub fn index_folder_fts_only(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     pre_collected_files: Option<Vec<PathBuf>>,
+    excluded_dirs: &[String],
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -228,6 +246,7 @@ pub fn index_folder_fts_only(
         max_file_size_mb,
         false,
         pre_collected_files,
+        excluded_dirs,
     )
 }
 
@@ -239,6 +258,7 @@ pub fn resume_folder_fts(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
+    excluded_dirs: &[String],
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -249,6 +269,7 @@ pub fn resume_folder_fts(
         max_file_size_mb,
         true,
         None,
+        excluded_dirs,
     )
 }
 
@@ -262,6 +283,7 @@ fn index_folder_fts_impl(
     max_file_size_mb: u64,
     skip_indexed: bool,
     pre_collected_files: Option<Vec<PathBuf>>,
+    excluded_dirs: &[String],
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -323,7 +345,7 @@ fn index_folder_fts_impl(
         );
         files
     } else {
-        collect_files(folder_path, recursive, cancel_flag.as_ref())
+        collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs)
     };
 
     // 파싱 가능 파일 / 메타데이터 전용 파일 분리
@@ -580,6 +602,7 @@ pub fn sync_folder_fts(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
+    excluded_dirs: &[String],
 ) -> Result<SyncResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -595,7 +618,7 @@ pub fn sync_folder_fts(
     } else {
         0
     };
-    let fs_files = collect_files(folder_path, recursive, cancel_flag.as_ref());
+    let fs_files = collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs);
 
     if cancel_flag.load(Ordering::Relaxed) {
         return Ok(SyncResult {
@@ -977,6 +1000,7 @@ pub fn scan_metadata_only(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<Box<dyn Fn(MetadataScanProgress) + Send + Sync>>,
     max_file_size_mb: u64,
+    excluded_dirs: &[String],
 ) -> Result<MetadataScanResult, IndexError> {
     let folder_str = folder_path.to_string_lossy().to_string();
 
@@ -1030,7 +1054,21 @@ pub fn scan_metadata_only(
         walkdir::WalkDir::new(folder_path).max_depth(1)
     };
 
-    for entry in walker.into_iter().filter_map(|e| e.ok()) {
+    // filter_entry로 제외 디렉토리 하위 전체를 건너뛰기
+    for entry in walker.into_iter().filter_entry(|e| {
+        if e.file_type().is_dir() {
+            let name = e.file_name().to_str().unwrap_or("");
+            // 숨김 폴더 제외
+            if name.starts_with('.') {
+                return false;
+            }
+            // 제외 디렉토리 목록 체크
+            if excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)) {
+                return false;
+            }
+        }
+        true
+    }).filter_map(|e| e.ok()) {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = conn.execute_batch("COMMIT");
             send_progress("cancelled", count, true);

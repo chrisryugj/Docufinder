@@ -53,6 +53,7 @@ impl IndexService {
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
         pre_collected_files: Option<Vec<PathBuf>>,
+        excluded_dirs: Vec<String>,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
         self.validate_path(path)?;
@@ -74,6 +75,7 @@ impl IndexService {
                 progress_callback,
                 max_file_size_mb,
                 pre_collected_files,
+                &excluded_dirs,
             )
         })
         .await
@@ -90,6 +92,7 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
+        excluded_dirs: Vec<String>,
     ) -> AppResult<FolderIndexResult> {
         self.validate_path(path)?;
         self.cancel_flag.store(false, Ordering::Relaxed);
@@ -106,6 +109,7 @@ impl IndexService {
                 cancel_flag,
                 progress_callback,
                 max_file_size_mb,
+                &excluded_dirs,
             )
         })
         .await
@@ -122,6 +126,7 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
+        excluded_dirs: Vec<String>,
     ) -> AppResult<pipeline::SyncResult> {
         self.validate_path(path)?;
         self.cancel_flag.store(false, Ordering::Relaxed);
@@ -138,6 +143,7 @@ impl IndexService {
                 cancel_flag,
                 progress_callback,
                 max_file_size_mb,
+                &excluded_dirs,
             )
         })
         .await
@@ -155,6 +161,7 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<MetadataProgressCallback>,
         max_file_size_mb: u64,
+        excluded_dirs: Vec<String>,
     ) -> AppResult<MetadataScanResult> {
         self.validate_path(path)?;
         self.cancel_flag.store(false, Ordering::Relaxed);
@@ -171,6 +178,7 @@ impl IndexService {
                 cancel_flag,
                 progress_callback,
                 max_file_size_mb,
+                &excluded_dirs,
             )
         })
         .await
@@ -282,6 +290,7 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
+        excluded_dirs: Vec<String>,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
         self.validate_path(path)?;
@@ -316,6 +325,7 @@ impl IndexService {
             progress_callback,
             max_file_size_mb,
             None,
+            excluded_dirs,
         )
         .await
     }

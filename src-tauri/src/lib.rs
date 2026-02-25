@@ -140,6 +140,14 @@ pub fn run() {
     let show_on_load_flag = show_on_load.clone();
 
     tauri::Builder::default()
+        // 싱글 인스턴스: 중복 실행 시 기존 창 포커스 (가장 먼저 등록해야 함)
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         // tauri-plugin-updater: 사내 배포용 비활성화 (외부 통신 차단)
@@ -168,7 +176,8 @@ pub fn run() {
             let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
+            // TODO: 시맨틱 검색 재활성화 시 `false &&` 제거
+            if false && setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
                 let download_models_dir = models_dir.clone();
                 let download_app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
@@ -366,7 +375,7 @@ pub fn run() {
                     // 앱 초기화 완료 대기 (UI 렌더링 우선, 1초면 충분)
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-                    let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path) = {
+                    let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path, exclude_dirs) = {
                         let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
                             Some(c) => c,
                             None => return,
@@ -404,12 +413,18 @@ pub fn run() {
                         if completed.is_empty() { return; }
 
                         let settings = container.get_settings();
+                        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+                            .iter()
+                            .map(|s| s.to_string())
+                            .collect();
+                        dirs.extend(settings.exclude_dirs.clone());
                         (
                             completed,
                             container.index_service(),
                             settings.include_subfolders,
                             settings.max_file_size_mb,
                             container.db_path.clone(),
+                            dirs,
                         )
                     };
 
@@ -444,7 +459,7 @@ pub fn run() {
                                 });
                             });
 
-                        match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb).await {
+                        match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb, exclude_dirs.clone()).await {
                             Ok(result) => {
                                 total_added += result.added;
                                 total_deleted += result.deleted;
@@ -640,6 +655,7 @@ pub fn run() {
             commands::file::log_frontend_error,
             commands::file::get_log_dir,
             commands::file::open_log_dir,
+            commands::system::get_suggested_folders,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

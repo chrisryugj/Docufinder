@@ -38,6 +38,8 @@ pub struct IndexContext {
     pub max_file_size_mb: u64,
     /// 증분 인덱싱 완료 시 호출되는 콜백 (프론트엔드 알림용)
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
+    /// 제외 디렉토리 목록 (대소문자 무시 비교)
+    pub excluded_dirs: Vec<String>,
 }
 
 impl WatchManager {
@@ -136,7 +138,7 @@ impl WatchManager {
             // 이벤트 수신 (타임아웃 포함)
             match event_rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(event) => {
-                    Self::collect_files_from_event(&event, &mut pending_files);
+                    Self::collect_files_from_event(&event, &mut pending_files, &ctx.excluded_dirs);
                     last_event_time = std::time::Instant::now();
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -153,13 +155,35 @@ impl WatchManager {
         }
     }
 
-    /// 이벤트에서 처리할 파일 수집 (모든 확장자, 임시/숨김 파일만 제외)
-    fn collect_files_from_event(event: &Event, pending: &mut HashSet<PathBuf>) {
+    /// 이벤트에서 처리할 파일 수집 (모든 확장자, 임시/숨김 파일/제외 디렉토리만 제외)
+    fn collect_files_from_event(
+        event: &Event,
+        pending: &mut HashSet<PathBuf>,
+        excluded_dirs: &[String],
+    ) {
         for path in &event.paths {
             // 숨김 파일 및 Office 임시 파일 (~$) 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.starts_with('.') || file_name.starts_with("~$") {
                 continue;
+            }
+
+            // 제외 디렉토리 하위 파일 스킵
+            if !excluded_dirs.is_empty() {
+                let is_excluded = path.ancestors().any(|ancestor| {
+                    ancestor
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|name| {
+                            excluded_dirs
+                                .iter()
+                                .any(|ex| name.eq_ignore_ascii_case(ex))
+                        })
+                        .unwrap_or(false)
+                });
+                if is_excluded {
+                    continue;
+                }
             }
 
             match &event.kind {

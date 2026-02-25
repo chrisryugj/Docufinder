@@ -49,6 +49,9 @@ pub struct Settings {
     /// None이면 기본 AppData 사용. 변경 시 앱 재시작 필요.
     #[serde(default)]
     pub data_root: Option<String>,
+    /// 사용자 커스텀 제외 디렉토리 목록 (DEFAULT_EXCLUDED_DIRS에 추가됨)
+    #[serde(default)]
+    pub exclude_dirs: Vec<String>,
 }
 
 fn default_include_subfolders() -> bool {
@@ -126,6 +129,7 @@ impl Default for Settings {
             max_file_size_mb: 200,
             results_per_page: 50,
             data_root: None,
+            exclude_dirs: Vec::new(),
         }
     }
 }
