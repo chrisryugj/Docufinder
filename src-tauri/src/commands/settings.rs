@@ -233,8 +233,12 @@ pub async fn update_settings(
     // 시맨틱 검색 활성화 시 모델이 없으면 백그라운드 다운로드 시작
     if settings.semantic_search_enabled {
         let models_dir = app_data_dir.join("models");
-        let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
-        let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
+        let e5_model = models_dir
+            .join("kosimcse-roberta-multitask")
+            .join("model.onnx");
+        let e5_model_data = models_dir
+            .join("kosimcse-roberta-multitask")
+            .join("model.onnx.data");
         let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
         if !e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists() {

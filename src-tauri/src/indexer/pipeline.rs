@@ -131,10 +131,7 @@ fn collect_files_recursive(
         let path = entry.path();
 
         if file_type.is_dir() {
-            let dir_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             // 숨김 폴더 제외
             if dir_name.starts_with('.') {
@@ -1055,20 +1052,24 @@ pub fn scan_metadata_only(
     };
 
     // filter_entry로 제외 디렉토리 하위 전체를 건너뛰기
-    for entry in walker.into_iter().filter_entry(|e| {
-        if e.file_type().is_dir() {
-            let name = e.file_name().to_str().unwrap_or("");
-            // 숨김 폴더 제외
-            if name.starts_with('.') {
-                return false;
+    for entry in walker
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                // 숨김 폴더 제외
+                if name.starts_with('.') {
+                    return false;
+                }
+                // 제외 디렉토리 목록 체크
+                if excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)) {
+                    return false;
+                }
             }
-            // 제외 디렉토리 목록 체크
-            if excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)) {
-                return false;
-            }
-        }
-        true
-    }).filter_map(|e| e.ok()) {
+            true
+        })
+        .filter_map(|e| e.ok())
+    {
         if cancel_flag.load(Ordering::Relaxed) {
             let _ = conn.execute_batch("COMMIT");
             send_progress("cancelled", count, true);

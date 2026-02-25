@@ -174,11 +174,7 @@ impl WatchManager {
                     ancestor
                         .file_name()
                         .and_then(|n| n.to_str())
-                        .map(|name| {
-                            excluded_dirs
-                                .iter()
-                                .any(|ex| name.eq_ignore_ascii_case(ex))
-                        })
+                        .map(|name| excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)))
                         .unwrap_or(false)
                 });
                 if is_excluded {
