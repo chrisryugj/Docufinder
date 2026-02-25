@@ -19,9 +19,8 @@ interface SettingsModalProps {
 
 const SEARCH_MODE_OPTIONS = [
   { value: "keyword", label: "키워드 검색 (권장)" },
-  // TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
-  // { value: "hybrid", label: "하이브리드 (모델 필요)" },
-  // { value: "semantic", label: "의미 검색 (모델 필요)" },
+  { value: "hybrid", label: "하이브리드 (모델 필요)" },
+  { value: "semantic", label: "의미 검색 (모델 필요)" },
   { value: "filename", label: "파일명 검색" },
 ];
 
@@ -45,11 +44,10 @@ const VIEW_DENSITY_OPTIONS = [
   { value: "compact", label: "컴팩트 (좁게)" },
 ];
 
-// TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
-// const VECTOR_INDEXING_MODE_OPTIONS = [
-//   { value: "manual", label: "수동" },
-//   { value: "auto", label: "자동" },
-// ];
+const VECTOR_INDEXING_MODE_OPTIONS = [
+  { value: "manual", label: "수동" },
+  { value: "auto", label: "자동" },
+];
 
 const INDEXING_INTENSITY_OPTIONS = [
   { value: "fast", label: "빠르게 (CPU 최대)" },
@@ -86,6 +84,8 @@ const HIGHLIGHT_COLOR_PRESETS = [
   { value: "#2dd4bf", label: "틸", light: "#2dd4bf", dark: "#0d9488" },
 ];
 
+const SEMANTIC_UNLOCK_PASSWORD = "9812";
+
 export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -93,6 +93,12 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const originalDataRootRef = useRef<string | undefined>(undefined);
+
+  // 시맨틱 검색 비밀번호 모달
+  const [showSemanticPassword, setShowSemanticPassword] = useState(false);
+  const [semanticPasswordInput, setSemanticPasswordInput] = useState("");
+  const [semanticPasswordError, setSemanticPasswordError] = useState<string | null>(null);
+  const semanticPasswordInputRef = useRef<HTMLInputElement>(null);
 
   // 설정 로드 (useEffect 내부에 함수 정의하여 의존성 문제 해결)
   useEffect(() => {
@@ -145,33 +151,56 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     if (!settings) return;
 
-    // TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
-    // // 하이브리드/시맨틱 모드 선택 시 시맨틱 검색 활성화 안내
-    // if (
-    //   key === "search_mode" &&
-    //   (value === "hybrid" || value === "semantic") &&
-    //   !(settings.semantic_search_enabled ?? false)
-    // ) {
-    //   ask("이 검색 모드는 시맨틱 검색이 필요합니다.\n활성화하시겠습니까?", {
-    //     title: "시맨틱 검색 필요",
-    //     kind: "info",
-    //     okLabel: "활성화",
-    //     cancelLabel: "취소",
-    //   }).then((confirmed) => {
-    //     if (confirmed) {
-    //       setSettings({ ...settings, [key]: value, semantic_search_enabled: true });
-    //     } else {
-    //       setSettings({ ...settings, [key]: value });
-    //     }
-    //   });
-    //   return;
-    // }
+    // 하이브리드/시맨틱 모드 선택 시 시맨틱 검색이 비활성화 상태면 비밀번호 요구
+    if (
+      key === "search_mode" &&
+      (value === "hybrid" || value === "semantic") &&
+      !(settings.semantic_search_enabled ?? false)
+    ) {
+      setShowSemanticPassword(true);
+      setSemanticPasswordInput("");
+      setSemanticPasswordError(null);
+      // 비밀번호 확인 후 search_mode도 같이 변경하기 위해 pendingSearchMode로 처리
+      setPendingSemanticAction(() => () => {
+        setSettings((prev) => prev ? { ...prev, [key]: value, semantic_search_enabled: true } : prev);
+      });
+      return;
+    }
 
     setSettings({ ...settings, [key]: value });
 
     // 테마 변경 시 즉시 적용
     if (key === "theme" && onThemeChange) {
       onThemeChange(value as Settings["theme"]);
+    }
+  };
+
+  const [pendingSemanticAction, setPendingSemanticAction] = useState<(() => void) | null>(null);
+
+  const handleSemanticToggle = (enabled: boolean) => {
+    if (!settings) return;
+    if (enabled) {
+      setShowSemanticPassword(true);
+      setSemanticPasswordInput("");
+      setSemanticPasswordError(null);
+      setPendingSemanticAction(() => () => {
+        setSettings((prev) => prev ? { ...prev, semantic_search_enabled: true } : prev);
+      });
+    } else {
+      setSettings({ ...settings, semantic_search_enabled: false });
+    }
+  };
+
+  const handleSemanticPasswordConfirm = () => {
+    if (semanticPasswordInput === SEMANTIC_UNLOCK_PASSWORD) {
+      pendingSemanticAction?.();
+      setShowSemanticPassword(false);
+      setSemanticPasswordInput("");
+      setSemanticPasswordError(null);
+      setPendingSemanticAction(null);
+    } else {
+      setSemanticPasswordError("활성화 코드가 올바르지 않습니다.");
+      semanticPasswordInputRef.current?.select();
     }
   };
 
@@ -192,6 +221,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   }
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title="설정" size="lg">
       {error && (
         <div
@@ -442,13 +472,20 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           </div>
 
           {/* 고급 기능 섹션 */}
-          {/* TODO: 시맨틱 검색 재활성화 시 아래 주석 해제 */}
-          {/* <div className="border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
-            <h3 className="text-sm font-medium mb-1" style={{ color: "var(--color-text-primary)" }}>고급 기능</h3>
-            <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>AI 기반 시맨틱 검색. 활성화 시 ONNX 모델을 다운로드합니다.</p>
+          <div className="border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
+            <h3 className="text-sm font-medium mb-0.5" style={{ color: "var(--color-text-primary)" }}>고급 기능</h3>
+            <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
+              AI 기반 시맨틱 검색. 활성화 시 ONNX 모델(약 500MB)을 다운로드합니다.
+            </p>
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: (settings.semantic_search_enabled ?? false) ? "rgba(245, 158, 11, 0.08)" : "var(--color-bg-secondary)", border: `1px solid ${(settings.semantic_search_enabled ?? false) ? "rgba(245, 158, 11, 0.3)" : "var(--color-border)"}` }}>
-            <SettingsToggle label="시맨틱 검색" description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다" checked={settings.semantic_search_enabled ?? false} onChange={(v) => handleChange("semantic_search_enabled", v)} activeColor="bg-amber-500" />
+            <SettingsToggle
+              label="시맨틱 검색"
+              description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다 (베타 테스트 후 공개)"
+              checked={settings.semantic_search_enabled ?? false}
+              onChange={handleSemanticToggle}
+              activeColor="bg-amber-500"
+            />
             {(settings.semantic_search_enabled ?? false) && (
               <div className="mt-3 space-y-3">
                 <div className="flex items-start gap-2 p-2 rounded text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", color: "var(--color-text-secondary)" }}>
@@ -460,7 +497,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 </div>
               </div>
             )}
-          </div> */}
+          </div>
 
           {/* 시스템 트레이 섹션 구분선 */}
           <div
@@ -683,5 +720,99 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         </div>
       )}
     </Modal>
+
+    {/* 시맨틱 검색 활성화 비밀번호 모달 */}
+    {showSemanticPassword && (
+      <div
+        className="fixed inset-0 flex items-center justify-center z-[60]"
+        style={{ backgroundColor: "rgba(0, 0, 0, 0.6)" }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowSemanticPassword(false);
+            setSemanticPasswordInput("");
+            setSemanticPasswordError(null);
+          }
+        }}
+      >
+        <div
+          className="w-full max-w-sm mx-4 rounded-lg"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            boxShadow: "var(--shadow-lg)",
+            border: "1px solid var(--color-border)",
+          }}
+        >
+          <div
+            className="px-5 py-4 border-b"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <h3 className="text-base font-semibold" style={{ color: "var(--color-text-primary)" }}>
+              시맨틱 검색 활성화
+            </h3>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
+              현재 <strong>베타 테스트 중</strong>인 기능입니다. 정식 출시 전 일부 사용자에게만 선별 제공됩니다.
+            </p>
+            <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+              활성화하려면 관리자에게 문의하여 활성화 코드를 받으세요.
+            </p>
+            <div>
+              <input
+                ref={semanticPasswordInputRef}
+                type="password"
+                className="w-full px-3 py-2 rounded-md text-sm"
+                style={{
+                  backgroundColor: "var(--color-bg-primary)",
+                  color: "var(--color-text-primary)",
+                  border: `1px solid ${semanticPasswordError ? "rgba(239,68,68,0.6)" : "var(--color-border)"}`,
+                  outline: "none",
+                }}
+                placeholder="활성화 코드 입력"
+                value={semanticPasswordInput}
+                onChange={(e) => {
+                  setSemanticPasswordInput(e.target.value);
+                  setSemanticPasswordError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSemanticPasswordConfirm();
+                  if (e.key === "Escape") {
+                    setShowSemanticPassword(false);
+                    setSemanticPasswordInput("");
+                    setSemanticPasswordError(null);
+                  }
+                }}
+                autoFocus
+              />
+              {semanticPasswordError && (
+                <p className="mt-1 text-xs" style={{ color: "var(--color-error, #ef4444)" }}>
+                  {semanticPasswordError}
+                </p>
+              )}
+            </div>
+          </div>
+          <div
+            className="flex justify-end gap-2 px-5 py-4 border-t"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setShowSemanticPassword(false);
+                setSemanticPasswordInput("");
+                setSemanticPasswordError(null);
+              }}
+            >
+              취소
+            </Button>
+            <Button size="sm" onClick={handleSemanticPasswordConfirm}>
+              활성화
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

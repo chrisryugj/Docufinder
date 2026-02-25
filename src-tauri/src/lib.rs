@@ -184,8 +184,7 @@ pub fn run() {
             let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-            // TODO: 시맨틱 검색 재활성화 시 `false &&` 제거
-            if false && setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
+            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
                 let download_models_dir = models_dir.clone();
                 let download_app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
