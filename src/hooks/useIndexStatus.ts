@@ -22,7 +22,8 @@ interface UseIndexStatusReturn {
   error: string | null;
   clearError: () => void;
   refreshStatus: () => Promise<void>;
-  addFolder: () => Promise<AddFolderResult | null>;
+  addFolder: () => Promise<AddFolderResult[] | null>;
+  addFolderByPath: (path: string) => Promise<AddFolderResult | null>;
   removeFolder: (path: string) => Promise<void>;
   cancelIndexing: () => Promise<void>;
 }
@@ -82,63 +83,83 @@ export function useIndexStatus(): UseIndexStatusReturn {
     refreshStatus();
   }, [refreshStatus]);
 
-  // 폴더 추가
-  const addFolder = useCallback(async (): Promise<AddFolderResult | null> => {
+  // 단일 경로 인덱싱 (내부 공통 로직)
+  const indexSingleFolder = useCallback(async (path: string): Promise<AddFolderResult> => {
+    const result = await invokeWithTimeout<AddFolderResult>("add_folder", {
+      path,
+    }, IPC_TIMEOUT.INDEXING);
+
+    if (import.meta.env.DEV) {
+      console.log("Indexing result:", result);
+    }
+
+    if (result.errors && result.errors.length > 0) {
+      console.warn(`Indexing errors (${result.errors.length}):`);
+      result.errors.slice(0, 20).forEach((err, i) => {
+        console.warn(`  ${i + 1}: ${err}`);
+      });
+      if (result.errors.length > 20) {
+        console.warn(`  ... and ${result.errors.length - 20} more errors`);
+      }
+    }
+
+    return result;
+  }, []);
+
+  // 폴더 추가 (다이얼로그, 다중 선택 지원)
+  const addFolder = useCallback(async (): Promise<AddFolderResult[] | null> => {
     try {
       const selected = await open({
         directory: true,
-        multiple: false,
+        multiple: true,
         title: "인덱싱할 폴더 선택",
       });
 
-      if (selected) {
-        // 드라이브 루트 경고
-        if (isDriveRoot(selected)) {
-          const confirmed = await ask(
-            "전체 드라이브 인덱싱은 시간이 오래 걸릴 수 있습니다.\n(수천~수만 개의 파일을 처리합니다)\n\n계속하시겠습니까?",
-            {
-              title: "드라이브 전체 인덱싱",
-              kind: "warning",
-              okLabel: "계속",
-              cancelLabel: "취소",
-            }
-          );
+      if (!selected) return null;
 
-          if (!confirmed) {
-            return null;
+      const paths = Array.isArray(selected) ? selected : [selected];
+      if (paths.length === 0) return null;
+
+      // 드라이브 루트가 포함되어 있으면 경고 1회
+      const hasDriveRoot = paths.some(isDriveRoot);
+      if (hasDriveRoot) {
+        const confirmed = await ask(
+          "드라이브 전체를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+          {
+            title: "드라이브 전체 인덱싱",
+            kind: "warning",
+            okLabel: "계속",
+            cancelLabel: "취소",
           }
-        }
-
-        setIsIndexing(true);
-        setError(null);
-
-        const result = await invokeWithTimeout<AddFolderResult>("add_folder", {
-          path: selected,
-        }, IPC_TIMEOUT.INDEXING);
-
-        // 개발 모드에서만 로깅
-        if (import.meta.env.DEV) {
-          console.log("Indexing result:", result);
-        }
-
-        // 실패한 파일 에러 로그 출력
-        if (result.errors && result.errors.length > 0) {
-          console.warn(`Indexing errors (${result.errors.length}):`);
-          result.errors.slice(0, 20).forEach((err, i) => {
-            console.warn(`  ${i + 1}: ${err}`);
-          });
-          if (result.errors.length > 20) {
-            console.warn(`  ... and ${result.errors.length - 20} more errors`);
-          }
-        }
-
-        await refreshStatus();
-        setIsIndexing(false);
-
-        return result;
+        );
+        if (!confirmed) return null;
       }
 
-      return null;
+      setIsIndexing(true);
+      setError(null);
+
+      // 순차 처리 (DB 잠금 충돌 방지)
+      const results: AddFolderResult[] = [];
+      for (const path of paths) {
+        try {
+          const result = await indexSingleFolder(path);
+          results.push(result);
+        } catch (err) {
+          console.error(`Failed to index folder: ${path}`, err);
+          results.push({
+            success: false,
+            indexed_count: 0,
+            failed_count: 0,
+            vectors_count: 0,
+            message: err instanceof Error ? err.message : String(err),
+            errors: [],
+          });
+        }
+        await refreshStatus();
+      }
+
+      setIsIndexing(false);
+      return results;
     } catch (err) {
       console.error("Failed to add folder:", err);
       const message = err instanceof Error ? err.message : String(err);
@@ -146,7 +167,40 @@ export function useIndexStatus(): UseIndexStatusReturn {
       setIsIndexing(false);
       return null;
     }
-  }, [refreshStatus]);
+  }, [refreshStatus, indexSingleFolder]);
+
+  // 경로 직접 지정으로 폴더 추가 (추천 폴더 등에서 사용)
+  const addFolderByPath = useCallback(async (path: string): Promise<AddFolderResult | null> => {
+    try {
+      if (isDriveRoot(path)) {
+        const confirmed = await ask(
+          "드라이브 전체를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+          {
+            title: "드라이브 전체 인덱싱",
+            kind: "warning",
+            okLabel: "계속",
+            cancelLabel: "취소",
+          }
+        );
+        if (!confirmed) return null;
+      }
+
+      setIsIndexing(true);
+      setError(null);
+
+      const result = await indexSingleFolder(path);
+      await refreshStatus();
+      setIsIndexing(false);
+
+      return result;
+    } catch (err) {
+      console.error("Failed to add folder:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`폴더 추가 실패: ${message}`);
+      setIsIndexing(false);
+      return null;
+    }
+  }, [refreshStatus, indexSingleFolder]);
 
   // 폴더 제거
   const removeFolder = useCallback(async (path: string): Promise<void> => {
@@ -178,6 +232,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     clearError,
     refreshStatus,
     addFolder,
+    addFolderByPath,
     removeFolder,
     cancelIndexing,
   };

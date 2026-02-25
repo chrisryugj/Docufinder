@@ -93,9 +93,16 @@ pub async fn add_folder(
         intensity,
         max_file_size_mb,
         db_path,
+        exclude_dirs,
     ) = {
         let container = state.read()?;
         let settings = container.get_settings();
+        // DEFAULT_EXCLUDED_DIRS + 사용자 커스텀 제외 목록 합산
+        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        dirs.extend(settings.exclude_dirs.clone());
         (
             container.index_service(),
             settings.include_subfolders,
@@ -105,6 +112,7 @@ pub async fn add_folder(
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
             container.db_path.clone(),
+            dirs,
         )
     };
 
@@ -147,7 +155,7 @@ pub async fn add_folder(
 
     // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
     let metadata_result = service
-        .scan_metadata_only(&canonical_path, include_subfolders, None, max_file_size_mb)
+        .scan_metadata_only(&canonical_path, include_subfolders, None, max_file_size_mb, exclude_dirs.clone())
         .await;
 
     // 3. FilenameCache 즉시 갱신 + 메타 스캔에서 수집한 파일 목록 재사용
@@ -171,6 +179,7 @@ pub async fn add_folder(
             Some(progress_callback),
             max_file_size_mb,
             pre_collected,
+            exclude_dirs,
         )
         .await
     {
@@ -206,12 +215,23 @@ pub async fn add_folder(
         }
     }
 
-    // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만
+    // 드라이브 루트 감지 (C:\, D:\ 등) → 벡터 인덱싱 자동 시작 안 함
+    let is_drive_root = {
+        let p = canonical_path.to_string_lossy();
+        let normalized = p.replace("\\\\?\\", "");
+        normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
+    };
+    if is_drive_root {
+        tracing::info!("Drive root detected: skipping auto vector indexing for {}", path);
+    }
+
+    // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만 (드라이브 루트 제외)
     let auto_vector = semantic_enabled
         && semantic_available
         && vector_mode == VectorIndexingMode::Auto
         && !was_cancelled
-        && result.indexed_count > 0;
+        && result.indexed_count > 0
+        && !is_drive_root;
     if auto_vector {
         let vector_callback = create_vector_progress_callback(app_handle);
         let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
@@ -285,9 +305,15 @@ pub async fn reindex_folder(
         intensity,
         max_file_size_mb,
         db_path,
+        exclude_dirs,
     ) = {
         let container = state.read()?;
         let settings = container.get_settings();
+        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        dirs.extend(settings.exclude_dirs.clone());
         (
             container.index_service(),
             settings.include_subfolders,
@@ -297,6 +323,7 @@ pub async fn reindex_folder(
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
             container.db_path.clone(),
+            dirs,
         )
     };
 
@@ -314,6 +341,7 @@ pub async fn reindex_folder(
             include_subfolders,
             Some(progress_callback),
             max_file_size_mb,
+            exclude_dirs,
         )
         .await
     {
@@ -398,9 +426,15 @@ pub async fn resume_indexing(
         intensity,
         max_file_size_mb,
         db_path,
+        exclude_dirs,
     ) = {
         let container = state.read()?;
         let settings = container.get_settings();
+        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        dirs.extend(settings.exclude_dirs.clone());
         (
             container.index_service(),
             settings.include_subfolders,
@@ -410,6 +444,7 @@ pub async fn resume_indexing(
             settings.indexing_intensity.clone(),
             settings.max_file_size_mb,
             container.db_path.clone(),
+            dirs,
         )
     };
 
@@ -435,6 +470,7 @@ pub async fn resume_indexing(
             include_subfolders,
             Some(progress_callback),
             max_file_size_mb,
+            exclude_dirs,
         )
         .await
     {

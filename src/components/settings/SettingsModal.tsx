@@ -19,8 +19,9 @@ interface SettingsModalProps {
 
 const SEARCH_MODE_OPTIONS = [
   { value: "keyword", label: "키워드 검색 (권장)" },
-  { value: "hybrid", label: "하이브리드 (모델 필요)" },
-  { value: "semantic", label: "의미 검색 (모델 필요)" },
+  // TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
+  // { value: "hybrid", label: "하이브리드 (모델 필요)" },
+  // { value: "semantic", label: "의미 검색 (모델 필요)" },
   { value: "filename", label: "파일명 검색" },
 ];
 
@@ -44,10 +45,11 @@ const VIEW_DENSITY_OPTIONS = [
   { value: "compact", label: "컴팩트 (좁게)" },
 ];
 
-const VECTOR_INDEXING_MODE_OPTIONS = [
-  { value: "manual", label: "수동" },
-  { value: "auto", label: "자동" },
-];
+// TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
+// const VECTOR_INDEXING_MODE_OPTIONS = [
+//   { value: "manual", label: "수동" },
+//   { value: "auto", label: "자동" },
+// ];
 
 const INDEXING_INTENSITY_OPTIONS = [
   { value: "fast", label: "빠르게 (CPU 최대)" },
@@ -143,26 +145,27 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     if (!settings) return;
 
-    // 하이브리드/시맨틱 모드 선택 시 시맨틱 검색 활성화 안내
-    if (
-      key === "search_mode" &&
-      (value === "hybrid" || value === "semantic") &&
-      !(settings.semantic_search_enabled ?? false)
-    ) {
-      ask("이 검색 모드는 시맨틱 검색이 필요합니다.\n활성화하시겠습니까?", {
-        title: "시맨틱 검색 필요",
-        kind: "info",
-        okLabel: "활성화",
-        cancelLabel: "취소",
-      }).then((confirmed) => {
-        if (confirmed) {
-          setSettings({ ...settings, [key]: value, semantic_search_enabled: true });
-        } else {
-          setSettings({ ...settings, [key]: value });
-        }
-      });
-      return;
-    }
+    // TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
+    // // 하이브리드/시맨틱 모드 선택 시 시맨틱 검색 활성화 안내
+    // if (
+    //   key === "search_mode" &&
+    //   (value === "hybrid" || value === "semantic") &&
+    //   !(settings.semantic_search_enabled ?? false)
+    // ) {
+    //   ask("이 검색 모드는 시맨틱 검색이 필요합니다.\n활성화하시겠습니까?", {
+    //     title: "시맨틱 검색 필요",
+    //     kind: "info",
+    //     okLabel: "활성화",
+    //     cancelLabel: "취소",
+    //   }).then((confirmed) => {
+    //     if (confirmed) {
+    //       setSettings({ ...settings, [key]: value, semantic_search_enabled: true });
+    //     } else {
+    //       setSettings({ ...settings, [key]: value });
+    //     }
+    //   });
+    //   return;
+    // }
 
     setSettings({ ...settings, [key]: value });
 
@@ -353,6 +356,40 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             onChange={(v) => handleChange("include_subfolders", v)}
           />
 
+          {/* 제외 디렉토리 */}
+          <div>
+            <label
+              className="block text-xs font-medium mb-1.5"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              제외 디렉토리
+            </label>
+            <p className="text-xs mb-2" style={{ color: "var(--color-text-muted)" }}>
+              인덱싱에서 제외할 폴더 이름 (줄바꿈 구분). 기본 제외: Windows, Program Files, AppData, node_modules 등
+            </p>
+            <textarea
+              className="w-full rounded-md px-3 py-2 text-xs font-mono resize-y"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                color: "var(--color-text-primary)",
+                border: "1px solid var(--color-border)",
+                minHeight: "60px",
+              }}
+              value={(settings.exclude_dirs ?? []).join("\n")}
+              onChange={(e) =>
+                handleChange(
+                  "exclude_dirs",
+                  e.target.value
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(Boolean) as unknown as Settings["exclude_dirs"]
+                )
+              }
+              placeholder="추가 제외할 폴더명 입력..."
+              rows={3}
+            />
+          </div>
+
           {/* 성능 설정 섹션 */}
           <div
             className="border-t pt-4"
@@ -405,78 +442,25 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           </div>
 
           {/* 고급 기능 섹션 */}
-          <div
-            className="border-t pt-4"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <h3
-              className="text-sm font-medium mb-1"
-              style={{ color: "var(--color-text-primary)" }}
-            >
-              고급 기능
-            </h3>
-            <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
-              AI 기반 시맨틱 검색. 활성화 시 ONNX 모델을 다운로드합니다.
-            </p>
+          {/* TODO: 시맨틱 검색 재활성화 시 아래 주석 해제 */}
+          {/* <div className="border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
+            <h3 className="text-sm font-medium mb-1" style={{ color: "var(--color-text-primary)" }}>고급 기능</h3>
+            <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>AI 기반 시맨틱 검색. 활성화 시 ONNX 모델을 다운로드합니다.</p>
           </div>
-
-          {/* 시맨틱 검색 토글 */}
-          <div
-            className="rounded-lg p-3"
-            style={{
-              backgroundColor: (settings.semantic_search_enabled ?? false)
-                ? "rgba(245, 158, 11, 0.08)"
-                : "var(--color-bg-secondary)",
-              border: `1px solid ${(settings.semantic_search_enabled ?? false)
-                ? "rgba(245, 158, 11, 0.3)"
-                : "var(--color-border)"}`,
-            }}
-          >
-            <SettingsToggle
-              label="시맨틱 검색"
-              description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다"
-              checked={settings.semantic_search_enabled ?? false}
-              onChange={(v) => handleChange("semantic_search_enabled", v)}
-              activeColor="bg-amber-500"
-            />
-
-            {/* 활성화 시 경고 + 옵션 */}
+          <div className="rounded-lg p-3" style={{ backgroundColor: (settings.semantic_search_enabled ?? false) ? "rgba(245, 158, 11, 0.08)" : "var(--color-bg-secondary)", border: `1px solid ${(settings.semantic_search_enabled ?? false) ? "rgba(245, 158, 11, 0.3)" : "var(--color-border)"}` }}>
+            <SettingsToggle label="시맨틱 검색" description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다" checked={settings.semantic_search_enabled ?? false} onChange={(v) => handleChange("semantic_search_enabled", v)} activeColor="bg-amber-500" />
             {(settings.semantic_search_enabled ?? false) && (
               <div className="mt-3 space-y-3">
-                <div
-                  className="flex items-start gap-2 p-2 rounded text-xs"
-                  style={{
-                    backgroundColor: "rgba(245, 158, 11, 0.1)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  <svg className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "rgb(245, 158, 11)" }} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                  </svg>
+                <div className="flex items-start gap-2 p-2 rounded text-xs" style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", color: "var(--color-text-secondary)" }}>
                   <span>메모리 약 1GB 추가 사용. 저사양 PC(4GB RAM)에서는 성능 저하가 발생할 수 있습니다.</span>
                 </div>
-
-                {/* 벡터 인덱싱 모드 */}
                 <div>
-                  <label
-                    className="block text-xs font-medium mb-1.5"
-                    style={{ color: "var(--color-text-secondary)" }}
-                  >
-                    벡터 인덱싱 모드
-                  </label>
-                  <Dropdown
-                    options={VECTOR_INDEXING_MODE_OPTIONS}
-                    value={settings.vector_indexing_mode ?? "manual"}
-                    onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])}
-                    placeholder="모드 선택"
-                  />
-                  <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                    수동: 직접 시작 / 자동: 인덱싱 후 자동 실행
-                  </p>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-secondary)" }}>벡터 인덱싱 모드</label>
+                  <Dropdown options={VECTOR_INDEXING_MODE_OPTIONS} value={settings.vector_indexing_mode ?? "manual"} onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])} placeholder="모드 선택" />
                 </div>
               </div>
             )}
-          </div>
+          </div> */}
 
           {/* 시스템 트레이 섹션 구분선 */}
           <div

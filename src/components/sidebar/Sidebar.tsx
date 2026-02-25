@@ -1,6 +1,7 @@
 import { useState, memo } from "react";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
+import { SuggestedFolders } from "./SuggestedFolders";
 import type { RecentSearch } from "../../types/search";
 
 interface SidebarProps {
@@ -10,6 +11,7 @@ interface SidebarProps {
   watchedFolders: string[];
   onRemoveFolder?: (path: string) => void;
   onAddFolder: () => void;
+  onAddFolderByPath?: (path: string) => void;
   isIndexing?: boolean;
   onFoldersChange?: () => void;
   // 최근 검색 관련
@@ -30,6 +32,7 @@ export const Sidebar = memo(function Sidebar({
   watchedFolders,
   onRemoveFolder,
   onAddFolder,
+  onAddFolderByPath,
   isIndexing,
   onFoldersChange,
   recentSearches,
@@ -114,12 +117,20 @@ export const Sidebar = memo(function Sidebar({
             </div>
 
             {isFoldersExpanded && (
-              <FolderTree
-                folders={watchedFolders}
-                onRemoveFolder={onRemoveFolder}
-                isIndexing={isIndexing}
-                onFoldersChange={onFoldersChange}
-              />
+              <>
+                <FolderTree
+                  folders={watchedFolders}
+                  onRemoveFolder={onRemoveFolder}
+                  isIndexing={isIndexing}
+                  onFoldersChange={onFoldersChange}
+                />
+                {onAddFolderByPath && (
+                  <SuggestedFolders
+                    watchedFolders={watchedFolders}
+                    onAddFolder={onAddFolderByPath}
+                  />
+                )}
+              </>
             )}
           </section>
 

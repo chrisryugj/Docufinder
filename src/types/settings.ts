@@ -32,4 +32,6 @@ export interface Settings {
   results_per_page: number;
   /** 데이터 저장 경로 (DB, 벡터 인덱스). 미설정 시 기본 AppData 사용 */
   data_root?: string;
+  /** 사용자 커스텀 제외 디렉토리 목록 */
+  exclude_dirs?: string[];
 }
