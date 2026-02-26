@@ -172,21 +172,24 @@ impl SearchService {
 
             cache_results
                 .into_iter()
-                .map(|r| SearchResult {
-                    file_path: r.path,
-                    file_name: r.name.clone(),
-                    chunk_index: 0,
-                    content_preview: r.name.clone(),
-                    full_content: String::new(),
-                    score: 1.0,
-                    confidence: 100,
-                    match_type: MatchType::Filename,
-                    highlight_ranges: vec![],
-                    page_number: None,
-                    start_offset: 0,
-                    location_hint: Some(r.file_type),
-                    snippet: Some(r.name),
-                    modified_at: Some(r.modified_at),
+                .map(|r| {
+                    let name = r.name().to_owned();
+                    SearchResult {
+                        file_path: r.path.into(),
+                        file_name: name.clone(),
+                        chunk_index: 0,
+                        content_preview: name.clone(),
+                        full_content: String::new(),
+                        score: 1.0,
+                        confidence: 100,
+                        match_type: MatchType::Filename,
+                        highlight_ranges: vec![],
+                        page_number: None,
+                        start_offset: 0,
+                        location_hint: Some(r.file_type.into()),
+                        snippet: Some(name),
+                        modified_at: Some(r.modified_at),
+                    }
                 })
                 .collect()
         } else {

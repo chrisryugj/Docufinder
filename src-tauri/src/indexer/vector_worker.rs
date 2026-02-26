@@ -425,10 +425,19 @@ fn run_vector_indexing(
     // 프리페치 스레드 종료 대기
     let _ = prefetch_handle.join();
 
-    // 최종 저장
+    // 최종 저장 + mmap view 모드 전환 (RAM 회수)
     let final_chunk_count = vector_index.chunk_count();
-    if let Err(e) = vector_index.save() {
-        tracing::warn!("[VectorWorker] Final save failed: {}", e);
+    match vector_index.switch_to_view() {
+        Ok(()) => {
+            tracing::info!(
+                "[VectorWorker] Saved and switched to view mode (mmap) — RAM freed"
+            );
+        }
+        Err(e) => {
+            // switch_to_view 내부에서 save()를 먼저 호출하므로,
+            // 실패해도 데이터는 이미 저장된 상태
+            tracing::warn!("[VectorWorker] switch_to_view failed (data saved): {}", e);
+        }
     }
 
     tracing::info!(

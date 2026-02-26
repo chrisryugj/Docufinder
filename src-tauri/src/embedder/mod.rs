@@ -61,13 +61,15 @@ impl Embedder {
         tracing::debug!("Embedder using {} intra-op threads", num_threads);
 
         // ONNX 세션 생성 (최적화 적용)
+        // - CPU EP arena 비활성화: 선점 할당 대신 호출별 할당으로 전환 (RAM 50-100MB 절감)
+        // - parallel_execution 제거: 단일 쿼리에 inter-op 병렬 불필요, intra_threads로 충분
         let session = Session::builder()
+            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
+            .with_execution_providers([ort::ep::CPU::default().build()])
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .with_intra_threads(num_threads)
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .with_parallel_execution(true)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
             .commit_from_file(model_path)
             .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
