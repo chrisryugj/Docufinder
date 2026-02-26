@@ -64,10 +64,9 @@ export interface SearchModeInfo {
 
 /** 검색 모드 목록 */
 export const SEARCH_MODES: SearchModeInfo[] = [
-  // TODO: 시맨틱 검색 재활성화 시 아래 주석 해제
-  // { value: "hybrid", label: "하이브리드", desc: "키워드 + AI 통합" },
+  { value: "hybrid", label: "하이브리드", desc: "키워드 + AI 통합" },
   { value: "keyword", label: "키워드", desc: "FTS5 전문검색" },
-  // { value: "semantic", label: "시맨틱", desc: "AI 의미 검색" },
+  { value: "semantic", label: "시맨틱", desc: "AI 의미 검색" },
   { value: "filename", label: "파일명", desc: "파일명 검색" },
 ];
 
