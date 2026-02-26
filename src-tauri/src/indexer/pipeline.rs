@@ -224,6 +224,7 @@ pub type FtsProgressCallback = Box<dyn Fn(FtsIndexingProgress) + Send + Sync>;
 
 /// 폴더 인덱싱 - FTS만 (1단계, 벡터 제외)
 /// skip_indexed: true이면 이미 fts_indexed_at이 있는 파일은 건너뜀 (resume 용)
+#[allow(clippy::too_many_arguments)]
 pub fn index_folder_fts_only(
     conn: &Connection,
     folder_path: &Path,
