@@ -1,4 +1,7 @@
 //! 벡터 인덱스 및 검색 모듈 (usearch)
+//!
+//! 메모리 최적화: 기본 mmap (view) 모드로 로드하여 RAM 절감.
+//! 인덱싱 시에만 in-memory (loaded) 모드로 전환, 완료 후 다시 view로 복귀.
 
 use crate::embedder::EMBEDDING_DIM;
 use std::collections::HashMap;
@@ -22,6 +25,17 @@ pub enum VectorError {
     LockPoisoned,
 }
 
+/// 인덱스 모드
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IndexMode {
+    /// 비어있음 (데이터 없음)
+    Empty,
+    /// 메모리 맵 (mmap, read-only — 검색만 가능, RAM 최소)
+    View,
+    /// 전체 로드 (in-memory, read-write — 추가/삭제/검색 모두 가능)
+    Loaded,
+}
+
 /// 벡터 검색 결과
 #[derive(Debug, Clone)]
 pub struct VectorResult {
@@ -42,12 +56,15 @@ pub struct VectorIndex {
     key_map: RwLock<HashMap<u64, i64>>,
     /// 다음 usearch key
     next_key: RwLock<u64>,
+    /// 현재 인덱스 모드 (View: mmap / Loaded: in-memory)
+    /// 락 순서: mode → index → id_map → key_map → next_key
+    mode: RwLock<IndexMode>,
 }
 
 impl VectorIndex {
-    /// 새 벡터 인덱스 생성 또는 로드
-    pub fn new(path: &Path) -> Result<Self, VectorError> {
-        let options = IndexOptions {
+    /// IndexOptions 생성 (재사용을 위한 헬퍼)
+    fn create_options() -> IndexOptions {
+        IndexOptions {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos, // 코사인 유사도
             quantization: ScalarKind::F16,
@@ -55,7 +72,12 @@ impl VectorIndex {
             expansion_add: 128,   // efConstruction
             expansion_search: 64, // efSearch
             multi: false,
-        };
+        }
+    }
+
+    /// 새 벡터 인덱스 생성 또는 로드
+    pub fn new(path: &Path) -> Result<Self, VectorError> {
+        let options = Self::create_options();
 
         let index =
             Index::new(&options).map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
@@ -83,6 +105,7 @@ impl VectorIndex {
             id_map: RwLock::new(HashMap::new()),
             key_map: RwLock::new(HashMap::new()),
             next_key: RwLock::new(0),
+            mode: RwLock::new(IndexMode::Empty),
         };
 
         // 기존 인덱스 로드 시도
@@ -99,9 +122,30 @@ impl VectorIndex {
                 usearch_size / 1024,
                 map_size_bytes / 1024
             );
-            vector_index.load()?;
 
-            // 차원 검증: load()는 파일에서 차원을 덮어씀
+            // mmap (view) 모드로 로드 시도, 실패 시 full load 폴백
+            match vector_index.load_index(true) {
+                Ok(()) => {
+                    *vector_index
+                        .mode
+                        .write()
+                        .map_err(|_| VectorError::LockPoisoned)? = IndexMode::View;
+                    tracing::info!("Vector index loaded via mmap (view mode) — RAM optimized");
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "mmap view failed, falling back to full in-memory load: {}",
+                        e
+                    );
+                    vector_index.load_index(false)?;
+                    *vector_index
+                        .mode
+                        .write()
+                        .map_err(|_| VectorError::LockPoisoned)? = IndexMode::Loaded;
+                }
+            }
+
+            // 차원 검증: load/view는 파일에서 차원을 덮어씀
             // 모델 변경 등으로 차원이 다르면 전체 리빌드 필요
             let loaded_dims = vector_index
                 .index
@@ -137,6 +181,10 @@ impl VectorIndex {
                     .next_key
                     .write()
                     .map_err(|_| VectorError::LockPoisoned)? = 0;
+                *vector_index
+                    .mode
+                    .write()
+                    .map_err(|_| VectorError::LockPoisoned)? = IndexMode::Empty;
             }
         } else {
             tracing::info!(
@@ -167,11 +215,16 @@ impl VectorIndex {
             .read()
             .map_err(|_| VectorError::LockPoisoned)?
             .len();
+        let current_mode = *vector_index
+            .mode
+            .read()
+            .map_err(|_| VectorError::LockPoisoned)?;
         tracing::info!(
-            "VectorIndex initialized: dims={}, index_size={}, id_map_count={}",
+            "VectorIndex initialized: dims={}, index_size={}, id_map_count={}, mode={:?}",
             index_dims,
             index_size,
-            map_size
+            map_size,
+            current_mode,
         );
 
         // 인덱스/매핑 불일치 검증
@@ -200,6 +253,94 @@ impl VectorIndex {
         Ok(vector_index)
     }
 
+    /// View(mmap) 모드에서 Loaded(in-memory) 모드로 전환
+    /// add()/remove() 호출 전에 자동으로 호출됨
+    fn ensure_writable(&self) -> Result<(), VectorError> {
+        // Fast path: 이미 writable이면 즉시 반환
+        {
+            let mode = self.mode.read().map_err(|_| VectorError::LockPoisoned)?;
+            if *mode != IndexMode::View {
+                return Ok(());
+            }
+        }
+
+        // Slow path: View → Loaded 전환
+        let mut mode = self.mode.write().map_err(|_| VectorError::LockPoisoned)?;
+        if *mode != IndexMode::View {
+            return Ok(()); // 다른 스레드가 이미 전환함
+        }
+
+        let mut index_guard = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
+        let path_str = self.path.to_string_lossy();
+
+        // 새 인덱스를 만들어 full load (in-memory)
+        let new_index = Index::new(&Self::create_options())
+            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+        new_index
+            .load(&path_str)
+            .map_err(|e| VectorError::IndexError(format!("Full load failed: {:?}", e)))?;
+
+        let loaded_size = new_index.size();
+        *index_guard = new_index;
+        *mode = IndexMode::Loaded;
+
+        tracing::info!(
+            "Vector index switched to writable mode (in-memory, {} vectors)",
+            loaded_size
+        );
+
+        Ok(())
+    }
+
+    /// Loaded(in-memory) 모드에서 View(mmap) 모드로 전환
+    /// 인덱싱 완료 후 호출하여 RAM 회수
+    pub fn switch_to_view(&self) -> Result<(), VectorError> {
+        // 먼저 현재 데이터 저장
+        self.save()?;
+
+        let mut mode = self.mode.write().map_err(|_| VectorError::LockPoisoned)?;
+        if *mode == IndexMode::View {
+            return Ok(());
+        }
+        if *mode == IndexMode::Empty {
+            return Ok(());
+        }
+
+        // 파일이 없으면 전환 불가
+        if !self.path.exists() {
+            return Ok(());
+        }
+
+        let path_str = self.path.to_string_lossy();
+        let mut index_guard = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
+
+        let old_memory = index_guard.memory_usage();
+
+        // 새 인덱스를 만들어 mmap view
+        let new_index = Index::new(&Self::create_options())
+            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+
+        match new_index.view(&path_str) {
+            Ok(()) => {
+                *index_guard = new_index;
+                *mode = IndexMode::View;
+                tracing::info!(
+                    "Vector index switched to view mode (mmap). Freed ~{}MB",
+                    old_memory / 1024 / 1024
+                );
+            }
+            Err(e) => {
+                // view 실패 시 기존 Loaded 모드 유지
+                tracing::warn!(
+                    "Failed to switch to view mode, keeping in-memory: {:?}",
+                    e
+                );
+            }
+        }
+
+        Ok(())
+    }
+
     /// 벡터 추가 (원자적 연산: 모든 write lock을 한번에 획득)
     pub fn add(&self, chunk_id: i64, embedding: &[f32]) -> Result<(), VectorError> {
         if embedding.len() != EMBEDDING_DIM {
@@ -209,6 +350,9 @@ impl VectorIndex {
                 EMBEDDING_DIM
             )));
         }
+
+        // View 모드이면 writable로 전환 (ensure_writable은 mode → index 순서로 락)
+        self.ensure_writable()?;
 
         // 모든 write lock을 한번에 획득 (TOCTOU 방지, 원자적 연산 보장)
         // 락 순서: index → id_map → key_map → next_key (데드락 방지를 위해 고정 순서)
@@ -278,6 +422,9 @@ impl VectorIndex {
 
     /// 벡터 삭제 (원자적 연산)
     pub fn remove(&self, chunk_id: i64) -> Result<(), VectorError> {
+        // View 모드이면 writable로 전환
+        self.ensure_writable()?;
+
         // 모든 write lock을 한번에 획득 (add와 동일 순서)
         let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
         let mut id_map = self.id_map.write().map_err(|_| VectorError::LockPoisoned)?;
@@ -339,6 +486,14 @@ impl VectorIndex {
 
     /// 인덱스 저장
     pub fn save(&self) -> Result<(), VectorError> {
+        // View 모드에서는 저장 불필요 (이미 디스크 파일 = 최신 상태)
+        {
+            let mode = self.mode.read().map_err(|_| VectorError::LockPoisoned)?;
+            if *mode == IndexMode::View || *mode == IndexMode::Empty {
+                return Ok(());
+            }
+        }
+
         let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
         let map_len = id_map.len();
 
@@ -387,16 +542,27 @@ impl VectorIndex {
         Ok(())
     }
 
-    /// 인덱스 로드
-    fn load(&mut self) -> Result<(), VectorError> {
-        // 인덱스 파일 로드 (초기화 시에만 호출, &mut self)
+    /// 인덱스 로드 (초기화 시에만 호출)
+    /// use_mmap=true: mmap view (read-only, RAM 최소)
+    /// use_mmap=false: full load (in-memory, read-write)
+    fn load_index(&mut self, use_mmap: bool) -> Result<(), VectorError> {
         let path_str = self.path.to_string_lossy();
         let index = self.index.write().map_err(|_| VectorError::LockPoisoned)?;
-        index
-            .load(&path_str)
-            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
 
-        tracing::debug!("Loaded vector index file: {} vectors", index.size());
+        if use_mmap {
+            index
+                .view(&path_str)
+                .map_err(|e| VectorError::IndexError(format!("mmap view failed: {:?}", e)))?;
+            tracing::debug!(
+                "Loaded vector index via mmap (view): {} vectors",
+                index.size()
+            );
+        } else {
+            index
+                .load(&path_str)
+                .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+            tracing::debug!("Loaded vector index file: {} vectors", index.size());
+        }
 
         // 매핑 파일 로드
         let map_path = self.path.with_extension("map");
@@ -428,6 +594,10 @@ impl VectorIndex {
                         key_map.insert(key, chunk_id);
                     }
                 }
+
+                // HashMap 용량 최적화: 기본 2배 확장 슬랙 제거
+                id_map.shrink_to_fit();
+                key_map.shrink_to_fit();
 
                 tracing::debug!("Loaded {} chunk mappings", id_map.len());
             }
@@ -478,20 +648,13 @@ impl VectorIndex {
         }
 
         // 새 인덱스로 교체
-        let options = IndexOptions {
-            dimensions: EMBEDDING_DIM,
-            metric: MetricKind::Cos,
-            quantization: ScalarKind::F16,
-            connectivity: 16,
-            expansion_add: 128,
-            expansion_search: 64,
-            multi: false,
-        };
-
-        if let Ok(new_index) = Index::new(&options) {
+        if let Ok(new_index) = Index::new(&Self::create_options()) {
             if let Ok(mut index) = self.index.write() {
                 *index = new_index;
             }
+        }
+        if let Ok(mut mode) = self.mode.write() {
+            *mode = IndexMode::Empty;
         }
 
         tracing::info!("Vector index cleared");

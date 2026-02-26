@@ -7,20 +7,29 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-/// 캐시 최대 엔트리 수 (~40MB 상한, 8GB RAM 환경 기준)
+/// 캐시 최대 엔트리 수 (~30MB 상한, 8GB RAM 환경 기준)
 const MAX_CACHE_ENTRIES: usize = 200_000;
 
-/// 파일명 엔트리
+/// 파일명 엔트리 (메모리 최적화: name 제거, String → Box<str>)
 #[derive(Debug, Clone)]
 pub struct FilenameEntry {
     pub file_id: i64,
-    pub path: String,
-    pub name: String,
-    /// 검색용 소문자 변환 파일명
-    pub name_lower: String,
-    pub file_type: String,
+    pub path: Box<str>,
+    /// 검색용 소문자 변환 파일명 (path에서 추출 후 캐시)
+    pub name_lower: Box<str>,
+    pub file_type: Box<str>,
     pub size: i64,
     pub modified_at: i64,
+}
+
+impl FilenameEntry {
+    /// 파일명 추출 (path에서 O(1) 추출)
+    pub fn name(&self) -> &str {
+        std::path::Path::new(&*self.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+    }
 }
 
 /// 캐시 내부 데이터 (entries + file_id → index 매핑)
@@ -73,12 +82,13 @@ impl FilenameCache {
 
         let rows = stmt.query_map([], |row| {
             let name: String = row.get(2)?;
+            let path: String = row.get(1)?;
+            let file_type: String = row.get(3)?;
             Ok(FilenameEntry {
                 file_id: row.get(0)?,
-                path: row.get(1)?,
-                name: name.clone(),
-                name_lower: name.to_lowercase(),
-                file_type: row.get(3)?,
+                path: path.into_boxed_str(),
+                name_lower: name.to_lowercase().into_boxed_str(),
+                file_type: file_type.into_boxed_str(),
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
             })
@@ -140,7 +150,7 @@ impl FilenameCache {
         cache
             .entries
             .iter()
-            .filter(|e| terms.iter().all(|term| e.name_lower.contains(term)))
+            .filter(|e| terms.iter().all(|term| e.name_lower.contains(term.as_str())))
             .take(limit)
             .cloned()
             .collect()
@@ -178,7 +188,9 @@ impl FilenameCache {
     /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축
     pub fn remove_by_path_prefix(&self, path_prefix: &str) {
         if let Ok(mut cache) = self.data.write() {
-            cache.entries.retain(|e| !e.path.starts_with(path_prefix));
+            cache
+                .entries
+                .retain(|e| !e.path.starts_with(path_prefix));
             cache.rebuild_index();
         }
     }
@@ -220,10 +232,9 @@ mod tests {
     fn create_test_entry(id: i64, name: &str) -> FilenameEntry {
         FilenameEntry {
             file_id: id,
-            path: format!("C:\\test\\{}", name),
-            name: name.to_string(),
-            name_lower: name.to_lowercase(),
-            file_type: "txt".to_string(),
+            path: format!("C:\\test\\{}", name).into_boxed_str(),
+            name_lower: name.to_lowercase().into_boxed_str(),
+            file_type: "txt".to_string().into_boxed_str(),
             size: 1000,
             modified_at: 0,
         }
@@ -259,5 +270,11 @@ mod tests {
 
         let results = cache.search("REPORT", 10);
         assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_name_from_path() {
+        let entry = create_test_entry(1, "test.docx");
+        assert_eq!(entry.name(), "test.docx");
     }
 }

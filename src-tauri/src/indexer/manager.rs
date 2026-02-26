@@ -340,12 +340,13 @@ impl WatchManager {
             [path],
             |row| {
                 let name: String = row.get(2)?;
+                let path: String = row.get(1)?;
+                let file_type: String = row.get(3)?;
                 Ok(FilenameEntry {
                     file_id: row.get(0)?,
-                    path: row.get(1)?,
-                    name: name.clone(),
-                    name_lower: name.to_lowercase(),
-                    file_type: row.get(3)?,
+                    path: path.into_boxed_str(),
+                    name_lower: name.to_lowercase().into_boxed_str(),
+                    file_type: file_type.into_boxed_str(),
                     size: row.get(4)?,
                     modified_at: row.get(5)?,
                 })
