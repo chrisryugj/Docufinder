@@ -1,15 +1,13 @@
-﻿# 시맨틱 검색 모델 다운로드 스크립트
+# 시맨틱 검색 모델 다운로드 스크립트
 # Usage: .\scripts\download-model.ps1
 
 $ErrorActionPreference = "Stop"
 
-# === KoSimCSE-roberta-multitask 임베딩 모델 ===
-# 주의: KoSimCSE ONNX 모델은 HuggingFace에 직접 배포되지 않으므로
-# model.onnx와 tokenizer.json을 수동으로 배치해야 합니다.
-# 번들 전용: tauri:build 시 이 디렉토리에서 리소스를 패키징합니다.
+# === KoSimCSE-roberta-multitask 임베딩 모델 (INT8 양자화) ===
 $EMBED_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\kosimcse-roberta-multitask"
-$EMBED_MODEL_URL = ""
-$EMBED_TOKENIZER_URL = ""
+$EMBED_MODEL_URL = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model_int8.onnx"
+$EMBED_MODEL_SHA256 = "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33"
+$EMBED_TOKENIZER_URL = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/tokenizer.json"
 
 # === Cross-Encoder Reranking 모델 ===
 $RERANK_MODEL_DIR = Join-Path $PSScriptRoot "..\src-tauri\models\ms-marco-MiniLM-L6-v2"
@@ -19,21 +17,16 @@ $RERANK_TOKENIZER_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/re
 # === ONNX Runtime ===
 $ONNX_RUNTIME_URL = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip"
 
-# 공통 변수 (호환성 유지)
-$MODEL_DIR = $EMBED_MODEL_DIR
-$MODEL_URL = $EMBED_MODEL_URL
-$TOKENIZER_URL = $EMBED_TOKENIZER_URL
-
 # models 폴더 생성
-if (-not (Test-Path $MODEL_DIR)) {
-    New-Item -ItemType Directory -Path $MODEL_DIR | Out-Null
+if (-not (Test-Path $EMBED_MODEL_DIR)) {
+    New-Item -ItemType Directory -Path $EMBED_MODEL_DIR | Out-Null
 }
 
 Write-Host "=== DocuFinder 시맨틱 검색 모델 다운로드 ===" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. ONNX Runtime 다운로드
-$onnxDll = Join-Path $MODEL_DIR "onnxruntime.dll"
+$onnxDll = Join-Path $EMBED_MODEL_DIR "onnxruntime.dll"
 if (-not (Test-Path $onnxDll)) {
     Write-Host "[1/3] ONNX Runtime 다운로드 중..." -ForegroundColor Yellow
     $zipPath = Join-Path $env:TEMP "onnxruntime.zip"
@@ -53,32 +46,32 @@ if (-not (Test-Path $onnxDll)) {
     Write-Host "[1/3] ONNX Runtime 이미 존재" -ForegroundColor Gray
 }
 
-# 2. 임베딩 모델 확인 (KoSimCSE - 수동 배치 필요)
-$modelPath = Join-Path $MODEL_DIR "model.onnx"
-if (-not (Test-Path $modelPath)) {
-    if ($MODEL_URL -eq "") {
-        Write-Host "[2/3] KoSimCSE model.onnx가 없습니다 (수동 배치 필요)" -ForegroundColor Red
-        Write-Host "  -> $MODEL_DIR\model.onnx 에 ONNX 모델 파일을 배치하세요" -ForegroundColor Yellow
-    } else {
-        Write-Host "[2/3] 임베딩 모델 다운로드 중..." -ForegroundColor Yellow
-        Invoke-WebRequest -Uri $MODEL_URL -OutFile $modelPath
-        Write-Host "  -> model.onnx 다운로드 완료" -ForegroundColor Green
+# 2. 임베딩 모델 다운로드 (INT8 양자화, ~106MB)
+$modelInt8Path = Join-Path $EMBED_MODEL_DIR "model_int8.onnx"
+$modelF32Path = Join-Path $EMBED_MODEL_DIR "model.onnx"
+if (-not (Test-Path $modelInt8Path) -and -not (Test-Path $modelF32Path)) {
+    Write-Host "[2/3] KoSimCSE INT8 모델 다운로드 중 (~106MB)..." -ForegroundColor Yellow
+    $tempPath = Join-Path $EMBED_MODEL_DIR "model_int8.onnx.tmp"
+    Invoke-WebRequest -Uri $EMBED_MODEL_URL -OutFile $tempPath
+    $hash = (Get-FileHash -Path $tempPath -Algorithm SHA256).Hash.ToLower()
+    if ($hash -ne $EMBED_MODEL_SHA256) {
+        Remove-Item $tempPath -Force
+        throw "임베딩 모델 SHA-256 검증 실패! 예상: $EMBED_MODEL_SHA256, 실제: $hash"
     }
+    Move-Item $tempPath $modelInt8Path -Force
+    Write-Host "  -> model_int8.onnx 다운로드 + SHA-256 검증 완료" -ForegroundColor Green
+} elseif (Test-Path $modelInt8Path) {
+    Write-Host "[2/3] model_int8.onnx 이미 존재" -ForegroundColor Gray
 } else {
-    Write-Host "[2/3] model.onnx 이미 존재" -ForegroundColor Gray
+    Write-Host "[2/3] model.onnx (F32 원본) 이미 존재 - INT8 다운로드 생략" -ForegroundColor Gray
 }
 
 # 3. Tokenizer 확인
-$tokenizerPath = Join-Path $MODEL_DIR "tokenizer.json"
+$tokenizerPath = Join-Path $EMBED_MODEL_DIR "tokenizer.json"
 if (-not (Test-Path $tokenizerPath)) {
-    if ($TOKENIZER_URL -eq "") {
-        Write-Host "[3/3] tokenizer.json이 없습니다 (수동 배치 필요)" -ForegroundColor Red
-        Write-Host "  -> $MODEL_DIR\tokenizer.json 에 토크나이저 파일을 배치하세요" -ForegroundColor Yellow
-    } else {
-        Write-Host "[3/3] Tokenizer 다운로드 중..." -ForegroundColor Yellow
-        Invoke-WebRequest -Uri $TOKENIZER_URL -OutFile $tokenizerPath
-        Write-Host "  -> tokenizer.json 다운로드 완료" -ForegroundColor Green
-    }
+    Write-Host "[3/3] Tokenizer 다운로드 중..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri $EMBED_TOKENIZER_URL -OutFile $tokenizerPath
+    Write-Host "  -> tokenizer.json 다운로드 완료" -ForegroundColor Green
 } else {
     Write-Host "[3/3] tokenizer.json 이미 존재" -ForegroundColor Gray
 }

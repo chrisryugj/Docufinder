@@ -163,7 +163,15 @@ impl AppContainer {
         self.embedder
             .get_or_try_init(|| {
                 let model_dir = self.models_dir.join("kosimcse-roberta-multitask");
-                let model_path = model_dir.join("model.onnx");
+                // INT8 양자화 모델 우선, F32 원본 폴백
+                let int8_path = model_dir.join("model_int8.onnx");
+                let model_path = if int8_path.exists() {
+                    tracing::info!("INT8 양자화 모델 사용 (model_int8.onnx)");
+                    int8_path
+                } else {
+                    tracing::info!("F32 원본 모델 사용 (model.onnx)");
+                    model_dir.join("model.onnx")
+                };
                 let tokenizer_path = model_dir.join("tokenizer.json");
                 let dll_path = model_dir.join("onnxruntime.dll");
 
@@ -181,7 +189,7 @@ impl AppContainer {
                     tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
                 }
 
-                // 8GB RAM 환경 경고: ONNX 모델 ~350MB + Reranker ~100MB 상주
+                // 8GB RAM 환경 경고: ONNX 모델(INT8 ~106MB / F32 ~840MB) + Reranker ~24MB 상주
                 let sys_mem = sysinfo_total_memory_mb();
                 if sys_mem > 0 && sys_mem <= 8192 {
                     tracing::warn!(

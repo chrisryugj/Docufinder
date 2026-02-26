@@ -233,6 +233,9 @@ pub async fn update_settings(
     // 시맨틱 검색 활성화 시 모델이 없으면 백그라운드 다운로드 시작
     if settings.semantic_search_enabled {
         let models_dir = app_data_dir.join("models");
+        let e5_model_int8 = models_dir
+            .join("kosimcse-roberta-multitask")
+            .join("model_int8.onnx");
         let e5_model = models_dir
             .join("kosimcse-roberta-multitask")
             .join("model.onnx");
@@ -241,7 +244,10 @@ pub async fn update_settings(
             .join("model.onnx.data");
         let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-        if !e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists() {
+        // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
+        let embedder_available =
+            e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+        if !embedder_available || !reranker_model.exists() {
             let download_models_dir = models_dir.clone();
             let download_app = app.clone();
             tauri::async_runtime::spawn(async move {

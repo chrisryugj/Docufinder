@@ -180,11 +180,14 @@ pub fn run() {
 
             // 모델이 없으면 비동기 자동 다운로드 (시맨틱 활성화 시에만, UI 블로킹 방지)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
+            let e5_model_int8 = models_dir.join("kosimcse-roberta-multitask").join("model_int8.onnx");
             let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
             let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
             let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-            if setup_settings.semantic_search_enabled && (!e5_model.exists() || !e5_model_data.exists() || !reranker_model.exists()) {
+            // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
+            let embedder_available = e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+            if setup_settings.semantic_search_enabled && (!embedder_available || !reranker_model.exists()) {
                 let download_models_dir = models_dir.clone();
                 let download_app_handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {

@@ -1,6 +1,6 @@
 {
   "name": "anything",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "로컬 문서 검색 앱 - Everything 대항마",
   "type": "module",
   "scripts": {
