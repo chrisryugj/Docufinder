@@ -331,10 +331,7 @@ impl VectorIndex {
             }
             Err(e) => {
                 // view 실패 시 기존 Loaded 모드 유지
-                tracing::warn!(
-                    "Failed to switch to view mode, keeping in-memory: {:?}",
-                    e
-                );
+                tracing::warn!("Failed to switch to view mode, keeping in-memory: {:?}", e);
             }
         }
 

@@ -150,7 +150,11 @@ impl FilenameCache {
         cache
             .entries
             .iter()
-            .filter(|e| terms.iter().all(|term| e.name_lower.contains(term.as_str())))
+            .filter(|e| {
+                terms
+                    .iter()
+                    .all(|term| e.name_lower.contains(term.as_str()))
+            })
             .take(limit)
             .cloned()
             .collect()
@@ -188,9 +192,7 @@ impl FilenameCache {
     /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축
     pub fn remove_by_path_prefix(&self, path_prefix: &str) {
         if let Ok(mut cache) = self.data.write() {
-            cache
-                .entries
-                .retain(|e| !e.path.starts_with(path_prefix));
+            cache.entries.retain(|e| !e.path.starts_with(path_prefix));
             cache.rebuild_index();
         }
     }

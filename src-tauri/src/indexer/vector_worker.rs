@@ -429,9 +429,7 @@ fn run_vector_indexing(
     let final_chunk_count = vector_index.chunk_count();
     match vector_index.switch_to_view() {
         Ok(()) => {
-            tracing::info!(
-                "[VectorWorker] Saved and switched to view mode (mmap) — RAM freed"
-            );
+            tracing::info!("[VectorWorker] Saved and switched to view mode (mmap) — RAM freed");
         }
         Err(e) => {
             // switch_to_view 내부에서 save()를 먼저 호출하므로,

@@ -39,7 +39,8 @@ const RERANKER_TOKENIZER_URL: &str =
 const E5_MODEL_SHA256: &str = "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33";
 // F32 원본 해시 (하위 호환용, 현재 미사용)
 #[allow(dead_code)]
-const E5_MODEL_F32_SHA256: &str = "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
+const E5_MODEL_F32_SHA256: &str =
+    "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
 #[allow(dead_code)]
 const E5_MODEL_DATA_SHA256: &str =
     "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
