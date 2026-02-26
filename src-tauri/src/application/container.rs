@@ -220,13 +220,10 @@ impl AppContainer {
             .cloned()
     }
 
-    /// 시맨틱 검색 가능 여부 확인
+    /// 시맨틱 검색 가능 여부 확인 (INT8 또는 F32 모델 존재 시 true)
     pub fn is_semantic_available(&self) -> bool {
-        let model_path = self
-            .models_dir
-            .join("kosimcse-roberta-multitask")
-            .join("model.onnx");
-        model_path.exists()
+        let model_dir = self.models_dir.join("kosimcse-roberta-multitask");
+        model_dir.join("model_int8.onnx").exists() || model_dir.join("model.onnx").exists()
     }
 
     /// 증분 인덱싱 완료 시 호출할 콜백 설정 (WatchManager 초기화 전에 호출해야 함)
