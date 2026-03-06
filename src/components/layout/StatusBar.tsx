@@ -63,7 +63,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               {onCancelIndexing && (
                 <button
                   onClick={onCancelIndexing}
-                  className="px-2 py-0.5 text-xs rounded btn-cancel-hover"
+                  className="px-3 py-1 text-xs rounded btn-cancel-hover"
                 >
                   취소
                 </button>
@@ -121,7 +121,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               {onCancelVectorIndexing && (
                 <button
                   onClick={onCancelVectorIndexing}
-                  className="px-2 py-0.5 text-xs rounded btn-cancel-hover"
+                  className="px-3 py-1 text-xs rounded btn-cancel-hover"
                 >
                   취소
                 </button>

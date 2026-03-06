@@ -192,10 +192,11 @@ export const Sidebar = memo(function Sidebar({
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="fixed left-4 top-[7px] z-50 p-2 rounded-lg hover:scale-105 active:scale-95 transition-all duration-200"
+          className="fixed left-4 top-[7px] z-50 p-2 rounded-lg hover:scale-105 active:scale-95 transition-all duration-200 shadow-md backdrop-blur-sm"
           style={{
             color: "var(--color-text-secondary)",
-            backgroundColor: "var(--color-bg-tertiary)",
+            backgroundColor: "var(--color-bg-secondary)",
+            border: "1px solid var(--color-border)",
           }}
           aria-label="사이드바 열기"
         >

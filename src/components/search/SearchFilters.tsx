@@ -107,7 +107,7 @@ export const SearchFilters = memo(function SearchFilters({
             type="checkbox"
             checked={filters.keywordOnly}
             onChange={(e) => onFiltersChange({ ...filters, keywordOnly: e.target.checked })}
-            className="accent-[var(--color-accent)] w-3 h-3"
+            className="accent-[var(--color-accent)] w-3.5 h-3.5"
             aria-label="키워드 포함 결과만 보기"
           />
           키워드 포함만
@@ -127,7 +127,7 @@ export const SearchFilters = memo(function SearchFilters({
             type="checkbox"
             checked={filters.excludeFilename}
             onChange={(e) => onFiltersChange({ ...filters, excludeFilename: e.target.checked })}
-            className="accent-[var(--color-accent)] w-3 h-3"
+            className="accent-[var(--color-accent)] w-3.5 h-3.5"
             aria-label="파일명 검색 결과 제외"
           />
           파일명 제외
@@ -152,7 +152,8 @@ export const SearchFilters = memo(function SearchFilters({
             placeholder="결과 내 검색..."
             className="pl-6 pr-6 py-1 rounded border transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
             style={{
-              width: "120px",
+              width: "140px",
+              maxWidth: "200px",
               backgroundColor: "var(--color-bg-secondary)",
               borderColor: refineQuery ? "var(--color-accent)" : "var(--color-border)",
               color: "var(--color-text-primary)",
