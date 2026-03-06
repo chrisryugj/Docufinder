@@ -354,9 +354,9 @@ body,
 
 /* Remove old blue bar hover effect */
 .result-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--color-accent);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.01);
+  box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
 }
 
 /* Custom Scrollbar */
@@ -702,6 +702,16 @@ body,
    ============================================ */
 
 /* 컨텍스트 메뉴 아이템 */
+/* 컨텍스트 메뉴 열기 애니메이션 */
+@keyframes ctx-menu-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ctx-menu-animate {
+  animation: ctx-menu-in 0.12s ease-out;
+  transform-origin: top left;
+}
+
 .ctx-menu-item {
   color: var(--color-text-primary);
   background-color: transparent;

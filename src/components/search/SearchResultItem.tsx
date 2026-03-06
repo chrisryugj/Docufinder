@@ -155,7 +155,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             </Tooltip>
           )}
           <svg
-            className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
+            className="w-4 h-4 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -167,7 +167,7 @@ export const SearchResultItem = memo(function SearchResultItem({
         {/* 액션 버튼 + 뱃지 */}
         <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
           {/* 액션 버튼들 - 항상 노출 (opacity 0.5 → hover 1) */}
-          <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
             {/* 경로 복사 */}
             <button
               onClick={handleCopyPath}
@@ -218,14 +218,14 @@ export const SearchResultItem = memo(function SearchResultItem({
       >
         {/* 토글 아이콘 */}
         <svg
-          className={`w-3 h-3 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
           fill="currentColor"
           viewBox="0 0 20 20"
         >
           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
         </svg>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 relative">
           <p
             className={isCompact ? "text-xs" : "text-sm"}
             style={{
@@ -248,6 +248,12 @@ export const SearchResultItem = memo(function SearchResultItem({
               formatMode={isExpanded ? "full" : "preview"}
             />
           </p>
+          {!isExpanded && (
+            <div
+              className="absolute bottom-0 left-0 right-0 h-4 pointer-events-none"
+              style={{ background: "linear-gradient(transparent, var(--color-bg-secondary))" }}
+            />
+          )}
         </div>
       </div>
 

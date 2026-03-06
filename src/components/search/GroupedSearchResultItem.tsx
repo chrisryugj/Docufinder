@@ -90,7 +90,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {/* 액션 버튼 */}
-          <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleCopyPath}
               className="p-1.5 rounded transition-colors"

@@ -28,8 +28,8 @@ export function useContextMenu() {
     e.preventDefault();
     e.stopPropagation();
 
-    const menuWidth = 200;
-    const menuHeight = 160;
+    const menuWidth = 220;
+    const menuHeight = 170;
     const padding = 8;
 
     let x = e.clientX;
@@ -103,7 +103,7 @@ export function ResultContextMenu({
       ref={contextMenuRef}
       role="menu"
       aria-label="파일 작업 메뉴"
-      className="fixed min-w-[140px] py-1 rounded-lg shadow-xl border"
+      className="fixed min-w-[180px] py-1 rounded-lg shadow-xl border ctx-menu-animate"
       style={{
         left: contextMenu.x,
         top: contextMenu.y,
@@ -112,6 +112,7 @@ export function ResultContextMenu({
         borderColor: "var(--color-border)",
       }}
     >
+      {/* 파일 열기 (Primary action) */}
       <button
         role="menuitem"
         onClick={() => { closeContextMenu(); onOpenFile(filePath, pageNumber); }}
@@ -120,8 +121,12 @@ export function ResultContextMenu({
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
         </svg>
-        파일 열기
+        <span className="flex-1">파일 열기</span>
+        <kbd className="text-[10px] font-mono opacity-40">Enter</kbd>
       </button>
+
+      {/* 구분선 */}
+      <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
 
       {onOpenFolder && (
         <button
@@ -132,7 +137,7 @@ export function ResultContextMenu({
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
           </svg>
-          폴더 열기
+          <span className="flex-1">폴더 열기</span>
         </button>
       )}
 
@@ -147,7 +152,8 @@ export function ResultContextMenu({
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
         </svg>
-        경로 복사
+        <span className="flex-1">경로 복사</span>
+        <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>
     </div>,
     document.body
