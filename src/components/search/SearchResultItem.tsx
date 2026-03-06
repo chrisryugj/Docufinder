@@ -121,13 +121,13 @@ export const SearchResultItem = memo(function SearchResultItem({
       aria-selected={isSelected}
       aria-label={`${result.file_name} - ${result.match_type} 검색 결과`}
       tabIndex={isSelected ? 0 : -1}
+      onContextMenu={handleContextMenu}
     >
       {/* 헤더 */}
       <div className={`flex items-start justify-between ${isCompact ? "mb-1" : "mb-2"}`}>
         <div
           className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={() => onOpenFile(result.file_path, result.page_number)}
-          onContextMenu={handleContextMenu}
           title={[
             result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기",
             absoluteDate ? `수정: ${relativeTime} (${absoluteDate})` : null,
@@ -155,7 +155,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             </Tooltip>
           )}
           <svg
-            className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
+            className="w-4 h-4 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -167,15 +167,15 @@ export const SearchResultItem = memo(function SearchResultItem({
         {/* 액션 버튼 + 뱃지 */}
         <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
           {/* 액션 버튼들 - 항상 노출 (opacity 0.5 → hover 1) */}
-          <div className="flex items-center gap-0.5 opacity-50 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
             {/* 경로 복사 */}
             <button
               onClick={handleCopyPath}
-              className="p-1 rounded btn-icon-hover"
+              className="p-1.5 rounded btn-icon-hover"
               title="경로 복사"
               aria-label="파일 경로 복사"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
               </svg>
             </button>
@@ -184,11 +184,11 @@ export const SearchResultItem = memo(function SearchResultItem({
             {onOpenFolder && (
               <button
                 onClick={handleOpenFolder}
-                className="p-1 rounded btn-icon-hover"
+                className="p-1.5 rounded btn-icon-hover"
                 title="폴더 열기"
                 aria-label="상위 폴더 열기"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
                 </svg>
               </button>
@@ -218,14 +218,14 @@ export const SearchResultItem = memo(function SearchResultItem({
       >
         {/* 토글 아이콘 */}
         <svg
-          className={`w-3 h-3 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
           fill="currentColor"
           viewBox="0 0 20 20"
         >
           <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
         </svg>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 relative">
           <p
             className={isCompact ? "text-xs" : "text-sm"}
             style={{
@@ -248,6 +248,12 @@ export const SearchResultItem = memo(function SearchResultItem({
               formatMode={isExpanded ? "full" : "preview"}
             />
           </p>
+          {!isExpanded && (
+            <div
+              className="absolute bottom-0 left-0 right-0 h-4 pointer-events-none"
+              style={{ background: "linear-gradient(transparent, var(--color-bg-secondary))" }}
+            />
+          )}
         </div>
       </div>
 

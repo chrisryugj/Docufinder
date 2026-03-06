@@ -76,10 +76,10 @@ export function Toast({ toast, onDismiss }: ToastProps) {
 
   return (
     <div
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white text-sm shadow-lg backdrop-blur-sm transition-all duration-200 ${
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white text-sm shadow-lg backdrop-blur-sm transition-all duration-200 border-l-4 ${
         isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-4"
       }`}
-      style={{ backgroundColor: styles.bg }}
+      style={{ backgroundColor: styles.bg, borderLeftColor: "rgba(255,255,255,0.3)" }}
       role="alert"
     >
       {styles.icon}

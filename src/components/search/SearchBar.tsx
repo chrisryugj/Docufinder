@@ -195,10 +195,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
                           e.currentTarget.style.backgroundColor = "transparent";
                         }
                       }}
-                      title={disabled ? "모델 파일 필요" : mode.desc}
+                      title={disabled ? "설정에서 모델을 다운로드하세요" : mode.desc}
                     >
                       <div className="font-medium">{mode.label}</div>
-                      <div className="text-[10px] opacity-70">{mode.desc}</div>
+                      <div className="text-[10px] opacity-70">
+                        {disabled ? "설정 → 모델 다운로드 필요" : mode.desc}
+                      </div>
                     </button>
                   );
                 })}
