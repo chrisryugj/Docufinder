@@ -73,7 +73,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 
 
   return (
-    <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }} onContextMenu={handleContextMenu}>
+    <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }} onContextMenu={handleContextMenu} data-context-menu>
       {/* 그룹 헤더 */}
       <div className={`flex items-center justify-between ${isCompact ? "mb-2" : "mb-3"}`}>
         <div

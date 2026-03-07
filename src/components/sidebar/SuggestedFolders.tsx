@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
+import { Tooltip } from "../ui/Tooltip";
 
 interface SuggestedFolder {
   path: string;
@@ -13,9 +16,23 @@ interface SuggestedFoldersProps {
   onAddFolder: (path: string) => void;
 }
 
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  folderPath: string;
+}
+
 export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFoldersProps) {
   const [folders, setFolders] = useState<SuggestedFolder[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    folderPath: "",
+  });
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     invokeWithTimeout<SuggestedFolder[]>("get_suggested_folders", undefined, IPC_TIMEOUT.SETTINGS)
@@ -33,6 +50,68 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
     },
     [watchedFolders]
   );
+
+  // 컨텍스트 메뉴 열기
+  const handleContextMenu = (e: React.MouseEvent, folderPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ isOpen: true, x: e.clientX, y: e.clientY, folderPath });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  // 탐색기에서 열기
+  const handleOpenFolder = async () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
+    try {
+      await invoke("open_folder", { path });
+    } catch (err) {
+      console.error("Failed to open folder:", err);
+    }
+  };
+
+  // 폴더 추가
+  const handleAddFolder = () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
+    onAddFolder(path);
+  };
+
+  // 컨텍스트 메뉴 위치 경계 보정
+  useEffect(() => {
+    if (contextMenu.isOpen && contextMenuRef.current) {
+      const rect = contextMenuRef.current.getBoundingClientRect();
+      const padding = 8;
+      let { x, y } = contextMenu;
+      if (x + rect.width > window.innerWidth - padding) {
+        x = Math.max(padding, window.innerWidth - rect.width - padding);
+      }
+      if (y + rect.height > window.innerHeight - padding) {
+        y = Math.max(padding, window.innerHeight - rect.height - padding);
+      }
+      if (x !== contextMenu.x || y !== contextMenu.y) {
+        setContextMenu((prev) => ({ ...prev, x, y }));
+      }
+    }
+  }, [contextMenu.isOpen, contextMenu.x, contextMenu.y]);
+
+  // 외부 클릭 시 메뉴 닫기
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        closeContextMenu();
+      }
+    };
+    if (contextMenu.isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [contextMenu.isOpen]);
 
   const knownFolders = folders.filter((f) => f.category === "known");
   const drives = folders.filter((f) => f.category === "drive");
@@ -65,14 +144,48 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
           {knownFolders
             .filter((f) => !isRegistered(f.path))
             .map((folder) => (
-              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} />
+              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
             ))}
           {drives
             .filter((f) => !isRegistered(f.path))
             .map((folder) => (
-              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} />
+              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
             ))}
         </div>
+      )}
+
+      {/* 컨텍스트 메뉴 */}
+      {contextMenu.isOpen && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="fixed z-[9999] min-w-[160px] py-1 rounded-lg shadow-xl border"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            backgroundColor: "var(--color-bg-secondary)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          <button
+            onClick={handleAddFolder}
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            폴더 추가
+          </button>
+          <button
+            onClick={handleOpenFolder}
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          >
+            <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
+            </svg>
+            탐색기에서 열기
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -81,31 +194,36 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
 function FolderItem({
   folder,
   onAdd,
+  onContextMenu,
 }: {
   folder: SuggestedFolder;
   onAdd: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, path: string) => void;
 }) {
   const icon = folder.category === "drive" ? "\uD83D\uDCBE" : "\uD83D\uDCC1";
 
   return (
-    <button
-      onClick={() => onAdd(folder.path)}
-      className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-white/5 transition-colors group"
-      style={{ color: "var(--color-text-secondary)" }}
-      title={folder.path}
-    >
-      <span className="text-[13px]">{icon}</span>
-      <span className="truncate flex-1 text-left">{folder.label}</span>
-      <svg
-        className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={2}
-        stroke="currentColor"
-        style={{ color: "var(--color-text-muted)" }}
+    <Tooltip content="클릭하여 이 폴더를 검색 대상에 추가합니다" position="right" delay={400} usePortal>
+      <button
+        onClick={() => onAdd(folder.path)}
+        onContextMenu={(e) => onContextMenu(e, folder.path)}
+        className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-white/5 transition-colors group"
+        style={{ color: "var(--color-text-secondary)" }}
+        data-context-menu
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-      </svg>
-    </button>
+        <span className="text-[13px]">{icon}</span>
+        <span className="truncate flex-1 text-left">{folder.label}</span>
+        <svg
+          className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          stroke="currentColor"
+          style={{ color: "var(--color-text-muted)" }}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      </button>
+    </Tooltip>
   );
 }

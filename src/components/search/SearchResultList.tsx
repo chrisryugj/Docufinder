@@ -91,6 +91,13 @@ export const SearchResultList = memo(function SearchResultList({
     setVisibleCount(pageSize);
   }, [results, pageSize]);
 
+  // 키보드로 선택 변경 시 스크롤 따라가기
+  useEffect(() => {
+    if (selectedIndex == null || selectedIndex < 0) return;
+    const el = document.getElementById(`search-result-${selectedIndex}`);
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedIndex]);
+
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
     setExpandedIndex((prev) => (prev === index ? null : index));

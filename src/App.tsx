@@ -22,6 +22,7 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAreaRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -78,6 +79,7 @@ function App() {
     onCollapse: () => searchInputRef.current?.blur(),
     searchInputRef,
     query,
+    collapseContentRef: searchAreaRef,
   });
 
   // 인덱스 상태
@@ -152,6 +154,17 @@ function App() {
   // 글로벌 에러 핸들러 등록 (프론트엔드 에러 → Rust 로그 파일)
   useEffect(() => {
     setupGlobalErrorHandlers();
+  }, []);
+
+  // 전역 우클릭 방지 (커스텀 컨텍스트 메뉴가 있는 요소 제외)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-context-menu]")) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", handler);
+    return () => document.removeEventListener("contextmenu", handler);
   }, []);
 
   // 렌더 완료 후 창 표시 + 포커스 (visible: false safety net)
@@ -335,8 +348,12 @@ function App() {
   useKeyboardShortcuts(
     {
       onFocusSearch: () => {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
+        // 화면에 보이는 검색창에 포커스 (CompactSearchBar 또는 SearchBar)
+        const compact = compactSearchInputRef.current;
+        const main = searchInputRef.current;
+        const target = compact && compact.offsetParent !== null ? compact : main;
+        target?.focus();
+        target?.select();
       },
       onEscape: () => {
         if (selectedIndex >= 0) {
@@ -499,7 +516,7 @@ function App() {
         >
           {/* Search Bar + Filters Area */}
           {!isCollapsed && (
-            <div className="px-4 pt-4 pb-2">
+            <div ref={searchAreaRef} className="px-4 pt-4 pb-2">
               <SearchBar
                 ref={searchInputRef}
                 query={query}

@@ -1,4 +1,5 @@
 import { useState, useEffect, ReactNode, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface TooltipProps {
   content: ReactNode;
@@ -6,6 +7,8 @@ interface TooltipProps {
   position?: "top" | "bottom" | "left" | "right";
   delay?: number;
   maxWidth?: number;
+  /** overflow: hidden 부모 안에서 잘리는 문제 방지 (Portal 사용) */
+  usePortal?: boolean;
 }
 
 const positionStyles = {
@@ -35,9 +38,12 @@ export function Tooltip({
   position = "top",
   delay = 300,
   maxWidth,
+  usePortal = false,
 }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const [portalPos, setPortalPos] = useState<{ top: number; left: number } | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   // 언마운트 시 타이머 정리 (메모리 누수 방지)
   useEffect(() => () => {
@@ -45,7 +51,21 @@ export function Tooltip({
   }, []);
 
   const showTooltip = () => {
-    timeoutRef.current = setTimeout(() => setIsVisible(true), delay);
+    timeoutRef.current = setTimeout(() => {
+      if (usePortal && triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        const gap = 8;
+        let top = 0, left = 0;
+        switch (position) {
+          case "top":    top = rect.top - gap;    left = rect.left + rect.width / 2; break;
+          case "bottom": top = rect.bottom + gap;  left = rect.left + rect.width / 2; break;
+          case "left":   top = rect.top + rect.height / 2; left = rect.left - gap; break;
+          case "right":  top = rect.top + rect.height / 2; left = rect.right + gap; break;
+        }
+        setPortalPos({ top, left });
+      }
+      setIsVisible(true);
+    }, delay);
   };
 
   const hideTooltip = () => {
@@ -55,8 +75,64 @@ export function Tooltip({
     setIsVisible(false);
   };
 
+  const portalTransform: Record<string, string> = {
+    top: "translateX(-50%) translateY(-100%)",
+    bottom: "translateX(-50%)",
+    left: "translateY(-50%) translateX(-100%)",
+    right: "translateY(-50%)",
+  };
+
+  const tooltipContent = isVisible && content && (usePortal ? (
+    portalPos && createPortal(
+      <div
+        className={`fixed z-[9999] px-2 py-1 text-xs rounded shadow-lg pointer-events-none ${maxWidth ? "" : "whitespace-nowrap"}`}
+        style={{
+          top: portalPos.top,
+          left: portalPos.left,
+          transform: portalTransform[position],
+          backgroundColor: "var(--color-bg-tertiary)",
+          color: "var(--color-text-secondary)",
+          ...(maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" as const } : {}),
+        }}
+        role="tooltip"
+      >
+        {content}
+        <div
+          className={`absolute border-4 ${arrowStyles[position]}`}
+          style={arrowColorStyles[position]}
+          aria-hidden="true"
+        />
+      </div>,
+      document.body
+    )
+  ) : (
+    <div
+      className={`
+        absolute z-50 px-2 py-1
+        text-xs rounded shadow-lg
+        pointer-events-none
+        ${maxWidth ? "" : "whitespace-nowrap"}
+        ${positionStyles[position]}
+      `}
+      style={{
+        backgroundColor: "var(--color-bg-tertiary)",
+        color: "var(--color-text-secondary)",
+        ...(maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" as const } : {}),
+      }}
+      role="tooltip"
+    >
+      {content}
+      <div
+        className={`absolute border-4 ${arrowStyles[position]}`}
+        style={arrowColorStyles[position]}
+        aria-hidden="true"
+      />
+    </div>
+  ));
+
   return (
     <div
+      ref={triggerRef}
       className="relative inline-block overflow-visible"
       onMouseEnter={showTooltip}
       onMouseLeave={hideTooltip}
@@ -64,32 +140,7 @@ export function Tooltip({
       onBlur={hideTooltip}
     >
       {children}
-
-      {isVisible && content && (
-        <div
-          className={`
-            absolute z-50 px-2 py-1
-            text-xs rounded shadow-lg
-            pointer-events-none
-            ${maxWidth ? "" : "whitespace-nowrap"}
-            ${positionStyles[position]}
-          `}
-          style={{
-            backgroundColor: "var(--color-bg-tertiary)",
-            color: "var(--color-text-secondary)",
-            ...(maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" as const } : {}),
-          }}
-          role="tooltip"
-        >
-          {content}
-          {/* Arrow */}
-          <div
-            className={`absolute border-4 ${arrowStyles[position]}`}
-            style={arrowColorStyles[position]}
-            aria-hidden="true"
-          />
-        </div>
-      )}
+      {tooltipContent}
     </div>
   );
 }

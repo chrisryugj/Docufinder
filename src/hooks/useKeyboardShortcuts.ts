@@ -1,4 +1,4 @@
-import { useEffect, useRef, RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 interface ShortcutHandlers {
   onFocusSearch?: () => void;
@@ -16,30 +16,22 @@ interface ShortcutHandlers {
  */
 export function useKeyboardShortcuts(
   handlers: ShortcutHandlers,
-  searchInputRef?: RefObject<HTMLInputElement | null>
+  _searchInputRef?: RefObject<HTMLInputElement | null>
 ) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
-  const searchRef = useRef(searchInputRef);
-  searchRef.current = searchInputRef;
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const h = handlersRef.current;
-      const inputRef = searchRef.current;
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       const isInputFocused =
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA";
 
-      // Ctrl+K: 검색창 포커스
+      // Ctrl+K: 검색창 포커스 (타겟 선택은 핸들러에서 처리)
       if (isCtrlOrCmd && e.key === "k") {
         e.preventDefault();
-        if (inputRef?.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-        }
         h.onFocusSearch?.();
         return;
       }
