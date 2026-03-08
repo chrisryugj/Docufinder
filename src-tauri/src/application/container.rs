@@ -4,10 +4,10 @@
 //! 기존 AppState를 대체하여 클린 아키텍처 적용
 
 use crate::application::services::{FolderService, IndexService, SearchService};
-use crate::commands::settings::{self, Settings};
+use crate::commands::settings::{self, Settings, VectorIndexingMode};
 use crate::embedder::Embedder;
-use crate::indexer::manager::{IndexContext, WatchManager};
-use crate::indexer::vector_worker::VectorWorker;
+use crate::indexer::manager::{IndexContext, WatchManager, WatchRuntimeSettings};
+use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
 use crate::reranker::Reranker;
 use crate::search::filename_cache::FilenameCache;
 use crate::search::vector::VectorIndex;
@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
+type VectorProgressState = Arc<RwLock<Option<VectorProgressCallback>>>;
 
 /// DI 컨테이너 - 앱 전역 의존성 관리
 pub struct AppContainer {
@@ -52,9 +53,10 @@ pub struct AppContainer {
     // ============================================
     indexing_cancel_flag: Arc<AtomicBool>,
     /// 인메모리 설정 캐시 (디스크 I/O 제거)
-    settings_cache: RwLock<Settings>,
+    settings_cache: Arc<RwLock<Settings>>,
     /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
     incremental_update_callback: IncrementalCallback,
+    vector_progress_callback: VectorProgressState,
 }
 
 impl AppContainer {
@@ -98,8 +100,9 @@ impl AppContainer {
             reranker: OnceCell::new(),
             filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
-            settings_cache: RwLock::new(cached_settings),
+            settings_cache: Arc::new(RwLock::new(cached_settings)),
             incremental_update_callback: RwLock::new(None),
+            vector_progress_callback: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -233,42 +236,67 @@ impl AppContainer {
         }
     }
 
+    pub fn set_vector_progress_callback(&self, callback: VectorProgressCallback) {
+        if let Ok(mut cb) = self.vector_progress_callback.write() {
+            *cb = Some(callback);
+        }
+    }
+
     /// 파일 감시 매니저 가져오기 (lazy load) - Arc 참조 반환
     pub fn get_watch_manager(&self) -> Result<Arc<RwLock<WatchManager>>, ApiError> {
         self.watch_manager
             .get_or_try_init(|| {
-                let settings = self.get_settings();
                 let callback = self
                     .incremental_update_callback
                     .read()
                     .ok()
                     .and_then(|cb| cb.clone());
-                let mut excluded_dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
-                excluded_dirs.extend(settings.exclude_dirs.clone());
+                let settings_cache = self.settings_cache.clone();
+                let runtime_settings = Arc::new(move || {
+                    let settings = settings_cache
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .clone();
+                    let mut excluded_dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect();
+                    excluded_dirs.extend(settings.exclude_dirs.clone());
+                    WatchRuntimeSettings {
+                        max_file_size_mb: settings.max_file_size_mb,
+                        excluded_dirs,
+                    }
+                });
                 // 벡터 워커 트리거 콜백: watcher 증분 인덱싱 후 pending 벡터 자동 백필
                 let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = {
                     let vw = self.vector_worker.clone();
                     let db = self.db_path.clone();
+                    let settings_cache = self.settings_cache.clone();
                     let emb = self.get_embedder().ok();
                     let vi = self.get_vector_index().ok();
                     match (emb, vi) {
                         (Some(embedder), Some(vector_index)) => Some(Arc::new(move || {
-                            if let Ok(worker) = vw.read() {
+                            let settings = settings_cache
+                                .read()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .clone();
+                            if !settings.semantic_search_enabled
+                                || settings.vector_indexing_mode != VectorIndexingMode::Auto
+                            {
+                                return;
+                            }
+
+                            // 단일 write lock 스코프 (TOCTOU 방지)
+                            if let Ok(mut worker) = vw.write() {
                                 if !worker.is_running() {
-                                    drop(worker);
-                                    if let Ok(mut worker) = vw.write() {
-                                        let _ = worker.start(
-                                            db.clone(),
-                                            embedder.clone(),
-                                            vector_index.clone(),
-                                            None, // progress callback은 프론트엔드 이벤트로 별도 처리
-                                            None,
-                                        );
-                                        tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
-                                    }
+                                    let _ = worker.start(
+                                        db.clone(),
+                                        embedder.clone(),
+                                        vector_index.clone(),
+                                        None,
+                                        Some(settings.indexing_intensity.clone()),
+                                    );
+                                    tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
                                 }
                             }
                         })),
@@ -280,9 +308,8 @@ impl AppContainer {
                     embedder: self.get_embedder().ok(),
                     vector_index: self.get_vector_index().ok(),
                     filename_cache: self.filename_cache.clone(),
-                    max_file_size_mb: settings.max_file_size_mb,
+                    runtime_settings,
                     on_incremental_update: callback,
-                    excluded_dirs,
                     on_vector_trigger: vector_trigger,
                 };
 

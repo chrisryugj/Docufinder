@@ -23,6 +23,7 @@ function App() {
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchAreaRef = useRef<HTMLDivElement>(null);
+  const backgroundRefreshToastAtRef = useRef(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -127,6 +128,7 @@ function App() {
     viewDensity,
     setViewDensity,
     semanticEnabled,
+    vectorIndexingMode,
     resultsPerPage,
     applySettings,
   } = useAppSettings({ setSearchMode });
@@ -185,8 +187,11 @@ function App() {
   useEffect(() => {
     if (progress?.phase === "completed") {
       clearSearchCache();
+      if (query.trim()) {
+        invalidateSearch();
+      }
     }
-  }, [progress?.phase]);
+  }, [progress?.phase, query, invalidateSearch]);
 
   // 벡터 인덱싱 완료 시 토스트 + 캐시 무효화
   useEffect(() => {
@@ -194,10 +199,41 @@ function App() {
       showToast("시맨틱 검색 준비 완료!", "success");
       clearVectorCompleted();
       clearSearchCache();
+      if (query.trim()) {
+        invalidateSearch();
+      }
     }
-  }, [vectorJustCompleted, showToast, clearVectorCompleted]);
+  }, [vectorJustCompleted, showToast, clearVectorCompleted, query, invalidateSearch]);
 
   // 모델 다운로드 상태 이벤트 수신
+  useEffect(() => {
+    let unlisten: Promise<(() => void)> | null = null;
+
+    unlisten = listen<number>("incremental-index-updated", (event) => {
+      clearSearchCache();
+      void refreshStatus();
+      void refreshVectorStatus();
+
+      if (query.trim()) {
+        invalidateSearch();
+
+        const now = Date.now();
+        if (now - backgroundRefreshToastAtRef.current > 4000) {
+          backgroundRefreshToastAtRef.current = now;
+          showToast(
+            `${event.payload}개 변경 파일을 반영해 현재 검색 결과를 새로고침했습니다.`,
+            "info",
+            2500
+          );
+        }
+      }
+    });
+
+    return () => {
+      unlisten?.then((fn) => fn());
+    };
+  }, [query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast]);
+
   useEffect(() => {
     let toastId: string | null = null;
     const unlisten = listen<string>("model-download-status", (event) => {
@@ -417,22 +453,24 @@ function App() {
 
   const handleSettingsSaved = useCallback((settings: Settings) => {
     const wasEnabled = semanticEnabled;
+    const wasAutoMode = vectorIndexingMode === "auto";
     applySettings(settings);
     clearSearchCache(); // 설정 변경 시 캐시된 검색 결과 무효화
     const nowEnabled = settings.semantic_search_enabled ?? false;
-    if (!nowEnabled && isVectorIndexing) {
+    const nowAutoMode = (settings.vector_indexing_mode ?? "manual") === "auto";
+    if (isVectorIndexing && (!nowEnabled || !nowAutoMode)) {
       cancelVectorIndexing();
     }
     // 시맨틱 검색 켜질 때 + 자동 모드 → 벡터 인덱싱 자동 재개
-    if (nowEnabled && !wasEnabled && !isVectorIndexing) {
+    if (nowEnabled && nowAutoMode && !isVectorIndexing && (!wasEnabled || !wasAutoMode)) {
       // 반환값으로 최신 상태 확인 (stale closure 방지)
       refreshVectorStatus().then((freshStatus) => {
         if ((freshStatus?.pending_chunks ?? 0) > 0) {
           startVectorIndexing();
         }
-      });
+      }).catch(() => {});
     }
-  }, [applySettings, semanticEnabled, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, startVectorIndexing]);
+  }, [applySettings, semanticEnabled, vectorIndexingMode, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, startVectorIndexing]);
 
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");
@@ -513,6 +551,7 @@ function App() {
           ref={scrollContainerRef}
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto overflow-x-hidden"
+          style={{ overflowAnchor: 'none' }}
         >
           {/* Search Bar + Filters Area */}
           {!isCollapsed && (
