@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, memo } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -40,6 +40,11 @@ interface SearchResultListProps {
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
 
+interface PendingScrollAnchor {
+  itemId: string;
+  offsetTop: number;
+}
+
 export const SearchResultList = memo(function SearchResultList({
   results,
   filenameResults = [],
@@ -71,9 +76,27 @@ export const SearchResultList = memo(function SearchResultList({
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const isCompact = viewDensity === "compact";
   const listRef = useRef<HTMLDivElement>(null);
+  const pendingScrollAnchorRef = useRef<PendingScrollAnchor | null>(null);
+
+  const captureScrollAnchor = useCallback((itemId: string) => {
+    const listElement = listRef.current;
+    const itemElement = document.getElementById(itemId);
+    const scrollContainer = findScrollContainer(listElement);
+
+    if (!listElement || !itemElement || !scrollContainer) {
+      pendingScrollAnchorRef.current = null;
+      return;
+    }
+
+    pendingScrollAnchorRef.current = {
+      itemId,
+      offsetTop: getOffsetTopWithinContainer(itemElement, scrollContainer),
+    };
+  }, []);
 
   // 그룹 펼침 토글
-  const handleToggleGroupExpand = useCallback((filePath: string) => {
+  const handleToggleGroupExpand = useCallback((filePath: string, itemId: string) => {
+    captureScrollAnchor(itemId);
     setExpandedGroups(prev => {
       const next = new Set(prev);
       if (next.has(filePath)) {
@@ -83,13 +106,17 @@ export const SearchResultList = memo(function SearchResultList({
       }
       return next;
     });
-  }, []);
+  }, [captureScrollAnchor]);
 
   // 검색 결과 변경 시 상태 초기화 (스크롤은 건드리지 않음 — 타이핑 중 포커스 이탈 방지)
   useEffect(() => {
     setExpandedIndex(null);
     setVisibleCount(pageSize);
   }, [results, pageSize]);
+
+  useEffect(() => {
+    pendingScrollAnchorRef.current = null;
+  }, [results, groupedResults, viewMode]);
 
   // 키보드로 선택 변경 시 스크롤 따라가기
   useEffect(() => {
@@ -100,8 +127,28 @@ export const SearchResultList = memo(function SearchResultList({
 
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
+    captureScrollAnchor(`search-result-${index}`);
     setExpandedIndex((prev) => (prev === index ? null : index));
-  }, []);
+  }, [captureScrollAnchor]);
+
+  useLayoutEffect(() => {
+    const pendingAnchor = pendingScrollAnchorRef.current;
+    if (!pendingAnchor) return;
+
+    const listElement = listRef.current;
+    const itemElement = document.getElementById(pendingAnchor.itemId);
+    const scrollContainer = findScrollContainer(listElement);
+    pendingScrollAnchorRef.current = null;
+
+    if (!listElement || !itemElement || !scrollContainer) return;
+
+    const nextOffsetTop = getOffsetTopWithinContainer(itemElement, scrollContainer);
+    const offsetDelta = nextOffsetTop - pendingAnchor.offsetTop;
+
+    if (Math.abs(offsetDelta) < 1) return;
+
+    scrollContainer.scrollTop += offsetDelta;
+  }, [expandedIndex, expandedGroups]);
 
   // 전체 결과 (파일명 + 내용)
   const hasResults = results.length > 0 || filenameResults.length > 0;
@@ -317,9 +364,10 @@ export const SearchResultList = memo(function SearchResultList({
             // 그룹 뷰
             <>
               <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={isCompact ? "space-y-1" : "space-y-3"}>
-                {groupedResults.slice(0, visibleCount).map((group) => (
+                {groupedResults.slice(0, visibleCount).map((group, index) => (
                   <GroupedSearchResultItem
                     key={group.file_path}
+                    domId={`grouped-search-result-${index}`}
                     group={group}
                     onOpenFile={onOpenFile}
                     onCopyPath={onCopyPath}
@@ -327,7 +375,7 @@ export const SearchResultList = memo(function SearchResultList({
                     isCompact={isCompact}
                     searchQuery={query}
                     isExpanded={expandedGroups.has(group.file_path)}
-                    onToggleExpand={() => handleToggleGroupExpand(group.file_path)}
+                    onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
                   />
                 ))}
               </div>
@@ -458,6 +506,26 @@ export const SearchResultList = memo(function SearchResultList({
 });
 
 /** 더 보기 버튼 */
+function findScrollContainer(element: HTMLElement | null): HTMLElement | null {
+  let current = element?.parentElement ?? null;
+
+  while (current) {
+    const { overflowY } = window.getComputedStyle(current);
+    if (overflowY === "auto" || overflowY === "scroll") {
+      return current;
+    }
+    current = current.parentElement;
+  }
+
+  return null;
+}
+
+function getOffsetTopWithinContainer(element: HTMLElement, container: HTMLElement): number {
+  const elementRect = element.getBoundingClientRect();
+  const containerRect = container.getBoundingClientRect();
+  return elementRect.top - containerRect.top;
+}
+
 function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
   visibleCount: number;
   totalCount: number;

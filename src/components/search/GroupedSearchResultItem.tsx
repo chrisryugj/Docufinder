@@ -9,6 +9,7 @@ import { getMatchTypeBadge } from "./matchType";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 
 interface GroupedSearchResultItemProps {
+  domId?: string;
   group: GroupedSearchResult;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
@@ -30,6 +31,7 @@ interface GroupedSearchResultItemProps {
  * memo() 적용: 불필요한 리렌더링 방지
  */
 export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
+  domId,
   group,
   onOpenFile,
   onCopyPath,
@@ -73,7 +75,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 
 
   return (
-    <div className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }} onContextMenu={handleContextMenu} data-context-menu>
+    <div id={domId} className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }} onContextMenu={handleContextMenu} data-context-menu>
       {/* 그룹 헤더 */}
       <div className={`flex items-center justify-between ${isCompact ? "mb-2" : "mb-3"}`}>
         <div

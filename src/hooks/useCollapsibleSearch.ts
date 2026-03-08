@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, UIEvent, useMemo, useLayoutEffect } from "react";
+import { useState, useCallback, useRef, UIEvent, useMemo } from "react";
 
 interface UseCollapsibleSearchOptions {
   /** 스크롤 임계값 (px) - 이 값 이상 스크롤 시 축소 */
@@ -11,8 +11,6 @@ interface UseCollapsibleSearchOptions {
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
   /** 검색 쿼리 - 최근 타이핑 중 collapse 방지용 */
   query?: string;
-  /** 스크롤 컨테이너 내부에서 collapse 시 사라지는 콘텐츠 ref (스크롤 보정용) */
-  collapseContentRef?: React.RefObject<HTMLElement | null>;
 }
 
 interface UseCollapsibleSearchReturn {
@@ -33,7 +31,7 @@ interface UseCollapsibleSearchReturn {
 export function useCollapsibleSearch(
   options: UseCollapsibleSearchOptions = {}
 ): UseCollapsibleSearchReturn {
-  const { threshold = 100, onCollapse, onExpand, searchInputRef, query, collapseContentRef } = options;
+  const { threshold = 100, onCollapse, onExpand, searchInputRef, query } = options;
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
@@ -41,10 +39,6 @@ export function useCollapsibleSearch(
   const prevCollapsed = useRef(false);
   const lastScrollTop = useRef(0);
   const scrollDirectionUp = useRef(false);
-
-  // collapse 시 스크롤 보정용
-  const collapseHeightRef = useRef(0);
-  const prevCollapsedLayout = useRef(false);
 
   // 최근 타이핑 활동 추적 (포커스 일시 이탈 시에도 collapse 방지)
   const lastTypingTimeRef = useRef(0);
@@ -120,11 +114,6 @@ export function useCollapsibleSearch(
         }
 
         if (shouldCollapse !== prevCollapsed.current) {
-          // collapse 전환 시 사라질 콘텐츠 높이 측정 (DOM 변경 전)
-          if (shouldCollapse && !prevCollapsed.current && collapseContentRef?.current) {
-            collapseHeightRef.current = collapseContentRef.current.getBoundingClientRect().height;
-          }
-
           prevCollapsed.current = shouldCollapse;
           setIsCollapsed(shouldCollapse);
 
@@ -137,24 +126,6 @@ export function useCollapsibleSearch(
       });
     };
   }, [threshold, onCollapse, onExpand, searchInputRef]);
-
-  // collapse/expand 시 스크롤 위치 보정 (DOM 변경 후, paint 전)
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    if (isCollapsed && !prevCollapsedLayout.current) {
-      // collapse: 검색바 영역이 제거됨 → scrollTop 보정 (위로)
-      if (collapseHeightRef.current > 0) {
-        const adjusted = Math.max(0, container.scrollTop - collapseHeightRef.current);
-        container.scrollTop = adjusted;
-        lastScrollTop.current = adjusted;
-        collapseHeightRef.current = 0;
-      }
-    }
-
-    prevCollapsedLayout.current = isCollapsed;
-  }, [isCollapsed]);
 
   const scrollToTop = useCallback(() => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });

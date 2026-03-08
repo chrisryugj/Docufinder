@@ -22,7 +22,6 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchAreaRef = useRef<HTMLDivElement>(null);
   const backgroundRefreshToastAtRef = useRef(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
@@ -76,11 +75,10 @@ function App() {
     showScrollTopButton: showScrollTop,
     expand,
   } = useCollapsibleSearch({
-    threshold: 200,
+    threshold: 80,
     onCollapse: () => searchInputRef.current?.blur(),
     searchInputRef,
     query,
-    collapseContentRef: searchAreaRef,
   });
 
   // 인덱스 상태
@@ -546,72 +544,72 @@ function App() {
           </div>
         )}
 
-        {/* Scrollable Content Area */}
+        {/* Search Bar + Filters Area — 스크롤 컨테이너 밖 (collapse 시 스크롤 점프 방지) */}
+        {!isCollapsed && (
+          <div className="px-4 pt-4 pb-2">
+            <SearchBar
+              ref={searchInputRef}
+              query={query}
+              onQueryChange={handleQueryChange}
+              onCompositionStart={() => setComposing(true)}
+              onCompositionEnd={(finalValue) => setComposing(false, finalValue)}
+              searchMode={searchMode}
+              onSearchModeChange={setSearchMode}
+              isLoading={isLoading}
+              status={status}
+              resultCount={filteredResults.length}
+              searchTime={searchTime}
+            />
+
+            {/* 벡터 인덱싱 상태 배너 */}
+            {isVectorIndexing && (
+              <div
+                className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
+                style={{
+                  backgroundColor: "rgba(59, 130, 246, 0.1)",
+                  border: "1px solid rgba(59, 130, 246, 0.2)",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin h-3 w-3 border border-blue-400 border-t-transparent rounded-full" />
+                  <span>벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능</span>
+                </div>
+                <button onClick={cancelVectorIndexing} className="text-blue-400 hover:text-blue-300 font-medium">취소</button>
+              </div>
+            )}
+
+            {/* 필터 바 */}
+            {query && (results.length > 0 || filenameResults.length > 0) && (
+              <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+                <SearchFilters
+                  filters={filters}
+                  onFiltersChange={setFilters}
+                  showRefineSearch={results.length > 0 || filenameResults.length > 0}
+                  searchMode={searchMode}
+                  refineQuery={refineQuery}
+                  onRefineQueryChange={setRefineQuery}
+                  onRefineQueryClear={clearRefine}
+                />
+              </div>
+            )}
+
+            {error && <div className="mt-3"><ErrorBanner message={error} onDismiss={clearError} /></div>}
+          </div>
+        )}
+
+        {/* Scrollable Content Area — 검색 결과만 포함 (스크롤 점프 원천 차단) */}
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto overflow-x-hidden"
-          style={{ overflowAnchor: 'none' }}
+          style={{ overflowAnchor: "none" }}
         >
-          {/* Search Bar + Filters Area */}
-          {!isCollapsed && (
-            <div ref={searchAreaRef} className="px-4 pt-4 pb-2">
-              <SearchBar
-                ref={searchInputRef}
-                query={query}
-                onQueryChange={handleQueryChange}
-                onCompositionStart={() => setComposing(true)}
-                onCompositionEnd={(finalValue) => setComposing(false, finalValue)}
-                searchMode={searchMode}
-                onSearchModeChange={setSearchMode}
-                isLoading={isLoading}
-                status={status}
-                resultCount={filteredResults.length}
-                searchTime={searchTime}
-              />
-
-              {/* 벡터 인덱싱 상태 배너 */}
-              {isVectorIndexing && (
-                <div
-                  className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
-                  style={{
-                    backgroundColor: "rgba(59, 130, 246, 0.1)",
-                    border: "1px solid rgba(59, 130, 246, 0.2)",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin h-3 w-3 border border-blue-400 border-t-transparent rounded-full" />
-                    <span>벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능</span>
-                  </div>
-                  <button onClick={cancelVectorIndexing} className="text-blue-400 hover:text-blue-300 font-medium">취소</button>
-                </div>
-              )}
-
-              {/* 필터 바 */}
-              {query && (results.length > 0 || filenameResults.length > 0) && (
-                <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-                  <SearchFilters
-                    filters={filters}
-                    onFiltersChange={setFilters}
-                    showRefineSearch={results.length > 0 || filenameResults.length > 0}
-                    searchMode={searchMode}
-                    refineQuery={refineQuery}
-                    onRefineQueryChange={setRefineQuery}
-                    onRefineQueryClear={clearRefine}
-                  />
-                </div>
-              )}
-
-              {error && <div className="mt-3"><ErrorBanner message={error} onDismiss={clearError} /></div>}
-            </div>
-          )}
-
           {isCollapsed && error && (
             <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
           )}
 
-          <main className="px-6 pb-20 transition-all duration-150">
+          <main className="px-6 pb-20">
             <div className="max-w-4xl mx-auto mt-4">
               <SearchResultList
                 results={filteredResults}
