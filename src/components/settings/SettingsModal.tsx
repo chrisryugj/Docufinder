@@ -164,6 +164,12 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   };
 
   const enableSemanticWithConfirm = async (onConfirm: () => void) => {
+    const code = window.prompt("시맨틱 검색을 활성화하려면 관리자 코드를 입력하세요.");
+    if (code === null) return; // 취소
+    if (code !== "9812") {
+      await ask("관리자 코드가 올바르지 않습니다.", { title: "활성화 실패", kind: "error", okLabel: "확인" });
+      return;
+    }
     const confirmed = await ask(
       "시맨틱 검색은 ONNX 모델 다운로드가 필요하며, 추가 디스크 공간과 메모리를 사용합니다.\n활성화하시겠습니까?",
       { title: "시맨틱 검색 활성화", kind: "info", okLabel: "활성화", cancelLabel: "취소" }

@@ -125,7 +125,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-1 w-full px-2 py-1 text-[11px] font-medium rounded hover:bg-white/5 transition-colors"
-        style={{ color: "var(--color-text-muted)" }}
+        style={{ color: "var(--color-sidebar-muted)" }}
       >
         <svg
           className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -207,8 +207,8 @@ function FolderItem({
       <button
         onClick={() => onAdd(folder.path)}
         onContextMenu={(e) => onContextMenu(e, folder.path)}
-        className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-white/5 transition-colors group"
-        style={{ color: "var(--color-text-secondary)" }}
+        className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-white/5 hover:!text-white/90 transition-colors group"
+        style={{ color: "var(--color-sidebar-muted)" }}
         data-context-menu
       >
         <span className="text-[13px]">{icon}</span>
@@ -219,7 +219,7 @@ function FolderItem({
           viewBox="0 0 24 24"
           strokeWidth={2}
           stroke="currentColor"
-          style={{ color: "var(--color-text-muted)" }}
+          style={{ color: "var(--color-sidebar-muted)" }}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
