@@ -179,6 +179,8 @@ pub fn save_file_metadata_and_cache(conn: &Connection, path: &Path) -> Result<St
 }
 
 /// 파일 메타데이터만 저장 (파일명 검색용)
+/// 기존에 FTS 인덱싱된 파일이 metadata-only로 전환되는 경우
+/// stale chunks/chunks_fts 데이터를 정리한다.
 fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -200,6 +202,17 @@ fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexEr
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+
+    // 기존 파일이 있으면 stale chunks/chunks_fts 정리
+    if let Ok(file_id) = conn.query_row(
+        "SELECT id FROM files WHERE path = ?",
+        rusqlite::params![&path_str],
+        |row| row.get::<_, i64>(0),
+    ) {
+        if let Err(e) = db::delete_chunks_for_file_no_tx(conn, file_id) {
+            tracing::warn!("Failed to clean stale chunks for {:?}: {}", path, e);
+        }
+    }
 
     db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
         .map_err(|e| IndexError::DbError(e.to_string()))?;
@@ -997,7 +1010,7 @@ pub fn scan_metadata_only(
     recursive: bool,
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<Box<dyn Fn(MetadataScanProgress) + Send + Sync>>,
-    max_file_size_mb: u64,
+    _max_file_size_mb: u64,
     excluded_dirs: &[String],
 ) -> Result<MetadataScanResult, IndexError> {
     let folder_str = folder_path.to_string_lossy().to_string();
@@ -1029,11 +1042,6 @@ pub fn scan_metadata_only(
 
     send_progress("scanning", 0, true);
 
-    let max_file_size_bytes = if max_file_size_mb > 0 {
-        max_file_size_mb * 1_048_576
-    } else {
-        0
-    };
     let mut count = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut collected_paths: Vec<PathBuf> = Vec::new();
@@ -1088,21 +1096,17 @@ pub fn scan_metadata_only(
 
         let path = entry.path();
 
-        // 확장자 체크
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
-            continue;
-        }
-
         // 임시 파일 제외
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if file_name.starts_with("~$") || file_name.starts_with('.') {
             continue;
         }
+
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
 
         // 파일 크기 체크 (metadata 접근 - 파일 열지 않음)
         let metadata = match entry.metadata() {
@@ -1113,11 +1117,7 @@ pub fn scan_metadata_only(
             }
         };
 
-        if max_file_size_bytes > 0 && metadata.len() > max_file_size_bytes {
-            continue;
-        }
-
-        // DB에 메타데이터만 저장
+        // DB에 메타데이터만 저장 (확장자/용량 무관 — 파일명 검색 완전성 보장)
         let path_str = path.to_string_lossy().to_string();
         let file_type = ext.clone();
         let size = metadata.len() as i64;

@@ -377,37 +377,59 @@ impl SearchService {
         let mut hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
 
         // 5. Cross-Encoder Reranking (상위 20개만)
-        // FTS 결과에서 직접 content 조회 (DB 조회 제거)
+        // FTS content가 있는 후보만 rerank하되, index를 정확히 매핑
         const RERANK_TOP_K: usize = 20;
         if let Some(rr) = self.reranker.as_ref() {
             if hybrid_results.len() > 1 {
-                // Reranking 대상 문서 추출 (FTS 결과에서 직접)
-                let documents: Vec<&str> = hybrid_results
+                let top_k = hybrid_results.len().min(RERANK_TOP_K);
+                let top_results: Vec<_> = hybrid_results.drain(..top_k).collect();
+
+                // (top_results 내 원본 index, content) 쌍 — FTS 있는 것만
+                let rerank_candidates: Vec<(usize, &str)> = top_results
                     .iter()
-                    .take(RERANK_TOP_K)
-                    .filter_map(|r| fts_map.get(&r.chunk_id).map(|f| f.content.as_str()))
+                    .enumerate()
+                    .filter_map(|(i, r)| {
+                        fts_map.get(&r.chunk_id).map(|f| (i, f.content.as_str()))
+                    })
                     .collect();
 
-                if !documents.is_empty() {
-                    match rr.rerank(query, &documents, documents.len()) {
-                        Ok(reranked_indices) => {
-                            // 상위 K개만 재정렬
-                            let top_results: Vec<_> = hybrid_results
-                                .drain(..documents.len().min(RERANK_TOP_K))
-                                .collect();
-                            let mut reranked: Vec<_> = reranked_indices
-                                .into_iter()
-                                .filter_map(|idx| top_results.get(idx).cloned())
-                                .collect();
-                            // 재정렬된 결과 + 나머지 결과
-                            reranked.extend(hybrid_results);
-                            hybrid_results = reranked;
-                            tracing::debug!("Reranked top {} results", RERANK_TOP_K);
+                let mut did_rerank = false;
+                if !rerank_candidates.is_empty() {
+                    let documents: Vec<&str> =
+                        rerank_candidates.iter().map(|(_, c)| *c).collect();
+                    if let Ok(reranked_indices) =
+                        rr.rerank(query, &documents, documents.len())
+                    {
+                        // reranked index → 원본 top_results index로 매핑
+                        let reranked_orig_indices: HashSet<usize> =
+                            rerank_candidates.iter().map(|(i, _)| *i).collect();
+                        let mut reranked: Vec<_> = reranked_indices
+                            .into_iter()
+                            .filter_map(|idx| {
+                                rerank_candidates
+                                    .get(idx)
+                                    .map(|(orig_idx, _)| top_results[*orig_idx].clone())
+                            })
+                            .collect();
+                        // vector-only 결과는 rerank 대상 아님 — 원래 순서 유지
+                        for (i, r) in top_results.iter().cloned().enumerate() {
+                            if !reranked_orig_indices.contains(&i) {
+                                reranked.push(r);
+                            }
                         }
-                        Err(e) => {
-                            tracing::warn!("Reranking failed: {}", e);
-                        }
+                        reranked.extend(hybrid_results);
+                        hybrid_results = reranked;
+                        did_rerank = true;
+                        tracing::debug!("Reranked top {} results", top_k);
+                    } else {
+                        tracing::warn!("Reranking failed, using original order");
                     }
+                }
+                if !did_rerank {
+                    // rerank 실패 또는 FTS 후보 없음 — drain 복원
+                    let mut restored = top_results;
+                    restored.extend(hybrid_results);
+                    hybrid_results = restored;
                 }
             }
         }

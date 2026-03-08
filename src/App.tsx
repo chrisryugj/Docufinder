@@ -425,14 +425,14 @@ function App() {
     }
     // 시맨틱 검색 켜질 때 + 자동 모드 → 벡터 인덱싱 자동 재개
     if (nowEnabled && !wasEnabled && !isVectorIndexing) {
-      // 상태 갱신 후 pending 확인 → 자동 시작
-      refreshVectorStatus().then(() => {
-        if ((vectorStatus?.pending_chunks ?? 0) > 0) {
+      // 반환값으로 최신 상태 확인 (stale closure 방지)
+      refreshVectorStatus().then((freshStatus) => {
+        if ((freshStatus?.pending_chunks ?? 0) > 0) {
           startVectorIndexing();
         }
       });
     }
-  }, [applySettings, semanticEnabled, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, vectorStatus, startVectorIndexing]);
+  }, [applySettings, semanticEnabled, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, startVectorIndexing]);
 
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");

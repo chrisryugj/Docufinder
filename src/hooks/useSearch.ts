@@ -205,11 +205,23 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             ? Promise.resolve({ results: [], search_time_ms: 0, total_count: 0 })
             : invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }, IPC_TIMEOUT.SEARCH);
 
-          const [contentResponse, filenameResponse] = await Promise.all([
+          // 파일명 검색 실패가 본문 검색까지 죽이지 않도록 allSettled 사용
+          const [contentResult, filenameResult] = await Promise.allSettled([
             contentPromise,
             filenamePromise,
           ]);
           if (searchIdRef.current !== currentId) return;
+
+          // 본문 검색 실패 시 에러 throw
+          if (contentResult.status === "rejected") {
+            throw contentResult.reason;
+          }
+          const contentResponse = contentResult.value;
+          // 파일명 검색 실패 시 graceful degrade
+          const filenameResponse = filenameResult.status === "fulfilled"
+            ? filenameResult.value
+            : { results: [], search_time_ms: 0, total_count: 0 };
+
           // 캐시 저장
           setToCache(cacheKey, {
             results: contentResponse.results,

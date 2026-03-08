@@ -248,6 +248,33 @@ impl AppContainer {
                     .map(|s| s.to_string())
                     .collect();
                 excluded_dirs.extend(settings.exclude_dirs.clone());
+                // 벡터 워커 트리거 콜백: watcher 증분 인덱싱 후 pending 벡터 자동 백필
+                let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = {
+                    let vw = self.vector_worker.clone();
+                    let db = self.db_path.clone();
+                    let emb = self.get_embedder().ok();
+                    let vi = self.get_vector_index().ok();
+                    match (emb, vi) {
+                        (Some(embedder), Some(vector_index)) => Some(Arc::new(move || {
+                            if let Ok(worker) = vw.read() {
+                                if !worker.is_running() {
+                                    drop(worker);
+                                    if let Ok(mut worker) = vw.write() {
+                                        let _ = worker.start(
+                                            db.clone(),
+                                            embedder.clone(),
+                                            vector_index.clone(),
+                                            None, // progress callback은 프론트엔드 이벤트로 별도 처리
+                                            None,
+                                        );
+                                        tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
+                                    }
+                                }
+                            }
+                        })),
+                        _ => None,
+                    }
+                };
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
@@ -256,6 +283,7 @@ impl AppContainer {
                     max_file_size_mb: settings.max_file_size_mb,
                     on_incremental_update: callback,
                     excluded_dirs,
+                    on_vector_trigger: vector_trigger,
                 };
 
                 WatchManager::new(ctx)

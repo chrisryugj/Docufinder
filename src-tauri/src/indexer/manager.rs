@@ -40,6 +40,8 @@ pub struct IndexContext {
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
     /// 제외 디렉토리 목록 (대소문자 무시 비교)
     pub excluded_dirs: Vec<String>,
+    /// 벡터 워커 트리거 콜백 (watcher 증분 인덱싱 후 벡터 백필 시작)
+    pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl WatchManager {
@@ -264,6 +266,8 @@ impl WatchManager {
                             ctx.max_file_size_mb,
                             path.display()
                         );
+                        // stale 벡터 정리 (metadata-only 전환 시)
+                        Self::cleanup_stale_vectors(&conn, &path, &ctx.vector_index);
                         match pipeline::save_file_metadata_and_cache(&conn, &path) {
                             Ok(file_path_str) => {
                                 if let Ok(entry) =
@@ -308,6 +312,8 @@ impl WatchManager {
                 }
             } else {
                 // 파싱 불가: 메타데이터만 저장 (파일명 검색용)
+                // stale 벡터 정리 (metadata-only 전환 시)
+                Self::cleanup_stale_vectors(&conn, &path, &ctx.vector_index);
                 match pipeline::save_file_metadata_and_cache(&conn, &path) {
                     Ok(file_path_str) => {
                         if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &file_path_str) {
@@ -321,11 +327,32 @@ impl WatchManager {
                 }
             }
         }
-        // 벡터는 vector_worker가 백그라운드에서 처리 (pending 상태)
-
         // 프론트엔드에 증분 인덱싱 완료 알림
         if let Some(ref callback) = ctx.on_incremental_update {
             callback(file_count);
+        }
+
+        // 벡터 워커 트리거 (FTS 인덱싱 완료 후 pending 벡터 백필)
+        if let Some(ref trigger) = ctx.on_vector_trigger {
+            trigger();
+        }
+    }
+
+    /// metadata-only 전환 시 기존 벡터 인덱스에서 stale 벡터 정리
+    fn cleanup_stale_vectors(
+        conn: &rusqlite::Connection,
+        path: &Path,
+        vector_index: &Option<Arc<VectorIndex>>,
+    ) {
+        let path_str = path.to_string_lossy().to_string();
+        if let Some(vi) = vector_index {
+            if let Ok(chunk_ids) = db::get_chunk_ids_for_path(conn, &path_str) {
+                for chunk_id in chunk_ids {
+                    if let Err(e) = vi.remove(chunk_id) {
+                        tracing::debug!("Failed to remove stale vector {}: {}", chunk_id, e);
+                    }
+                }
+            }
         }
     }
 

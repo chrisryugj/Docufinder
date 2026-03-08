@@ -12,8 +12,8 @@ interface UseVectorIndexingReturn {
   justCompleted: boolean;
   /** 완료 플래그 리셋 */
   clearCompleted: () => void;
-  /** 상태 새로고침 */
-  refreshStatus: () => Promise<void>;
+  /** 상태 새로고침 (갱신된 상태 반환) */
+  refreshStatus: () => Promise<VectorIndexingStatus | null>;
   /** 취소 */
   cancel: () => Promise<void>;
   /** 수동 벡터 인덱싱 시작 */
@@ -45,13 +45,15 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
 
   const clearCompleted = useCallback(() => setJustCompleted(false), []);
 
-  // 상태 조회
-  const refreshStatus = useCallback(async () => {
+  // 상태 조회 (갱신된 상태를 반환하여 stale closure 방지)
+  const refreshStatus = useCallback(async (): Promise<VectorIndexingStatus | null> => {
     try {
       const result = await invokeWithTimeout<VectorIndexingStatus>("get_vector_indexing_status", undefined, IPC_TIMEOUT.SETTINGS);
       setStatus(result);
+      return result;
     } catch (err) {
       console.error("Failed to get vector indexing status:", err);
+      return null;
     }
   }, []);
 

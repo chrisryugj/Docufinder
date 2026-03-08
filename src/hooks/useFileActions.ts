@@ -12,7 +12,7 @@ interface UseFileActionsOptions {
   addFolderByPath: ReturnType<typeof useIndexStatus>["addFolderByPath"];
   removeFolder: ReturnType<typeof useIndexStatus>["removeFolder"];
   invalidateSearch: () => void;
-  refreshVectorStatus?: () => Promise<void>;
+  refreshVectorStatus?: () => Promise<unknown>;
 }
 
 export function useFileActions({
