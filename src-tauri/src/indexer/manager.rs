@@ -35,14 +35,21 @@ pub struct IndexContext {
     /// 파일명 캐시 (증분 인덱싱 시 동기화)
     pub filename_cache: Arc<FilenameCache>,
     /// 파일 크기 제한 (MB) — 초과 시 메타데이터만 저장
-    pub max_file_size_mb: u64,
+    pub runtime_settings: WatchRuntimeSettingsProvider,
     /// 증분 인덱싱 완료 시 호출되는 콜백 (프론트엔드 알림용)
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
     /// 제외 디렉토리 목록 (대소문자 무시 비교)
-    pub excluded_dirs: Vec<String>,
     /// 벡터 워커 트리거 콜백 (watcher 증분 인덱싱 후 벡터 백필 시작)
     pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
 }
+
+#[derive(Debug, Clone)]
+pub struct WatchRuntimeSettings {
+    pub max_file_size_mb: u64,
+    pub excluded_dirs: Vec<String>,
+}
+
+pub type WatchRuntimeSettingsProvider = Arc<dyn Fn() -> WatchRuntimeSettings + Send + Sync>;
 
 impl WatchManager {
     /// 새 WatchManager 생성 및 백그라운드 스레드 시작
@@ -140,7 +147,12 @@ impl WatchManager {
             // 이벤트 수신 (타임아웃 포함)
             match event_rx.recv_timeout(Duration::from_millis(100)) {
                 Ok(event) => {
-                    Self::collect_files_from_event(&event, &mut pending_files, &ctx.excluded_dirs);
+                    let runtime_settings = (ctx.runtime_settings)();
+                    Self::collect_files_from_event(
+                        &event,
+                        &mut pending_files,
+                        &runtime_settings.excluded_dirs,
+                    );
                     last_event_time = std::time::Instant::now();
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -218,6 +230,7 @@ impl WatchManager {
                 return;
             }
         };
+        let runtime_settings = (ctx.runtime_settings)();
 
         for path in pending.drain() {
             if !path.exists() {
@@ -256,14 +269,14 @@ impl WatchManager {
             }
 
             // 파일 크기 제한 체크 — 초과 시 메타데이터만 저장
-            if ctx.max_file_size_mb > 0 {
+            if runtime_settings.max_file_size_mb > 0 {
                 if let Ok(metadata) = std::fs::metadata(&path) {
                     let size_mb = metadata.len() / (1024 * 1024);
-                    if size_mb > ctx.max_file_size_mb {
+                    if size_mb > runtime_settings.max_file_size_mb {
                         tracing::info!(
                             "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
                             size_mb,
-                            ctx.max_file_size_mb,
+                            runtime_settings.max_file_size_mb,
                             path.display()
                         );
                         // stale 벡터 정리 (metadata-only 전환 시)

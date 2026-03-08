@@ -388,35 +388,22 @@ impl SearchService {
                 let rerank_candidates: Vec<(usize, &str)> = top_results
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, r)| {
-                        fts_map.get(&r.chunk_id).map(|f| (i, f.content.as_str()))
-                    })
+                    .filter_map(|(i, r)| fts_map.get(&r.chunk_id).map(|f| (i, f.content.as_str())))
                     .collect();
 
                 let mut did_rerank = false;
                 if !rerank_candidates.is_empty() {
-                    let documents: Vec<&str> =
-                        rerank_candidates.iter().map(|(_, c)| *c).collect();
-                    if let Ok(reranked_indices) =
-                        rr.rerank(query, &documents, documents.len())
-                    {
+                    let documents: Vec<&str> = rerank_candidates.iter().map(|(_, c)| *c).collect();
+                    if let Ok(reranked_indices) = rr.rerank(query, &documents, documents.len()) {
                         // reranked index → 원본 top_results index로 매핑
-                        let reranked_orig_indices: HashSet<usize> =
+                        let rerank_candidate_indices: Vec<usize> =
                             rerank_candidates.iter().map(|(i, _)| *i).collect();
-                        let mut reranked: Vec<_> = reranked_indices
-                            .into_iter()
-                            .filter_map(|idx| {
-                                rerank_candidates
-                                    .get(idx)
-                                    .map(|(orig_idx, _)| top_results[*orig_idx].clone())
-                            })
-                            .collect();
+                        let mut reranked = apply_reranked_top_results(
+                            top_results.clone(),
+                            &rerank_candidate_indices,
+                            &reranked_indices,
+                        );
                         // vector-only 결과는 rerank 대상 아님 — 원래 순서 유지
-                        for (i, r) in top_results.iter().cloned().enumerate() {
-                            if !reranked_orig_indices.contains(&i) {
-                                reranked.push(r);
-                            }
-                        }
                         reranked.extend(hybrid_results);
                         hybrid_results = reranked;
                         did_rerank = true;
@@ -658,6 +645,37 @@ impl SearchService {
     }
 }
 
+fn apply_reranked_top_results<T: Clone>(
+    top_results: Vec<T>,
+    rerank_candidate_indices: &[usize],
+    reranked_indices: &[usize],
+) -> Vec<T> {
+    let mut appended = HashSet::new();
+    let mut reordered = Vec::with_capacity(top_results.len());
+
+    for &idx in reranked_indices {
+        if let Some(&orig_idx) = rerank_candidate_indices.get(idx) {
+            if appended.insert(orig_idx) {
+                reordered.push(top_results[orig_idx].clone());
+            }
+        }
+    }
+
+    for &orig_idx in rerank_candidate_indices {
+        if appended.insert(orig_idx) {
+            reordered.push(top_results[orig_idx].clone());
+        }
+    }
+
+    for (idx, result) in top_results.iter().cloned().enumerate() {
+        if !appended.contains(&idx) {
+            reordered.push(result);
+        }
+    }
+
+    reordered
+}
+
 // ============================================
 // Helper Functions
 // ============================================
@@ -876,4 +894,25 @@ fn interpolate_page_from_snippet(
     let interpolated = ps as f64 + ratio * page_span;
 
     Some(interpolated.round() as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_reranked_top_results;
+
+    #[test]
+    fn rerank_keeps_vector_only_results_in_their_original_tail_order() {
+        let top_results = vec!["vector-only-a", "fts-b", "fts-c"];
+        let reranked = apply_reranked_top_results(top_results, &[1, 2], &[1, 0]);
+
+        assert_eq!(reranked, vec!["fts-c", "fts-b", "vector-only-a"]);
+    }
+
+    #[test]
+    fn rerank_restores_missing_candidates_without_dropping_results() {
+        let top_results = vec!["vector-a", "fts-b", "vector-c", "fts-d"];
+        let reranked = apply_reranked_top_results(top_results, &[1, 3], &[1]);
+
+        assert_eq!(reranked, vec!["fts-d", "fts-b", "vector-a", "vector-c"]);
+    }
 }

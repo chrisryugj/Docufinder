@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
-import type { Settings, ViewDensity } from "../types/settings";
+import type { Settings, VectorIndexingMode, ViewDensity } from "../types/settings";
 import type { SearchMode } from "../types/search";
 
 function isLightColor(hex: string): boolean {
@@ -20,6 +20,8 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
   const [minConfidence, setMinConfidence] = useState(0);
   const [viewDensity, setViewDensity] = useState<ViewDensity>("compact");
   const [semanticEnabled, setSemanticEnabled] = useState(false);
+  const [vectorIndexingMode, setVectorIndexingMode] =
+    useState<VectorIndexingMode>("manual");
   const [resultsPerPage, setResultsPerPage] = useState(50);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
@@ -53,6 +55,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
+        setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
         setResultsPerPage(settings.results_per_page ?? 50);
         applyHighlightColors(settings);
       } catch (err) {
@@ -68,6 +71,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
       setMinConfidence(settings.min_confidence ?? 0);
       setViewDensity(settings.view_density ?? "compact");
       setSemanticEnabled(settings.semantic_search_enabled ?? false);
+      setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
       setResultsPerPage(settings.results_per_page ?? 50);
       applyHighlightColors(settings);
     },
@@ -80,6 +84,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
     setViewDensity,
     semanticEnabled,
     setSemanticEnabled,
+    vectorIndexingMode,
     resultsPerPage,
     applySettings,
   };
