@@ -285,7 +285,7 @@
                 Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
                 Name="Installed" Type="raw" Win64="yes" />
         </Property>
-        <Binary Id="VCRedist" SourceFile="vc_redist.x64.exe" />
+        <Binary Id="VCRedist" SourceFile="$(sys.SOURCEFILEDIR)..\..\..\..\wix\vc_redist.x64.exe" />
         <CustomAction Id="InstallVCRedist" BinaryKey="VCRedist" Execute="deferred"
             ExeCommand="/install /quiet /norestart"
             Return="ignore" />
