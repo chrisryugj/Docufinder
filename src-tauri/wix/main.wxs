@@ -279,6 +279,22 @@
             {{/each~}}
         </Feature>
 
+        <!-- Visual C++ 2015-2022 Runtime (MSI에 번들 포함) -->
+        <Property Id="VCRTINSTALLED">
+            <RegistrySearch Id="VCRTInstalledX64" Root="HKLM"
+                Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
+                Name="Installed" Type="raw" Win64="yes" />
+        </Property>
+        <Binary Id="VCRedist" SourceFile="vc_redist.x64.exe" />
+        <CustomAction Id="InstallVCRedist" BinaryKey="VCRedist" Execute="deferred"
+            ExeCommand="/install /quiet /norestart"
+            Return="ignore" />
+        <InstallExecuteSequence>
+            <Custom Action="InstallVCRedist" Before="InstallFinalize">
+                <![CDATA[NOT(REMOVE) AND NOT(VCRTINSTALLED)]]>
+            </Custom>
+        </InstallExecuteSequence>
+
         {{#if install_webview}}
         <!-- WebView2 -->
         <Property Id="WVRTINSTALLED">
