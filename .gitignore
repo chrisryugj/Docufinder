@@ -50,3 +50,4 @@ package-lock.json
 
 # Test target directories
 src-tauri/target-test*/
+src-tauri/wix/vc_redist.x64.exe
