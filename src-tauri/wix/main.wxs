@@ -279,24 +279,6 @@
             {{/each~}}
         </Feature>
 
-        <!-- Visual C++ 2015-2022 Runtime (msvcp140.dll) -->
-        <!-- ort(ONNX Runtime)에 필요한 VC++ 런타임 자동 감지 및 설치 -->
-        <Property Id="VCRTINSTALLED">
-            <RegistrySearch Id="VCRTInstalledX64" Root="HKLM"
-                Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
-                Name="Installed" Type="raw" Win64="yes" />
-        </Property>
-
-        <CustomAction Id="DownloadAndInstallVCRT" Directory="INSTALLDIR" Execute="deferred"
-            Impersonate="no"
-            ExeCommand='powershell.exe -NoProfile -WindowStyle hidden -Command "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}; $vcRedistPath = Join-Path $env:TEMP &apos;vc_redist.x64.exe&apos;; Invoke-WebRequest -Uri &apos;https://aka.ms/vs/17/release/vc_redist.x64.exe&apos; -OutFile $vcRedistPath; Start-Process -FilePath $vcRedistPath -ArgumentList &apos;/install&apos;,&apos;/quiet&apos;,&apos;/norestart&apos; -Wait; Remove-Item $vcRedistPath -Force -ErrorAction SilentlyContinue"'
-            Return="check" />
-        <InstallExecuteSequence>
-            <Custom Action="DownloadAndInstallVCRT" Before="InstallFinalize">
-                <![CDATA[NOT(REMOVE) AND NOT(VCRTINSTALLED)]]>
-            </Custom>
-        </InstallExecuteSequence>
-
         {{#if install_webview}}
         <!-- WebView2 -->
         <Property Id="WVRTINSTALLED">
