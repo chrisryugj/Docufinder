@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -212,19 +212,19 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     };
   }, [contextMenu.isOpen]);
 
-  // 폴더 정렬: 즐겨찾기 먼저
-  const sortedFolders = [...folders].sort((a, b) => {
+  // 폴더 정렬: 즐겨찾기 먼저 (folders/folderInfo 변경 시에만 재계산)
+  const sortedFolders = useMemo(() => [...folders].sort((a, b) => {
     const aFav = folderInfo[a]?.is_favorite ? 1 : 0;
     const bFav = folderInfo[b]?.is_favorite ? 1 : 0;
     return bFav - aFav;
-  });
+  }), [folders, folderInfo]);
 
   // 폴더 경로에서 이름만 추출
-  const getFolderName = (path: string) => {
+  const getFolderName = useCallback((path: string) => {
     const cleaned = cleanPath(path);
     const parts = cleaned.replace(/\\/g, "/").split("/");
     return parts[parts.length - 1] || cleaned;
-  };
+  }, []);
 
   const toggleExpand = (path: string) => {
     setExpandedFolders((prev) => {
@@ -341,9 +341,12 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           backgroundColor: "var(--color-bg-secondary)",
           borderColor: "var(--color-border)",
         }}
+        role="menu"
+        aria-label="폴더 메뉴"
       >
         {/* 즐겨찾기 토글 */}
         <button
+          role="menuitem"
           onClick={handleToggleFavorite}
           className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 ctx-menu-item-favorite ${folderInfo[contextMenu.folderPath]?.is_favorite ? "ctx-menu-item-favorite--active" : ""}`}
         >
@@ -359,6 +362,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             closeContextMenu();
             try { await invoke("open_folder", { path }); } catch (err) { console.error("Failed to open folder:", err); }
           }}
+          role="menuitem"
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
           <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -368,6 +372,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         </button>
         {/* 재인덱싱 */}
         <button
+          role="menuitem"
           onClick={handleReindex}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
@@ -383,6 +388,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               closeContextMenu();
               onRemoveFolder(path);
             }}
+            role="menuitem"
             className="ctx-menu-item-danger w-full px-3 py-2 text-left text-sm flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,6 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // Hooks
@@ -9,6 +8,7 @@ import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
+import { useAppEvents } from "./hooks/useAppEvents";
 import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 
 // Components
@@ -24,7 +24,6 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const backgroundRefreshToastAtRef = useRef(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -228,57 +227,8 @@ function App() {
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted, query, invalidateSearch]);
 
-  // 모델 다운로드 상태 이벤트 수신
-  useEffect(() => {
-    let unlisten: Promise<(() => void)> | null = null;
-
-    unlisten = listen<number>("incremental-index-updated", (event) => {
-      clearSearchCache();
-      void refreshStatus();
-      void refreshVectorStatus();
-
-      if (query.trim()) {
-        invalidateSearch();
-
-        const now = Date.now();
-        if (now - backgroundRefreshToastAtRef.current > 4000) {
-          backgroundRefreshToastAtRef.current = now;
-          showToast(
-            `${event.payload}개 변경 파일을 반영해 현재 검색 결과를 새로고침했습니다.`,
-            "info",
-            2500
-          );
-        }
-      }
-    });
-
-    return () => {
-      unlisten?.then((fn) => fn());
-    };
-  }, [query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast]);
-
-  useEffect(() => {
-    let toastId: string | null = null;
-    const unlisten = listen<string>("model-download-status", (event) => {
-      switch (event.payload) {
-        case "downloading":
-          toastId = showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
-          break;
-        case "completed":
-          if (toastId) {
-            updateToast(toastId, { message: "AI 모델 다운로드 완료!", type: "success" });
-          }
-          break;
-        case "failed":
-          if (toastId) {
-            updateToast(toastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 5000);
-          }
-          break;
-      }
-    });
-
-    return () => { unlisten.then((fn) => fn()); };
-  }, [showToast, updateToast]);
+  // Tauri 이벤트 리스너 (증분 인덱싱 + 모델 다운로드)
+  useAppEvents({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast });
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
@@ -352,12 +302,12 @@ function App() {
     };
   }, [settingsOpen]);
 
-  // searchMode 변경 시 keywordOnly 필터 리셋
+  // searchMode 변경 시 keywordOnly 필터 리셋 (함수형 업데이트로 stale closure 방지)
   useEffect(() => {
-    if (searchMode !== "hybrid" && filters.keywordOnly) {
-      setFilters({ ...filters, keywordOnly: false });
+    if (searchMode !== "hybrid") {
+      setFilters((prev) => prev.keywordOnly ? { ...prev, keywordOnly: false } : prev);
     }
-  }, [searchMode, filters.keywordOnly]); // filters.keywordOnly만 의존
+  }, [searchMode, setFilters]);
 
   // 사이드바 토글
   const toggleSidebar = useCallback(() => {
@@ -591,16 +541,16 @@ function App() {
               <div
                 className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
                 style={{
-                  backgroundColor: "rgba(59, 130, 246, 0.1)",
-                  border: "1px solid rgba(59, 130, 246, 0.2)",
+                  backgroundColor: "var(--color-accent-subtle, rgba(59, 130, 246, 0.1))",
+                  border: "1px solid var(--color-accent-border, rgba(59, 130, 246, 0.2))",
                   color: "var(--color-text-secondary)",
                 }}
               >
                 <div className="flex items-center gap-2">
-                  <div className="animate-spin h-3 w-3 border border-blue-400 border-t-transparent rounded-full" />
+                  <div className="animate-spin h-3 w-3 rounded-full" style={{ border: "1px solid var(--color-accent)", borderTopColor: "transparent" }} />
                   <span>벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능</span>
                 </div>
-                <button onClick={cancelVectorIndexing} className="text-blue-400 hover:text-blue-300 font-medium">취소</button>
+                <button onClick={cancelVectorIndexing} className="font-medium" style={{ color: "var(--color-accent)" }}>취소</button>
               </div>
             )}
 

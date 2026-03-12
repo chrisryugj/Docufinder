@@ -1,8 +1,8 @@
-import { forwardRef, memo, useEffect, useRef, useState } from "react";
+import { forwardRef, memo } from "react";
 import type { SearchMode } from "../../types/search";
-import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
-import { useIMEComposition } from "../../hooks/useIMEComposition";
+import { useSearchInput } from "../../hooks/useSearchInput";
+import { SearchModeDropdown } from "./SearchModeDropdown";
 
 interface SearchBarProps {
   query: string;
@@ -33,61 +33,16 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     },
     ref
   ) => {
-    const innerRef = useRef<HTMLInputElement>(null);
-    const [showModeDropdown, setShowModeDropdown] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    const { imeHandlers } = useIMEComposition({
+    const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
       onCompositionStart,
       onCompositionEnd,
-      inputRef: innerRef,
+      forwardedRef: ref,
     });
-
-    // 드롭다운 외부 클릭 시 닫기
-    useEffect(() => {
-      const handleClickOutside = (e: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-          setShowModeDropdown(false);
-        }
-      };
-      if (showModeDropdown) {
-        document.addEventListener("mousedown", handleClickOutside);
-      }
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showModeDropdown]);
-
-    useEffect(() => {
-      // 외부에서 query prop이 바뀌면 (예: 최근검색 클릭, 클리어 등) input 값 동기화
-      // 단, 타이핑 중에는 커서 위치 튐 방지를 위해 현재 값과 다를 때만 업데이트
-      if (innerRef.current && innerRef.current.value !== query) {
-        innerRef.current.value = query;
-      }
-    }, [query]);
-
-    // ref 병합 (외부 ref + 내부 innerRef)
-    useEffect(() => {
-      if (!ref) return;
-      if (typeof ref === 'function') {
-        ref(innerRef.current);
-      } else {
-        ref.current = innerRef.current;
-      }
-      return () => {
-        if (typeof ref === 'function') {
-          ref(null);
-        } else if (ref) {
-          ref.current = null;
-        }
-      };
-    }, [ref]);
-
-    const currentMode = SEARCH_MODES.find((m) => m.value === searchMode);
 
     return (
       <div className="max-w-4xl mx-auto w-full">
-        {/* 검색 입력 */}
         <div
           className="flex items-center px-4 py-3 rounded-xl transition-shadow duration-200 focus-within:ring-2 focus-within:ring-blue-500/30"
           style={{
@@ -125,88 +80,16 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             <div
               className="w-5 h-5 rounded-full border-2 animate-spin ml-2"
               style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-accent)" }}
+              role="status"
+              aria-label="검색 중"
             />
           )}
 
-          {/* 검색 모드 배지 + 드롭다운 */}
-          <div ref={dropdownRef} className="relative ml-2 flex-shrink-0">
-            <button
-              onClick={() => setShowModeDropdown(!showModeDropdown)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: "var(--color-bg-tertiary)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
-              title={currentMode?.desc}
-              aria-haspopup="listbox"
-              aria-expanded={showModeDropdown}
-              aria-label={`검색 모드: ${currentMode?.label}`}
-            >
-              {currentMode?.label}
-              <svg
-                className={`w-3 h-3 transition-transform ${showModeDropdown ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {showModeDropdown && (
-              <div
-                className="absolute top-full right-0 mt-1 py-1 rounded-lg shadow-lg z-50 min-w-[140px]"
-                style={{
-                  backgroundColor: "var(--color-bg-secondary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                {SEARCH_MODES.map((mode) => {
-                  const needsSemantic = mode.value === "semantic" || mode.value === "hybrid";
-                  const disabled = needsSemantic && !status?.semantic_available;
-                  const isActive = searchMode === mode.value;
-
-                  return (
-                    <button
-                      key={mode.value}
-                      onClick={() => {
-                        if (!disabled) {
-                          onSearchModeChange(mode.value);
-                          setShowModeDropdown(false);
-                        }
-                      }}
-                      disabled={disabled}
-                      className={`
-                        w-full px-3 py-1.5 text-xs text-left transition-colors
-                        ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
-                      `}
-                      style={{
-                        backgroundColor: isActive ? "var(--color-accent-light)" : "transparent",
-                        color: isActive ? "var(--color-accent)" : "var(--color-text-secondary)",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!disabled && !isActive) {
-                          e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }
-                      }}
-                      title={disabled ? "설정에서 모델을 다운로드하세요" : mode.desc}
-                    >
-                      <div className="font-medium">{mode.label}</div>
-                      <div className="text-[10px] opacity-70">
-                        {disabled ? "설정 → 모델 다운로드 필요" : mode.desc}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <SearchModeDropdown
+            searchMode={searchMode}
+            onSearchModeChange={onSearchModeChange}
+            status={status}
+          />
         </div>
       </div>
     );

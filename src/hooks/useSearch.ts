@@ -80,7 +80,7 @@ interface UseSearchReturn {
   searchMode: SearchMode;
   setSearchMode: (mode: SearchMode) => void;
   filters: SearchFilters;
-  setFilters: (filters: SearchFilters) => void;
+  setFilters: (filters: SearchFilters | ((prev: SearchFilters) => SearchFilters)) => void;
   viewMode: ViewMode;
   setViewMode: (mode: ViewMode) => void;
   /** 결과 내 검색 쿼리 */
@@ -141,14 +141,17 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   // excludeFilename 변경 시 localStorage 저장
   const prevExcludeFilename = useRef(filters.excludeFilename);
-  const setFilters = useCallback((newFilters: SearchFilters) => {
-    setFiltersInternal(newFilters);
-    if (newFilters.excludeFilename !== prevExcludeFilename.current) {
-      prevExcludeFilename.current = newFilters.excludeFilename;
-      try {
-        localStorage.setItem("docufinder_exclude_filename", JSON.stringify(newFilters.excludeFilename));
-      } catch {}
-    }
+  const setFilters = useCallback((newFiltersOrUpdater: SearchFilters | ((prev: SearchFilters) => SearchFilters)) => {
+    setFiltersInternal((prev) => {
+      const newFilters = typeof newFiltersOrUpdater === "function" ? newFiltersOrUpdater(prev) : newFiltersOrUpdater;
+      if (newFilters.excludeFilename !== prevExcludeFilename.current) {
+        prevExcludeFilename.current = newFilters.excludeFilename;
+        try {
+          localStorage.setItem("docufinder_exclude_filename", JSON.stringify(newFilters.excludeFilename));
+        } catch {}
+      }
+      return newFilters;
+    });
   }, []);
 
   // 검색 실행 함수 (결과 업데이트는 startTransition으로 입력 블로킹 방지)

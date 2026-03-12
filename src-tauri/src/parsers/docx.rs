@@ -6,15 +6,7 @@ use std::io::BufReader;
 use std::path::Path;
 use zip::ZipArchive;
 
-// ============================================================================
-// 압축 폭탄 방어 상수
-// ============================================================================
-const MAX_ENTRY_UNCOMPRESSED_SIZE: u64 = 50 * 1024 * 1024;
-const MAX_TOTAL_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
-const MAX_ZIP_ENTRIES: usize = 1000;
-const MAX_COMPRESSION_RATIO: u64 = 100;
-/// 최대 DOCX 파일 크기 (200MB) - 8GB RAM PC OOM 방지
-const MAX_FILE_SIZE: u64 = 200 * 1024 * 1024;
+use super::MAX_FILE_SIZE;
 
 /// DOCX 파일 파싱
 /// DOCX는 OOXML 기반 ZIP 포맷
@@ -39,7 +31,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     // ========================================================================
     // 압축 폭탄 방어
     // ========================================================================
-    validate_zip_archive(&mut archive)?;
+    super::validate_zip_archive(&mut archive)?;
 
     // word/document.xml 파일 읽기
     let mut document_xml = archive
@@ -250,50 +242,3 @@ fn chunk_pages(pages: &[PageText], chunk_size: usize, overlap: usize) -> Vec<Doc
     chunks
 }
 
-/// ZIP 아카이브 압축 폭탄 방어 검증
-fn validate_zip_archive<R: std::io::Read + std::io::Seek>(
-    archive: &mut ZipArchive<R>,
-) -> Result<(), ParseError> {
-    // 엔트리 수 제한
-    if archive.len() > MAX_ZIP_ENTRIES {
-        return Err(ParseError::ParseError(format!(
-            "ZIP 엔트리 수 초과: {} (최대 {})",
-            archive.len(),
-            MAX_ZIP_ENTRIES
-        )));
-    }
-
-    // 총 uncompressed size 검증
-    let mut total_uncompressed: u64 = 0;
-    for i in 0..archive.len() {
-        if let Ok(entry) = archive.by_index_raw(i) {
-            let uncompressed = entry.size();
-            let compressed = entry.compressed_size();
-
-            if uncompressed > MAX_ENTRY_UNCOMPRESSED_SIZE {
-                return Err(ParseError::ParseError(format!(
-                    "ZIP 엔트리 크기 초과: {} bytes (최대 {} bytes)",
-                    uncompressed, MAX_ENTRY_UNCOMPRESSED_SIZE
-                )));
-            }
-
-            if compressed > 0 && uncompressed / compressed > MAX_COMPRESSION_RATIO {
-                return Err(ParseError::ParseError(format!(
-                    "의심스러운 압축 비율: {}:1 - 압축 폭탄 가능성",
-                    uncompressed / compressed
-                )));
-            }
-
-            total_uncompressed += uncompressed;
-        }
-    }
-
-    if total_uncompressed > MAX_TOTAL_UNCOMPRESSED_SIZE {
-        return Err(ParseError::ParseError(format!(
-            "총 압축 해제 크기 초과: {} bytes (최대 {} bytes)",
-            total_uncompressed, MAX_TOTAL_UNCOMPRESSED_SIZE
-        )));
-    }
-
-    Ok(())
-}

@@ -384,6 +384,7 @@ impl WatchManager {
                 let file_type: String = row.get(3)?;
                 Ok(FilenameEntry {
                     file_id: row.get(0)?,
+                    path_lower: path.to_lowercase().into_boxed_str(),
                     path: path.into_boxed_str(),
                     name_lower: name.to_lowercase().into_boxed_str(),
                     file_type: file_type.into_boxed_str(),

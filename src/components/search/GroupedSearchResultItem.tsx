@@ -131,8 +131,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       <div className={isCompact ? "space-y-1" : "space-y-2"}>
         {displayChunks.map((chunk, idx) => {
           const matchBadge = getMatchTypeBadge(chunk.match_type);
-          // ⚡ full_content 대신 snippet/content_preview 사용 (성능 최적화)
-          const effectiveFullText = chunk.full_content || chunk.snippet || chunk.content_preview;
+          const effectiveFullText = chunk.snippet || chunk.content_preview;
           const preview = buildPreviewContext({
             previewText: chunk.content_preview,
             fullText: effectiveFullText,

@@ -702,14 +702,32 @@ pub async fn convert_hwp_to_hwpx(
 
     for (i, hwp_path) in paths.iter().enumerate() {
         let hwp = Path::new(hwp_path);
-        if !hwp.exists() {
+
+        // 경로 정규화 + 존재 확인 (path traversal 방지)
+        let canonical = match hwp.canonicalize() {
+            Ok(p) => p,
+            Err(_) => {
+                errors.push(format!("Invalid path: {}", hwp_path));
+                failed_count += 1;
+                continue;
+            }
+        };
+        if !canonical.is_file() {
             errors.push(format!("File not found: {}", hwp_path));
             failed_count += 1;
             continue;
         }
+        // 확장자 검증 (command injection 방지)
+        let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if ext != "hwp" {
+            errors.push(format!("Not a HWP file: {}", hwp_path));
+            failed_count += 1;
+            continue;
+        }
 
-        let hwpx_path = hwp.with_extension("hwpx");
-        let hwp_escaped = hwp_path.replace('\'', "''");
+        let canonical_str = canonical.to_string_lossy();
+        let hwpx_path = canonical.with_extension("hwpx");
+        let hwp_escaped = canonical_str.replace('\'', "''");
         let hwpx_escaped = hwpx_path.to_string_lossy().replace('\'', "''");
 
         // 진행률 이벤트

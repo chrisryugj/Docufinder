@@ -238,8 +238,10 @@ impl Reranker {
 }
 
 // SAFETY: ort 2.0+ Session은 내부적으로 thread-safe (Session::run이 &self 사용).
-// - Session: Mutex로 감싸서 동시 접근 직렬화
-// - Tokenizer: tokenizers 크레이트에서 Send+Sync 구현
+// - Session: Mutex<Session>으로 감싸서 동시 접근 직렬화 → &self에서 mutation 불가
+// - Tokenizer: tokenizers 크레이트에서 Send+Sync 이미 구현
+// - 실행 프로바이더: CPU EP만 사용 (CUDA/DirectML 미사용 → thread-affinity 문제 없음)
+// - ort 버전: =2.0.0-rc.11 (정식 릴리스 시 unsafe 제거 가능 여부 재검토 필요)
 // 참조: https://github.com/pykeio/ort - Session is thread-safe in ort 2.0+
 unsafe impl Send for Reranker {}
 unsafe impl Sync for Reranker {}

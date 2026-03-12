@@ -166,7 +166,9 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const enableSemanticWithConfirm = async (onConfirm: () => void) => {
     const code = window.prompt("시맨틱 검색을 활성화하려면 관리자 코드를 입력하세요.");
     if (code === null) return; // 취소
-    if (code !== "9812") {
+    // 백엔드에서 관리자 코드 검증 (프론트엔드 노출 방지)
+    const isValid = await invokeWithTimeout<boolean>("verify_admin_code", { code }, IPC_TIMEOUT.SETTINGS);
+    if (!isValid) {
       await ask("관리자 코드가 올바르지 않습니다.", { title: "활성화 실패", kind: "error", okLabel: "확인" });
       return;
     }
@@ -398,7 +400,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   e.target.value
                     .split("\n")
                     .map((s) => s.trim())
-                    .filter(Boolean) as unknown as Settings["exclude_dirs"]
+                    .filter((s): s is string => Boolean(s))
                 )
               }
               placeholder="추가 제외할 폴더명 입력..."

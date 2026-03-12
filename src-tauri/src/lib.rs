@@ -81,6 +81,284 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
     }
 }
 
+/// 모델 파일이 없으면 비동기 자동 다운로드 시작
+fn maybe_download_models(
+    app_handle: tauri::AppHandle,
+    models_dir: PathBuf,
+    semantic_enabled: bool,
+) {
+    let e5_model_int8 = models_dir.join("kosimcse-roberta-multitask").join("model_int8.onnx");
+    let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
+    let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
+    let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
+
+    let embedder_available = e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+    if !semantic_enabled || (embedder_available && reranker_model.exists()) {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        tracing::info!("모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
+        let _ = app_handle.emit("model-download-status", "downloading");
+
+        match tokio::task::spawn_blocking(move || {
+            model_downloader::ensure_models(&models_dir)
+        }).await {
+            Ok(Ok(result)) => {
+                let any_downloaded = result.onnx_runtime_downloaded
+                    || result.model_downloaded
+                    || result.model_data_downloaded
+                    || result.tokenizer_downloaded
+                    || result.reranker_model_downloaded
+                    || result.reranker_tokenizer_downloaded;
+
+                if any_downloaded {
+                    tracing::info!(
+                        "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}, Reranker={}, RerankerTokenizer={}",
+                        result.onnx_runtime_downloaded,
+                        result.model_downloaded,
+                        result.model_data_downloaded,
+                        result.tokenizer_downloaded,
+                        result.reranker_model_downloaded,
+                        result.reranker_tokenizer_downloaded
+                    );
+                }
+                let _ = app_handle.emit("model-download-status", "completed");
+            }
+            Ok(Err(e)) => {
+                tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
+                let _ = app_handle.emit("model-download-status", "failed");
+            }
+            Err(e) => {
+                tracing::error!("모델 다운로드 태스크 실패: {}", e);
+                let _ = app_handle.emit("model-download-status", "failed");
+            }
+        }
+    });
+}
+
+/// 기존 감시 폴더들 자동 감시 복원
+fn resume_watchers(container: &AppContainer) {
+    if let Ok(conn) = db::get_connection(&container.db_path) {
+        if let Ok(folders) = db::get_watched_folders(&conn) {
+            if !folders.is_empty() {
+                if let Ok(wm) = container.get_watch_manager() {
+                    if let Ok(mut wm) = wm.write() {
+                        for folder in folders {
+                            let path = std::path::Path::new(&folder);
+                            if path.exists() {
+                                if let Err(e) = wm.watch(path) {
+                                    tracing::warn!("Failed to watch {}: {}", folder, e);
+                                } else {
+                                    tracing::info!("Resumed watching: {}", folder);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 벡터 인덱스 파일 ↔ DB 정합성 검증
+fn validate_vector_index(container: &AppContainer) {
+    let vector_file = container.vector_index_path.clone();
+    let map_file = container.vector_index_path.with_extension("map");
+    let vector_file_exists = vector_file.exists();
+    let map_file_exists = map_file.exists();
+
+    if container.is_semantic_available() {
+        if let Ok(conn) = db::get_connection(&container.db_path) {
+            if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
+                if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
+                    tracing::warn!(
+                        "Vector index file missing (usearch={}, map={}), but DB has {} indexed files. Resetting DB.",
+                        vector_file_exists, map_file_exists, stats.vector_indexed_files
+                    );
+                    if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
+                        tracing::info!("Reset vector_indexed_at for {} files", reset_count);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// 미완료 벡터 인덱싱 자동 재개
+fn auto_resume_vector_indexing(app: &tauri::App) {
+    let Some(container_state) = app.try_state::<RwLock<AppContainer>>() else { return };
+    let Ok(container) = container_state.read() else { return };
+
+    let startup_settings = container.get_settings();
+    let should_auto_resume = container.is_semantic_available()
+        && startup_settings.semantic_search_enabled
+        && startup_settings.vector_indexing_mode == crate::commands::settings::VectorIndexingMode::Auto;
+    if !should_auto_resume { return; }
+
+    let Ok(conn) = db::get_connection(&container.db_path) else { return };
+    let Ok(stats) = db::get_vector_indexing_stats(&conn) else { return };
+    if stats.pending_chunks == 0 { return; }
+
+    tracing::info!("Found {} pending vector chunks. Starting background indexing.", stats.pending_chunks);
+    let embedder = container.get_embedder();
+    let vector_index = container.get_vector_index();
+    let vector_worker = container.get_vector_worker();
+    let db_path = container.db_path.clone();
+
+    if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
+        if let Ok(mut worker) = vector_worker.write() {
+            let app_handle = app.handle().clone();
+            let _ = worker.start(
+                db_path,
+                emb,
+                vi,
+                Some(Arc::new(move |progress| {
+                    let _ = app_handle.emit("vector-indexing-progress", &progress);
+                })),
+                Some(startup_settings.indexing_intensity.clone()),
+            );
+        }
+    }
+}
+
+/// 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
+fn spawn_startup_sync(app_handle: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path, exclude_dirs) = {
+            let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
+                Some(c) => c,
+                None => return,
+            };
+            let container = match container_state.read() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let conn = match db::get_connection(&container.db_path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let folder_infos = db::get_watched_folders_with_info(&conn).unwrap_or_default();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            const SYNC_SKIP_SECS: i64 = 300;
+            let completed: Vec<String> = folder_infos.into_iter()
+                .filter(|f| {
+                    if f.indexing_status != "completed" { return false; }
+                    match f.last_synced_at {
+                        Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
+                            tracing::debug!("[Startup Sync] Skipping {} (synced {}s ago)", f.path, now - ts);
+                            false
+                        }
+                        _ => true,
+                    }
+                })
+                .map(|f| f.path)
+                .collect();
+
+            if completed.is_empty() { return; }
+
+            let settings = container.get_settings();
+            let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            dirs.extend(settings.exclude_dirs.clone());
+            (
+                completed,
+                container.index_service(),
+                settings.include_subfolders,
+                settings.max_file_size_mb,
+                container.db_path.clone(),
+                dirs,
+            )
+        };
+
+        tracing::info!("[Startup Sync] Checking {} completed folders for offline changes...", folders_to_sync.len());
+
+        let mut total_added = 0usize;
+        let mut total_deleted = 0usize;
+
+        for folder in &folders_to_sync {
+            let path = std::path::Path::new(folder);
+            if !path.exists() { continue; }
+
+            let ah = app_handle.clone();
+            let progress_cb: Box<dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync> =
+                Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
+                    #[derive(serde::Serialize)]
+                    struct ProgressEvent {
+                        phase: String,
+                        total_files: usize,
+                        processed_files: usize,
+                        current_file: Option<String>,
+                        folder_path: String,
+                        error: Option<String>,
+                    }
+                    let _ = ah.emit("indexing-progress", &ProgressEvent {
+                        phase: p.phase,
+                        total_files: p.total_files,
+                        processed_files: p.processed_files,
+                        current_file: p.current_file,
+                        folder_path: p.folder_path,
+                        error: None,
+                    });
+                });
+
+            match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb, exclude_dirs.clone()).await {
+                Ok(result) => {
+                    total_added += result.added;
+                    total_deleted += result.deleted;
+                    if let Ok(conn) = db::get_connection(&db_path) {
+                        let _ = db::update_last_synced_at(&conn, folder);
+                    }
+                    if result.added > 0 || result.deleted > 0 {
+                        tracing::info!(
+                            "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
+                            folder, result.added, result.deleted, result.unchanged
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[Startup Sync] Failed to sync {}: {}", folder, e);
+                }
+            }
+        }
+
+        if total_added > 0 || total_deleted > 0 {
+            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(c) = cs.read() {
+                    let _ = c.load_filename_cache();
+                }
+            }
+            tracing::info!("[Startup Sync] Complete: {} added, {} deleted", total_added, total_deleted);
+        } else {
+            tracing::info!("[Startup Sync] No offline changes detected");
+        }
+    });
+}
+
+/// 벡터 워커 정리 + 인덱스 저장 (종료/트레이 quit 공통)
+fn cleanup_vector_resources(container: &AppContainer) {
+    let vector_worker = container.get_vector_worker();
+    if let Ok(mut worker) = vector_worker.write() {
+        if worker.is_running() {
+            tracing::info!("Stopping vector worker...");
+            worker.cancel();
+            worker.join();
+        }
+    }
+    if let Ok(vi) = container.get_vector_index() {
+        if let Err(e) = vi.save() {
+            tracing::error!("Failed to save vector index: {}", e);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
@@ -110,13 +388,21 @@ pub fn run() {
             let crash_dir = data_dir.join("com.anything.app");
             let _ = std::fs::create_dir_all(&crash_dir);
             let crash_log = crash_dir.join("crash.log");
+
+            // 크기 제한: 1MB 초과 시 truncate (디스크 무한 증가 방지)
+            const MAX_CRASH_LOG_SIZE: u64 = 1024 * 1024;
+            if let Ok(meta) = std::fs::metadata(&crash_log) {
+                if meta.len() > MAX_CRASH_LOG_SIZE {
+                    let _ = std::fs::remove_file(&crash_log);
+                }
+            }
+
             let entry = format!(
                 "[{}] PANIC at {}: {}\n",
                 chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                 location,
                 message
             );
-            // append 모드: 기존 크래시 기록 보존
             use std::io::Write;
             if let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)
@@ -178,57 +464,13 @@ pub fn run() {
             let models_dir = app_data_dir.join("models");
             std::fs::create_dir_all(&models_dir).ok();
 
-            // 모델이 없으면 비동기 자동 다운로드 (시맨틱 활성화 시에만, UI 블로킹 방지)
+            // 모델 자동 다운로드 (시맨틱 활성화 시, 백그라운드)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
-            let e5_model_int8 = models_dir.join("kosimcse-roberta-multitask").join("model_int8.onnx");
-            let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
-            let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
-            let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
-
-            // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
-            let embedder_available = e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
-            if setup_settings.semantic_search_enabled && (!embedder_available || !reranker_model.exists()) {
-                let download_models_dir = models_dir.clone();
-                let download_app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tracing::info!("모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
-                    let _ = download_app_handle.emit("model-download-status", "downloading");
-
-                    match tokio::task::spawn_blocking(move || {
-                        model_downloader::ensure_models(&download_models_dir)
-                    }).await {
-                        Ok(Ok(result)) => {
-                            let any_downloaded = result.onnx_runtime_downloaded
-                                || result.model_downloaded
-                                || result.model_data_downloaded
-                                || result.tokenizer_downloaded
-                                || result.reranker_model_downloaded
-                                || result.reranker_tokenizer_downloaded;
-
-                            if any_downloaded {
-                                tracing::info!(
-                                    "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}, Reranker={}, RerankerTokenizer={}",
-                                    result.onnx_runtime_downloaded,
-                                    result.model_downloaded,
-                                    result.model_data_downloaded,
-                                    result.tokenizer_downloaded,
-                                    result.reranker_model_downloaded,
-                                    result.reranker_tokenizer_downloaded
-                                );
-                            }
-                            let _ = download_app_handle.emit("model-download-status", "completed");
-                        }
-                        Ok(Err(e)) => {
-                            tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
-                            let _ = download_app_handle.emit("model-download-status", "failed");
-                        }
-                        Err(e) => {
-                            tracing::error!("모델 다운로드 태스크 실패: {}", e);
-                            let _ = download_app_handle.emit("model-download-status", "failed");
-                        }
-                    }
-                });
-            }
+            maybe_download_models(
+                app.handle().clone(),
+                models_dir.clone(),
+                setup_settings.semantic_search_enabled,
+            );
 
             // Initialize database with AppContainer
             let container = AppContainer::new(&app_data_dir);
@@ -266,27 +508,8 @@ pub fn run() {
                 }));
             }
 
-            // 기존 감시 폴더들 자동 감시 시작
-            if let Ok(conn) = db::get_connection(&container.db_path) {
-                if let Ok(folders) = db::get_watched_folders(&conn) {
-                    if !folders.is_empty() {
-                        if let Ok(wm) = container.get_watch_manager() {
-                            if let Ok(mut wm) = wm.write() {
-                                for folder in folders {
-                                    let path = std::path::Path::new(&folder);
-                                    if path.exists() {
-                                        if let Err(e) = wm.watch(path) {
-                                            tracing::warn!("Failed to watch {}: {}", folder, e);
-                                        } else {
-                                            tracing::info!("Resumed watching: {}", folder);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // 기존 감시 폴더들 자동 감시 복원
+            resume_watchers(&container);
 
             // ⚡ 디스크 타입 사전 감지 (C:, D: — PowerShell 호출 1-3초를 앱 시작 시 흡수)
             tauri::async_runtime::spawn(async {
@@ -311,198 +534,17 @@ pub fn run() {
                 }
             }
 
-            // 벡터 인덱스 파일 검증 - DB와 불일치 시 리셋
-            let vector_file = container.vector_index_path.clone();
-            let map_file = container.vector_index_path.with_extension("map");
-            let vector_file_exists = vector_file.exists();
-            let map_file_exists = map_file.exists();
-
-            if container.is_semantic_available() {
-                if let Ok(conn) = db::get_connection(&container.db_path) {
-                    if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
-                        // DB에는 벡터 인덱싱 완료된 파일이 있는데 인덱스 파일이 없으면 리셋
-                        if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
-                            tracing::warn!(
-                                "Vector index file missing (usearch={}, map={}), but DB has {} indexed files. Resetting DB.",
-                                vector_file_exists, map_file_exists, stats.vector_indexed_files
-                            );
-                            if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
-                                tracing::info!("Reset vector_indexed_at for {} files", reset_count);
-                            }
-                        }
-                    }
-                }
-            }
+            // 벡터 인덱스 ↔ DB 정합성 검증
+            validate_vector_index(&container);
 
             // Store app container
             app.manage(RwLock::new(container));
 
-            // 미완료 벡터 인덱싱 자동 재개 (시맨틱 활성화 + 자동 모드일 때만)
-            if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                if let Ok(container) = container.read() {
-                    let startup_settings = container.get_settings();
-                    let should_auto_resume = container.is_semantic_available()
-                        && startup_settings.semantic_search_enabled
-                        && startup_settings.vector_indexing_mode == crate::commands::settings::VectorIndexingMode::Auto;
-                    if should_auto_resume {
-                        if let Ok(conn) = db::get_connection(&container.db_path) {
-                            if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
-                                if stats.pending_chunks > 0 {
-                                    tracing::info!(
-                                        "Found {} pending vector chunks. Starting background indexing.",
-                                        stats.pending_chunks
-                                    );
-                                    let embedder = container.get_embedder();
-                                    let vector_index = container.get_vector_index();
-                                    let vector_worker = container.get_vector_worker();
-                                    let db_path = container.db_path.clone();
+            // 미완료 벡터 인덱싱 자동 재개
+            auto_resume_vector_indexing(app);
 
-                                    if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
-                                        if let Ok(mut worker) = vector_worker.write() {
-                                            let app_handle = app.handle().clone();
-                                            let _ = worker.start(
-                                                db_path,
-                                                emb,
-                                                vi,
-                                                Some(Arc::new(move |progress| {
-                                                    let _ = app_handle.emit("vector-indexing-progress", &progress);
-                                                })),
-                                                Some(startup_settings.indexing_intensity.clone()),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
-            {
-                let app_handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    // 앱 초기화 완료 대기 (UI 렌더링 우선, 1초면 충분)
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-                    let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path, exclude_dirs) = {
-                        let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
-                            Some(c) => c,
-                            None => return,
-                        };
-                        let container = match container_state.read() {
-                            Ok(c) => c,
-                            Err(_) => return,
-                        };
-                        let conn = match db::get_connection(&container.db_path) {
-                            Ok(c) => c,
-                            Err(_) => return,
-                        };
-                        // 완료된 폴더만 (미완료/취소는 FolderTree가 resume_indexing으로 처리)
-                        let folder_infos = db::get_watched_folders_with_info(&conn).unwrap_or_default();
-                        let now = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-                        // 최근 5분 이내 동기화된 폴더는 스킵 (HDD 부하 방지)
-                        const SYNC_SKIP_SECS: i64 = 300;
-                        let completed: Vec<String> = folder_infos.into_iter()
-                            .filter(|f| {
-                                if f.indexing_status != "completed" { return false; }
-                                match f.last_synced_at {
-                                    Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
-                                        tracing::debug!("[Startup Sync] Skipping {} (synced {}s ago)", f.path, now - ts);
-                                        false
-                                    }
-                                    _ => true,
-                                }
-                            })
-                            .map(|f| f.path)
-                            .collect();
-
-                        if completed.is_empty() { return; }
-
-                        let settings = container.get_settings();
-                        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-                            .iter()
-                            .map(|s| s.to_string())
-                            .collect();
-                        dirs.extend(settings.exclude_dirs.clone());
-                        (
-                            completed,
-                            container.index_service(),
-                            settings.include_subfolders,
-                            settings.max_file_size_mb,
-                            container.db_path.clone(),
-                            dirs,
-                        )
-                    };
-
-                    tracing::info!("[Startup Sync] Checking {} completed folders for offline changes...", folders_to_sync.len());
-
-                    let mut total_added = 0usize;
-                    let mut total_deleted = 0usize;
-
-                    for folder in &folders_to_sync {
-                        let path = std::path::Path::new(folder);
-                        if !path.exists() { continue; }
-
-                        let ah = app_handle.clone();
-                        let progress_cb: Box<dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync> =
-                            Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
-                                #[derive(serde::Serialize)]
-                                struct ProgressEvent {
-                                    phase: String,
-                                    total_files: usize,
-                                    processed_files: usize,
-                                    current_file: Option<String>,
-                                    folder_path: String,
-                                    error: Option<String>,
-                                }
-                                let _ = ah.emit("indexing-progress", &ProgressEvent {
-                                    phase: p.phase,
-                                    total_files: p.total_files,
-                                    processed_files: p.processed_files,
-                                    current_file: p.current_file,
-                                    folder_path: p.folder_path,
-                                    error: None,
-                                });
-                            });
-
-                        match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb, exclude_dirs.clone()).await {
-                            Ok(result) => {
-                                total_added += result.added;
-                                total_deleted += result.deleted;
-                                // 동기화 완료 시각 기록 (다음 시작 시 스킵 판단용)
-                                if let Ok(conn) = db::get_connection(&db_path) {
-                                    let _ = db::update_last_synced_at(&conn, folder);
-                                }
-                                if result.added > 0 || result.deleted > 0 {
-                                    tracing::info!(
-                                        "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
-                                        folder, result.added, result.deleted, result.unchanged
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("[Startup Sync] Failed to sync {}: {}", folder, e);
-                            }
-                        }
-                    }
-
-                    // 변경이 있으면 FilenameCache 갱신
-                    if total_added > 0 || total_deleted > 0 {
-                        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(c) = cs.read() {
-                                let _ = c.load_filename_cache();
-                            }
-                        }
-                        tracing::info!("[Startup Sync] Complete: {} added, {} deleted", total_added, total_deleted);
-                    } else {
-                        tracing::info!("[Startup Sync] No offline changes detected");
-                    }
-                });
-            }
+            // 완료된 폴더 자동 동기화 (오프라인 변경 감지)
+            spawn_startup_sync(app.handle().clone());
 
             // 개발 모드에서 DevTools 열기 (DEVTOOLS=1 환경변수로 제어)
             #[cfg(debug_assertions)]
@@ -536,25 +578,9 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            // 벡터 워커 정리 + 인덱스 저장
                             if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
                                 if let Ok(container) = container.read() {
-                                    // 벡터 워커 취소 + 대기
-                                    let vector_worker = container.get_vector_worker();
-                                    if let Ok(mut worker) = vector_worker.write() {
-                                        if worker.is_running() {
-                                            tracing::info!("Stopping vector worker before exit...");
-                                            worker.cancel();
-                                            worker.join();
-                                        }
-                                    }
-                                    // 벡터 인덱스 저장
-                                    if let Ok(vi) = container.get_vector_index() {
-                                        tracing::info!("Saving vector index before exit...");
-                                        if let Err(e) = vi.save() {
-                                            tracing::error!("Failed to save vector index: {}", e);
-                                        }
-                                    }
+                                    cleanup_vector_resources(&container);
                                 }
                             }
                             app.exit(0);
@@ -624,25 +650,10 @@ pub fn run() {
                     let _ = window.hide();
                     tracing::debug!("Window hidden to tray");
                 }
-                // 앱 종료 시 벡터 워커 정리 + 인덱스 저장
                 tauri::WindowEvent::Destroyed => {
                     if let Some(container) = window.try_state::<RwLock<AppContainer>>() {
                         if let Ok(container) = container.read() {
-                            // 벡터 워커 취소 + 대기 (quit 핸들러와 동일)
-                            let vector_worker = container.get_vector_worker();
-                            if let Ok(mut worker) = vector_worker.write() {
-                                if worker.is_running() {
-                                    tracing::info!("Stopping vector worker on window destroy...");
-                                    worker.cancel();
-                                    worker.join();
-                                }
-                            }
-                            // 벡터 인덱스 저장
-                            if let Ok(vi) = container.get_vector_index() {
-                                if let Err(e) = vi.save() {
-                                    tracing::error!("Failed to save vector index: {}", e);
-                                }
-                            }
+                            cleanup_vector_resources(&container);
                         }
                     }
                 }
@@ -671,6 +682,7 @@ pub fn run() {
             commands::index::convert_hwp_to_hwpx,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::verify_admin_code,
             commands::file::open_file,
             commands::file::open_folder,
             commands::file::log_frontend_error,
@@ -686,6 +698,13 @@ pub fn run() {
                 let crash_dir = data_dir.join("com.anything.app");
                 let _ = std::fs::create_dir_all(&crash_dir);
                 let crash_log = crash_dir.join("crash.log");
+                // 크기 제한: 1MB 초과 시 truncate
+                const MAX_CRASH_LOG_SIZE: u64 = 1024 * 1024;
+                if let Ok(meta) = std::fs::metadata(&crash_log) {
+                    if meta.len() > MAX_CRASH_LOG_SIZE {
+                        let _ = std::fs::remove_file(&crash_log);
+                    }
+                }
                 let entry = format!(
                     "[{}] FATAL: Tauri failed to start: {}\n",
                     chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),

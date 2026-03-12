@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 /// 시맨틱 검색 결과 enrich 설정
-/// 0 = 비활성화 (i3에서 500~1000ms 추가 지연 방지, content_preview로 충분)
-const SEMANTIC_ENRICH_MAX_RESULTS: usize = 0;
+/// snippet이 없는 벡터 전용 결과에 가장 유사한 문장 하이라이트 추가
+const SEMANTIC_ENRICH_MAX_RESULTS: usize = 5;
 
 /// 벡터 검색 결과의 folder_scope 후처리 필터 (usearch는 DB path 필터 불가)
 /// Windows: case-insensitive 비교
@@ -285,9 +285,10 @@ impl SearchService {
             .embed(query, true)
             .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
 
-        // 벡터 검색
+        // 벡터 검색 (folder_scope 후처리 필터로 인한 결과 누락 방지: over-fetch)
+        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
         let vector_results = vector_index
-            .search(&query_embedding, max_results)
+            .search(&query_embedding, vector_fetch_limit)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
         // chunk_id로 파일 정보 조회
@@ -371,12 +372,13 @@ impl SearchService {
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
-        // 2. 벡터 검색 (가능한 경우, 락 불필요)
+        // 2. 벡터 검색 (folder_scope 후처리 필터 대비 over-fetch)
+        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
         let (vector_results, query_embedding) =
             match (self.embedder.as_ref(), self.vector_index.as_ref()) {
                 (Some(emb), Some(vi)) => match emb.embed(query, true) {
                     Ok(qe) => {
-                        let results = vi.search(&qe, max_results).unwrap_or_default();
+                        let results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
                         (results, Some(qe))
                     }
                     Err(e) => {
@@ -395,63 +397,18 @@ impl SearchService {
         let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
         // 4. RRF 병합 (슬라이스 참조로 clone 제거)
-        const RRF_K: f32 = 60.0;
+        // k=15: 소규모 데이터셋(max_results 20~50)에서 순위 차이가 더 뚜렷해짐
+        const RRF_K: f32 = 15.0;
         let mut hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
 
-        // 5. Cross-Encoder Reranking (상위 20개만)
-        // FTS content가 있는 후보만 rerank하되, index를 정확히 매핑
-        const RERANK_TOP_K: usize = 20;
-        if let Some(rr) = self.reranker.as_ref() {
-            if hybrid_results.len() > 1 {
-                let top_k = hybrid_results.len().min(RERANK_TOP_K);
-                let top_results: Vec<_> = hybrid_results.drain(..top_k).collect();
-
-                // (top_results 내 원본 index, content) 쌍 — FTS 있는 것만
-                let rerank_candidates: Vec<(usize, &str)> = top_results
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, r)| fts_map.get(&r.chunk_id).map(|f| (i, f.content.as_str())))
-                    .collect();
-
-                let mut did_rerank = false;
-                if !rerank_candidates.is_empty() {
-                    let documents: Vec<&str> = rerank_candidates.iter().map(|(_, c)| *c).collect();
-                    if let Ok(reranked_indices) = rr.rerank(query, &documents, documents.len()) {
-                        // reranked index → 원본 top_results index로 매핑
-                        let rerank_candidate_indices: Vec<usize> =
-                            rerank_candidates.iter().map(|(i, _)| *i).collect();
-                        let mut reranked = apply_reranked_top_results(
-                            top_results.clone(),
-                            &rerank_candidate_indices,
-                            &reranked_indices,
-                        );
-                        // vector-only 결과는 rerank 대상 아님 — 원래 순서 유지
-                        reranked.extend(hybrid_results);
-                        hybrid_results = reranked;
-                        did_rerank = true;
-                        tracing::debug!("Reranked top {} results", top_k);
-                    } else {
-                        tracing::warn!("Reranking failed, using original order");
-                    }
-                }
-                if !did_rerank {
-                    // rerank 실패 또는 FTS 후보 없음 — drain 복원
-                    let mut restored = top_results;
-                    restored.extend(hybrid_results);
-                    hybrid_results = restored;
-                }
-            }
-        }
-
-        // 6. 벡터 전용 결과만 DB 조회 (FTS에 없는 것만)
-        let vector_only_ids: Vec<i64> = hybrid_results
+        // 5. 벡터 전용 결과의 content를 미리 확보 (reranking에 필요)
+        let pre_rerank_vector_only_ids: Vec<i64> = hybrid_results
             .iter()
             .filter(|r| !fts_map.contains_key(&r.chunk_id))
             .map(|r| r.chunk_id)
             .collect();
-
-        let vector_only_chunks: HashMap<i64, ChunkInfo> = if !vector_only_ids.is_empty() {
-            db::get_chunks_by_ids(&conn, &vector_only_ids)
+        let pre_rerank_vector_chunks: HashMap<i64, ChunkInfo> = if !pre_rerank_vector_only_ids.is_empty() {
+            db::get_chunks_by_ids(&conn, &pre_rerank_vector_only_ids)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?
                 .into_iter()
                 .map(|c| (c.chunk_id, c))
@@ -459,6 +416,81 @@ impl SearchService {
         } else {
             HashMap::new()
         };
+
+        // 6. Cross-Encoder Reranking (상위 20개 — FTS + 벡터전용 모두 포함)
+        const RERANK_TOP_K: usize = 20;
+        if let Some(rr) = self.reranker.as_ref() {
+            if hybrid_results.len() > 1 {
+                let top_k = hybrid_results.len().min(RERANK_TOP_K);
+                let top_results: Vec<_> = hybrid_results.drain(..top_k).collect();
+
+                // FTS + 벡터전용 결과 모두 reranking 대상으로 포함
+                let rerank_candidates: Vec<(usize, &str)> = top_results
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, r)| {
+                        // FTS 결과에서 content 가져오기
+                        if let Some(f) = fts_map.get(&r.chunk_id) {
+                            return Some((i, f.content.as_str()));
+                        }
+                        // 벡터 전용 결과에서 content 가져오기
+                        if let Some(c) = pre_rerank_vector_chunks.get(&r.chunk_id) {
+                            return Some((i, c.content.as_str()));
+                        }
+                        None
+                    })
+                    .collect();
+
+                let mut did_rerank = false;
+                if !rerank_candidates.is_empty() {
+                    let documents: Vec<&str> = rerank_candidates.iter().map(|(_, c)| *c).collect();
+                    if let Ok(reranked_indices) = rr.rerank(query, &documents, documents.len()) {
+                        let rerank_candidate_indices: Vec<usize> =
+                            rerank_candidates.iter().map(|(i, _)| *i).collect();
+                        let mut reranked = apply_reranked_top_results(
+                            top_results.clone(),
+                            &rerank_candidate_indices,
+                            &reranked_indices,
+                        );
+                        reranked.extend(hybrid_results);
+                        hybrid_results = reranked;
+                        did_rerank = true;
+                        tracing::debug!("Reranked top {} results (including vector-only)", top_k);
+                    } else {
+                        tracing::warn!("Reranking failed, using original order");
+                    }
+                }
+                if !did_rerank {
+                    let mut restored = top_results;
+                    restored.extend(hybrid_results);
+                    hybrid_results = restored;
+                }
+            }
+        }
+
+        // 7. 벡터 전용 결과 DB 조회 (pre_rerank에서 이미 조회한 것 재사용)
+        let vector_only_ids: Vec<i64> = hybrid_results
+            .iter()
+            .filter(|r| !fts_map.contains_key(&r.chunk_id))
+            .map(|r| r.chunk_id)
+            .collect();
+
+        // pre_rerank에서 이미 조회한 결과 재사용, 누락분만 추가 조회
+        let mut vector_only_chunks = pre_rerank_vector_chunks;
+        {
+            let missing_ids: Vec<i64> = vector_only_ids
+                .iter()
+                .filter(|id| !vector_only_chunks.contains_key(id))
+                .copied()
+                .collect();
+            if !missing_ids.is_empty() {
+                let extra = db::get_chunks_by_ids(&conn, &missing_ids)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+                for c in extra {
+                    vector_only_chunks.insert(c.chunk_id, c);
+                }
+            }
+        }
 
         // 결과 변환 (FTS 결과 우선, 벡터 전용은 DB 조회 결과 사용)
         let mut results: Vec<SearchResult> = hybrid_results

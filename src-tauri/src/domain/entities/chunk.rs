@@ -157,12 +157,14 @@ impl Chunk {
         matches
     }
 
-    /// 미리보기 텍스트 생성 (최대 길이 지정)
+    /// 미리보기 텍스트 생성 (최대 바이트 길이 지정, UTF-8 안전)
     pub fn preview(&self, max_len: usize) -> String {
         if self.content.len() <= max_len {
             self.content.clone()
         } else {
-            format!("{}...", &self.content[..max_len])
+            // UTF-8 멀티바이트 문자 경계에서 안전하게 슬라이싱
+            let end = self.content.floor_char_boundary(max_len);
+            format!("{}...", &self.content[..end])
         }
     }
 }

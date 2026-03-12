@@ -2,6 +2,40 @@
 
 > 최근 주요 결정만 기록. 이전 결정은 git 히스토리 참고.
 
+## 2026-03-12 - 프로덕션 리뷰 전체 수정 + 리팩토링 4건
+
+**배경**: 30년차 시니어 관점 프로덕션 리뷰에서 C5+H11+M19+L14건 발견
+**결정**: 전수 수정 + 4건 리팩토링 (코드 중복 제거, 함수 분리, God Component 분해)
+
+**리팩토링 결정**:
+1. `validate_zip_archive` docx/hwpx 중복 → `parsers/mod.rs` 공통 함수 (DRY 원칙)
+2. `lib.rs` setup() 400줄 → 6개 헬퍼 (SRP: 각 헬퍼가 하나의 초기화 단계 담당)
+3. SearchBar/CompactSearchBar 중복 → `SearchModeDropdown` + `useSearchInput` 추출
+4. App.tsx 이벤트 리스너 → `useAppEvents` 훅 분리 (관심사 분리)
+
+**영향**: Rust 6파일, TS/TSX 8파일 (3개 신규 생성)
+
+## 2026-03-12 - 3대 기능 구현 (전체 PC 검색 + HWP 변환 + VC++ 설치)
+
+**배경**: Everything 스타일 전체 PC 검색 전환 + 구형 HWP 미지원 + VC++ 설치 실패
+
+**결정 1 - 자동 인덱싱 아키텍처**:
+- 처음 계획: Rust 백엔드 `auto_index_all_drives` 명령
+- 최종 결정: **프론트엔드 방식** (기존 `get_suggested_folders` → 순차 `add_folder`)
+- 이유: 코드 중복 방지, 기존 API 재활용, State 전달 복잡도 회피
+
+**결정 2 - HWP 변환 방식**:
+- PowerShell COM 자동화 (`HWPFrame.HwpObject`) 선택
+- 이유: 대상 PC에 한글 100% 설치됨, hwp2pdf.exe 불필요
+- FilePathCheckerModuleExample.dll을 리소스로 번들링
+
+**결정 3 - 검색 범위 필터링**:
+- FTS/파일명: SQL `WHERE path LIKE ? ESCAPE '\'` 조건부 추가
+- 벡터 검색: usearch에서 path 필터 불가 → **결과 후처리** `retain(starts_with(scope))`
+- 캐시 키에 searchScope 포함하여 캐시 무효화 처리
+
+**영향 파일**: 19개 (Rust 12, TS/TSX 7)
+
 ## 2026-02-22 - 수익화 전략 v3 수립
 
 **배경**: 22개 GitHub 프로젝트 포트폴리오 분석 → 월 30만원 구독 수익 목표

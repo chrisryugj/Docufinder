@@ -148,17 +148,27 @@ pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<S
 }
 
 /// 설정 동기 조회 (내부 사용)
+/// 수동 편집된 설정 파일의 비정상 값에 대비하여 범위 클램핑 적용
 pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     let settings_path = get_settings_path(app_data_dir);
 
-    if settings_path.exists() {
+    let mut settings: Settings = if settings_path.exists() {
         let content = fs::read_to_string(&settings_path).ok();
         content
             .and_then(|c| serde_json::from_str(&c).ok())
             .unwrap_or_default()
     } else {
         Settings::default()
-    }
+    };
+
+    // 범위 클램핑 (수동 편집된 비정상 값 방어)
+    settings.max_results = settings.max_results.clamp(1, 500);
+    settings.chunk_size = settings.chunk_size.clamp(256, 4096);
+    settings.chunk_overlap = settings.chunk_overlap.min(settings.chunk_size.saturating_sub(1));
+    settings.results_per_page = settings.results_per_page.clamp(1, 200);
+    settings.max_file_size_mb = settings.max_file_size_mb.min(500);
+
+    settings
 }
 
 /// 설정 값 범위 검증 (서버측 — 프론트엔드 우회 방지)
@@ -269,4 +279,25 @@ pub async fn update_settings(
     }
 
     Ok(())
+}
+
+/// 관리자 코드 검증 (시맨틱 검색 활성화 등 보호된 작업에 필요)
+///
+/// NOTE: Obfuscation only — 내부 전용 앱의 실수 방지용 게이트이며,
+/// 암호학적 보안을 제공하지 않음. 외부 배포 시 환경변수/설정파일 기반으로 전환 필요.
+#[tauri::command]
+pub async fn verify_admin_code(code: String) -> ApiResult<bool> {
+    // 상수 시간 비교 (타이밍 사이드채널 방지, 실질적 보안보다는 올바른 관행)
+    const EXPECTED: &[u8] = b"9812";
+    let input = code.as_bytes();
+
+    // 길이가 다르면 false, 같으면 constant-time XOR 비교
+    if input.len() != EXPECTED.len() {
+        return Ok(false);
+    }
+    let mut diff = 0u8;
+    for (a, b) in input.iter().zip(EXPECTED.iter()) {
+        diff |= a ^ b;
+    }
+    Ok(diff == 0)
 }

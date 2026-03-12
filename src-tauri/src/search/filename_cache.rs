@@ -15,6 +15,8 @@ const MAX_CACHE_ENTRIES: usize = 200_000;
 pub struct FilenameEntry {
     pub file_id: i64,
     pub path: Box<str>,
+    /// 검색용 소문자 변환 경로 (folder_scope 필터 O(n) 스캔 최적화)
+    pub path_lower: Box<str>,
     /// 검색용 소문자 변환 파일명 (path에서 추출 후 캐시)
     pub name_lower: Box<str>,
     pub file_type: Box<str>,
@@ -86,6 +88,7 @@ impl FilenameCache {
             let file_type: String = row.get(3)?;
             Ok(FilenameEntry {
                 file_id: row.get(0)?,
+                path_lower: path.to_lowercase().into_boxed_str(),
                 path: path.into_boxed_str(),
                 name_lower: name.to_lowercase().into_boxed_str(),
                 file_type: file_type.into_boxed_str(),
@@ -151,16 +154,19 @@ impl FilenameCache {
             Err(_) => return vec![],
         };
 
+        // scope를 루프 밖에서 pre-compute (O(n)번 반복 호출 방지)
+        let scope_lower = folder_scope
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_lowercase());
+
         // O(n) 스캔 - 모든 검색어가 포함된 파일만 + 폴더 범위 필터
         cache
             .entries
             .iter()
             .filter(|e| {
-                // 폴더 범위 필터 (Windows: case-insensitive)
-                if let Some(scope) = folder_scope {
-                    if !scope.is_empty()
-                        && !e.path.to_lowercase().starts_with(&scope.to_lowercase())
-                    {
+                // 폴더 범위 필터 (Windows: case-insensitive, path_lower 사전 계산 활용)
+                if let Some(ref scope) = scope_lower {
+                    if !e.path_lower.starts_with(scope.as_str()) {
                         return false;
                     }
                 }
@@ -203,9 +209,13 @@ impl FilenameCache {
     }
 
     /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축
+    /// Windows: case-insensitive 경로 비교
     pub fn remove_by_path_prefix(&self, path_prefix: &str) {
+        let prefix_lower = path_prefix.to_lowercase();
         if let Ok(mut cache) = self.data.write() {
-            cache.entries.retain(|e| !e.path.starts_with(path_prefix));
+            cache
+                .entries
+                .retain(|e| !e.path_lower.starts_with(&prefix_lower));
             cache.rebuild_index();
         }
     }
@@ -245,9 +255,11 @@ mod tests {
     use super::*;
 
     fn create_test_entry(id: i64, name: &str) -> FilenameEntry {
+        let path = format!("C:\\test\\{}", name);
         FilenameEntry {
             file_id: id,
-            path: format!("C:\\test\\{}", name).into_boxed_str(),
+            path_lower: path.to_lowercase().into_boxed_str(),
+            path: path.into_boxed_str(),
             name_lower: name.to_lowercase().into_boxed_str(),
             file_type: "txt".to_string().into_boxed_str(),
             size: 1000,

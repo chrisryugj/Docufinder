@@ -39,12 +39,6 @@ impl SqliteChunkRepository {
         f(&conn).map_err(|e| DomainError::repository(format!("Query failed: {}", e)))
     }
 
-    /// LIKE 패턴 특수문자 이스케이프
-    fn escape_like_pattern(s: &str) -> String {
-        s.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    }
 }
 
 #[async_trait]
@@ -279,8 +273,8 @@ impl ChunkRepository for SqliteChunkRepository {
     }
 
     async fn delete_in_folder(&self, folder_path: &str) -> Result<usize, DomainError> {
-        let escaped_unix = Self::escape_like_pattern(&folder_path.replace('\\', "/"));
-        let escaped_win = Self::escape_like_pattern(&folder_path.replace('/', "\\"));
+        let escaped_unix = crate::db::escape_like_pattern(&folder_path.replace('\\', "/"));
+        let escaped_win = crate::db::escape_like_pattern(&folder_path.replace('/', "\\"));
         let pattern_unix = format!("{}/%", escaped_unix);
         let pattern_win = format!("{}\\\\%", escaped_win);
 

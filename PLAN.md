@@ -97,10 +97,10 @@
 - [x] CI/CD (GitHub Actions)
 - [x] 결과 페이지네이션 + 설정 연동
 
-### 남은 작업 (P2)
-- [ ] 이중 FS 순회 통합 (index.rs, pipeline.rs)
-- [ ] data_root 설정 기능 (container.rs, settings.rs)
-- [ ] PDF timeout 5s→3s (parsers/pdf.rs)
+### 남은 작업 (P2) — 해결됨
+- [x] 이중 FS 순회 통합 → pre_collected_files 패턴으로 구현 완료 (pipeline.rs)
+- [x] data_root 설정 기능 → container.rs + SettingsModal UI 구현 완료
+- [x] PDF timeout → 동적 타임아웃(5s + 0.3s/MB, max 30s)으로 대체됨 (pdf.rs)
 
 ---
 

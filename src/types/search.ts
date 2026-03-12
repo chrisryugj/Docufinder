@@ -4,8 +4,6 @@ export interface SearchResult {
   file_name: string;
   chunk_index: number;
   content_preview: string;
-  /** @deprecated 성능 최적화로 제거됨 - snippet 사용 권장 */
-  full_content?: string;
   score: number;
   /** 정규화된 신뢰도 (0-100) */
   confidence: number;
@@ -74,7 +72,7 @@ export const SEARCH_MODES: SearchModeInfo[] = [
 // 필터/정렬 관련 타입
 // =====================
 
-/** 정렬 옵션 */
+/** 정렬 옵션 ("size"는 향후 파일 크기 정렬 기능용으로 예약) */
 export type SortOption = "relevance" | "confidence" | "date_desc" | "date_asc" | "name" | "size";
 
 /** 파일 타입 필터 */

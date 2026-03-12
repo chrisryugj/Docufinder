@@ -6,6 +6,7 @@ pub mod xlsx;
 
 use std::path::Path;
 use thiserror::Error;
+use zip::ZipArchive;
 
 /// 기본 청크 크기 (문자 수)
 /// 512 → 1024로 증가: 청크 수 50% 감소, DB 크기/검색 비용 절감
@@ -78,6 +79,70 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
         "pdf" => pdf::parse(path),
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }
+}
+
+// ============================================================================
+// 압축 폭탄 방어 상수 (docx, hwpx 공통)
+// ============================================================================
+
+/// 단일 엔트리 최대 압축 해제 크기 (50MB)
+pub const MAX_ENTRY_UNCOMPRESSED_SIZE: u64 = 50 * 1024 * 1024;
+/// 전체 압축 해제 크기 합계 제한 (200MB)
+pub const MAX_TOTAL_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
+/// 최대 ZIP 엔트리 수
+pub const MAX_ZIP_ENTRIES: usize = 1000;
+/// 압축 비율 제한 (uncompressed/compressed > 100 = 의심)
+pub const MAX_COMPRESSION_RATIO: u64 = 100;
+/// 최대 파일 크기 (200MB) - 8GB RAM PC OOM 방지
+pub const MAX_FILE_SIZE: u64 = 200 * 1024 * 1024;
+
+/// ZIP 아카이브 압축 폭탄 방어 검증 (docx, hwpx 공통)
+pub fn validate_zip_archive<R: std::io::Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+) -> Result<(), ParseError> {
+    if archive.len() > MAX_ZIP_ENTRIES {
+        return Err(ParseError::ParseError(format!(
+            "ZIP 엔트리 수 초과: {} (최대 {})",
+            archive.len(),
+            MAX_ZIP_ENTRIES
+        )));
+    }
+
+    let mut total_uncompressed: u64 = 0;
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index_raw(i) {
+            let uncompressed = entry.size();
+            let compressed = entry.compressed_size();
+
+            if uncompressed > MAX_ENTRY_UNCOMPRESSED_SIZE {
+                return Err(ParseError::ParseError(format!(
+                    "ZIP 엔트리 크기 초과: {} bytes (최대 {} bytes) - {}",
+                    uncompressed,
+                    MAX_ENTRY_UNCOMPRESSED_SIZE,
+                    entry.name()
+                )));
+            }
+
+            if compressed > 0 && uncompressed / compressed > MAX_COMPRESSION_RATIO {
+                return Err(ParseError::ParseError(format!(
+                    "의심스러운 압축 비율: {}:1 - 압축 폭탄 가능성 ({})",
+                    uncompressed / compressed,
+                    entry.name()
+                )));
+            }
+
+            total_uncompressed += uncompressed;
+        }
+    }
+
+    if total_uncompressed > MAX_TOTAL_UNCOMPRESSED_SIZE {
+        return Err(ParseError::ParseError(format!(
+            "총 압축 해제 크기 초과: {} bytes (최대 {} bytes)",
+            total_uncompressed, MAX_TOTAL_UNCOMPRESSED_SIZE
+        )));
+    }
+
+    Ok(())
 }
 
 /// 텍스트를 청크로 분할 (공통 유틸)

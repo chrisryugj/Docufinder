@@ -1,7 +1,7 @@
-import { forwardRef, memo, useCallback, useRef, useEffect, useState } from "react";
-import { useIMEComposition } from "../../hooks/useIMEComposition";
+import { forwardRef, memo, useMemo } from "react";
+import { useSearchInput } from "../../hooks/useSearchInput";
+import { SearchModeDropdown } from "./SearchModeDropdown";
 import type { SearchMode } from "../../types/search";
-import { SEARCH_MODES } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import type {
   SearchFilters as FiltersType,
@@ -69,57 +69,16 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
     },
     ref
   ) => {
-    const innerRef = useRef<HTMLInputElement>(null);
-    const [showModeDropdown, setShowModeDropdown] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    const { imeHandlers } = useIMEComposition({
+    const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
       onCompositionStart,
       onCompositionEnd,
-      inputRef: innerRef,
+      forwardedRef: ref,
     });
 
-    // 드롭다운 외부 클릭 시 닫기
-    useEffect(() => {
-      const handleClickOutside = (e: MouseEvent) => {
-        if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-          setShowModeDropdown(false);
-        }
-      };
-      if (showModeDropdown) {
-        document.addEventListener("mousedown", handleClickOutside);
-      }
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showModeDropdown]);
-
-    // ref 병합
-    useEffect(() => {
-      if (!ref) return;
-      if (typeof ref === "function") {
-        ref(innerRef.current);
-      } else {
-        ref.current = innerRef.current;
-      }
-      return () => {
-        if (typeof ref === "function") {
-          ref(null);
-        } else if (ref) {
-          ref.current = null;
-        }
-      };
-    }, [ref]);
-
-    // 입력값 동기화
-    useEffect(() => {
-      if (innerRef.current && innerRef.current.value !== query) {
-        innerRef.current.value = query;
-      }
-    }, [query]);
-
-    // 활성 필터 라벨 생성
-    const getActiveFilterLabels = useCallback(() => {
+    // 활성 필터 라벨 생성 (filters 변경 시에만 재계산)
+    const activeFilterLabels = useMemo(() => {
       const labels: { key: string; label: string; onRemove: () => void }[] = [];
 
       if (filters.sortBy !== "relevance") {
@@ -180,9 +139,6 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       return labels;
     }, [filters, onFiltersChange]);
 
-    const activeFilterLabels = getActiveFilterLabels();
-    const currentMode = SEARCH_MODES.find((m) => m.value === searchMode);
-
     return (
       <div
         className={`flex items-center gap-3 py-2 border-b transition-all duration-300 ${
@@ -241,83 +197,16 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
                 borderColor: "var(--color-border)",
                 borderTopColor: "var(--color-accent)",
               }}
+              role="status"
+              aria-label="검색 중"
             />
           )}
 
-          {/* 검색 모드 배지 + 드롭다운 */}
-          <div ref={dropdownRef} className="relative ml-2 flex-shrink-0">
-            <button
-              onClick={() => setShowModeDropdown(!showModeDropdown)}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors"
-              style={{
-                backgroundColor: "var(--color-bg-tertiary)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
-              title={currentMode?.desc}
-            >
-              {currentMode?.label}
-              <svg
-                className={`w-3 h-3 transition-transform ${showModeDropdown ? "rotate-180" : ""}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {showModeDropdown && (
-              <div
-                className="absolute top-full right-0 mt-1 py-1 rounded-lg shadow-lg z-50 min-w-[140px]"
-                style={{
-                  backgroundColor: "var(--color-bg-secondary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                {SEARCH_MODES.map((mode) => {
-                  const needsSemantic = mode.value === "semantic" || mode.value === "hybrid";
-                  const disabled = needsSemantic && !status?.semantic_available;
-                  const isActive = searchMode === mode.value;
-
-                  return (
-                    <button
-                      key={mode.value}
-                      onClick={() => {
-                        if (!disabled) {
-                          onSearchModeChange(mode.value);
-                          setShowModeDropdown(false);
-                        }
-                      }}
-                      disabled={disabled}
-                      className={`
-                        w-full px-3 py-1.5 text-xs text-left transition-colors
-                        ${disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}
-                      `}
-                      style={{
-                        backgroundColor: isActive ? "var(--color-accent-light)" : "transparent",
-                        color: isActive ? "var(--color-accent)" : "var(--color-text-secondary)",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!disabled && !isActive) {
-                          e.currentTarget.style.backgroundColor = "var(--color-bg-tertiary)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isActive) {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }
-                      }}
-                      title={disabled ? "모델 파일 필요" : mode.desc}
-                    >
-                      <div className="font-medium">{mode.label}</div>
-                      <div className="text-[10px] opacity-70">{mode.desc}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <SearchModeDropdown
+            searchMode={searchMode}
+            onSearchModeChange={onSearchModeChange}
+            status={status}
+          />
         </div>
 
         {/* 필터 버튼 + 칩 */}

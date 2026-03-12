@@ -1,11 +1,5 @@
+use crate::db::escape_like_pattern;
 use rusqlite::Connection;
-
-/// LIKE 패턴 특수문자 이스케이프 (%, _, \ 처리)
-fn escape_like_pattern(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('%', "\\%")
-        .replace('_', "\\_")
-}
 
 /// 파일명 검색 (LIKE 기반 - 부분문자열 매칭 지원)
 /// FTS5 unicode61은 한글 부분문자열 매칭이 안 되므로 LIKE 사용

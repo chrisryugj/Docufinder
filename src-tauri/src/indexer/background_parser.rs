@@ -252,10 +252,11 @@ fn get_pending_files_count(
     folder_path: &Path,
 ) -> Result<usize, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
-    let pattern = format!("{}%", folder_str);
+    let escaped = crate::db::escape_like_pattern(&folder_str);
+    let pattern = format!("{}%", escaped);
 
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM files WHERE path LIKE ? AND fts_indexed_at IS NULL",
+        "SELECT COUNT(*) FROM files WHERE path LIKE ? ESCAPE '\\' AND fts_indexed_at IS NULL",
         rusqlite::params![pattern],
         |row| row.get(0),
     )?;
@@ -269,10 +270,11 @@ fn get_next_pending_file(
     folder_path: &Path,
 ) -> Result<Option<PendingFile>, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
-    let pattern = format!("{}%", folder_str);
+    let escaped = crate::db::escape_like_pattern(&folder_str);
+    let pattern = format!("{}%", escaped);
 
     let mut stmt = conn.prepare(
-        "SELECT id, path, name FROM files WHERE path LIKE ? AND fts_indexed_at IS NULL LIMIT 1",
+        "SELECT id, path, name FROM files WHERE path LIKE ? ESCAPE '\\' AND fts_indexed_at IS NULL LIMIT 1",
     )?;
 
     let mut rows = stmt.query(rusqlite::params![pattern])?;
@@ -309,6 +311,7 @@ fn parse_and_index_file(conn: &Connection, path: &Path, file_id: i64) -> Result<
             chunk.page_number,
             chunk.page_end,
             chunk.location_hint.as_deref(),
+            None, // 백그라운드 파서에서는 형태소 토큰 미사용
         )
         .map_err(|e| e.to_string())?;
     }

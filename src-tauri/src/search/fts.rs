@@ -51,14 +51,11 @@ fn search_internal(
         return Ok(vec![]);
     }
 
-    // folder_scope가 있으면 path LIKE 조건 추가
+    // folder_scope가 있으면 path LIKE 조건 추가 (Windows: case-insensitive)
     let (scope_clause, scope_pattern) = match folder_scope {
         Some(scope) if !scope.is_empty() => {
-            let escaped = scope
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            ("AND f.path LIKE ? ESCAPE '\\'", Some(format!("{}%", escaped)))
+            let escaped = crate::db::escape_like_pattern(&scope.to_lowercase());
+            ("AND LOWER(f.path) LIKE ? ESCAPE '\\'", Some(format!("{}%", escaped)))
         }
         _ => ("", None),
     };

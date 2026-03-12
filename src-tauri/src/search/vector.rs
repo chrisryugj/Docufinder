@@ -451,7 +451,8 @@ impl VectorIndex {
         limit: usize,
     ) -> Result<Vec<VectorResult>, VectorError> {
         /// 최소 코사인 유사도 임계값 (이 미만은 무관한 결과로 판단)
-        const MIN_SIMILARITY: f32 = 0.25;
+        /// KoSimCSE-roberta에서 의미적 관련 쌍은 보통 0.5+, 0.35 미만은 노이즈
+        const MIN_SIMILARITY: f32 = 0.35;
 
         // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
         let results = {
@@ -630,31 +631,44 @@ impl VectorIndex {
         self.index.read().map(|i| i.capacity()).unwrap_or(0)
     }
 
-    /// 인덱스 초기화 (모든 데이터 삭제)
-    /// Note: best-effort - lock 실패 시 조용히 무시
+    /// 인덱스 초기화 (모든 데이터 삭제 — 메모리 + 디스크)
+    /// Note: best-effort — lock 실패 시 조용히 무시
+    /// 락 순서 준수: mode → index → id_map → key_map → next_key
     pub fn clear(&self) {
-        // 매핑 초기화
-        if let Ok(mut id_map) = self.id_map.write() {
-            id_map.clear();
-        }
-        if let Ok(mut key_map) = self.key_map.write() {
-            key_map.clear();
-        }
-        if let Ok(mut next_key) = self.next_key.write() {
-            *next_key = 0;
-        }
-
-        // 새 인덱스로 교체
-        if let Ok(new_index) = Index::new(&Self::create_options()) {
-            if let Ok(mut index) = self.index.write() {
-                *index = new_index;
-            }
-        }
+        // 1. mode (문서화된 순서 첫 번째)
         if let Ok(mut mode) = self.mode.write() {
             *mode = IndexMode::Empty;
+
+            // 2. index (mode 락 보유 상태에서 — 순서 보장)
+            if let Ok(new_index) = Index::new(&Self::create_options()) {
+                if let Ok(mut index) = self.index.write() {
+                    *index = new_index;
+                }
+            }
+
+            // 3. id_map
+            if let Ok(mut id_map) = self.id_map.write() {
+                id_map.clear();
+            }
+            // 4. key_map
+            if let Ok(mut key_map) = self.key_map.write() {
+                key_map.clear();
+            }
+            // 5. next_key
+            if let Ok(mut next_key) = self.next_key.write() {
+                *next_key = 0;
+            }
+
+            // mode 락은 여기서 drop — 모든 하위 락이 이미 해제된 상태
+            drop(mode);
         }
 
-        tracing::info!("Vector index cleared");
+        // 디스크 파일 삭제 (재시작 시 오래된 데이터 복원 방지)
+        let _ = std::fs::remove_file(&self.path); // .usearch 파일
+        let map_path = self.path.with_extension("map");
+        let _ = std::fs::remove_file(&map_path); // .map 파일
+
+        tracing::info!("Vector index cleared (memory + disk)");
     }
 }
 

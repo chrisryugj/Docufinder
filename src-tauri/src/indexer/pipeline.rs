@@ -535,7 +535,7 @@ fn index_folder_fts_impl(
                                 .unwrap_or("unknown");
                             send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
-                            match save_document_to_db_fts_only_no_tx(conn, &path, document) {
+                            match save_document_to_db_fts_only_no_tx(conn, &path, document, None) {
                                 Ok(_) => indexed += 1,
                                 Err(e) => {
                                     failed += 1;
@@ -883,7 +883,7 @@ pub fn sync_folder_fts(
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
                         send_progress("indexing", total, processed, Some(file_name), false);
-                        match save_document_to_db_fts_only_no_tx(conn, &path, document) {
+                        match save_document_to_db_fts_only_no_tx(conn, &path, document, None) {
                             Ok(_) => indexed += 1,
                             Err(e) => {
                                 failed += 1;
@@ -931,10 +931,14 @@ pub fn sync_folder_fts(
 }
 
 /// 문서를 DB에 저장 - FTS만 (트랜잭션 없음, 배치용)
+///
+/// `tokenizer`: 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 인덱싱.
+/// unicode61 토크나이저의 한국어 토큰화 한계를 보완하여 검색 재현율 향상.
 fn save_document_to_db_fts_only_no_tx(
     conn: &Connection,
     path: &Path,
     document: ParsedDocument,
+    tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
 ) -> Result<usize, IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -970,6 +974,12 @@ fn save_document_to_db_fts_only_no_tx(
     let chunks_count = document.chunks.len();
 
     for (idx, chunk) in document.chunks.into_iter().enumerate() {
+        // 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 저장
+        let extra_tokens = tokenizer.map(|tok| {
+            let morphemes = tok.tokenize(&chunk.content);
+            morphemes.join(" ")
+        });
+
         db::insert_chunk(
             conn,
             file_id,
@@ -980,6 +990,7 @@ fn save_document_to_db_fts_only_no_tx(
             chunk.page_number,
             chunk.page_end,
             chunk.location_hint.as_deref(),
+            extra_tokens.as_deref(),
         )
         .map_err(|e| IndexError::DbError(e.to_string()))?;
     }
@@ -1182,7 +1193,7 @@ pub fn index_file_fts_only(conn: &Connection, path: &Path) -> Result<IndexResult
     conn.execute_batch("BEGIN")
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document) {
+    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document, None) {
         Ok(c) => c,
         Err(e) => {
             let _ = conn.execute_batch("ROLLBACK");

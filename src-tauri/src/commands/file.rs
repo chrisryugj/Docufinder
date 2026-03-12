@@ -50,6 +50,14 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
     // 확장자 검증
     validate_extension(&canonical_path)?;
 
+    // 시스템 폴더 내 파일 접근 차단
+    let path_lower = canonical_path.to_string_lossy().to_lowercase();
+    for pattern in crate::constants::BLOCKED_PATH_PATTERNS {
+        if path_lower.contains(&pattern.to_lowercase()) {
+            return Err("시스템 보호 폴더의 파일은 열 수 없습니다".to_string());
+        }
+    }
+
     let path_str = canonical_path.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
@@ -111,6 +119,7 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
 }
 
 /// 프론트엔드 에러를 Rust 로그 파일에 기록
+/// 로그 인젝션 방지: 입력 길이 제한 + 개행 문자 이스케이프
 #[tauri::command]
 pub async fn log_frontend_error(
     level: String,
@@ -118,10 +127,26 @@ pub async fn log_frontend_error(
     stack: Option<String>,
     source: Option<String>,
 ) -> Result<(), String> {
-    let source_tag = source.as_deref().unwrap_or("unknown");
+    const MAX_MESSAGE_LEN: usize = 4096;
+    const MAX_STACK_LEN: usize = 8192;
+    const MAX_SOURCE_LEN: usize = 256;
+
+    // 길이 제한 + control character 필터링 (로그/ANSI 인젝션 방지)
+    let sanitize = |s: &str, max: usize| -> String {
+        s.chars()
+            .take(max)
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect::<String>()
+    };
+
+    let source_tag = source
+        .as_deref()
+        .map(|s| sanitize(s, MAX_SOURCE_LEN))
+        .unwrap_or_else(|| "unknown".to_string());
+    let message = sanitize(&message, MAX_MESSAGE_LEN);
     let stack_info = stack
         .as_deref()
-        .map(|s| format!("\n  Stack: {}", s))
+        .map(|s| format!("\\n  Stack: {}", sanitize(s, MAX_STACK_LEN)))
         .unwrap_or_default();
 
     match level.as_str() {
@@ -191,6 +216,14 @@ pub async fn open_folder(path: String) -> Result<(), String> {
     // 폴더 존재 확인
     if !canonical_path.is_dir() {
         return Err("폴더를 찾을 수 없습니다".to_string());
+    }
+
+    // 시스템 폴더 접근 차단
+    let path_lower = canonical_path.to_string_lossy().to_lowercase();
+    for pattern in crate::constants::BLOCKED_PATH_PATTERNS {
+        if path_lower.contains(&pattern.to_lowercase()) {
+            return Err("시스템 보호 폴더는 열 수 없습니다".to_string());
+        }
     }
 
     let path_str = canonical_path.to_string_lossy().to_string();

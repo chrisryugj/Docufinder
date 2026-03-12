@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// LIKE 패턴 특수문자 이스케이프 (SQL Injection 방지)
 /// %, _, \ 문자를 이스케이프하여 리터럴로 처리
-fn escape_like_pattern(s: &str) -> String {
+pub fn escape_like_pattern(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")
@@ -714,6 +714,11 @@ pub fn delete_chunks_for_file_no_tx(conn: &Connection, file_id: i64) -> Result<(
 }
 
 /// 청크 저장 + FTS 인덱싱
+///
+/// `fts_extra_tokens`: 형태소 분석 결과 등 FTS에 추가로 인덱싱할 토큰들.
+/// unicode61 토크나이저는 "고용보험료"를 하나의 토큰으로 처리하므로,
+/// Lindera 형태소 분석 결과("고용", "보험료")를 함께 저장해야
+/// "보험료"로 검색했을 때도 매칭됨.
 #[allow(clippy::too_many_arguments)]
 pub fn insert_chunk(
     conn: &Connection,
@@ -725,6 +730,7 @@ pub fn insert_chunk(
     page_number: Option<usize>,
     page_end: Option<usize>,
     location_hint: Option<&str>,
+    fts_extra_tokens: Option<&str>,
 ) -> Result<i64> {
     // 청크 메타데이터 저장
     conn.execute(
@@ -743,10 +749,14 @@ pub fn insert_chunk(
 
     let chunk_id = conn.last_insert_rowid();
 
-    // FTS 인덱싱
+    // FTS 인덱싱 (원본 content + 형태소 토큰)
+    let fts_content = match fts_extra_tokens {
+        Some(tokens) if !tokens.is_empty() => format!("{} {}", content, tokens),
+        _ => content.to_string(),
+    };
     conn.execute(
         "INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)",
-        params![chunk_id, content],
+        params![chunk_id, fts_content],
     )?;
 
     Ok(chunk_id)

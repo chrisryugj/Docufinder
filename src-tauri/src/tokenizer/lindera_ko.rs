@@ -68,7 +68,7 @@ impl LinderaKoTokenizer {
     fn clean_token(token: &str) -> String {
         token
             .chars()
-            .filter(|c| c.is_alphanumeric() || *c >= '\u{AC00}' && *c <= '\u{D7AF}') // 한글 유니코드 범위
+            .filter(|c| c.is_ascii_alphanumeric() || (*c >= '\u{AC00}' && *c <= '\u{D7AF}')) // ASCII 영숫자 또는 한글
             .collect()
     }
 
