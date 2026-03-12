@@ -9,6 +9,7 @@ import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useAppEvents } from "./hooks/useAppEvents";
+import { useUpdater } from "./hooks/useUpdater";
 import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 
 // Components
@@ -17,6 +18,7 @@ import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
+import { UpdateBanner } from "./components/ui/UpdateBanner";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
 
@@ -229,6 +231,9 @@ function App() {
 
   // Tauri 이벤트 리스너 (증분 인덱싱 + 모델 다운로드)
   useAppEvents({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast });
+
+  // OTA 자동 업데이트
+  const updater = useUpdater();
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
@@ -453,6 +458,9 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
+      {/* OTA 업데이트 배너 */}
+      <UpdateBanner updater={updater} />
+
       {/* 사이드바 */}
       <Sidebar
         isOpen={sidebarOpen}

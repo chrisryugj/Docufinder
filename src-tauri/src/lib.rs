@@ -436,7 +436,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
-        // tauri-plugin-updater: 사내 배포용 비활성화 (외부 통신 차단)
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
         .plugin(
