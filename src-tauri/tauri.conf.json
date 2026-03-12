@@ -48,7 +48,14 @@
         "template": "wix/main.wxs"
       }
     },
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": "v1Compatible"
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/chrisryugj/Docufinder/releases/latest/download/latest.json"
+      ],
+      "pubkey": "RWQBMtE0Nmg+8DY4Ihh424S7tzFc/3MJK7FV2oZvniDoGc0vNf/13c9F"
+    }
+  }
 }
