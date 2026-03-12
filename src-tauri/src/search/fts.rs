@@ -7,6 +7,7 @@ pub fn search(
     conn: &Connection,
     query: &str,
     limit: usize,
+    folder_scope: Option<&str>,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (특수문자 이스케이프, 토크나이저 미사용)
     let safe_query = sanitize_fts_query(query, None);
@@ -15,7 +16,7 @@ pub fn search(
         return Ok(vec![]);
     }
 
-    search_internal(conn, &safe_query, limit)
+    search_internal(conn, &safe_query, limit, folder_scope)
 }
 
 /// FTS5 키워드 검색 (한국어 형태소 분석 포함)
@@ -27,6 +28,7 @@ pub fn search_with_tokenizer(
     query: &str,
     limit: usize,
     tokenizer: &dyn TextTokenizer,
+    folder_scope: Option<&str>,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (형태소 분석 포함)
     let safe_query = sanitize_fts_query(query, Some(tokenizer));
@@ -35,7 +37,7 @@ pub fn search_with_tokenizer(
         return Ok(vec![]);
     }
 
-    search_internal(conn, &safe_query, limit)
+    search_internal(conn, &safe_query, limit, folder_scope)
 }
 
 /// FTS5 검색 내부 구현
@@ -43,15 +45,25 @@ fn search_internal(
     conn: &Connection,
     safe_query: &str,
     limit: usize,
+    folder_scope: Option<&str>,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     if safe_query.is_empty() {
         return Ok(vec![]);
     }
 
-    // snippet(테이블, 컬럼인덱스, 시작마커, 끝마커, 생략기호, 토큰수)
-    // page_number, location_hint 직접 포함 (N+1 쿼리 제거)
-    // ⚡ highlight() 제거 - full_content 불필요, snippet만 사용 (성능 최적화)
-    let mut stmt = conn.prepare(
+    // folder_scope가 있으면 path LIKE 조건 추가
+    let (scope_clause, scope_pattern) = match folder_scope {
+        Some(scope) if !scope.is_empty() => {
+            let escaped = scope
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            ("AND f.path LIKE ? ESCAPE '\\'", Some(format!("{}%", escaped)))
+        }
+        _ => ("", None),
+    };
+
+    let sql = format!(
         "SELECT
             c.id,
             f.path,
@@ -70,11 +82,15 @@ fn search_internal(
          JOIN chunks c ON c.id = fts.rowid
          JOIN files f ON f.id = c.file_id
          WHERE chunks_fts MATCH ?
+         {}
          ORDER BY score
          LIMIT ?",
-    )?;
+        scope_clause
+    );
 
-    let results = stmt.query_map(params![safe_query, limit as i64], |row| {
+    let mut stmt = conn.prepare(&sql)?;
+
+    let map_row = |row: &rusqlite::Row| {
         Ok(FtsResult {
             chunk_id: row.get(0)?,
             file_path: row.get(1)?,
@@ -90,9 +106,20 @@ fn search_internal(
             snippet: row.get(11)?,
             modified_at: row.get(12)?,
         })
-    })?;
+    };
 
-    results.collect()
+    let results: Vec<FtsResult> = if let Some(ref pattern) = scope_pattern {
+        let limit_i64 = limit as i64;
+        stmt.query_map(
+            rusqlite::params![safe_query, pattern, limit_i64],
+            map_row,
+        )?.collect::<Result<Vec<_>, _>>()?
+    } else {
+        stmt.query_map(params![safe_query, limit as i64], map_row)?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+
+    Ok(results)
 }
 
 /// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + AND 검색)

@@ -23,6 +23,8 @@ interface SearchFiltersProps {
   refineQuery?: string;
   onRefineQueryChange?: (query: string) => void;
   onRefineQueryClear?: () => void;
+  /** 등록된 폴더 목록 (범위 필터용) */
+  watchedFolders?: string[];
 }
 
 /**
@@ -36,6 +38,7 @@ export const SearchFilters = memo(function SearchFilters({
   refineQuery = "",
   onRefineQueryChange,
   onRefineQueryClear,
+  watchedFolders = [],
 }: SearchFiltersProps) {
   const handleSortChange = (sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
@@ -58,7 +61,8 @@ export const SearchFilters = memo(function SearchFilters({
     filters.fileType !== "all" ||
     filters.dateRange !== "all" ||
     filters.keywordOnly ||
-    filters.excludeFilename;
+    filters.excludeFilename ||
+    filters.searchScope !== null;
 
   const showKeywordOnlyToggle = searchMode === "hybrid";
   // 파일명 모드가 아닐 때만 "파일명 제외" 필터 표시
@@ -93,6 +97,15 @@ export const SearchFilters = memo(function SearchFilters({
         options={DATE_RANGE_OPTIONS}
         onChange={handleDateRangeChange}
       />
+
+      {/* 검색 범위 */}
+      {watchedFolders.length > 1 && (
+        <ScopeDropdown
+          value={filters.searchScope}
+          folders={watchedFolders}
+          onChange={(scope) => onFiltersChange({ ...filters, searchScope: scope })}
+        />
+      )}
 
       {showKeywordOnlyToggle && (
         <label
@@ -195,6 +208,63 @@ interface FilterDropdownProps<T extends string> {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
+}
+
+/** 폴더 경로에서 짧은 라벨 추출 */
+function getFolderLabel(path: string): string {
+  // 드라이브 루트: "C:\" → "C:"
+  const normalized = path.replace(/\\\\\?\\/, "").replace(/\//g, "\\");
+  if (/^[A-Za-z]:\\?$/.test(normalized)) {
+    return normalized.replace(/\\$/, "");
+  }
+  // 일반 폴더: 마지막 폴더명
+  const parts = normalized.replace(/\\$/, "").split("\\");
+  return parts[parts.length - 1] || path;
+}
+
+function ScopeDropdown({
+  value,
+  folders,
+  onChange,
+}: {
+  value: string | null;
+  folders: string[];
+  onChange: (scope: string | null) => void;
+}) {
+  const isActive = value !== null;
+
+  return (
+    <div className="relative inline-block">
+      <select
+        value={value ?? "__all__"}
+        onChange={(e) => onChange(e.target.value === "__all__" ? null : e.target.value)}
+        className="appearance-none pl-2 pr-6 py-1 rounded border cursor-pointer font-medium
+          transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+        style={{
+          backgroundColor: isActive ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+          borderColor: isActive ? "var(--color-accent)" : "var(--color-border)",
+          color: isActive ? "var(--color-accent)" : "var(--color-text-secondary)",
+        }}
+        aria-label="검색 범위 필터"
+      >
+        <option value="__all__">전체</option>
+        {folders.map((folder) => (
+          <option key={folder} value={folder}>
+            {getFolderLabel(folder)}
+          </option>
+        ))}
+      </select>
+      <svg
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+        style={{ color: isActive ? "var(--color-accent)" : "var(--color-text-muted)" }}
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  );
 }
 
 function FilterDropdown<T extends string>({

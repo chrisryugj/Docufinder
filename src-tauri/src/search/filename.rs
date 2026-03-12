@@ -13,6 +13,7 @@ pub fn search(
     conn: &Connection,
     query: &str,
     limit: usize,
+    folder_scope: Option<&str>,
 ) -> Result<Vec<FilenameResult>, rusqlite::Error> {
     let trimmed = query.trim();
     if trimmed.is_empty() {
@@ -28,11 +29,21 @@ pub fn search(
 
     // 동적으로 WHERE 절 생성 (모든 검색어가 파일명에 포함되어야 함)
     // ESCAPE 절 추가로 특수문자 처리
-    let where_clauses: Vec<String> = terms
+    let mut where_clauses: Vec<String> = terms
         .iter()
         .enumerate()
         .map(|(i, _)| format!("name LIKE ?{} ESCAPE '\\'", i + 1))
         .collect();
+
+    // folder_scope 필터 추가
+    let scope_pattern = match folder_scope {
+        Some(scope) if !scope.is_empty() => {
+            let escaped = escape_like_pattern(scope);
+            where_clauses.push(format!("path LIKE ?{} ESCAPE '\\'", terms.len() + 1));
+            Some(format!("{}%", escaped))
+        }
+        _ => None,
+    };
 
     let sql = format!(
         "SELECT
@@ -51,7 +62,7 @@ pub fn search(
 
     let mut stmt = conn.prepare(&sql)?;
 
-    // 파라미터 바인딩 (LIKE 패턴 이스케이프 + limit)
+    // 파라미터 바인딩 (LIKE 패턴 이스케이프 + scope + limit)
     let like_patterns: Vec<String> = terms
         .iter()
         .map(|term| format!("%{}%", escape_like_pattern(term)))
@@ -65,6 +76,9 @@ pub fn search(
             .iter()
             .map(|s| s as &dyn rusqlite::ToSql)
             .collect();
+        if let Some(ref pattern) = scope_pattern {
+            param_values.push(pattern as &dyn rusqlite::ToSql);
+        }
         param_values.push(&limit_i64);
 
         let mut rows = stmt.query(param_values.as_slice())?;

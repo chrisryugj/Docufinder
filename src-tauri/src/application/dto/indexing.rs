@@ -32,6 +32,9 @@ pub struct AddFolderResult {
     pub message: String,
     /// 에러 목록
     pub errors: Vec<String>,
+    /// 변환 대상 HWP 파일 경로 목록
+    #[serde(default)]
+    pub hwp_files: Vec<String>,
 }
 
 impl AddFolderResult {
@@ -44,6 +47,7 @@ impl AddFolderResult {
             vectors_count: 0,
             message,
             errors: vec![],
+            hwp_files: vec![],
         }
     }
 
@@ -56,8 +60,18 @@ impl AddFolderResult {
             vectors_count: 0,
             message: "인덱싱이 취소되었습니다".to_string(),
             errors: vec![],
+            hwp_files: vec![],
         }
     }
+}
+
+/// HWP → HWPX 변환 결과 DTO
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConvertHwpResult {
+    pub success_count: usize,
+    pub failed_count: usize,
+    pub converted_paths: Vec<String>,
+    pub errors: Vec<String>,
 }
 
 /// 폴더 통계 DTO

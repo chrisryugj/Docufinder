@@ -14,9 +14,11 @@ import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
+import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import type { Settings } from "./types/settings";
+import type { AddFolderResult } from "./types/index";
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +29,7 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
 
   // 테마
   const { setTheme } = useTheme();
@@ -93,6 +96,7 @@ function App() {
     addFolderByPath,
     removeFolder,
     cancelIndexing,
+    autoIndexAllDrives,
   } = useIndexStatus();
 
   // 최근 검색
@@ -136,8 +140,8 @@ function App() {
     handleOpenFile,
     handleCopyPath,
     handleOpenFolder,
-    handleAddFolder,
-    handleAddFolderByPath,
+    handleAddFolder: rawHandleAddFolder,
+    handleAddFolderByPath: rawHandleAddFolderByPath,
     handleRemoveFolder,
   } = useFileActions({
     query,
@@ -150,6 +154,27 @@ function App() {
     invalidateSearch,
     refreshVectorStatus,
   });
+
+  // 인덱싱 결과 리포트 (실패 또는 HWP 파일 존재 시 표시)
+  const showReportIfNeeded = useCallback((results: AddFolderResult[]) => {
+    const hasFailed = results.some((r) => r.failed_count > 0);
+    const hasHwp = results.some((r) => (r.hwp_files?.length ?? 0) > 0);
+    if (hasFailed || hasHwp) {
+      setReportResults(results);
+    }
+  }, []);
+
+  const handleAddFolder = useCallback(async () => {
+    const results = await rawHandleAddFolder();
+    if (results) showReportIfNeeded(results);
+    return results;
+  }, [rawHandleAddFolder, showReportIfNeeded]);
+
+  const handleAddFolderByPath = useCallback(async (path: string) => {
+    const result = await rawHandleAddFolderByPath(path);
+    if (result) showReportIfNeeded([result]);
+    return result;
+  }, [rawHandleAddFolderByPath, showReportIfNeeded]);
 
   // 글로벌 에러 핸들러 등록 (프론트엔드 에러 → Rust 로그 파일)
   useEffect(() => {
@@ -590,6 +615,7 @@ function App() {
                   refineQuery={refineQuery}
                   onRefineQueryChange={setRefineQuery}
                   onRefineQueryClear={clearRefine}
+                  watchedFolders={status?.watched_folders ?? []}
                 />
               </div>
             )}
@@ -661,10 +687,41 @@ function App() {
         onAcceptDisclaimer={acceptDisclaimer}
         onExitApp={exitApp}
         showOnboarding={showOnboarding}
-        onCompleteOnboarding={completeOnboarding}
-        onSkipOnboarding={skipOnboarding}
+        onCompleteOnboarding={() => { completeOnboarding(); autoIndexAllDrives(); }}
+        onSkipOnboarding={() => { skipOnboarding(); autoIndexAllDrives(); }}
       />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <IndexingReportModal
+        isOpen={reportResults.length > 0}
+        onClose={() => setReportResults([])}
+        results={reportResults}
+        onReindex={async (convertedPaths) => {
+          // 변환된 HWPX 파일이 속한 watched folder를 찾아 resume_indexing
+          const watchedFolders = status?.watched_folders ?? [];
+          const foldersToSync = new Set<string>();
+          const strip = (p: string) => p.replace(/^\\\\\?\\/, "").replace(/\\/g, "/").toLowerCase();
+          for (const hwpxPath of convertedPaths) {
+            const normalized = strip(hwpxPath);
+            for (const folder of watchedFolders) {
+              if (normalized.startsWith(strip(folder))) {
+                foldersToSync.add(folder);
+                break;
+              }
+            }
+          }
+          let indexedCount = 0;
+          for (const folder of foldersToSync) {
+            try {
+              const result = await invoke<AddFolderResult>("resume_indexing", { path: folder });
+              indexedCount += result.indexed_count;
+            } catch (err) {
+              console.error("Re-indexing failed for", folder, err);
+            }
+          }
+          showToast(`${indexedCount}개 HWPX 파일 인덱싱 완료`, "success");
+          refreshStatus();
+        }}
+      />
 
       <FloatingUI
         vectorStatus={vectorStatus}

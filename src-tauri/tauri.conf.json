@@ -36,7 +36,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {},
+    "resources": {
+      "resources/FilePathCheckerModuleExample.dll": "FilePathCheckerModuleExample.dll"
+    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

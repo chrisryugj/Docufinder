@@ -25,6 +25,7 @@ fn validate_query(query: &str) -> ApiResult<()> {
 #[tauri::command]
 pub async fn search_keyword(
     query: String,
+    folder_scope: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -44,7 +45,7 @@ pub async fn search_keyword(
     };
 
     service
-        .search_keyword(&query, max_results)
+        .search_keyword(&query, max_results, folder_scope.as_deref())
         .await
         .map_err(ApiError::from)
 }
@@ -53,6 +54,7 @@ pub async fn search_keyword(
 #[tauri::command]
 pub async fn search_filename(
     query: String,
+    folder_scope: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -72,7 +74,7 @@ pub async fn search_filename(
     };
 
     service
-        .search_filename(&query, max_results)
+        .search_filename(&query, max_results, folder_scope.as_deref())
         .await
         .map_err(ApiError::from)
 }
@@ -81,6 +83,7 @@ pub async fn search_filename(
 #[tauri::command]
 pub async fn search_semantic(
     query: String,
+    folder_scope: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -108,7 +111,7 @@ pub async fn search_semantic(
     }
 
     service
-        .search_semantic(&query, max_results)
+        .search_semantic(&query, max_results, folder_scope.as_deref())
         .await
         .map_err(ApiError::from)
 }
@@ -118,6 +121,7 @@ pub async fn search_semantic(
 #[tauri::command]
 pub async fn search_hybrid(
     query: String,
+    folder_scope: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -143,13 +147,13 @@ pub async fn search_hybrid(
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
     if !semantic_enabled {
         return service
-            .search_keyword(&query, max_results)
+            .search_keyword(&query, max_results, folder_scope.as_deref())
             .await
             .map_err(ApiError::from);
     }
 
     service
-        .search_hybrid(&query, max_results)
+        .search_hybrid(&query, max_results, folder_scope.as_deref())
         .await
         .map_err(ApiError::from)
 }

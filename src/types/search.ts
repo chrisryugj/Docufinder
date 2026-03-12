@@ -91,6 +91,8 @@ export interface SearchFilters {
   keywordOnly: boolean;
   /** 파일명 검색 결과 제외 */
   excludeFilename: boolean;
+  /** 검색 범위 (null = 전체, string = 폴더 경로 prefix) */
+  searchScope: string | null;
 }
 
 /** 기본 필터 값 */
@@ -100,6 +102,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
   dateRange: "all",
   keywordOnly: false,
   excludeFilename: false,
+  searchScope: null,
 };
 
 /** 정렬 옵션 목록 */

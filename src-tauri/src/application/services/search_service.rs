@@ -20,6 +20,19 @@ use std::time::Instant;
 /// 0 = 비활성화 (i3에서 500~1000ms 추가 지연 방지, content_preview로 충분)
 const SEMANTIC_ENRICH_MAX_RESULTS: usize = 0;
 
+/// 벡터 검색 결과의 folder_scope 후처리 필터 (usearch는 DB path 필터 불가)
+/// Windows: case-insensitive 비교
+fn matches_folder_scope(file_path: &str, folder_scope: Option<&str>) -> bool {
+    match folder_scope {
+        Some(scope) if !scope.is_empty() => {
+            file_path
+                .to_lowercase()
+                .starts_with(&scope.to_lowercase())
+        }
+        _ => true,
+    }
+}
+
 /// 검색 서비스
 pub struct SearchService {
     db_path: PathBuf,
@@ -58,10 +71,10 @@ impl SearchService {
         }
 
         match query.mode {
-            SearchMode::Keyword => self.search_keyword(&query.query, query.max_results).await,
-            SearchMode::Semantic => self.search_semantic(&query.query, query.max_results).await,
-            SearchMode::Hybrid => self.search_hybrid(&query.query, query.max_results).await,
-            SearchMode::Filename => self.search_filename(&query.query, query.max_results).await,
+            SearchMode::Keyword => self.search_keyword(&query.query, query.max_results, None).await,
+            SearchMode::Semantic => self.search_semantic(&query.query, query.max_results, None).await,
+            SearchMode::Hybrid => self.search_hybrid(&query.query, query.max_results, None).await,
+            SearchMode::Filename => self.search_filename(&query.query, query.max_results, None).await,
         }
     }
 
@@ -70,6 +83,7 @@ impl SearchService {
         &self,
         query: &str,
         max_results: usize,
+        folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
@@ -78,9 +92,9 @@ impl SearchService {
         // FTS5 검색 실행 (한국어 형태소 분석 포함)
         let use_tokenizer = self.tokenizer.is_some();
         let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref())
+            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-            None => fts::search(&conn, query, max_results)
+            None => fts::search(&conn, query, max_results, folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
@@ -146,6 +160,7 @@ impl SearchService {
         &self,
         query: &str,
         max_results: usize,
+        folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
@@ -168,7 +183,7 @@ impl SearchService {
                     })
                 }
             };
-            let cache_results = cache.search(query, max_results);
+            let cache_results = cache.search_with_scope(query, max_results, folder_scope);
 
             cache_results
                 .into_iter()
@@ -195,7 +210,7 @@ impl SearchService {
         } else {
             // Fallback: DB LIKE 검색
             let conn = self.get_connection()?;
-            let filename_results = filename::search(&conn, query, max_results)
+            let filename_results = filename::search(&conn, query, max_results, folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
             let scores: Vec<f64> = filename_results.iter().map(|r| r.score).collect();
@@ -247,6 +262,7 @@ impl SearchService {
         &self,
         query: &str,
         max_results: usize,
+        folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
@@ -283,11 +299,15 @@ impl SearchService {
         let chunk_map: HashMap<i64, ChunkInfo> =
             chunks.into_iter().map(|c| (c.chunk_id, c)).collect();
 
-        // 결과 변환 (⚡ full_content 제거)
+        // 결과 변환 (⚡ full_content 제거) + folder_scope 후처리 필터
         let mut results: Vec<SearchResult> = vector_results
             .into_iter()
             .filter_map(|vr| {
-                chunk_map.get(&vr.chunk_id).map(|chunk| SearchResult {
+                chunk_map.get(&vr.chunk_id).and_then(|chunk| {
+                    if !matches_folder_scope(&chunk.file_path, folder_scope) {
+                        return None;
+                    }
+                    Some(SearchResult {
                     file_path: chunk.file_path.clone(),
                     file_name: chunk.file_name.clone(),
                     chunk_index: chunk.chunk_index,
@@ -302,6 +322,7 @@ impl SearchService {
                     location_hint: chunk.location_hint.clone(),
                     snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
                     modified_at: chunk.modified_at,
+                })
                 })
             })
             .collect();
@@ -334,6 +355,7 @@ impl SearchService {
         &self,
         query: &str,
         max_results: usize,
+        folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
@@ -343,9 +365,9 @@ impl SearchService {
 
         // 1. FTS5 검색 (한국어 형태소 분석 포함)
         let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref())
+            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-            None => fts::search(&conn, query, max_results)
+            None => fts::search(&conn, query, max_results, folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
@@ -482,10 +504,13 @@ impl SearchService {
                         modified_at: fts_r.modified_at,
                     })
                 } else {
-                    vector_only_chunks.get(&hr.chunk_id).map(|chunk| {
+                    vector_only_chunks.get(&hr.chunk_id).and_then(|chunk| {
+                        if !matches_folder_scope(&chunk.file_path, folder_scope) {
+                            return None;
+                        }
                         // 벡터 전용 결과 (DB 조회 결과 사용, ⚡ full_content 제거)
                         // snippet: None → enrich_semantic_results에서 문장 하이라이트 추가
-                        SearchResult {
+                        Some(SearchResult {
                             file_path: chunk.file_path.clone(),
                             file_name: chunk.file_name.clone(),
                             chunk_index: chunk.chunk_index,
@@ -500,7 +525,7 @@ impl SearchService {
                             location_hint: chunk.location_hint.clone(),
                             snippet: None,
                             modified_at: chunk.modified_at,
-                        }
+                        })
                     })
                 }
             })

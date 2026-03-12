@@ -126,6 +126,11 @@ impl FilenameCache {
 
     /// 파일명 검색 (O(n) 벡터 스캔, 10만 파일 ~5ms)
     pub fn search(&self, query: &str, limit: usize) -> Vec<FilenameEntry> {
+        self.search_with_scope(query, limit, None)
+    }
+
+    /// 파일명 검색 (폴더 범위 필터 지원)
+    pub fn search_with_scope(&self, query: &str, limit: usize, folder_scope: Option<&str>) -> Vec<FilenameEntry> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return vec![];
@@ -146,11 +151,19 @@ impl FilenameCache {
             Err(_) => return vec![],
         };
 
-        // O(n) 스캔 - 모든 검색어가 포함된 파일만
+        // O(n) 스캔 - 모든 검색어가 포함된 파일만 + 폴더 범위 필터
         cache
             .entries
             .iter()
             .filter(|e| {
+                // 폴더 범위 필터 (Windows: case-insensitive)
+                if let Some(scope) = folder_scope {
+                    if !scope.is_empty()
+                        && !e.path.to_lowercase().starts_with(&scope.to_lowercase())
+                    {
+                        return false;
+                    }
+                }
                 terms
                     .iter()
                     .all(|term| e.name_lower.contains(term.as_str()))

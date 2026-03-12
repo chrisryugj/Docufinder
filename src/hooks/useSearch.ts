@@ -35,8 +35,9 @@ export function clearSearchCache(): void {
   searchCache.clear();
 }
 
-function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean): string {
-  return `${mode}:${excludeFilename ? "nf:" : ""}${query.trim().toLowerCase()}`;
+function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean, searchScope: string | null): string {
+  const scopePart = searchScope ? `s:${searchScope}:` : "";
+  return `${mode}:${excludeFilename ? "nf:" : ""}${scopePart}${query.trim().toLowerCase()}`;
 }
 
 function getFromCache(key: string): CacheEntry | null {
@@ -164,7 +165,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       }
 
       // LRU 캐시 확인
-      const cacheKey = getCacheKey(searchQuery, mode, filters.excludeFilename);
+      const cacheKey = getCacheKey(searchQuery, mode, filters.excludeFilename, filters.searchScope);
       const cached = getFromCache(cacheKey);
       if (cached) {
         startTransition(() => {
@@ -185,6 +186,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         if (mode === "filename") {
           const response = await invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], {
             query: searchQuery,
+            folderScope: filters.searchScope,
           }, IPC_TIMEOUT.SEARCH);
           if (searchIdRef.current !== currentId) return;
           // 캐시 저장
@@ -200,10 +202,11 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           });
         } else {
           // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
-          const contentPromise = invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], { query: searchQuery }, IPC_TIMEOUT.SEARCH);
+          const ipcArgs = { query: searchQuery, folderScope: filters.searchScope };
+          const contentPromise = invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], ipcArgs, IPC_TIMEOUT.SEARCH);
           const filenamePromise = filters.excludeFilename
             ? Promise.resolve({ results: [], search_time_ms: 0, total_count: 0 })
-            : invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS.filename, { query: searchQuery }, IPC_TIMEOUT.SEARCH);
+            : invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS.filename, ipcArgs, IPC_TIMEOUT.SEARCH);
 
           // 파일명 검색 실패가 본문 검색까지 죽이지 않도록 allSettled 사용
           const [contentResult, filenameResult] = await Promise.allSettled([
@@ -250,7 +253,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setIsLoading(false);
       }
     },
-    [filters.excludeFilename]
+    [filters.excludeFilename, filters.searchScope]
   );
 
   // IME 상태 설정 (SearchBar에서 호출)

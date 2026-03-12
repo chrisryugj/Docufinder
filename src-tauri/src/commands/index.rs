@@ -4,7 +4,7 @@
 
 use super::settings::VectorIndexingMode;
 use crate::application::dto::indexing::{
-    AddFolderResult, FolderStats, IndexStatus, WatchedFolderInfo,
+    AddFolderResult, ConvertHwpResult, FolderStats, IndexStatus, WatchedFolderInfo,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::indexer::pipeline::FtsIndexingProgress;
@@ -13,7 +13,7 @@ use crate::AppContainer;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// 프론트엔드 이벤트용 인덱싱 진행률
 #[derive(Debug, Clone, Serialize)]
@@ -128,6 +128,7 @@ pub async fn add_folder(
                 message: "이미 등록된 폴더입니다. 재인덱싱하려면 '다시 인덱싱' 버튼을 사용하세요."
                     .to_string(),
                 errors: vec![],
+                hwp_files: vec![],
             });
         }
     }
@@ -262,6 +263,7 @@ pub async fn add_folder(
         vectors_count: 0,
         message,
         errors: result.errors,
+        hwp_files: result.hwp_files,
     })
 }
 
@@ -405,6 +407,7 @@ pub async fn reindex_folder(
         vectors_count: 0,
         message,
         errors: result.errors,
+        hwp_files: result.hwp_files,
     })
 }
 
@@ -543,6 +546,7 @@ pub async fn resume_indexing(
         vectors_count: 0,
         message,
         errors: sync_result.errors,
+        hwp_files: vec![],
     })
 }
 
@@ -662,6 +666,125 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
     tracing::info!("FilenameCache cleared");
 
     result
+}
+
+// ============================================
+// HWP Conversion Commands
+// ============================================
+
+/// HWP → HWPX 변환 (한글 COM 자동화)
+#[tauri::command]
+pub async fn convert_hwp_to_hwpx(
+    paths: Vec<String>,
+    app: AppHandle,
+) -> ApiResult<ConvertHwpResult> {
+    tracing::info!("Converting {} HWP files to HWPX...", paths.len());
+
+    // FilePathCheckerModuleExample.dll 경로 (번들 리소스)
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| ApiError::IndexingFailed(format!("Failed to get resource dir: {}", e)))?;
+    let dll_path = resource_dir.join("FilePathCheckerModuleExample.dll");
+
+    if !dll_path.exists() {
+        return Err(ApiError::IndexingFailed(
+            "FilePathCheckerModuleExample.dll not found in resources".to_string(),
+        ));
+    }
+
+    let dll_path_str = dll_path.to_string_lossy().replace('\\', "\\\\");
+    let total = paths.len();
+    let mut success_count = 0;
+    let mut failed_count = 0;
+    let mut converted_paths = Vec::new();
+    let mut errors = Vec::new();
+
+    for (i, hwp_path) in paths.iter().enumerate() {
+        let hwp = Path::new(hwp_path);
+        if !hwp.exists() {
+            errors.push(format!("File not found: {}", hwp_path));
+            failed_count += 1;
+            continue;
+        }
+
+        let hwpx_path = hwp.with_extension("hwpx");
+        let hwp_escaped = hwp_path.replace('\'', "''");
+        let hwpx_escaped = hwpx_path.to_string_lossy().replace('\'', "''");
+
+        // 진행률 이벤트
+        let _ = app.emit("hwp-convert-progress", serde_json::json!({
+            "total": total,
+            "current": i + 1,
+            "current_file": hwp_path,
+        }));
+
+        let ps_script = format!(
+            r#"$ErrorActionPreference = 'Stop'
+try {{
+    $hwp = New-Object -ComObject HWPFrame.HwpObject
+    $hwp.RegisterModule("FilePathCheckerModuleExample", '{dll}')
+    $hwp.Open('{input}', "HWP", "forceopen:true")
+    $hwp.SaveAs('{output}', "HWPX")
+    $hwp.Clear(1)
+    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($hwp) | Out-Null
+    Write-Output "OK"
+}} catch {{
+    Write-Error $_.Exception.Message
+    exit 1
+}}"#,
+            dll = dll_path_str,
+            input = hwp_escaped,
+            output = hwpx_escaped,
+        );
+
+        // tokio::process로 비동기 실행 (Tokio 런타임 스레드 블로킹 방지)
+        let result = tokio::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .output()
+            .await;
+
+        match result {
+            Ok(output) if output.status.success() => {
+                success_count += 1;
+                converted_paths.push(hwpx_path.to_string_lossy().to_string());
+                tracing::info!("Converted: {} → .hwpx", hwp_path);
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let err_msg = format!("{}: {}", hwp_path, stderr.trim());
+                tracing::warn!("HWP conversion failed: {}", err_msg);
+                errors.push(err_msg);
+                failed_count += 1;
+            }
+            Err(e) => {
+                let err_msg = format!("{}: {}", hwp_path, e);
+                tracing::error!("PowerShell execution failed: {}", err_msg);
+                errors.push(err_msg);
+                failed_count += 1;
+            }
+        }
+    }
+
+    // 완료 이벤트
+    let _ = app.emit("hwp-convert-progress", serde_json::json!({
+        "total": total,
+        "current": total,
+        "done": true,
+    }));
+
+    tracing::info!(
+        "HWP conversion complete: {} success, {} failed",
+        success_count,
+        failed_count
+    );
+
+    Ok(ConvertHwpResult {
+        success_count,
+        failed_count,
+        converted_paths,
+        errors,
+    })
 }
 
 // ============================================

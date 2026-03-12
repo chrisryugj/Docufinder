@@ -15,6 +15,13 @@ function isDriveRoot(path: string): boolean {
   return /^[A-Za-z]:\\?$/.test(normalized);
 }
 
+interface SuggestedFolder {
+  path: string;
+  label: string;
+  category: "known" | "drive";
+  exists: boolean;
+}
+
 interface UseIndexStatusReturn {
   status: IndexStatus | null;
   isIndexing: boolean;
@@ -26,6 +33,7 @@ interface UseIndexStatusReturn {
   addFolderByPath: (path: string) => Promise<AddFolderResult | null>;
   removeFolder: (path: string) => Promise<void>;
   cancelIndexing: () => Promise<void>;
+  autoIndexAllDrives: () => Promise<void>;
 }
 
 /**
@@ -224,6 +232,37 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, []);
 
+  // 전체 드라이브 자동 인덱싱 (Everything 스타일)
+  const autoIndexAllDrives = useCallback(async (): Promise<void> => {
+    try {
+      const folders = await invokeWithTimeout<SuggestedFolder[]>(
+        "get_suggested_folders",
+        undefined,
+        IPC_TIMEOUT.SETTINGS
+      );
+      // 드라이브만 필터 (known 폴더 제외)
+      const drives = folders.filter((f) => f.category === "drive" && f.exists);
+      if (drives.length === 0) return;
+
+      setIsIndexing(true);
+      setError(null);
+
+      for (const drive of drives) {
+        try {
+          await indexSingleFolder(drive.path);
+        } catch (err) {
+          console.error(`Failed to index drive: ${drive.path}`, err);
+        }
+        await refreshStatus();
+      }
+
+      setIsIndexing(false);
+    } catch (err) {
+      console.error("Failed to auto-index drives:", err);
+      setIsIndexing(false);
+    }
+  }, [refreshStatus, indexSingleFolder]);
+
   return {
     status,
     isIndexing,
@@ -235,5 +274,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
     addFolderByPath,
     removeFolder,
     cancelIndexing,
+    autoIndexAllDrives,
   };
 }

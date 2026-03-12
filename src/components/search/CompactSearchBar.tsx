@@ -165,6 +165,18 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
         });
       }
 
+      if (filters.searchScope !== null) {
+        const normalized = filters.searchScope.replace(/\\\\\?\\/, "").replace(/\//g, "\\").replace(/\\$/, "");
+        const parts = normalized.split("\\");
+        const last = parts[parts.length - 1] || "";
+        const scopeLabel = /^[A-Za-z]:?$/.test(last) ? last.replace(/:?$/, ":") : last || filters.searchScope;
+        labels.push({
+          key: "scope",
+          label: `범위:${scopeLabel}`,
+          onRemove: () => onFiltersChange({ ...filters, searchScope: null }),
+        });
+      }
+
       return labels;
     }, [filters, onFiltersChange]);
 

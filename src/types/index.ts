@@ -15,6 +15,16 @@ export interface AddFolderResult {
   vectors_count: number;
   message: string;
   errors: string[];
+  /** 변환 대상 HWP 파일 경로 */
+  hwp_files?: string[];
+}
+
+/** HWP → HWPX 변환 결과 */
+export interface ConvertHwpResult {
+  success_count: number;
+  failed_count: number;
+  converted_paths: string[];
+  errors: string[];
 }
 
 /** 폴더별 인덱싱 통계 */

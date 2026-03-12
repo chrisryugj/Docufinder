@@ -668,6 +668,7 @@ pub fn run() {
             commands::index::start_vector_indexing,
             commands::index::get_db_debug_info,
             commands::index::clear_all_data,
+            commands::index::convert_hwp_to_hwpx,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::file::open_file,
