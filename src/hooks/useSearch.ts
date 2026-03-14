@@ -203,7 +203,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             setResults(response.results);
             setFilenameResults([]);
             setSearchTime(response.search_time_ms);
+            setIsLoading(false);
           });
+          return;
         } else {
           // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
           const ipcArgs = { query: searchQuery, folderScope: filters.searchScope };
@@ -239,6 +241,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             setResults(contentResponse.results);
             setFilenameResults(filenameResponse.results);
             setSearchTime(contentResponse.search_time_ms);
+            setIsLoading(false);
           });
         }
       } catch (err) {
@@ -250,11 +253,8 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           setResults([]);
           setFilenameResults([]);
           setSearchTime(null);
+          setIsLoading(false);
         });
-      }
-
-      if (searchIdRef.current === currentId) {
-        setIsLoading(false);
       }
     },
     [filters.excludeFilename, filters.searchScope]
