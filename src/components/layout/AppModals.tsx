@@ -11,6 +11,7 @@ interface AppModalsProps {
   onThemeChange: (theme: Theme) => void;
   onSettingsSaved: (settings: Settings) => void;
   onClearData: () => Promise<void>;
+  onAutoIndexAllDrives?: () => Promise<void>;
 
   helpOpen: boolean;
   onHelpClose: () => void;
@@ -33,6 +34,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         onThemeChange={props.onThemeChange}
         onSettingsSaved={props.onSettingsSaved}
         onClearData={props.onClearData}
+        onAutoIndexAllDrives={props.onAutoIndexAllDrives}
       />
       <HelpModal isOpen={props.helpOpen} onClose={props.onHelpClose} />
       <DisclaimerModal

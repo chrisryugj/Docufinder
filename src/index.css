@@ -2,6 +2,7 @@
 /* 외부 폰트 제거 - 내부망 환경 최적화 */
 @import "./assets/fonts/pretendard.css";
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ============================================
    DocuFinder Premium Design System
@@ -222,6 +223,110 @@
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
   --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================
+   V2 Premium Design System (Isolated Scope)
+   "Native Desktop App Feel" - Shadows, Depth, Glass
+   ============================================ */
+.v2-theme {
+  /* Surface Layers (네이티브 깊이감 묘사) */
+  --v2-layer-base: var(--color-bg-primary); 
+  --v2-layer-elevated-1: #ffffff; /* 겹친 첫 번째 카드 */
+  --v2-layer-elevated-2: #f8fafc; /* 포커싱 된 카드 */
+  
+  /* V2 Typography */
+  --v2-font-heading: 'Pretendard Variable', 'Pretendard', sans-serif;
+  letter-spacing: -0.015em;
+
+  /* V2 Distinct Shadows (앱/웹 느낌 경계를 긋는 프리미엄 그림자) */
+  --v2-shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
+  --v2-shadow-float: 0 8px 30px rgba(15, 23, 42, 0.08), 0 2px 10px rgba(15, 23, 42, 0.04);
+  --v2-shadow-heavy: 0 20px 40px rgba(15, 23, 42, 0.12), 0 10px 15px rgba(15, 23, 42, 0.06);
+  --v2-shadow-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.15); /* Tailwind ring-blue-500/15 와 유사하나 부드럽게 */
+  
+  /* V2 Smooth Curve */
+  --v2-radius-app: 1.25rem; /* 20px - 부드러운 곡선 */
+  --v2-radius-inner: 0.75rem; /* 12px */
+
+  /* Transitions */
+  --v2-easing-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --v2-easing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --v2-transition-all: all 0.4s var(--v2-easing-spring);
+}
+
+.dark .v2-theme {
+  --v2-layer-elevated-1: #1E293B; /* Slate-800 */
+  --v2-layer-elevated-2: #334155; /* Slate-700 */
+  
+  --v2-shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+  --v2-shadow-float: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 15px rgba(0, 0, 0, 0.3);
+  --v2-shadow-heavy: 0 24px 50px rgba(0, 0, 0, 0.6), 0 12px 20px rgba(0, 0, 0, 0.4);
+  --v2-shadow-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.2);
+}
+
+/* V2 Layout Helpers */
+.v2-blur-panel {
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  background-color: rgba(255, 255, 255, 0.7);
+}
+
+.dark .v2-blur-panel {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+
+.v2-card {
+  background-color: var(--v2-layer-elevated-1);
+  border-radius: var(--v2-radius-app);
+  box-shadow: var(--v2-shadow-soft);
+  border: 1px solid rgba(15, 23, 42, 0.05); /* 극도로 얇고 투명한 선 */
+  transition: var(--v2-transition-all);
+}
+.dark .v2-card {
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* 호버 시 붕 뜨는 프리미엄 카드 */
+.v2-card-interactive:hover {
+  transform: translateY(-2px) scale(1.005);
+  box-shadow: var(--v2-shadow-float);
+  border-color: rgba(59, 130, 246, 0.1); 
+}
+.v2-card-interactive:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: var(--v2-shadow-soft);
+}
+
+/* V2 Text Highlight Overrides (눈이 편안한 황금빛/초록빛) */
+.v2-theme mark {
+  background-color: rgba(250, 204, 21, 0.25); /* yellow-400 / 25% */
+  color: unset; /* 글자색 원본 유지 */
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 500;
+  box-shadow: 0 -2px 0 0 rgba(250, 204, 21, 0.5) inset; /* 언더라인 효과 */
+}
+.dark .v2-theme mark {
+  background-color: rgba(234, 179, 8, 0.3);
+  box-shadow: 0 -2px 0 0 rgba(234, 179, 8, 0.6) inset;
+}
+
+/* V2 Button Premium Base */
+.v2-btn-primary {
+  background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  transition: var(--v2-transition-all);
+}
+.v2-btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+.v2-btn-primary:active {
+  filter: brightness(0.95);
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.1);
 }
 
 /* ============================================

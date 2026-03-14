@@ -19,6 +19,8 @@ import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
+import { Modal } from "./components/ui/Modal";
+import { Button } from "./components/ui/Button";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
 
@@ -31,6 +33,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
+  const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
+  const autoIndexPromptShownRef = useRef(false);
 
   // 테마
   const { setTheme } = useTheme();
@@ -206,6 +210,20 @@ function App() {
       win.setFocus().catch(() => {});
     });
   }, []);
+
+  // 앱 시작 시 등록 폴더 0개면 자동 인덱싱 안내 다이얼로그
+  useEffect(() => {
+    if (
+      !autoIndexPromptShownRef.current &&
+      status &&
+      status.watched_folders.length === 0 &&
+      !showDisclaimer &&
+      !showOnboarding
+    ) {
+      autoIndexPromptShownRef.current = true;
+      setShowAutoIndexPrompt(true);
+    }
+  }, [status, showDisclaimer, showOnboarding]);
 
   // FTS 인덱싱 완료 시 검색 캐시 무효화 (stale 결과 방지)
   useEffect(() => {
@@ -639,14 +657,15 @@ function App() {
         onThemeChange={setTheme}
         onSettingsSaved={handleSettingsSaved}
         onClearData={handleClearData}
+        onAutoIndexAllDrives={autoIndexAllDrives}
         helpOpen={helpOpen}
         onHelpClose={() => setHelpOpen(false)}
         showDisclaimer={showDisclaimer}
         onAcceptDisclaimer={acceptDisclaimer}
         onExitApp={exitApp}
         showOnboarding={showOnboarding}
-        onCompleteOnboarding={() => { completeOnboarding(); autoIndexAllDrives(); }}
-        onSkipOnboarding={() => { skipOnboarding(); autoIndexAllDrives(); }}
+        onCompleteOnboarding={() => { completeOnboarding(); setShowAutoIndexPrompt(true); }}
+        onSkipOnboarding={() => { skipOnboarding(); setShowAutoIndexPrompt(true); }}
       />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <IndexingReportModal
@@ -680,6 +699,53 @@ function App() {
           refreshStatus();
         }}
       />
+
+      {/* 자동 인덱싱 안내 다이얼로그 */}
+      <Modal
+        isOpen={showAutoIndexPrompt}
+        onClose={() => setShowAutoIndexPrompt(false)}
+        title="문서 검색을 시작하세요"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
+            등록된 폴더가 없습니다. 어떻게 시작할까요?
+          </p>
+          <div className="space-y-2">
+            <Button
+              className="w-full justify-center"
+              onClick={async () => {
+                setShowAutoIndexPrompt(false);
+                await autoIndexAllDrives();
+              }}
+            >
+              전체 드라이브 인덱싱
+            </Button>
+            <p className="text-xs text-center" style={{ color: "var(--color-text-muted)" }}>
+              모든 드라이브를 스캔합니다 (시스템 폴더 자동 제외)
+            </p>
+            <Button
+              variant="ghost"
+              className="w-full justify-center"
+              onClick={async () => {
+                setShowAutoIndexPrompt(false);
+                await handleAddFolder();
+              }}
+            >
+              폴더 직접 선택
+            </Button>
+            <div className="pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <button
+                className="w-full text-center text-xs py-1.5"
+                style={{ color: "var(--color-text-muted)" }}
+                onClick={() => setShowAutoIndexPrompt(false)}
+              >
+                나중에 할게요
+              </button>
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       <FloatingUI
         vectorStatus={vectorStatus}
