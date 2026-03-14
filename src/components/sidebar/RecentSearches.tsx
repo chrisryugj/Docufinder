@@ -19,7 +19,7 @@ export const RecentSearches = memo(function RecentSearches({
   if (searches.length === 0) {
     return (
       <div
-        className="text-sm py-2 px-3"
+        className="text-base py-2 px-3"
         style={{ color: "var(--color-sidebar-muted)" }}
       >
         최근 검색 기록이 없습니다
@@ -53,7 +53,7 @@ export const RecentSearches = memo(function RecentSearches({
               {/* 검색어 */}
               <button
                 onClick={() => onSelect(search.query)}
-                className="flex-1 text-left text-sm truncate transition-colors"
+                className="flex-1 text-left text-base truncate transition-colors"
                 style={{ color: "var(--color-sidebar-text)" }}
                 title={search.query}
               >
@@ -62,7 +62,7 @@ export const RecentSearches = memo(function RecentSearches({
 
               {/* 시간 배지 */}
               <span
-                className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
                 style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
                 title={new Date(search.timestamp).toLocaleString("ko-KR")}
               >

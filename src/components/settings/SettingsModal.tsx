@@ -215,7 +215,26 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="설정" size="lg">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="설정"
+      size="lg"
+      footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={onClose}>
+            취소
+          </Button>
+          <Button
+            onClick={saveSettings}
+            isLoading={isSaving}
+            disabled={isSaving}
+          >
+            저장
+          </Button>
+        </div>
+      }
+    >
       {error && (
         <div
           className="mb-4 p-3 rounded-lg text-sm"
@@ -230,7 +249,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       )}
 
       {settings && (
-        <div className="space-y-5">
+        <div className="space-y-3">
           {/* Tab Bar */}
           <div
             className="flex gap-0 -mx-1"
@@ -240,7 +259,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="px-4 py-2.5 text-sm font-medium transition-colors relative"
+                className="px-4 py-2 text-sm font-medium transition-colors relative"
                 style={{
                   color: activeTab === tab.id
                     ? "var(--color-accent)"
@@ -260,68 +279,68 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
           {/* === Tab: 일반 === */}
           {activeTab === "general" && (
-            <div className="space-y-5">
-              {/* 테마 */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  테마
-                </label>
-                <Dropdown
-                  options={THEME_OPTIONS}
-                  value={settings.theme}
-                  onChange={(value) => handleChange("theme", value as Settings["theme"])}
-                  placeholder="테마 선택"
-                />
+            <div className="space-y-3">
+              {/* 테마 + 검색 모드 (2열) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    테마
+                  </label>
+                  <Dropdown
+                    options={THEME_OPTIONS}
+                    value={settings.theme}
+                    onChange={(value) => handleChange("theme", value as Settings["theme"])}
+                    placeholder="테마 선택"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    기본 검색 모드
+                  </label>
+                  <Dropdown
+                    options={SEARCH_MODE_OPTIONS}
+                    value={settings.search_mode}
+                    onChange={(value) => handleChange("search_mode", value as Settings["search_mode"])}
+                    placeholder="검색 모드 선택"
+                  />
+                </div>
               </div>
+              <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                키워드: FTS5 전문 검색 / 하이브리드: 키워드 + 의미 검색 (시맨틱 활성화 필요)
+              </p>
 
-              {/* 검색 모드 */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  기본 검색 모드
-                </label>
-                <Dropdown
-                  options={SEARCH_MODE_OPTIONS}
-                  value={settings.search_mode}
-                  onChange={(value) => handleChange("search_mode", value as Settings["search_mode"])}
-                  placeholder="검색 모드 선택"
-                />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  키워드: FTS5 전문 검색 / 하이브리드: 키워드 + 의미 검색 (시맨틱 활성화 필요)
-                </p>
+              {/* 최대 결과 + 표시 단위 (2열) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    최대 검색 결과
+                  </label>
+                  <Dropdown
+                    options={MAX_RESULTS_OPTIONS}
+                    value={String(settings.max_results)}
+                    onChange={(value) => handleChange("max_results", parseInt(value))}
+                    placeholder="결과 수 선택"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    결과 표시 단위
+                  </label>
+                  <Dropdown
+                    options={RESULTS_PER_PAGE_OPTIONS}
+                    value={String(settings.results_per_page ?? 50)}
+                    onChange={(value) => handleChange("results_per_page", parseInt(value))}
+                    placeholder="단위 선택"
+                  />
+                </div>
               </div>
-
-              {/* 최대 결과 수 */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  최대 검색 결과
-                </label>
-                <Dropdown
-                  options={MAX_RESULTS_OPTIONS}
-                  value={String(settings.max_results)}
-                  onChange={(value) => handleChange("max_results", parseInt(value))}
-                  placeholder="결과 수 선택"
-                />
-              </div>
-
-              {/* 더 보기 단위 */}
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  결과 표시 단위
-                </label>
-                <Dropdown
-                  options={RESULTS_PER_PAGE_OPTIONS}
-                  value={String(settings.results_per_page ?? 50)}
-                  onChange={(value) => handleChange("results_per_page", parseInt(value))}
-                  placeholder="단위 선택"
-                />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  한 번에 표시할 검색 결과 수. "더 보기"를 눌러 추가 로드
-                </p>
-              </div>
+              <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                한 번에 표시할 결과 수. "더 보기"를 눌러 추가 로드
+              </p>
 
               {/* 결과 보기 밀도 */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   검색 결과 보기
                 </label>
                 <Dropdown
@@ -330,20 +349,17 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   onChange={(value) => handleChange("view_density", value as Settings["view_density"])}
                   placeholder="보기 모드 선택"
                 />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  컴팩트: 더 많은 결과를 한 화면에 표시
-                </p>
               </div>
             </div>
           )}
 
           {/* === Tab: 검색 === */}
           {activeTab === "search" && (
-            <div className="space-y-5">
+            <div className="space-y-3">
               {/* 최소 신뢰도 */}
               <div>
                 <label
-                  className="flex items-center text-sm font-medium mb-2"
+                  className="flex items-center text-xs font-medium mb-1"
                   style={{ color: "var(--color-text-secondary)" }}
                 >
                   최소 신뢰도
@@ -352,23 +368,20 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                       <div className="space-y-2 py-1">
                         <div>
                           <strong style={{ color: "var(--color-text-primary)" }}>점수 산정</strong>
-                          <p className="mt-0.5">RRF(Reciprocal Rank Fusion) 방식으로 키워드 검색과 의미 검색 순위를 병합해 계산합니다.</p>
+                          <p className="mt-0.5">RRF 방식으로 키워드·의미 검색 순위를 병합 계산</p>
                         </div>
                         <div>
-                          <strong style={{ color: "var(--color-text-primary)" }}>추천 설정</strong>
+                          <strong style={{ color: "var(--color-text-primary)" }}>추천</strong>
                           <ul className="mt-0.5 space-y-0.5">
-                            <li>0%: 모든 결과 표시</li>
-                            <li>20-30%: 관련성 높은 결과 (권장)</li>
-                            <li>50%+: 매우 정확한 결과만</li>
+                            <li>0%: 모든 결과 / 20-30%: 권장 / 50%+: 정확한 결과만</li>
                           </ul>
                         </div>
-                        <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>같은 문서도 페이지별로 점수가 다를 수 있습니다</p>
                       </div>
                     }
-                    maxWidth={320}
+                    maxWidth={280}
                   />
                 </label>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <input
                     type="range"
                     min={0}
@@ -380,15 +393,12 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     aria-label="최소 신뢰도 설정"
                   />
                   <div
-                    className="min-w-[48px] text-sm font-semibold text-right"
+                    className="min-w-[40px] text-xs font-semibold text-right"
                     style={{ color: "var(--color-text-primary)" }}
                   >
                     {settings.min_confidence}%
                   </div>
                 </div>
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  설정 값 미만의 결과는 표시하지 않습니다
-                </p>
               </div>
 
               {/* 하위폴더 포함 */}
@@ -401,19 +411,19 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
               {/* 제외 디렉토리 */}
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   제외 디렉토리
+                  <span className="font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>
+                    (줄바꿈 구분, 기본: Windows·Program Files·AppData 등)
+                  </span>
                 </label>
-                <p className="text-xs mb-2" style={{ color: "var(--color-text-muted)" }}>
-                  인덱싱에서 제외할 폴더 이름 (줄바꿈 구분). 기본 제외: Windows, Program Files, AppData, node_modules 등
-                </p>
                 <textarea
-                  className="w-full rounded-md px-3 py-2 text-xs font-mono resize-y"
+                  className="w-full rounded-md px-3 py-1.5 text-xs font-mono resize-y"
                   style={{
                     backgroundColor: "var(--color-bg-secondary)",
                     color: "var(--color-text-primary)",
                     border: "1px solid var(--color-border)",
-                    minHeight: "60px",
+                    minHeight: "48px",
                   }}
                   value={(settings.exclude_dirs ?? []).join("\n")}
                   onChange={(e) =>
@@ -426,17 +436,11 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     )
                   }
                   placeholder="추가 제외할 폴더명 입력..."
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
               {/* 시맨틱 검색 */}
-              <div>
-                <h3 className="text-sm font-medium mb-0.5" style={{ color: "var(--color-text-primary)" }}>고급 검색</h3>
-                <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
-                  AI 기반 시맨틱 검색. 활성화 시 ONNX 모델(약 500MB)을 다운로드합니다.
-                </p>
-              </div>
               <div
                 className="rounded-lg p-3"
                 style={{
@@ -445,22 +449,22 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 }}
               >
                 <SettingsToggle
-                  label="시맨틱 검색"
-                  description="문서의 의미를 이해하여 유사한 내용을 찾아줍니다 (베타 테스트 후 공개)"
+                  label="시맨틱 검색 (고급)"
+                  description="AI 의미 검색 · ONNX 모델 500MB 다운로드 필요 (베타)"
                   checked={settings.semantic_search_enabled ?? false}
                   onChange={handleSemanticToggle}
                   activeColor="bg-amber-500"
                 />
                 {(settings.semantic_search_enabled ?? false) && (
-                  <div className="mt-3 space-y-3">
-                    <div
-                      className="flex items-start gap-2 p-2 rounded text-xs"
+                  <div className="mt-2 space-y-2">
+                    <p
+                      className="text-[11px] px-2 py-1 rounded"
                       style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", color: "var(--color-text-secondary)" }}
                     >
-                      <span>메모리 약 1GB 추가 사용. 저사양 PC(4GB RAM)에서는 성능 저하가 발생할 수 있습니다.</span>
-                    </div>
+                      메모리 약 1GB 추가 사용. 저사양 PC(4GB RAM)에서는 성능 저하 가능
+                    </p>
                     <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-secondary)" }}>벡터 인덱싱 모드</label>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>벡터 인덱싱 모드</label>
                       <Dropdown options={VECTOR_INDEXING_MODE_OPTIONS} value={settings.vector_indexing_mode ?? "manual"} onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])} placeholder="모드 선택" />
                     </div>
                   </div>
@@ -492,74 +496,66 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
           {/* === Tab: 시스템 === */}
           {activeTab === "system" && (
-            <div className="space-y-5">
-              {/* 시스템 트레이 */}
-              <SettingsToggle
-                label="Windows 시작 시 자동 실행"
-                description="컴퓨터 부팅 시 자동으로 시작"
-                checked={settings.auto_start ?? false}
-                onChange={(v) => handleChange("auto_start", v)}
-              />
-
-              <SettingsToggle
-                label="시작 시 트레이로 최소화"
-                description="앱 시작 시 트레이 아이콘으로 숨김"
-                checked={settings.start_minimized ?? false}
-                onChange={(v) => handleChange("start_minimized", v)}
-              />
+            <div className="space-y-3">
+              {/* 시작 옵션 (2열) */}
+              <div className="grid grid-cols-2 gap-x-4">
+                <SettingsToggle
+                  label="자동 실행"
+                  description="Windows 시작 시 자동 실행"
+                  checked={settings.auto_start ?? false}
+                  onChange={(v) => handleChange("auto_start", v)}
+                />
+                <SettingsToggle
+                  label="트레이 최소화"
+                  description="시작 시 트레이로 숨김"
+                  checked={settings.start_minimized ?? false}
+                  onChange={(v) => handleChange("start_minimized", v)}
+                />
+              </div>
 
               {/* 성능 설정 */}
-              <div className="border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
-                <h3 className="text-sm font-medium mb-3" style={{ color: "var(--color-text-primary)" }}>
-                  성능
-                </h3>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  인덱싱 강도
-                </label>
-                <Dropdown
-                  options={INDEXING_INTENSITY_OPTIONS}
-                  value={settings.indexing_intensity ?? "balanced"}
-                  onChange={(value) => handleChange("indexing_intensity", value as Settings["indexing_intensity"])}
-                  placeholder="강도 선택"
-                />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  백그라운드: 다른 작업에 영향 최소화 (HDD 환경 권장)
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
-                  최대 파일 크기
-                </label>
-                <Dropdown
-                  options={MAX_FILE_SIZE_OPTIONS}
-                  value={String(settings.max_file_size_mb ?? 200)}
-                  onChange={(value) => handleChange("max_file_size_mb", parseInt(value))}
-                  placeholder="크기 선택"
-                />
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  설정 크기 초과 파일은 인덱싱 건너뜀 (0 = 제한 없음)
-                </p>
+              <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+                <h3 className="text-xs font-medium mb-2" style={{ color: "var(--color-text-primary)" }}>성능</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                      인덱싱 강도
+                    </label>
+                    <Dropdown
+                      options={INDEXING_INTENSITY_OPTIONS}
+                      value={settings.indexing_intensity ?? "balanced"}
+                      onChange={(value) => handleChange("indexing_intensity", value as Settings["indexing_intensity"])}
+                      placeholder="강도 선택"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                      최대 파일 크기
+                    </label>
+                    <Dropdown
+                      options={MAX_FILE_SIZE_OPTIONS}
+                      value={String(settings.max_file_size_mb ?? 200)}
+                      onChange={(value) => handleChange("max_file_size_mb", parseInt(value))}
+                      placeholder="크기 선택"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* 데이터 관리 */}
-              <div className="border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
-                <h3 className="text-sm font-medium mb-3" style={{ color: "var(--color-text-primary)" }}>
-                  데이터 관리
-                </h3>
+              <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+                <h3 className="text-xs font-medium mb-2" style={{ color: "var(--color-text-primary)" }}>데이터 관리</h3>
               </div>
 
               {/* 데이터 저장 경로 */}
               <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   데이터 저장 경로
+                  <span className="font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>(변경 시 재시작 필요)</span>
                 </label>
                 <div className="flex items-center gap-2">
                   <div
-                    className="flex-1 px-3 py-2 rounded-lg text-sm truncate"
+                    className="flex-1 px-2.5 py-1.5 rounded-lg text-xs truncate"
                     style={{
                       backgroundColor: "var(--color-bg-primary)",
                       border: "1px solid var(--color-border)",
@@ -591,20 +587,13 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     </Button>
                   )}
                 </div>
-                <p className="mt-1.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  DB와 벡터 인덱스 저장 위치. 변경 시 앱 재시작 필요
-                </p>
               </div>
 
-              {/* 로그 폴더 열기 */}
+              {/* 액션 버튼 행 */}
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
-                    로그 폴더
-                  </label>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                    오류 추적용 로그 파일 위치 (7일 보존)
-                  </p>
+                  <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>로그 폴더</label>
+                  <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>오류 로그 (7일 보존)</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -622,16 +611,11 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 </Button>
               </div>
 
-              {/* 전체 드라이브 인덱싱 */}
               {onAutoIndexAllDrives && (
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
-                      전체 드라이브 인덱싱
-                    </label>
-                    <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                      모든 드라이브를 스캔하여 문서 인덱싱 (시스템 폴더 자동 제외)
-                    </p>
+                    <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>전체 드라이브 인덱싱</label>
+                    <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>모든 드라이브 스캔 (시스템 폴더 자동 제외)</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -662,15 +646,10 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 </div>
               )}
 
-              {/* 모든 데이터 초기화 */}
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
-                    모든 데이터 초기화
-                  </label>
-                  <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                    인덱싱된 문서, 벡터 임베딩, 등록 폴더 모두 삭제
-                  </p>
+                  <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>모든 데이터 초기화</label>
+                  <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>문서·벡터·폴더 전체 삭제 (원본 파일 무관)</p>
                 </div>
                 <Button
                   variant="danger"
@@ -702,22 +681,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             </div>
           )}
 
-          {/* 저장/취소 버튼 - 모든 탭에서 항상 표시 */}
-          <div
-            className="flex justify-end gap-3 pt-4 border-t"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <Button variant="ghost" onClick={onClose}>
-              취소
-            </Button>
-            <Button
-              onClick={saveSettings}
-              isLoading={isSaving}
-              disabled={isSaving}
-            >
-              저장
-            </Button>
-          </div>
         </div>
       )}
     </Modal>

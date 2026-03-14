@@ -67,16 +67,16 @@ export const Sidebar = memo(function Sidebar({
         aria-hidden={!isOpen}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-6 shrink-0">
+        <div className="flex items-center justify-between pl-5 pr-3 py-2 shrink-0">
           <h2
-            className="text-sm font-bold tracking-widest uppercase"
+            className="text-base font-bold tracking-widest uppercase"
             style={{ color: "var(--color-sidebar-section)" }}
           >
             메뉴
           </h2>
           <button
             onClick={onToggle}
-            className="p-2 rounded-lg hover-sidebar-item active:scale-95"
+            className="p-2 rounded-lg active:scale-95 transition-all duration-150 outline-none focus:outline-none btn-icon-hover"
             aria-label="사이드바 닫기"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,18 +86,21 @@ export const Sidebar = memo(function Sidebar({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
 
           {/* Section: Indexed Folders */}
-          <section>
-            <div className="flex items-center justify-between px-2 mb-3">
+          <section className="pb-4">
+            <div
+              className="flex items-center justify-between px-2 pb-2 mb-2"
+              style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+            >
               <button
                 onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider hover-sidebar-section"
+                className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider hover-sidebar-section"
                 aria-expanded={isFoldersExpanded}
               >
                 <svg
-                  className={`w-3 h-3 transition-transform duration-200 ${isFoldersExpanded ? "rotate-90" : ""}`}
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${isFoldersExpanded ? "rotate-90" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -106,7 +109,7 @@ export const Sidebar = memo(function Sidebar({
                 </svg>
                 인덱싱된 폴더
                 <span
-                  className="text-[10px] font-normal"
+                  className="text-xs font-normal"
                   style={{ color: "var(--color-sidebar-muted)" }}
                 >
                   ({watchedFolders.length})
@@ -143,15 +146,18 @@ export const Sidebar = memo(function Sidebar({
           </section>
 
           {/* Section: Recent Searches */}
-          <section>
-            <div className="flex items-center justify-between px-2 mb-3">
+          <section className="pt-2 pb-4">
+            <div
+              className="flex items-center justify-between px-2 pb-2 mb-2"
+              style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+            >
               <button
                 onClick={() => setIsSearchesExpanded(!isSearchesExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider hover-sidebar-section"
+                className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider hover-sidebar-section"
                 aria-expanded={isSearchesExpanded}
               >
                 <svg
-                  className={`w-3 h-3 transition-transform duration-200 ${isSearchesExpanded ? "rotate-90" : ""}`}
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${isSearchesExpanded ? "rotate-90" : ""}`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -160,7 +166,7 @@ export const Sidebar = memo(function Sidebar({
                 </svg>
                 최근 검색
                 <span
-                  className="text-[10px] font-normal"
+                  className="text-xs font-normal"
                   style={{ color: "var(--color-sidebar-muted)" }}
                 >
                   ({recentSearches.length})
@@ -203,27 +209,22 @@ export const Sidebar = memo(function Sidebar({
             className="text-center text-xs space-y-0.5"
             style={{ color: "var(--color-sidebar-muted)" }}
           >
-            <p>&copy; 2025&ndash;{new Date().getFullYear()} 개친절한 류주임</p>
-            <p>광진구청 AI 동호회 (AI.Do)</p>
+            <p>&copy; 2025&ndash;{new Date().getFullYear()} Chris Ryu</p>
+            <p>AI.Do, 서울특별시 광진구청</p>
           </div>
         </div>
       </aside>
 
 
-      {/* Floating Toggle Button (Visible only when sidebar is closed) */}
+      {/* Toggle Button - 항상 같은 위치에 고정 */}
       {!isOpen && (
         <button
           onClick={onToggle}
-          className="fixed left-4 top-[7px] z-50 p-2 rounded-lg hover:scale-105 active:scale-95 transition-all duration-200 shadow-md backdrop-blur-sm"
-          style={{
-            color: "var(--color-text-secondary)",
-            backgroundColor: "var(--color-bg-secondary)",
-            border: "1px solid var(--color-border)",
-          }}
+          className="fixed left-4 top-2 z-50 p-2 rounded-lg active:scale-95 transition-all duration-150 outline-none focus:outline-none btn-icon-hover"
           aria-label="사이드바 열기"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7m-8-14l7 7-7 7" />
           </svg>
         </button>
       )}

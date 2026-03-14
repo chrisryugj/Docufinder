@@ -5,6 +5,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  footer?: ReactNode;
   size?: "sm" | "md" | "lg";
   closable?: boolean; // ESC/배경 클릭/X 버튼으로 닫기 허용 여부
 }
@@ -19,7 +20,7 @@ const sizeClasses = {
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ isOpen, onClose, title, children, size = "md", closable = true }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, size = "md", closable = true }: ModalProps) {
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
@@ -136,9 +137,19 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 overflow-y-auto flex-1">
+        <div className="px-6 py-4 overflow-y-auto flex-1">
           {children}
         </div>
+
+        {/* Footer (고정, 스크롤 밖) */}
+        {footer && (
+          <div
+            className="px-6 py-4 border-t shrink-0"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
