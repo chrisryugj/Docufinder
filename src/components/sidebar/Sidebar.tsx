@@ -61,19 +61,22 @@ export const Sidebar = memo(function Sidebar({
         style={{
           backgroundColor: "var(--color-sidebar-bg)",
           borderRight: "1px solid var(--color-sidebar-border)",
-          boxShadow: isOpen ? "var(--shadow-2xl)" : "none",
+          boxShadow: isOpen ? "var(--shadow-xl)" : "none",
         }}
         aria-label="사이드바"
         aria-hidden={!isOpen}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-6 shrink-0">
-          <h2 className="text-sm font-bold tracking-widest text-slate-400 uppercase">
+          <h2
+            className="text-sm font-bold tracking-widest uppercase"
+            style={{ color: "var(--color-sidebar-section)" }}
+          >
             메뉴
           </h2>
           <button
             onClick={onToggle}
-            className="p-2 rounded-lg transition-all duration-200 text-slate-500 hover:text-white hover:bg-white/10 active:scale-95"
+            className="p-2 rounded-lg hover-sidebar-item active:scale-95"
             aria-label="사이드바 닫기"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -83,14 +86,14 @@ export const Sidebar = memo(function Sidebar({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-8 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-2 space-y-8">
 
           {/* Section: Indexed Folders */}
           <section>
             <div className="flex items-center justify-between px-2 mb-3">
               <button
                 onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-white transition-colors"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider hover-sidebar-section"
                 aria-expanded={isFoldersExpanded}
               >
                 <svg
@@ -102,11 +105,16 @@ export const Sidebar = memo(function Sidebar({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
                 인덱싱된 폴더
-                <span className="text-[10px] font-normal text-slate-500">({watchedFolders.length})</span>
+                <span
+                  className="text-[10px] font-normal"
+                  style={{ color: "var(--color-sidebar-muted)" }}
+                >
+                  ({watchedFolders.length})
+                </span>
               </button>
               <button
                 onClick={onAddFolder}
-                className="p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-white/10 transition-all duration-200"
+                className="p-1.5 rounded-md hover-sidebar-item"
                 aria-label="폴더 추가"
                 title="폴더 추가"
               >
@@ -139,7 +147,7 @@ export const Sidebar = memo(function Sidebar({
             <div className="flex items-center justify-between px-2 mb-3">
               <button
                 onClick={() => setIsSearchesExpanded(!isSearchesExpanded)}
-                className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-white transition-colors"
+                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider hover-sidebar-section"
                 aria-expanded={isSearchesExpanded}
               >
                 <svg
@@ -151,12 +159,17 @@ export const Sidebar = memo(function Sidebar({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
                 최근 검색
-                <span className="text-[10px] font-normal text-slate-500">({recentSearches.length})</span>
+                <span
+                  className="text-[10px] font-normal"
+                  style={{ color: "var(--color-sidebar-muted)" }}
+                >
+                  ({recentSearches.length})
+                </span>
               </button>
               {recentSearches.length > 0 && (
                 <button
                   onClick={onClearSearches}
-                  className="p-1.5 rounded-md text-slate-500 hover:text-red-400 hover:bg-white/10 transition-all duration-200"
+                  className="p-1.5 rounded-md hover-sidebar-danger"
                   aria-label="전체 삭제"
                   title="검색 기록 전체 삭제"
                 >
@@ -179,9 +192,18 @@ export const Sidebar = memo(function Sidebar({
         </div>
 
         {/* Footer - 저작권 */}
-        <div className="p-4 border-t border-white/5 bg-black/20 shrink-0">
-          <div className="text-center text-xs text-slate-500 space-y-0.5">
-            <p>© 2025–{new Date().getFullYear()} 개친절한 류주임</p>
+        <div
+          className="p-4 shrink-0"
+          style={{
+            borderTop: "1px solid var(--color-sidebar-border)",
+            backgroundColor: "var(--color-bg-tertiary)",
+          }}
+        >
+          <div
+            className="text-center text-xs space-y-0.5"
+            style={{ color: "var(--color-sidebar-muted)" }}
+          >
+            <p>&copy; 2025&ndash;{new Date().getFullYear()} 개친절한 류주임</p>
             <p>광진구청 AI 동호회 (AI.Do)</p>
           </div>
         </div>

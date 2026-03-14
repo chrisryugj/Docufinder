@@ -33,51 +33,42 @@
 
 :root {
   /* ============================================
-     Color Palette - Premium Navy & Vibrant Blue
+     Color Palette - Clean & Professional
      ============================================ */
 
   /* Backgrounds */
-  --color-bg-primary: #F8FAFC;
-  /* Slightly cool white */
+  --color-bg-primary: #FAFBFC;
   --color-bg-secondary: #FFFFFF;
-  /* Pure white for cards */
-  --color-bg-tertiary: #F1F5F9;
-  /* Slate-100 */
-  --color-bg-subtle: #E2E8F0;
+  --color-bg-tertiary: #F3F4F6;
+  --color-bg-subtle: #E5E7EB;
 
-  /* Sidebar / Dark Areas (Deep Cosmic Navy) */
+  /* Sidebar (Theme-Adaptive) */
   --sidebar-width: 220px;
-  --color-sidebar-bg: #0B1120;
-  /* Darker, richer navy */
-  --color-sidebar-text: #E2E8F0;
-  --color-sidebar-muted: #64748B;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
-  --color-sidebar-active: rgba(59, 130, 246, 0.15);
-  --color-sidebar-border: rgba(255, 255, 255, 0.05);
+  --color-sidebar-bg: #F9FAFB;
+  --color-sidebar-text: #111827;
+  --color-sidebar-muted: #6B7280;
+  --color-sidebar-hover: rgba(0, 0, 0, 0.04);
+  --color-sidebar-active: rgba(59, 130, 246, 0.08);
+  --color-sidebar-border: #E5E7EB;
+  --color-sidebar-section: #9CA3AF;
 
   /* Typography */
-  --color-text-primary: #0F172A;
-  /* Slate-900 */
-  --color-text-secondary: #334155;
-  /* Slate-700 */
-  --color-text-muted: #64748B;
-  /* Slate-500 */
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #6B7280;
   --color-text-inverse: #FFFFFF;
 
   /* Borders */
-  --color-border: #E2E8F0;
-  --color-border-subtle: #F1F5F9;
-  --color-border-hover: #CBD5E1;
+  --color-border: #E5E7EB;
+  --color-border-subtle: #F3F4F6;
+  --color-border-hover: #D1D5DB;
 
   /* Accent (Electric Royal Blue) */
   --color-accent: #3B82F6;
-  /* Blue-500 */
   --color-accent-hover: #2563EB;
-  /* Blue-600 */
   --color-accent-active: #1D4ED8;
-  /* Blue-700 */
   --color-accent-subtle: #EFF6FF;
-  /* Blue-50 */
+  --color-accent-light: rgba(59, 130, 246, 0.08);
   --color-accent-glow: rgba(59, 130, 246, 0.5);
 
   /* Functional Colors */
@@ -87,7 +78,7 @@
   --color-error-rgb: 239, 68, 68;
   --color-info: #0EA5E9;
 
-  /* Component Aliases (ErrorBanner, VectorIndexingFAB, HelpModal 등에서 사용) */
+  /* Component Aliases */
   --color-primary-rgb: 59, 130, 246;
   --color-primary-light: #60A5FA;
   --color-accent-bg: var(--color-accent-subtle);
@@ -96,51 +87,43 @@
 
   /* Highlighting - Content */
   --color-highlight-bg: #fde047;
-  /* Yellow-300 */
   --color-highlight-text: #0f172a;
-  /* Slate-900 */
   --color-highlight-refine-bg: #86efac;
-  /* Green-300 */
   --color-highlight-refine-text: #0f172a;
-  /* Slate-900 */
 
   /* Highlighting - Filename */
   --color-highlight-filename-bg: #fbbf24;
-  /* Amber-400 */
   --color-highlight-filename-text: #0f172a;
-  /* Slate-900 */
 
-  /* File Type Colors (More saturated) */
+  /* File Type Colors */
   --color-file-hwpx: #7C3AED;
   --color-file-docx: #2563EB;
   --color-file-xlsx: #16A34A;
   --color-file-pdf: #DC2626;
   --color-file-txt: #475569;
 
-  /* File Type Backgrounds (Softer, cleaner) */
+  /* File Type Backgrounds */
   --color-file-hwpx-bg: #F5F3FF;
   --color-file-docx-bg: #EFF6FF;
   --color-file-xlsx-bg: #F0FDF4;
   --color-file-pdf-bg: #FEF2F2;
   --color-file-txt-bg: #F8FAFC;
 
-  /* Shadows (Soft & Deep) */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
-  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.03);
+  /* Shadows - layered for depth */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(59, 130, 246, 0.1);
+  --shadow-inner: inset 0 1px 2px 0 rgba(0, 0, 0, 0.03);
 
   /* Radii */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
-  /* 8px */
   --radius-lg: 0.75rem;
-  /* 12px */
   --radius-xl: 1rem;
-  /* 16px */
   --radius-2xl: 1.5rem;
-  /* 24px */
 
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -152,40 +135,41 @@
    Dark Mode Theme
    ============================================ */
 .dark {
-  /* Backgrounds */
-  --color-bg-primary: #0F172A;
-  --color-bg-secondary: #1E293B;
-  --color-bg-tertiary: #334155;
-  --color-bg-subtle: #475569;
+  /* Backgrounds - Blue-tinted dark with clear elevation */
+  --color-bg-primary: #0C1222;
+  --color-bg-secondary: #141B2D;
+  --color-bg-tertiary: #1C2540;
+  --color-bg-subtle: #243050;
 
-  /* Sidebar */
-  --color-sidebar-bg: #020617;
-  --color-sidebar-text: #E2E8F0;
-  --color-sidebar-muted: #94A3B8;
-  --color-sidebar-hover: rgba(255, 255, 255, 0.1);
-  --color-sidebar-active: rgba(59, 130, 246, 0.2);
-  --color-sidebar-border: rgba(255, 255, 255, 0.08);
+  /* Sidebar - slightly deeper than bg-primary */
+  --color-sidebar-bg: #0A0F1E;
+  --color-sidebar-text: #E5E7EB;
+  --color-sidebar-muted: #9CA3AF;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --color-sidebar-active: rgba(96, 165, 250, 0.12);
+  --color-sidebar-border: rgba(255, 255, 255, 0.06);
+  --color-sidebar-section: #6B7280;
 
   /* Typography */
-  --color-text-primary: #F1F5F9;
-  --color-text-secondary: #CBD5E1;
-  --color-text-muted: #94A3B8;
-  --color-text-inverse: #0F172A;
+  --color-text-primary: #F3F4F6;
+  --color-text-secondary: #D1D5DB;
+  --color-text-muted: #9CA3AF;
+  --color-text-inverse: #111827;
 
-  /* Borders */
-  --color-border: #334155;
-  --color-border-subtle: #1E293B;
-  --color-border-hover: #475569;
+  /* Borders - translucent for depth */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
 
-  /* Accent */
+  /* Accent - brighter for dark mode */
   --color-accent: #60A5FA;
-  --color-accent-hover: #3B82F6;
-  --color-accent-active: #2563EB;
-  --color-accent-subtle: rgba(59, 130, 246, 0.15);
-  --color-accent-light: rgba(59, 130, 246, 0.2);
-  --color-accent-glow: rgba(96, 165, 250, 0.4);
+  --color-accent-hover: #93C5FD;
+  --color-accent-active: #3B82F6;
+  --color-accent-subtle: rgba(96, 165, 250, 0.10);
+  --color-accent-light: rgba(96, 165, 250, 0.12);
+  --color-accent-glow: rgba(96, 165, 250, 0.25);
 
-  /* Functional (dark overrides) */
+  /* Functional */
   --color-error-rgb: 248, 113, 113;
   --color-primary-rgb: 96, 165, 250;
   --color-primary-light: #93C5FD;
@@ -193,17 +177,17 @@
   --bg-primary: var(--color-bg-primary);
   --text-primary: var(--color-text-primary);
 
-  /* Highlighting - Content (대비 강화) */
+  /* Highlighting - Content */
   --color-highlight-bg: #a16207;
   --color-highlight-text: #fef9c3;
   --color-highlight-refine-bg: #166534;
   --color-highlight-refine-text: #bbf7d0;
 
-  /* Highlighting - Filename (대비 강화) */
+  /* Highlighting - Filename */
   --color-highlight-filename-bg: #c2410c;
   --color-highlight-filename-text: #fff7ed;
 
-  /* File Type Colors (Brighter for dark mode) */
+  /* File Type Colors */
   --color-file-hwpx: #A78BFA;
   --color-file-docx: #60A5FA;
   --color-file-xlsx: #34D399;
@@ -217,116 +201,14 @@
   --color-file-pdf-bg: rgba(248, 113, 113, 0.15);
   --color-file-txt-bg: rgba(148, 163, 184, 0.15);
 
-  /* Shadows (Darker) */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
-  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
-}
-
-/* ============================================
-   V2 Premium Design System (Isolated Scope)
-   "Native Desktop App Feel" - Shadows, Depth, Glass
-   ============================================ */
-.v2-theme {
-  /* Surface Layers (네이티브 깊이감 묘사) */
-  --v2-layer-base: var(--color-bg-primary); 
-  --v2-layer-elevated-1: #ffffff; /* 겹친 첫 번째 카드 */
-  --v2-layer-elevated-2: #f8fafc; /* 포커싱 된 카드 */
-  
-  /* V2 Typography */
-  --v2-font-heading: 'Pretendard Variable', 'Pretendard', sans-serif;
-  letter-spacing: -0.015em;
-
-  /* V2 Distinct Shadows (앱/웹 느낌 경계를 긋는 프리미엄 그림자) */
-  --v2-shadow-soft: 0 2px 10px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
-  --v2-shadow-float: 0 8px 30px rgba(15, 23, 42, 0.08), 0 2px 10px rgba(15, 23, 42, 0.04);
-  --v2-shadow-heavy: 0 20px 40px rgba(15, 23, 42, 0.12), 0 10px 15px rgba(15, 23, 42, 0.06);
-  --v2-shadow-focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.15); /* Tailwind ring-blue-500/15 와 유사하나 부드럽게 */
-  
-  /* V2 Smooth Curve */
-  --v2-radius-app: 1.25rem; /* 20px - 부드러운 곡선 */
-  --v2-radius-inner: 0.75rem; /* 12px */
-
-  /* Transitions */
-  --v2-easing-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --v2-easing-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --v2-transition-all: all 0.4s var(--v2-easing-spring);
-}
-
-.dark .v2-theme {
-  --v2-layer-elevated-1: #1E293B; /* Slate-800 */
-  --v2-layer-elevated-2: #334155; /* Slate-700 */
-  
-  --v2-shadow-soft: 0 4px 15px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
-  --v2-shadow-float: 0 12px 40px rgba(0, 0, 0, 0.5), 0 4px 15px rgba(0, 0, 0, 0.3);
-  --v2-shadow-heavy: 0 24px 50px rgba(0, 0, 0, 0.6), 0 12px 20px rgba(0, 0, 0, 0.4);
-  --v2-shadow-focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.2);
-}
-
-/* V2 Layout Helpers */
-.v2-blur-panel {
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  background-color: rgba(255, 255, 255, 0.7);
-}
-
-.dark .v2-blur-panel {
-  background-color: rgba(15, 23, 42, 0.7);
-}
-
-.v2-card {
-  background-color: var(--v2-layer-elevated-1);
-  border-radius: var(--v2-radius-app);
-  box-shadow: var(--v2-shadow-soft);
-  border: 1px solid rgba(15, 23, 42, 0.05); /* 극도로 얇고 투명한 선 */
-  transition: var(--v2-transition-all);
-}
-.dark .v2-card {
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* 호버 시 붕 뜨는 프리미엄 카드 */
-.v2-card-interactive:hover {
-  transform: translateY(-2px) scale(1.005);
-  box-shadow: var(--v2-shadow-float);
-  border-color: rgba(59, 130, 246, 0.1); 
-}
-.v2-card-interactive:active {
-  transform: translateY(1px) scale(0.99);
-  box-shadow: var(--v2-shadow-soft);
-}
-
-/* V2 Text Highlight Overrides (눈이 편안한 황금빛/초록빛) */
-.v2-theme mark {
-  background-color: rgba(250, 204, 21, 0.25); /* yellow-400 / 25% */
-  color: unset; /* 글자색 원본 유지 */
-  border-radius: 2px;
-  padding: 0 2px;
-  font-weight: 500;
-  box-shadow: 0 -2px 0 0 rgba(250, 204, 21, 0.5) inset; /* 언더라인 효과 */
-}
-.dark .v2-theme mark {
-  background-color: rgba(234, 179, 8, 0.3);
-  box-shadow: 0 -2px 0 0 rgba(234, 179, 8, 0.6) inset;
-}
-
-/* V2 Button Premium Base */
-.v2-btn-primary {
-  background: linear-gradient(180deg, #3B82F6 0%, #2563EB 100%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  transition: var(--v2-transition-all);
-}
-.v2-btn-primary:hover {
-  filter: brightness(1.1);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  transform: translateY(-1px);
-}
-.v2-btn-primary:active {
-  filter: brightness(0.95);
-  transform: translateY(1px);
-  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.1);
+  /* Shadows - deeper for dark mode */
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 40px -8px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(96, 165, 250, 0.15);
+  --shadow-inner: inset 0 1px 3px 0 rgba(0, 0, 0, 0.2);
 }
 
 /* ============================================
@@ -370,6 +252,21 @@ body,
 }
 
 /* Animations */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-enter {
+  animation: modal-enter 0.2s ease-out;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -450,18 +347,18 @@ body,
 /* Result Card */
 .result-card {
   background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-subtle);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
 }
 
-/* Remove old blue bar hover effect */
 .result-card:hover {
   transform: translateY(-1px);
-  border-color: var(--color-accent);
-  box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-card-hover);
 }
 
 /* Custom Scrollbar */
@@ -488,6 +385,45 @@ body,
   background: #94A3B8;
   border: 2px solid transparent;
   background-clip: content-box;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Sidebar adaptive hover classes */
+.hover-sidebar-item {
+  color: var(--color-sidebar-muted);
+  transition: color 0.15s, background-color 0.15s;
+}
+.hover-sidebar-item:hover {
+  color: var(--color-sidebar-text);
+  background-color: var(--color-sidebar-hover);
+}
+
+.hover-sidebar-section {
+  color: var(--color-sidebar-section);
+  transition: color 0.15s;
+}
+.hover-sidebar-section:hover {
+  color: var(--color-sidebar-text);
+}
+
+.hover-sidebar-danger {
+  color: var(--color-sidebar-muted);
+  transition: color 0.15s, background-color 0.15s;
+}
+.hover-sidebar-danger:hover {
+  color: var(--color-error);
+  background-color: var(--color-sidebar-hover);
 }
 
 /* Typography Helpers */

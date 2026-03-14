@@ -26,12 +26,9 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
 
           {/* Title Container */}
           <div className="flex items-baseline gap-2">
-            <h1 className="text-lg font-bold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
+            <h1 className="text-base font-semibold font-display leading-tight" style={{ color: 'var(--color-text-primary)' }}>
               Anything
             </h1>
-            <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              AI 문서 검색
-            </span>
           </div>
         </div>
       </div>

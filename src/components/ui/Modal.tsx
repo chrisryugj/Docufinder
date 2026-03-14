@@ -94,8 +94,8 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center z-50"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.6)" }}
+      className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -103,10 +103,10 @@ export function Modal({ isOpen, onClose, title, children, size = "md", closable 
     >
       <div
         ref={modalRef}
-        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-lg max-h-[85vh] flex flex-col`}
+        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-xl max-h-[85vh] flex flex-col`}
         style={{
           backgroundColor: "var(--color-bg-secondary)",
-          boxShadow: "var(--shadow-lg)",
+          boxShadow: "var(--shadow-xl)",
           border: "1px solid var(--color-border)",
         }}
       >

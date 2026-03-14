@@ -73,7 +73,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
           {/* 진행률 바 */}
           <div
-            className="h-1 rounded-full overflow-hidden"
+            className="h-1.5 rounded-full overflow-hidden"
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
             {progress.phase === "preparing" ? (
@@ -131,7 +131,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
           {/* 진행률 바 */}
           <div
-            className="h-1 rounded-full overflow-hidden"
+            className="h-1.5 rounded-full overflow-hidden"
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
             <div

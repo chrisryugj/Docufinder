@@ -259,7 +259,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         return (
           <li key={folder} role="treeitem" aria-expanded={isExpanded}>
             <div
-              className="group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-lg cursor-pointer transition-all duration-200 hover:bg-white/10 text-slate-400 hover:text-white"
+              className="group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-lg cursor-pointer transition-all duration-200 hover-sidebar-item"
               onClick={() => toggleExpand(folder)}
               onContextMenu={(e) => handleContextMenu(e, folder)}
               data-context-menu
@@ -267,7 +267,8 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 즐겨찾기 + 폴더 아이콘 (하나로 통합) */}
               <div className="relative flex-shrink-0">
                 <svg
-                  className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-90 text-yellow-500" : "text-slate-500 group-hover:text-yellow-400"}`}
+                  className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
+                  style={{ color: isExpanded ? "var(--color-warning)" : "var(--color-sidebar-muted)" }}
                   fill="currentColor"
                   viewBox="0 0 20 20"
                   aria-hidden="true"
@@ -303,7 +304,10 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 파일 수 배지 */}
               {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-white/10 text-slate-400 flex-shrink-0">
+                <span
+                  className="px-1.5 py-0.5 text-[10px] font-medium rounded flex-shrink-0"
+                  style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
+                >
                   {folderStats[folder].indexed_count}
                 </span>
               )}
@@ -311,15 +315,18 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
             {/* 상세 정보 (확장 시) */}
             {isExpanded && (
-              <div className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded bg-black/20 text-slate-500 space-y-0.5">
+              <div
+                className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded space-y-0.5"
+                style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
+              >
                 <div className="break-all font-mono">{displayPath}</div>
                 {folderStats[folder] && (
-                  <div className="text-slate-400">
+                  <div style={{ color: "var(--color-sidebar-text)" }}>
                     {folderStats[folder].indexed_count} 문서 / {folderStats[folder].file_count} 파일
                   </div>
                 )}
                 {folderStats[folder]?.last_indexed && (
-                  <div className="text-slate-500">
+                  <div>
                     마지막 인덱싱 {formatRelativeTime(folderStats[folder].last_indexed * 1000)}
                   </div>
                 )}

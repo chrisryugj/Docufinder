@@ -44,10 +44,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     return (
       <div className="max-w-4xl mx-auto w-full">
         <div
-          className="flex items-center px-4 py-3 rounded-xl transition-shadow duration-200 focus-within:ring-2 focus-within:ring-blue-500/30"
+          className="flex items-center px-4 py-3.5 rounded-xl transition-all duration-200 focus-within:ring-2"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",
+            boxShadow: "var(--shadow-card)",
+            ["--tw-ring-color" as string]: "var(--color-accent-light)",
           }}
         >
           <svg
@@ -75,6 +77,20 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             style={{ color: "var(--color-text-primary)" }}
             aria-label="검색어 입력"
           />
+
+          {/* 단축키 힌트 */}
+          {!query && (
+            <kbd
+              className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
+              style={{
+                color: "var(--color-text-muted)",
+                backgroundColor: "var(--color-bg-tertiary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              Ctrl+K
+            </kbd>
+          )}
 
           {isLoading && (
             <div
