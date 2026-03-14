@@ -1,5 +1,4 @@
 import { memo } from "react";
-import { Button } from "../ui/Button";
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -33,22 +32,30 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <Button
+      <div className="flex items-center gap-1">
+        <button
           onClick={onAddFolder}
           disabled={isIndexing}
-          isLoading={isIndexing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 outline-none focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed btn-icon-hover"
           aria-label="폴더 추가"
-          className="font-medium shadow-none hover:shadow-sm transition-colors"
         >
-          {isIndexing ? "인덱싱 중..." : "폴더 추가"}
-        </Button>
+          {isIndexing ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              인덱싱 중...
+            </span>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              폴더 추가
+            </>
+          )}
+        </button>
         <button
           onClick={onOpenHelp}
-          className="p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
-          style={{
-            color: 'var(--color-text-secondary)',
-          }}
+          className="p-2 rounded-lg transition-all duration-150 outline-none focus:outline-none btn-icon-hover"
           aria-label="도움말"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -57,10 +64,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         </button>
         <button
           onClick={onOpenSettings}
-          className="p-2 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors"
-          style={{
-            color: 'var(--color-text-secondary)',
-          }}
+          className="p-2 rounded-lg transition-all duration-150 outline-none focus:outline-none btn-icon-hover"
           aria-label="설정"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

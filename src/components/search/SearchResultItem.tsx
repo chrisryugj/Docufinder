@@ -216,16 +216,17 @@ export const SearchResultItem = memo(function SearchResultItem({
         className={`cursor-pointer rounded-md flex gap-2 hover-bg-tertiary ${isCompact ? "p-1 -mx-1" : "p-2 -mx-2"}`}
         onClick={onToggleExpand}
       >
-        {/* 토글 아이콘 */}
+        {/* 토글 아이콘 (아래/위 chevron) */}
         <svg
-          className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+          className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
-          fill="currentColor"
-          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
         >
-          <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
-        <div className="flex-1 min-w-0 relative">
+        <div className="flex-1 min-w-0">
           <p
             className={isCompact ? "text-xs" : "text-sm"}
             style={{
@@ -248,39 +249,46 @@ export const SearchResultItem = memo(function SearchResultItem({
               formatMode={isExpanded ? "full" : "preview"}
             />
           </p>
-          {!isExpanded && (
-            <div
-              className="absolute bottom-0 left-0 right-0 h-4 pointer-events-none"
-              style={{ background: "linear-gradient(transparent, var(--color-bg-secondary))" }}
-            />
-          )}
+          {/* 블러 그라데이션 제거 — line-clamp로 자연스럽게 잘림 */}
         </div>
       </div>
 
-      {/* 경로 (Windows 스타일 배지) - 컴팩트 모드에서는 숨김 */}
+      {/* 경로 (브레드크럼 스타일) - 컴팩트 모드에서는 숨김 */}
       {!isCompact && (
         <div
-          className="flex flex-wrap items-center gap-1 mt-3"
+          className="flex flex-wrap items-center gap-0.5 mt-2.5"
           title={result.file_path.replace(/^\\\\\?\\/, "")}
         >
-          {formatPathToBadges(folderPath).map((part, i, arr) => (
+          {/* 폴더 아이콘 */}
+          <svg
+            className="w-3 h-3 mr-0.5 flex-shrink-0"
+            style={{ color: "var(--color-text-muted)", opacity: 0.6 }}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          {formatPathSegments(folderPath).map((seg, i, arr) => (
             <div key={i} className="flex items-center">
-              <span
-                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                style={{
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  border: "1px solid var(--color-border)",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                {part}
-              </span>
-              {i < arr.length - 1 && (
-                <span className="mx-0.5" style={{ color: "var(--color-border-hover)" }}>
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+              {seg.fullPath ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
+                  className="text-[11px] px-1 py-0.5 rounded transition-colors hover:underline"
+                  style={{ color: "var(--color-text-muted)" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; e.currentTarget.style.backgroundColor = "var(--color-accent-light)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-muted)"; e.currentTarget.style.backgroundColor = "transparent"; }}
+                  title={`${seg.fullPath} 열기`}
+                >
+                  {seg.label}
+                </button>
+              ) : (
+                <span className="text-[11px] px-1 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
+                  {seg.label}
                 </span>
+              )}
+              {i < arr.length - 1 && (
+                <span className="text-[10px]" style={{ color: "var(--color-border-hover)", opacity: 0.6 }}>/</span>
               )}
             </div>
           ))}
@@ -302,17 +310,26 @@ export const SearchResultItem = memo(function SearchResultItem({
   );
 });
 
-/** 경로를 배열로 변환 (Windows 스타일) - 깊은 경로는 말줄임 */
-function formatPathToBadges(path: string): string[] {
-  // Windows long path prefix 제거 및 백슬래시 통일
+/** 경로를 세그먼트 배열로 변환 (각 세그먼트에 표시명 + 전체 경로 포함) */
+function formatPathSegments(path: string): { label: string; fullPath: string }[] {
   const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
-  // 드라이브 레터와 폴더 분리
   const parts = cleanPath.split(/[/\\]/).filter(Boolean);
-  // 5개 초과 시 처음 2개 + ... + 마지막 2개
-  if (parts.length > 5) {
-    return [...parts.slice(0, 2), "\u2026", ...parts.slice(-2)];
+
+  // 각 세그먼트에 해당 깊이까지의 전체 경로를 붙임
+  const segments = parts.map((part, i) => ({
+    label: part,
+    fullPath: parts.slice(0, i + 1).join("\\"),
+  }));
+
+  // 6개 초과 시 처음 2개 + … + 마지막 2개
+  if (segments.length > 6) {
+    return [
+      ...segments.slice(0, 2),
+      { label: "\u2026", fullPath: "" },
+      ...segments.slice(-2),
+    ];
   }
-  return parts;
+  return segments;
 }
 
 const EXPANDED_CONTEXT_BEFORE_CHARS = 300;

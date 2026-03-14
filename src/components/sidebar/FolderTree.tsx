@@ -241,7 +241,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   if (folders.length === 0) {
     return (
       <div
-        className="text-sm py-2 px-3"
+        className="text-base py-2 px-3"
         style={{ color: "var(--color-sidebar-muted)" }}
       >
         등록된 폴더가 없습니다
@@ -285,7 +285,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 폴더 이름 */}
               <span
-                className="flex-1 text-sm truncate font-medium"
+                className="flex-1 text-base truncate font-medium"
                 title={displayPath}
               >
                 {getFolderName(folder)}
@@ -305,7 +305,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 파일 수 배지 */}
               {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
                 <span
-                  className="px-1.5 py-0.5 text-[10px] font-medium rounded flex-shrink-0"
+                  className="px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0"
                   style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
                 >
                   {folderStats[folder].indexed_count}
@@ -316,7 +316,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             {/* 상세 정보 (확장 시) */}
             {isExpanded && (
               <div
-                className="ml-9 mr-2 px-3 py-2 my-1 text-[11px] rounded space-y-0.5"
+                className="ml-9 mr-2 px-3 py-2 my-1 text-xs rounded space-y-0.5"
                 style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
               >
                 <div className="break-all font-mono">{displayPath}</div>

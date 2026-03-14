@@ -25,7 +25,6 @@ interface ContextMenuState {
 
 export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFoldersProps) {
   const [folders, setFolders] = useState<SuggestedFolder[]>([]);
-  const [isExpanded, setIsExpanded] = useState(true);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -113,46 +112,31 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
     };
   }, [contextMenu.isOpen]);
 
-  const knownFolders = folders.filter((f) => f.category === "known");
-  const drives = folders.filter((f) => f.category === "drive");
+  const unregistered = folders.filter((f) => !isRegistered(f.path));
 
   // 모두 등록됐으면 숨기기
-  const hasUnregistered = folders.some((f) => !isRegistered(f.path));
-  if (!hasUnregistered || folders.length === 0) return null;
+  if (unregistered.length === 0) return null;
 
   return (
-    <div className="px-2 mb-2">
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-1 w-full px-2 py-1 text-[11px] font-medium rounded hover-sidebar-item transition-colors"
-        style={{ color: "var(--color-sidebar-muted)" }}
-      >
-        <svg
-          className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
+    <>
+      {/* 점선 구분 + 라벨 */}
+      <div className="flex items-center gap-2 mx-3 mt-3 mb-1.5">
+        <div className="flex-1 border-t border-dashed" style={{ borderColor: "var(--color-sidebar-border)" }} />
+        <span
+          className="text-[10px] font-medium uppercase tracking-wider shrink-0"
+          style={{ color: "var(--color-sidebar-muted)", opacity: 0.7 }}
         >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-        </svg>
-        빠른 추가
-      </button>
+          추천
+        </span>
+        <div className="flex-1 border-t border-dashed" style={{ borderColor: "var(--color-sidebar-border)" }} />
+      </div>
 
-      {isExpanded && (
-        <div className="mt-1 space-y-0.5">
-          {knownFolders
-            .filter((f) => !isRegistered(f.path))
-            .map((folder) => (
-              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
-            ))}
-          {drives
-            .filter((f) => !isRegistered(f.path))
-            .map((folder) => (
-              <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
-            ))}
-        </div>
-      )}
+      {/* 추천 폴더 목록 */}
+      <div className="space-y-0.5">
+        {unregistered.map((folder) => (
+          <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
+        ))}
+      </div>
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu.isOpen && createPortal(
@@ -187,7 +171,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
         </div>,
         document.body
       )}
-    </div>
+    </>
   );
 }
 
@@ -207,8 +191,8 @@ function FolderItem({
       <button
         onClick={() => onAdd(folder.path)}
         onContextMenu={(e) => onContextMenu(e, folder.path)}
-        className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover-sidebar-item transition-colors group"
-        style={{ color: "var(--color-sidebar-muted)" }}
+        className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover-sidebar-item transition-colors group"
+        style={{ color: "var(--color-sidebar-muted)", opacity: 0.75 }}
         data-context-menu
       >
         <span className="text-[13px]">{icon}</span>
@@ -219,7 +203,6 @@ function FolderItem({
           viewBox="0 0 24 24"
           strokeWidth={2}
           stroke="currentColor"
-          style={{ color: "var(--color-sidebar-muted)" }}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
         </svg>
