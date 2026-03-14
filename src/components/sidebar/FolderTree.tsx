@@ -351,7 +351,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               >
                 <div className="break-all font-mono">{displayPath}</div>
                 {folderStats[folder] && (
-                  <div style={{ color: "var(--color-sidebar-text)" }}>
+                  <div>
                     {folderStats[folder].indexed_count} 문서 / {folderStats[folder].file_count} 파일
                   </div>
                 )}
