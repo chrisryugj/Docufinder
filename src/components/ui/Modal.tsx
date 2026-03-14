@@ -2,7 +2,8 @@ import { useEffect, useRef, useCallback, useId, type ReactNode } from "react";
 
 interface ModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  /** 닫기 콜백 (closable={false}이면 생략 가능) */
+  onClose?: () => void;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
@@ -22,7 +23,11 @@ const sizeClasses = {
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
+const noop = () => {};
+
 export function Modal({ isOpen, onClose, title, children, footer, headerExtra, size = "md", closable = true }: ModalProps) {
+  // closable={false}이면 onClose 불필요 → noop fallback
+  const handleClose = onClose ?? noop;
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
@@ -31,7 +36,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape" && closable) {
-        onClose();
+        handleClose();
         return;
       }
 
@@ -57,7 +62,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
         }
       }
     },
-    [closable, onClose]
+    [closable, handleClose]
   );
 
   useEffect(() => {
@@ -89,7 +94,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
   // 배경 클릭으로 닫기 (closable일 때만)
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget && closable) {
-      onClose();
+      handleClose();
     }
   };
 
@@ -130,7 +135,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
           </div>
           {closable && (
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="p-1.5 rounded-md btn-icon-hover"
               aria-label="닫기"
             >

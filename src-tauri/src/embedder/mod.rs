@@ -28,6 +28,12 @@ pub enum EmbedderError {
     LockFailed,
 }
 
+impl From<ort::Error> for EmbedderError {
+    fn from(e: ort::Error) -> Self {
+        EmbedderError::OrtError(e.to_string())
+    }
+}
+
 /// 텍스트 임베딩 생성기
 ///
 /// Session은 &mut self를 필요로 하므로 내부 Mutex 사용
@@ -63,16 +69,11 @@ impl Embedder {
         // ONNX 세션 생성 (최적화 적용)
         // - CPU EP arena 비활성화: 선점 할당 대신 호출별 할당으로 전환 (RAM 50-100MB 절감)
         // - parallel_execution 제거: 단일 쿼리에 inter-op 병렬 불필요, intra_threads로 충분
-        let session = Session::builder()
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .with_execution_providers([ort::ep::CPU::default().build()])
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .with_intra_threads(num_threads)
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?
-            .commit_from_file(model_path)
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+        let session = Session::builder()?
+            .with_execution_providers([ort::ep::CPU::default().build()])?
+            .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)?
+            .with_intra_threads(num_threads)?
+            .commit_from_file(model_path)?;
 
         // Tokenizer 로드
         let tokenizer = Tokenizer::from_file(tokenizer_path)
@@ -133,11 +134,9 @@ impl Embedder {
 
         // ONNX 추론 (Session은 &mut self 필요 → Mutex 사용)
         // e5-small INT8 모델은 input_ids, attention_mask 2개 입력만 필요
-        let input_ids_value = Value::from_array((shape, input_ids_vec))
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+        let input_ids_value = Value::from_array((shape, input_ids_vec))?;
         // attention_mask_vec는 mean pooling에서 재사용 → clone 후 텐서에 전달
-        let attention_mask_value = Value::from_array((shape, attention_mask_vec.clone()))
-            .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+        let attention_mask_value = Value::from_array((shape, attention_mask_vec.clone()))?;
 
         let embeddings = {
             let mut session = self.session.lock().map_err(|_| EmbedderError::LockFailed)?;
@@ -153,8 +152,7 @@ impl Embedder {
                 .run(ort::inputs![
                     "input_ids" => input_ids_value,
                     "attention_mask" => attention_mask_value,
-                ])
-                .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+                ])?;
 
             // 출력에서 임베딩 추출 (모델에 따라 출력 이름이 다를 수 있음)
             let output = outputs
@@ -175,9 +173,7 @@ impl Embedder {
                     ))
                 })?;
 
-            let (out_shape, out_data) = output
-                .try_extract_tensor::<f32>()
-                .map_err(|e: ort::Error| EmbedderError::OrtError(e.to_string()))?;
+            let (out_shape, out_data) = output.try_extract_tensor::<f32>()?;
 
             let dims = out_shape.len();
 

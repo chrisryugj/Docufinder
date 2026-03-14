@@ -133,6 +133,29 @@ impl FolderService {
         })
     }
 
+    /// 전체 폴더 통계 배치 조회 (N+1 IPC 방지)
+    pub async fn get_all_folder_stats(&self) -> AppResult<Vec<(String, FolderStats)>> {
+        let conn = self.get_connection()?;
+        let folders =
+            db::get_watched_folders(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let mut result = Vec::with_capacity(folders.len());
+        for folder in folders {
+            let stats = db::get_folder_stats(&conn, &folder)
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+            result.push((
+                folder,
+                FolderStats {
+                    file_count: stats.file_count,
+                    indexed_count: stats.indexed_count,
+                    last_indexed: stats.last_indexed,
+                },
+            ));
+        }
+
+        Ok(result)
+    }
+
     /// 즐겨찾기 토글
     pub async fn toggle_favorite(&self, path: &str) -> AppResult<bool> {
         let conn = self.get_connection()?;

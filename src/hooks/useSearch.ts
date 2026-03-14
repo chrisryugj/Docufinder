@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
+import { logToBackend } from "../utils/errorLogger";
 import type {
   SearchResult,
   SearchResponse,
@@ -20,6 +21,7 @@ interface UseSearchOptions {
 // LRU 캐시 (검색 결과 캐싱)
 const CACHE_MAX_SIZE = 50;
 const CACHE_TTL_MS = 30000; // 30초
+const COMPOSITION_IDLE_MS = 300;
 
 interface CacheEntry {
   results: SearchResult[];
@@ -29,10 +31,33 @@ interface CacheEntry {
 }
 
 const searchCache = new Map<string, CacheEntry>();
+let sweepTimerId: ReturnType<typeof setInterval> | null = null;
+
+/** 만료 엔트리 proactive sweep (CACHE_TTL_MS 간격) */
+function ensureSweepTimer(): void {
+  if (sweepTimerId !== null) return;
+  sweepTimerId = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of searchCache) {
+      if (now - entry.timestamp > CACHE_TTL_MS) {
+        searchCache.delete(key);
+      }
+    }
+    // 캐시 비면 타이머 중지 (리소스 절약)
+    if (searchCache.size === 0 && sweepTimerId !== null) {
+      clearInterval(sweepTimerId);
+      sweepTimerId = null;
+    }
+  }, CACHE_TTL_MS);
+}
 
 /** 검색 캐시 전체 초기화 (데이터 리셋 시 호출) */
 export function clearSearchCache(): void {
   searchCache.clear();
+  if (sweepTimerId !== null) {
+    clearInterval(sweepTimerId);
+    sweepTimerId = null;
+  }
 }
 
 function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean, searchScope: string | null): string {
@@ -63,6 +88,7 @@ function setToCache(key: string, entry: Omit<CacheEntry, "timestamp">): void {
     if (firstKey) searchCache.delete(firstKey);
   }
   searchCache.set(key, { ...entry, timestamp: Date.now() });
+  ensureSweepTimer();
 }
 
 interface UseSearchReturn {
@@ -101,7 +127,6 @@ interface UseSearchReturn {
  */
 export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const { debounceMs = 150 } = options;
-  const compositionIdleMs = 300;
   // minConfidence는 외부에서 변경될 수 있으므로 직접 참조
   const minConfidence = options.minConfidence ?? 0;
 
@@ -247,7 +272,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       } catch (err) {
         if (searchIdRef.current !== currentId) return;
         const message = err instanceof Error ? err.message : String(err);
-        console.error("Search failed:", err);
+        logToBackend("error", "Search failed", message, "useSearch");
         setError(`검색 실패: ${message}`);
         startTransition(() => {
           setResults([]);
@@ -272,7 +297,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // 디바운스 검색 — 조합 중에는 대기, 완료 후 실행
   useEffect(() => {
     const delay = isComposingRef.current
-      ? Math.max(debounceMs, compositionIdleMs)
+      ? Math.max(debounceMs, COMPOSITION_IDLE_MS)
       : debounceMs;
     const timer = setTimeout(() => {
       if (isComposingRef.current) {
@@ -282,7 +307,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch, compositionIdleMs]);
+  }, [query, searchMode, debounceMs, executeSearch, COMPOSITION_IDLE_MS]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {

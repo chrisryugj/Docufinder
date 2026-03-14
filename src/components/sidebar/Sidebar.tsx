@@ -1,4 +1,5 @@
 import { useState, memo } from "react";
+import { ChevronLeft, ChevronRight, Plus, Clock, Folder, Trash2 } from "lucide-react";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
 import { SuggestedFolders } from "./SuggestedFolders";
@@ -71,9 +72,7 @@ export const Sidebar = memo(function Sidebar({
                 className="p-1.5 rounded-md btn-icon-hover"
                 aria-label="사이드바 축소"
               >
-                <svg className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7" />
-                </svg>
+                <ChevronLeft className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
               </button>
             </>
           ) : (
@@ -82,9 +81,7 @@ export const Sidebar = memo(function Sidebar({
               className="w-full flex justify-center p-1.5 rounded-md btn-icon-hover"
               aria-label="사이드바 확장"
             >
-              <svg className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7" />
-              </svg>
+              <ChevronRight className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
           )}
         </div>
@@ -98,9 +95,7 @@ export const Sidebar = memo(function Sidebar({
               title="폴더 추가"
               aria-label="폴더 추가"
             >
-              <svg className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <Plus className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
             <button
               onClick={() => onSelectSearch("")}
@@ -108,9 +103,7 @@ export const Sidebar = memo(function Sidebar({
               title="최근 검색"
               aria-label="최근 검색"
             >
-              <svg className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <Clock className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
             {/* Folder count indicator */}
             {watchedFolders.length > 0 && (
@@ -121,9 +114,7 @@ export const Sidebar = memo(function Sidebar({
                 >
                   {watchedFolders.length}
                 </span>
-                <svg className="w-3.5 h-3.5" style={{ color: "var(--color-sidebar-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                </svg>
+                <Folder className="w-3.5 h-3.5" style={{ color: "var(--color-sidebar-muted)" }} />
               </div>
             )}
           </div>
@@ -144,14 +135,9 @@ export const Sidebar = memo(function Sidebar({
                     className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
                     aria-expanded={isFoldersExpanded}
                   >
-                    <svg
+                    <ChevronRight
                       className={`w-3.5 h-3.5 transition-transform duration-150 ${isFoldersExpanded ? "rotate-90" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    />
                     인덱싱된 폴더
                     <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
                       ({watchedFolders.length})
@@ -163,9 +149,7 @@ export const Sidebar = memo(function Sidebar({
                     aria-label="폴더 추가"
                     title="폴더 추가"
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
+                    <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -198,14 +182,9 @@ export const Sidebar = memo(function Sidebar({
                     className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
                     aria-expanded={isSearchesExpanded}
                   >
-                    <svg
+                    <ChevronRight
                       className={`w-3.5 h-3.5 transition-transform duration-150 ${isSearchesExpanded ? "rotate-90" : ""}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
+                    />
                     최근 검색
                     <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
                       ({recentSearches.length})
@@ -218,9 +197,7 @@ export const Sidebar = memo(function Sidebar({
                       aria-label="전체 삭제"
                       title="검색 기록 전체 삭제"
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   )}
                 </div>

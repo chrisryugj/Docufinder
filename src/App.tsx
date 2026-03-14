@@ -10,19 +10,24 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useUpdater } from "./hooks/useUpdater";
-import { setupGlobalErrorHandlers } from "./utils/errorLogger";
+import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
+import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
+import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
-import { Modal } from "./components/ui/Modal";
-import { Button } from "./components/ui/Button";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
+
+/** Debounce/timer constants */
+const FOCUS_DEBOUNCE_MS = 500;
+const RECENT_SEARCH_SAVE_DELAY_MS = 3000;
+const EXPAND_FOCUS_DELAY_MS = 100;
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -134,7 +139,6 @@ function App() {
   const {
     minConfidence,
     viewDensity,
-    setViewDensity,
     semanticEnabled,
     vectorIndexingMode,
     resultsPerPage,
@@ -285,7 +289,7 @@ function App() {
 
       // 디바운스: 500ms 이내 중복 실행 방지 (IPC 이벤트 폭주 대응)
       const now = Date.now();
-      if (now - lastResetTime < 500) return;
+      if (now - lastResetTime < FOCUS_DEBOUNCE_MS) return;
       lastResetTime = now;
 
       const input = searchInputRef.current;
@@ -323,7 +327,7 @@ function App() {
           }
         });
       } catch (err) {
-        console.warn("Failed to register focus handler:", err);
+        logToBackend("warn", "Failed to register focus handler", String(err), "App");
       }
     };
 
@@ -377,7 +381,7 @@ function App() {
       searchTimerRef.current = setTimeout(() => {
         addSearch(trimmedQuery);
         searchTimerRef.current = null;
-      }, 3000);
+      }, RECENT_SEARCH_SAVE_DELAY_MS);
     }
 
     return () => {
@@ -446,7 +450,7 @@ function App() {
   const handleExpand = useCallback(() => {
     expand();
     scrollToTop();
-    setTimeout(() => searchInputRef.current?.focus(), 100);
+    setTimeout(() => searchInputRef.current?.focus(), EXPAND_FOCUS_DELAY_MS);
   }, [expand, scrollToTop]);
 
   // 설정 모달 콜백
@@ -580,22 +584,11 @@ function App() {
             />
 
             {/* 벡터 인덱싱 상태 배너 */}
-            {isVectorIndexing && (
-              <div
-                className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
-                style={{
-                  backgroundColor: "var(--color-accent-subtle, rgba(59, 130, 246, 0.1))",
-                  border: "1px solid var(--color-accent-border, rgba(59, 130, 246, 0.2))",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin h-3 w-3 rounded-full" style={{ border: "1px solid var(--color-accent)", borderTopColor: "transparent" }} />
-                  <span>벡터 인덱싱 중... ({vectorProgress}%) — 키워드 검색만 가능</span>
-                </div>
-                <button onClick={cancelVectorIndexing} className="font-medium" style={{ color: "var(--color-accent)" }}>취소</button>
-              </div>
-            )}
+            <VectorIndexingBanner
+              isVisible={isVectorIndexing}
+              progress={vectorProgress}
+              onCancel={cancelVectorIndexing}
+            />
 
             {/* 필터 바 */}
             {query && (results.length > 0 || filenameResults.length > 0) && (
@@ -637,7 +630,6 @@ function App() {
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 viewDensity={viewDensity}
-                onViewDensityChange={setViewDensity}
                 query={query}
                 isLoading={isLoading}
                 selectedIndex={selectedIndex}
@@ -717,7 +709,7 @@ function App() {
               const result = await invoke<AddFolderResult>("resume_indexing", { path: folder });
               indexedCount += result.indexed_count;
             } catch (err) {
-              console.error("Re-indexing failed for", folder, err);
+              logToBackend("error", `Re-indexing failed for ${folder}`, String(err), "App");
             }
           }
           showToast(`${indexedCount}개 HWPX 파일 인덱싱 완료`, "success");
@@ -726,51 +718,12 @@ function App() {
       />
 
       {/* 자동 인덱싱 안내 다이얼로그 */}
-      <Modal
+      <AutoIndexPrompt
         isOpen={showAutoIndexPrompt}
         onClose={() => setShowAutoIndexPrompt(false)}
-        title="문서 검색을 시작하세요"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-            등록된 폴더가 없습니다. 어떻게 시작할까요?
-          </p>
-          <div className="space-y-2">
-            <Button
-              className="w-full justify-center"
-              onClick={async () => {
-                setShowAutoIndexPrompt(false);
-                await autoIndexAllDrives();
-              }}
-            >
-              전체 드라이브 인덱싱
-            </Button>
-            <p className="text-xs text-center" style={{ color: "var(--color-text-muted)" }}>
-              모든 드라이브를 스캔합니다 (시스템 폴더 자동 제외)
-            </p>
-            <Button
-              variant="ghost"
-              className="w-full justify-center"
-              onClick={async () => {
-                setShowAutoIndexPrompt(false);
-                await handleAddFolder();
-              }}
-            >
-              폴더 직접 선택
-            </Button>
-            <div className="pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
-              <button
-                className="w-full text-center text-xs py-1.5"
-                style={{ color: "var(--color-text-muted)" }}
-                onClick={() => setShowAutoIndexPrompt(false)}
-              >
-                나중에 할게요
-              </button>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        onAutoIndex={autoIndexAllDrives}
+        onSelectFolder={handleAddFolder}
+      />
 
       <FloatingUI
         vectorStatus={vectorStatus}

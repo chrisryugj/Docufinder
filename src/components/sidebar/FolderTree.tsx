@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
+import { logToBackend } from "../../utils/errorLogger";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
 
 interface FolderTreeProps {
@@ -59,36 +61,26 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       }
       setFolderInfo(infoMap);
     } catch (e) {
-      console.error("Failed to get folder info:", e);
+      logToBackend("error", "Failed to get folder info", String(e), "FolderTree");
     }
   }, []);
 
-  // 폴더 통계 조회
+  // 폴더 통계 배치 조회 (N+1 IPC 방지: 단일 호출로 전체 폴더 통계)
   const fetchStats = useCallback(async () => {
     if (folders.length === 0) return;
 
     const requestId = ++statsRequestIdRef.current;
 
-    const entries = await Promise.all(
-      folders.map(async (folder) => {
-        try {
-          const result = await invokeWithTimeout<FolderStats>("get_folder_stats", {
-            path: folder,
-          }, IPC_TIMEOUT.SETTINGS);
-          return [folder, result] as const;
-        } catch (e) {
-          console.error(`Failed to get stats for ${folder}:`, e);
-          return null;
-        }
-      })
-    );
-    // stale 응답 무시 (이후 요청이 들어온 경우)
-    if (requestId === statsRequestIdRef.current) {
-      const stats: Record<string, FolderStats> = {};
-      for (const entry of entries) {
-        if (entry) stats[entry[0]] = entry[1];
+    try {
+      const allStats = await invokeWithTimeout<Record<string, FolderStats>>(
+        "get_all_folder_stats", undefined, IPC_TIMEOUT.SETTINGS
+      );
+      // stale 응답 무시 (이후 요청이 들어온 경우)
+      if (requestId === statsRequestIdRef.current) {
+        setFolderStats(allStats);
       }
-      setFolderStats(stats);
+    } catch (e) {
+      logToBackend("error", "Failed to get folder stats", String(e), "FolderTree");
     }
   }, [folders]);
 
@@ -125,7 +117,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           await invoke("resume_indexing", { path });
           onFoldersChange?.();
         } catch (e) {
-          console.error(`Failed to resume indexing for ${path}:`, e);
+          logToBackend("error", `Failed to resume indexing for ${path}`, String(e), "FolderTree");
         }
       }
       // 완료 후 정보 새로고침
@@ -144,7 +136,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       await fetchFolderInfo();
       onFoldersChange?.();
     } catch (err) {
-      console.error("Failed to toggle favorite:", err);
+      logToBackend("error", "Failed to toggle favorite", String(err), "FolderTree");
     }
   };
 
@@ -174,7 +166,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       await invoke("reindex_folder", { path });
       onFoldersChange?.();
     } catch (err) {
-      console.error("Failed to reindex folder:", err);
+      logToBackend("error", "Failed to reindex folder", String(err), "FolderTree");
     }
   };
 
@@ -264,9 +256,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     return (
       <div className="px-3 py-2 space-y-1.5">
         <div className="flex items-center gap-2">
-          <svg className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-success)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
+          <ShieldCheck className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-success)" }} />
           <span className="text-sm font-medium" style={{ color: "var(--color-sidebar-text)" }}>
             전체 PC 인덱싱
           </span>
@@ -296,20 +286,15 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             >
               {/* 즐겨찾기 + 폴더 아이콘 (하나로 통합) */}
               <div className="relative flex-shrink-0">
-                <svg
+                <Folder
                   className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
                   style={{ color: isExpanded ? "var(--color-warning)" : "var(--color-sidebar-muted)" }}
                   fill="currentColor"
-                  viewBox="0 0 20 20"
                   aria-hidden="true"
-                >
-                  <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                </svg>
+                />
                 {/* 즐겨찾기 표시 (별) */}
                 {isFavorite && (
-                  <svg className="absolute -top-1 -right-1 w-2.5 h-2.5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                  </svg>
+                  <Star className="absolute -top-1 -right-1 w-2.5 h-2.5 text-yellow-400" fill="currentColor" />
                 )}
               </div>
 
@@ -324,10 +309,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 인덱싱 미완료 표시 */}
               {folderInfo[folder]?.indexing_status === "indexing" && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-500/20 text-amber-400 flex-shrink-0" title="인덱싱 미완료 - 자동 재개 중">
-                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
+                  <Loader2 className="w-3 h-3 animate-spin" />
                   재개중
                 </span>
               )}
@@ -387,9 +369,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           onClick={handleToggleFavorite}
           className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 ctx-menu-item-favorite ${folderInfo[contextMenu.folderPath]?.is_favorite ? "ctx-menu-item-favorite--active" : ""}`}
         >
-          <svg className="w-4 h-4" fill={folderInfo[contextMenu.folderPath]?.is_favorite ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-          </svg>
+          <Star className="w-4 h-4" fill={folderInfo[contextMenu.folderPath]?.is_favorite ? "currentColor" : "none"} />
           {folderInfo[contextMenu.folderPath]?.is_favorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
         </button>
         {/* 탐색기에서 열기 */}
@@ -397,14 +377,12 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           onClick={async () => {
             const path = contextMenu.folderPath;
             closeContextMenu();
-            try { await invoke("open_folder", { path }); } catch (err) { console.error("Failed to open folder:", err); }
+            try { await invoke("open_folder", { path }); } catch (err) { logToBackend("error", "Failed to open folder", String(err), "FolderTree"); }
           }}
           role="menuitem"
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
-          </svg>
+          <FolderOpen className="w-4 h-4 text-yellow-500" />
           탐색기에서 열기
         </button>
         {/* 재인덱싱 */}
@@ -413,9 +391,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           onClick={handleReindex}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
+          <RefreshCw className="w-4 h-4 text-blue-400" />
           재인덱싱
         </button>
         {onRemoveFolder && (
@@ -428,9 +404,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             role="menuitem"
             className="ctx-menu-item-danger w-full px-3 py-2 text-left text-sm flex items-center gap-2"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
+            <Trash2 className="w-4 h-4" />
             폴더 제거
           </button>
         )}

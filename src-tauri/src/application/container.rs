@@ -180,21 +180,13 @@ impl AppContainer {
                     model_dir.join("model.onnx")
                 };
                 let tokenizer_path = model_dir.join("tokenizer.json");
-                let dll_path = model_dir.join("onnxruntime.dll");
 
                 if !model_path.exists() {
                     return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
                 }
 
-                // ONNX Runtime DLL 경로 설정
-                // SAFETY: OnceCell::get_or_try_init이 1회만 실행을 보장하며,
-                // Embedder::new() 호출 전에 환경변수 설정이 필수.
-                // 이 시점에서 ort 라이브러리가 아직 초기화되지 않았으므로
-                // 환경변수 경합이 발생하지 않음. Rust 1.81+ deprecated.
-                if dll_path.exists() {
-                    unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
-                    tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
-                }
+                // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
+                // (멀티스레드 환경에서 unsafe set_var 호출 방지)
 
                 // 8GB RAM 환경 경고: ONNX 모델(INT8 ~106MB / F32 ~840MB) + Reranker ~24MB 상주
                 let sys_mem = sysinfo_total_memory_mb();

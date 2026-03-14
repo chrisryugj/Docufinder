@@ -1,0 +1,249 @@
+/* ============================================
+   Animations & Keyframes
+   ============================================ */
+
+/* Animations */
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-modal-enter {
+  animation: modal-enter 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(194, 65, 12, 0);
+  }
+  50% {
+    box-shadow: 0 0 20px 0 rgba(194, 65, 12, 0.12);
+  }
+}
+
+.animate-search-bar {
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-normal) forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp var(--transition-normal) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--transition-fast) forwards;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s infinite;
+}
+
+/* Staggered Animation Helper (use with style={{ animationDelay: '...' }}) */
+.stagger-item {
+  opacity: 0;
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ============================================
+   Micro Interactions (마이크로 인터랙션)
+   ============================================ */
+
+/* Button Press Effect */
+@keyframes btn-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.micro-press:active {
+  animation: btn-press 0.15s ease-out;
+}
+
+/* Card Hover Lift Effect */
+.micro-lift {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.micro-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Subtle Scale on Hover */
+.micro-scale {
+  transition: transform var(--transition-fast);
+}
+.micro-scale:hover {
+  transform: scale(1.02);
+}
+.micro-scale:active {
+  transform: scale(0.98);
+}
+
+/* Checkbox/Toggle Bounce */
+@keyframes bounce-check {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.15); }
+  50% { transform: scale(0.95); }
+  70% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.micro-bounce {
+  animation: bounce-check 0.3s ease-out;
+}
+
+/* Focus Glow Effect */
+.micro-focus-glow:focus {
+  box-shadow: 0 0 0 3px var(--color-accent-subtle), 0 0 15px -3px var(--color-accent-glow);
+  outline: none;
+}
+
+/* Subtle Pulse on Focus */
+@keyframes subtle-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(194, 65, 12, 0); }
+  50% { box-shadow: 0 0 0 4px rgba(194, 65, 12, 0.08); }
+}
+
+.micro-pulse-focus:focus {
+  animation: subtle-pulse 1.5s ease-in-out infinite;
+}
+
+/* Ripple Effect (click) */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.micro-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.micro-ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--color-accent-glow) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.micro-ripple:active::after {
+  animation: ripple 0.4s ease-out;
+}
+
+/* Smooth Entry Animation for Lists */
+@keyframes list-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.micro-list-enter {
+  animation: list-item-enter 0.2s ease-out forwards;
+}
+
+/* Icon Rotate on Hover */
+.micro-rotate-hover {
+  transition: transform var(--transition-fast);
+}
+.micro-rotate-hover:hover {
+  transform: rotate(15deg);
+}
+
+/* Color Shift on Hover */
+.micro-color-shift {
+  transition: color var(--transition-fast);
+}
+.micro-color-shift:hover {
+  color: var(--color-accent);
+}
+
+/* 컨텍스트 메뉴 열기 애니메이션 */
+@keyframes ctx-menu-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.ctx-menu-animate {
+  animation: ctx-menu-in 0.12s ease-out;
+  transform-origin: top left;
+}
+
+/* ============================================
+   저사양 환경 최적화 (애니메이션 축소)
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 기능적 스피너는 reduced-motion에서도 동작해야 함 */
+  .animate-spin {
+    animation: spin 1.5s linear infinite !important;
+  }
+}

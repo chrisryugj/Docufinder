@@ -32,6 +32,26 @@ const MAX_DETACHED_THREADS: usize = 10;
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미
 static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+/// Detached thread 카운터 리셋 (앱 재시작 없이 PDF 파싱 재개)
+///
+/// hang 스레드가 MAX_DETACHED_THREADS에 도달하면 모든 PDF 파싱이 차단됨.
+/// 이 함수로 카운터만 리셋하여 새 파싱 허용. 기존 hang 스레드는 OS 레벨에서 유지됨.
+pub fn reset_detached_thread_count() -> usize {
+    let prev = DETACHED_THREAD_COUNT.swap(0, Ordering::Relaxed);
+    if prev > 0 {
+        tracing::warn!(
+            "PDF detached thread counter reset: {} → 0 (some threads may still be running)",
+            prev
+        );
+    }
+    prev
+}
+
+/// 현재 detached thread 수 조회
+pub fn detached_thread_count() -> usize {
+    DETACHED_THREAD_COUNT.load(Ordering::Relaxed)
+}
+
 /// PDF 파일 파싱
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
 /// catch_unwind + 타임아웃으로 panic/hang 방어

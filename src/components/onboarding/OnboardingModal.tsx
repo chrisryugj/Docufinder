@@ -77,10 +77,12 @@ export function OnboardingModal({ isOpen, onComplete, onSkip }: OnboardingModalP
     }
   }, [currentStep]);
 
-  // 키보드 네비게이션
+  // 키보드 네비게이션 (input/textarea 포커스 중엔 비활성화 — Modal focus trap과 충돌 방지)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "ArrowRight") {
         goToNext();
       } else if (e.key === "ArrowLeft") {

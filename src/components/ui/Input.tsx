@@ -1,4 +1,5 @@
 import { InputHTMLAttributes, forwardRef, ReactNode } from "react";
+import type { CSSPropertiesWithVars } from "../../types/css";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   leftIcon?: ReactNode;
@@ -31,9 +32,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             backgroundColor: "var(--color-bg-tertiary)",
             color: "var(--color-text-primary)",
             borderColor: error ? undefined : "var(--color-border)",
-            // @ts-expect-error CSS custom property for placeholder
             "--tw-ring-color": "var(--color-accent)",
-          }}
+          } as CSSPropertiesWithVars}
           {...props}
         />
         {rightIcon && (

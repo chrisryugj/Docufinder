@@ -23,10 +23,14 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
     <Modal isOpen={isOpen} onClose={onClose} title="Anything 사용 가이드">
       <div className="flex gap-4 min-h-[420px]">
         {/* 사이드 탭 */}
-        <nav className="flex flex-col gap-0.5 w-28 flex-shrink-0 border-r pr-3" style={{ borderColor: "var(--color-border)" }}>
+        <nav className="flex flex-col gap-0.5 w-28 flex-shrink-0 border-r pr-3" role="tablist" aria-label="도움말 탭" style={{ borderColor: "var(--color-border)" }}>
           {sections.map((section) => (
             <button
               key={section.id}
+              id={`help-tab-${section.id}`}
+              role="tab"
+              aria-selected={activeSection === section.id}
+              aria-controls={`help-panel-${section.id}`}
               onClick={() => setActiveSection(section.id)}
               className={`px-3 py-2 text-left text-sm rounded-lg transition-colors whitespace-nowrap ${
                 activeSection === section.id ? "font-semibold" : ""
@@ -43,11 +47,11 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
         {/* 콘텐츠 영역 */}
         <div className="flex-1 overflow-y-auto pr-1" style={{ maxHeight: "460px" }}>
-          {activeSection === "start" && <StartSection />}
-          {activeSection === "search" && <SearchSection />}
-          {activeSection === "filters" && <FiltersSection />}
-          {activeSection === "shortcuts" && <ShortcutsSection />}
-          {activeSection === "tips" && <TipsSection />}
+          {activeSection === "start" && <div role="tabpanel" id="help-panel-start" aria-labelledby="help-tab-start"><StartSection /></div>}
+          {activeSection === "search" && <div role="tabpanel" id="help-panel-search" aria-labelledby="help-tab-search"><SearchSection /></div>}
+          {activeSection === "filters" && <div role="tabpanel" id="help-panel-filters" aria-labelledby="help-tab-filters"><FiltersSection /></div>}
+          {activeSection === "shortcuts" && <div role="tabpanel" id="help-panel-shortcuts" aria-labelledby="help-tab-shortcuts"><ShortcutsSection /></div>}
+          {activeSection === "tips" && <div role="tabpanel" id="help-panel-tips" aria-labelledby="help-tab-tips"><TipsSection /></div>}
         </div>
       </div>
     </Modal>

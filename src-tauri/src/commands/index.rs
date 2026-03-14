@@ -759,9 +759,10 @@ try {{
             output = hwpx_escaped,
         );
 
-        // tokio::process로 비동기 실행 (Tokio 런타임 스레드 블로킹 방지)
+        // PowerShell -EncodedCommand: Base64(UTF-16LE) 인코딩으로 인젝션 방지
+        let encoded = crate::utils::encode_powershell_command(&ps_script);
         let result = tokio::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &ps_script])
+            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
             .output()
             .await;
 
@@ -828,6 +829,19 @@ pub async fn get_folder_stats(
         .map_err(ApiError::from)
 }
 
+/// 전체 폴더 통계 배치 조회 (N+1 IPC 방지)
+#[tauri::command]
+pub async fn get_all_folder_stats(
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<std::collections::HashMap<String, FolderStats>> {
+    let service = {
+        let container = state.read()?;
+        container.folder_service()
+    };
+    let stats = service.get_all_folder_stats().await.map_err(ApiError::from)?;
+    Ok(stats.into_iter().collect())
+}
+
 /// 감시 폴더 목록 조회
 #[tauri::command]
 pub async fn get_folders_with_info(
@@ -871,18 +885,12 @@ pub struct DbDebugInfo {
     pub test_query: String,
 }
 
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn get_db_debug_info(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<DbDebugInfo> {
-    // 프로덕션에서 디버그 커맨드 차단
-    if !cfg!(debug_assertions) {
-        return Err(ApiError::IndexingFailed(
-            "Debug command not available in release build".to_string(),
-        ));
-    }
-
     use crate::db;
 
     let db_path = {
@@ -936,6 +944,17 @@ pub async fn get_db_debug_info(
         filename_match_count,
         test_query: safe_query,
     })
+}
+
+#[cfg(not(debug_assertions))]
+#[tauri::command]
+pub async fn get_db_debug_info(
+    _query: String,
+    _state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<DbDebugInfo> {
+    Err(ApiError::IndexingFailed(
+        "Debug command not available in release build".to_string(),
+    ))
 }
 
 // ============================================

@@ -1,0 +1,228 @@
+/* ============================================
+   Component Styles
+   ============================================ */
+
+/* Glassmorphism - blur 제거 (저사양/내부망 최적화) */
+.glass {
+  background: rgba(255, 255, 255, 0.95);
+  /* backdrop-filter: blur(12px); 제거 - GPU 부담 */
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.95);
+  /* backdrop-filter: blur(12px); 제거 */
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.98);
+  /* backdrop-filter: blur(8px); 제거 */
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Result Card — file type indicator */
+.result-card {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.result-card:hover {
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Search Highlight Marks */
+mark.hl-search,
+mark.hl-refine,
+mark.hl-both,
+mark.hl-filename {
+  border-radius: 3px;
+  padding: 1px 3px;
+  margin: 0 -1px;
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  transition: background-color 0.15s ease;
+}
+
+mark.hl-search {
+  background-color: var(--color-highlight-bg);
+  color: var(--color-highlight-text);
+  border-bottom: 2px solid var(--color-highlight-border);
+}
+
+mark.hl-refine,
+mark.hl-both {
+  background-color: var(--color-highlight-refine-bg);
+  color: var(--color-highlight-refine-text);
+  border-bottom: 2px solid var(--color-highlight-refine-border);
+}
+
+mark.hl-filename {
+  background-color: var(--color-highlight-filename-bg);
+  color: var(--color-highlight-filename-text);
+  border-bottom: 2px solid var(--color-highlight-filename-border);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #D6D3D1;
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background 0.15s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A8A29E;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Dark mode scrollbar */
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Typography Helpers */
+.text-display {
+  font-family: var(--font-display);
+}
+
+.text-mono {
+  font-family: var(--font-mono);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--color-accent) 0%, #D97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* File Badges */
+.file-badge {
+  @apply px-1.5 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wider;
+}
+
+.file-badge-hwpx {
+  color: var(--color-file-hwpx);
+  background: var(--color-file-hwpx-bg);
+}
+
+.file-badge-docx {
+  color: var(--color-file-docx);
+  background: var(--color-file-docx-bg);
+}
+
+.file-badge-xlsx {
+  color: var(--color-file-xlsx);
+  background: var(--color-file-xlsx-bg);
+}
+
+.file-badge-pdf {
+  color: var(--color-file-pdf);
+  background: var(--color-file-pdf-bg);
+}
+
+.file-badge-txt {
+  color: var(--color-file-txt);
+  background: var(--color-file-txt-bg);
+}
+
+/* Result Card — file type subtle background tint on hover */
+.result-stripe-hwpx:hover { background-color: var(--color-file-hwpx-bg); }
+.result-stripe-docx:hover { background-color: var(--color-file-docx-bg); }
+.result-stripe-xlsx:hover { background-color: var(--color-file-xlsx-bg); }
+.result-stripe-pdf:hover  { background-color: var(--color-file-pdf-bg); }
+.result-stripe-txt:hover  { background-color: var(--color-file-txt-bg); }
+.result-stripe-hwp:hover  { background-color: var(--color-file-hwpx-bg); }
+.result-stripe-pptx:hover { background-color: rgba(233, 122, 31, 0.06); }
+
+/* Interactive Elements */
+.btn-primary {
+  background: var(--color-accent);
+  color: white;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12);
+  transition: all var(--transition-fast);
+}
+
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+  box-shadow: 0 2px 8px rgba(194, 65, 12, 0.2);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.input-modern {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-inner);
+  transition: all 0.2s ease;
+}
+
+.input-modern:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(194, 65, 12, 0.08);
+  background: var(--color-bg-secondary);
+}
+
+/* 컨텍스트 메뉴 아이템 */
+.ctx-menu-item {
+  color: var(--color-text-primary);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item:hover {
+  background-color: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+/* 컨텍스트 메뉴 위험 액션 (삭제/제거) */
+.ctx-menu-item-danger {
+  color: #f87171;
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item-danger:hover {
+  background-color: rgba(248, 113, 113, 0.15);
+  color: #fca5a5;
+}
+
+/* 즐겨찾기 토글 메뉴 아이템 */
+.ctx-menu-item-favorite {
+  color: var(--color-text-primary);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.ctx-menu-item-favorite--active {
+  color: #facc15;
+}
+.ctx-menu-item-favorite:hover {
+  background-color: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}

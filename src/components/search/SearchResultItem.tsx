@@ -1,7 +1,9 @@
 import { useCallback, memo } from "react";
+import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
+import { formatPathSegments, buildExpandedContext } from "../../utils/searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -144,14 +146,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
-          <svg
-            className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-60 transition-opacity"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
+          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-60 transition-opacity" />
         </div>
 
         {/* Right side: confidence % + time + file type */}
@@ -194,15 +189,10 @@ export const SearchResultItem = memo(function SearchResultItem({
         className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1"
         onClick={onToggleExpand}
       >
-        <svg
+        <ChevronDown
           className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-180" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        />
         <div className="flex-1 min-w-0">
           <p
             style={{
@@ -279,9 +269,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               title="경로 복사"
               aria-label="파일 경로 복사"
             >
-              <svg className="w-3.5 h-3.5" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-              </svg>
+              <ClipboardCopy className="w-3.5 h-3.5" style={{ color: "var(--color-accent)" }} />
             </button>
             {onOpenFolder && (
               <button
@@ -290,9 +278,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 title="폴더 열기"
                 aria-label="상위 폴더 열기"
               >
-                <svg className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                </svg>
+                <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
               </button>
             )}
           </div>
@@ -312,135 +298,3 @@ export const SearchResultItem = memo(function SearchResultItem({
     </div>
   );
 });
-
-function formatPathSegments(path: string): { label: string; fullPath: string }[] {
-  const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
-  const parts = cleanPath.split(/[/\\]/).filter(Boolean);
-
-  const segments = parts.map((part, i) => ({
-    label: part,
-    fullPath: parts.slice(0, i + 1).join("\\"),
-  }));
-
-  if (segments.length > 6) {
-    return [
-      ...segments.slice(0, 2),
-      { label: "\u2026", fullPath: "" },
-      ...segments.slice(-2),
-    ];
-  }
-  return segments;
-}
-
-const EXPANDED_CONTEXT_BEFORE_CHARS = 300;
-const EXPANDED_CONTEXT_AFTER_CHARS = 300;
-
-function buildExpandedContext(
-  fullText: string,
-  ranges: [number, number][],
-  snippet?: string
-): { text: string; ranges: [number, number][] } {
-  const anchor = snippet
-    ? findSnippetAnchor(fullText, snippet, ranges)
-    : findFirstRangeAnchor(ranges);
-  const effectiveAnchor = anchor ?? findFirstRangeAnchor(ranges);
-  if (!effectiveAnchor) {
-    const limitedText = fullText.slice(0, 600);
-    return {
-      text: limitedText + (fullText.length > 600 ? "..." : ""),
-      ranges,
-    };
-  }
-
-  const startOffset = Math.max(0, effectiveAnchor.start - EXPANDED_CONTEXT_BEFORE_CHARS);
-  const endOffset = Math.min(fullText.length, effectiveAnchor.end + EXPANDED_CONTEXT_AFTER_CHARS);
-
-  const trimmedText = fullText.slice(startOffset, endOffset);
-  const trimmedRanges = ranges
-    .filter(([start, end]) => end > startOffset && start < endOffset)
-    .map(([start, end]) => {
-      const clippedStart = Math.max(0, start - startOffset);
-      const clippedEnd = Math.min(trimmedText.length, end - startOffset);
-      return [clippedStart, clippedEnd] as [number, number];
-    });
-
-  const prefix = startOffset > 0 ? "..." : "";
-  const suffix = endOffset < fullText.length ? "..." : "";
-  const finalText = prefix + trimmedText + suffix;
-
-  const offsetAdjust = prefix.length;
-  const adjustedRanges = trimmedRanges.map(
-    ([start, end]) => [start + offsetAdjust, end + offsetAdjust] as [number, number]
-  );
-
-  return { text: finalText, ranges: adjustedRanges };
-}
-
-function findSnippetAnchor(
-  fullText: string,
-  snippet: string,
-  ranges: [number, number][]
-): { start: number; end: number } | null {
-  const segments = snippet.split("...");
-  let fallback: { start: number; end: number } | null = null;
-
-  for (const segment of segments) {
-    if (!segment.includes("[[HL]]")) continue;
-    const parsed = parseSnippetSegment(segment);
-    if (!parsed.text.trim()) continue;
-
-    let searchStart = 0;
-    while (true) {
-      const index = fullText.indexOf(parsed.text, searchStart);
-      if (index === -1) break;
-
-      const candidate = parsed.ranges.length
-        ? { start: index + parsed.ranges[0][0], end: index + parsed.ranges[0][1] }
-        : { start: index, end: index + parsed.text.length };
-
-      if (!fallback) fallback = candidate;
-
-      if (ranges.some(([rangeStart, rangeEnd]) => candidate.start >= rangeStart && candidate.end <= rangeEnd)) {
-        return candidate;
-      }
-      searchStart = index + parsed.text.length;
-    }
-  }
-  return fallback;
-}
-
-function parseSnippetSegment(segment: string): { text: string; ranges: [number, number][] } {
-  const ranges: [number, number][] = [];
-  let text = "";
-  let i = 0;
-
-  while (i < segment.length) {
-    if (segment.slice(i, i + 6) === "[[HL]]") {
-      const start = text.length;
-      i += 6;
-      const endMarker = segment.indexOf("[[/HL]]", i);
-      if (endMarker !== -1) {
-        text += segment.slice(i, endMarker);
-        ranges.push([start, text.length]);
-        i = endMarker + 7;
-      } else {
-        text += segment.slice(i);
-        ranges.push([start, text.length]);
-        break;
-      }
-    } else {
-      text += segment[i];
-      i += 1;
-    }
-  }
-  return { text, ranges };
-}
-
-function findFirstRangeAnchor(ranges: [number, number][]): { start: number; end: number } | null {
-  if (ranges.length === 0) return null;
-  let [start, end] = ranges[0];
-  for (const [rangeStart, rangeEnd] of ranges) {
-    if (rangeStart < start) { start = rangeStart; end = rangeEnd; }
-  }
-  return { start, end };
-}

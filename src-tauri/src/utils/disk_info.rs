@@ -62,8 +62,9 @@ fn query_disk_type_wmi(drive_letter: char) -> Option<DiskType> {
         drive_letter.to_ascii_uppercase()
     );
 
+    let encoded = super::encode_powershell_command(&script);
     let output = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &script])
+        .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
         .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;

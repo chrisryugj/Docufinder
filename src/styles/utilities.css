@@ -1,0 +1,218 @@
+/* ============================================
+   Hover Utility Classes (DOM 조작 대체용)
+   ============================================ */
+
+/* Sidebar adaptive hover classes */
+.hover-sidebar-item {
+  color: var(--color-sidebar-muted);
+  transition: color 0.15s, background-color 0.15s;
+}
+.hover-sidebar-item:hover {
+  color: var(--color-sidebar-text);
+  background-color: var(--color-sidebar-hover);
+}
+
+.hover-sidebar-section {
+  color: var(--color-sidebar-section);
+  transition: color 0.15s;
+}
+.hover-sidebar-section:hover {
+  color: var(--color-sidebar-text);
+}
+
+.hover-sidebar-danger {
+  color: var(--color-sidebar-muted);
+  transition: color 0.15s, background-color 0.15s;
+}
+.hover-sidebar-danger:hover {
+  color: var(--color-error);
+  background-color: var(--color-sidebar-hover);
+}
+
+/* Primary Button Hover */
+.hover-btn-primary {
+  transition: all var(--transition-fast);
+}
+.hover-btn-primary:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+.hover-btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Secondary Button Hover */
+.hover-btn-secondary {
+  transition: all var(--transition-fast);
+}
+.hover-btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
+  color: var(--color-text-primary);
+}
+.hover-btn-secondary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Ghost Button Hover */
+.hover-btn-ghost {
+  transition: all var(--transition-fast);
+}
+.hover-btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+.hover-btn-ghost:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Danger Button Hover */
+.hover-btn-danger {
+  transition: all var(--transition-fast);
+}
+.hover-btn-danger:hover:not(:disabled) {
+  background-color: #991B1B;
+  border-color: #991B1B;
+}
+.hover-btn-danger:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Icon Button Hover */
+.hover-icon-btn {
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+.hover-icon-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Icon Button Accent Hover */
+.hover-icon-accent {
+  transition: color var(--transition-fast);
+}
+.hover-icon-accent:hover {
+  color: var(--color-accent);
+}
+
+/* Danger Action Hover (삭제 버튼 등) */
+.hover-action-danger {
+  transition: all var(--transition-fast);
+}
+.hover-action-danger:hover {
+  color: var(--color-error);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Dropdown Option Hover */
+.hover-dropdown-option {
+  transition: background-color var(--transition-fast);
+}
+.hover-dropdown-option:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Content Area Hover (확장 영역 등) */
+.hover-content-area {
+  transition: background-color var(--transition-fast);
+}
+.hover-content-area:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* ============================================
+   Reusable Hover Utilities
+   (인라인 onMouseEnter/onMouseLeave 대체)
+   ============================================ */
+
+/* 닫기/아이콘 버튼 hover */
+.btn-icon-hover {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-icon-hover:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+/* 파일명 hover (텍스트 → 액센트) */
+.hover-accent-text {
+  color: var(--color-text-primary);
+  transition: color 0.15s;
+}
+.hover-accent-text:hover {
+  color: var(--color-accent);
+}
+
+/* 결과 아이템 hover (배경색 전환) */
+.result-item-hover {
+  background-color: var(--color-bg-secondary);
+  transition: background-color 0.15s;
+}
+.result-item-hover:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* 아웃라인 버튼 hover (액센트 전환) */
+.btn-outline-accent-hover {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-outline-accent-hover:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background-color: var(--color-accent-light);
+}
+
+/* 취소 버튼 hover */
+.btn-cancel-hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-cancel-hover:hover {
+  background-color: var(--color-error);
+  color: white;
+}
+
+/* 시맨틱 시작 버튼 hover */
+.btn-accent-start-hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-accent);
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-accent-start-hover:hover {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+/* 초기화 버튼 hover */
+.btn-reset-hover {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  transition: background-color 0.15s, color 0.15s;
+}
+.btn-reset-hover:hover {
+  color: var(--color-error);
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* transparent → tertiary hover */
+.hover-bg-tertiary {
+  background-color: transparent;
+  transition: background-color 0.15s;
+}
+.hover-bg-tertiary:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* tertiary → subtle hover */
+.hover-bg-subtle {
+  transition: background-color 0.15s;
+}
+.hover-bg-subtle:hover {
+  background-color: var(--color-bg-subtle);
+}

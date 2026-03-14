@@ -20,7 +20,8 @@ impl SqliteFileRepository {
     pub fn new(db_path: &Path) -> Result<Self, DomainError> {
         let conn = crate::db::get_connection(db_path)
             .map_err(|e| DomainError::repository(format!("DB open failed: {}", e)))?
-            .into_inner(); // 풀에서 분리 (Repository가 장기 보유)
+            .into_inner() // 풀에서 분리 (Repository가 장기 보유)
+            .ok_or_else(|| DomainError::repository("PooledConnection already taken"))?;
 
         Ok(Self {
             conn: Mutex::new(conn),

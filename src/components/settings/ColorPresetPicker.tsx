@@ -23,6 +23,7 @@ export const ColorPresetPicker = memo(function ColorPresetPicker({
   onChange,
 }: ColorPresetPickerProps) {
   const currentValue = selectedValue || "";
+  const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
 
   return (
     <div>
@@ -42,7 +43,7 @@ export const ColorPresetPicker = memo(function ColorPresetPicker({
               currentValue === preset.value ? "ring-2 ring-offset-2" : ""
             }`}
             style={{
-              backgroundColor: preset.light,
+              backgroundColor: isDark ? preset.dark : preset.light,
               borderColor:
                 currentValue === preset.value
                   ? "var(--color-accent)"

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
+import { List, LayoutGrid, ClipboardCopy, FileDown, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
 import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -17,7 +18,6 @@ interface SearchResultListProps {
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   viewDensity?: ViewDensity;
-  onViewDensityChange?: (density: ViewDensity) => void;
   query: string;
   isLoading: boolean;
   selectedIndex?: number;
@@ -64,7 +64,6 @@ export const SearchResultList = memo(function SearchResultList({
   viewMode = "flat",
   onViewModeChange,
   viewDensity = "normal",
-  onViewDensityChange: _onViewDensityChange,
   query,
   isLoading,
   selectedIndex,
@@ -235,9 +234,7 @@ export const SearchResultList = memo(function SearchResultList({
                   aria-label="목록 보기"
                   aria-pressed={viewMode === "flat"}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
+                  <List className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => onViewModeChange("grouped")}
@@ -251,9 +248,7 @@ export const SearchResultList = memo(function SearchResultList({
                   aria-label="파일별 그룹 보기"
                   aria-pressed={viewMode === "grouped"}
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
+                  <LayoutGrid className="w-4 h-4" />
                 </button>
               </div>
             )}
@@ -282,22 +277,18 @@ export const SearchResultList = memo(function SearchResultList({
               onClick={onCopyAll}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
               title="검색 결과 클립보드 복사"
+              aria-label="검색 결과 클립보드 복사"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-              </svg>
+              <ClipboardCopy className="w-3.5 h-3.5" />
               복사
             </button>
             <button
               onClick={onExportCSV}
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
               title="CSV 파일로 내보내기"
+              aria-label="CSV 파일로 내보내기"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
+              <FileDown className="w-3.5 h-3.5" />
               CSV
             </button>
           </div>
@@ -309,23 +300,18 @@ export const SearchResultList = memo(function SearchResultList({
             <button
               type="button"
               onClick={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
+              aria-expanded={!isFilenameCollapsed}
               className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left hover-bg-subtle"
               style={{
                 borderLeft: "3px solid var(--color-text-muted)",
                 backgroundColor: "var(--color-bg-tertiary)",
               }}
             >
-              <svg
+              <ChevronRight
                 className={`w-3.5 h-3.5 transition-transform ${isFilenameCollapsed ? "" : "rotate-90"}`}
                 style={{ color: "var(--color-text-muted)" }}
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
-              <svg className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-              </svg>
+              />
+              <FileText className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
               <span className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
                 파일명 매치
               </span>
@@ -403,9 +389,7 @@ export const SearchResultList = memo(function SearchResultList({
               backgroundColor: "var(--color-accent-subtle)",
             }}
           >
-            <svg className="w-4 h-4" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
+            <FileSearch className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
             <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
               내용 매치
             </span>
@@ -499,21 +483,12 @@ export const SearchResultList = memo(function SearchResultList({
           className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
           style={{ backgroundColor: "var(--color-bg-tertiary)" }}
         >
-          <svg
+          <Frown
             className="w-10 h-10 opacity-60"
             style={{ color: "var(--color-text-muted)" }}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+            strokeWidth={1.5}
             aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
+          />
         </div>
         <h3
           className="text-lg font-semibold mb-2"
@@ -528,15 +503,15 @@ export const SearchResultList = memo(function SearchResultList({
           <p>다음을 시도해보세요:</p>
           <div className="flex flex-wrap justify-center gap-2 mt-3">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              <PenLine className="w-3.5 h-3.5" />
               다른 검색어 입력
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+              <ArrowLeftRight className="w-3.5 h-3.5" />
               검색 모드 변경
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+              <Filter className="w-3.5 h-3.5" />
               필터 조건 완화
             </span>
           </div>
@@ -590,9 +565,7 @@ function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
         onClick={onShowMore}
         className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border btn-outline-accent-hover"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <ChevronDown className="w-4 h-4" />
         {remaining}개 더 보기
       </button>
     </div>

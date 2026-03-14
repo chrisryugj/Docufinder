@@ -14,7 +14,6 @@ export function DisclaimerModal({ isOpen, onAccept, onExit }: DisclaimerModalPro
   return (
     <Modal
       isOpen={isOpen}
-      onClose={() => {}}
       title="Anything 사용 동의"
       size="lg"
       closable={false}

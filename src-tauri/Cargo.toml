@@ -60,6 +60,9 @@ ureq = "3"
 # SHA-256 무결성 검증
 sha2 = "0.10"
 
+# Base64 (PowerShell EncodedCommand)
+base64 = "0.22"
+
 # Utilities
 thiserror = "2"
 tracing = "0.1"

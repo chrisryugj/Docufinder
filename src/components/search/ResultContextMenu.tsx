@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ExternalLink, FolderOpen, ClipboardCopy } from "lucide-react";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -118,9 +119,7 @@ export function ResultContextMenu({
         onClick={() => { closeContextMenu(); onOpenFile(filePath, pageNumber); }}
         className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
       >
-        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-        </svg>
+        <ExternalLink className="w-4 h-4 text-blue-400" />
         <span className="flex-1">파일 열기</span>
         <kbd className="text-[10px] font-mono opacity-40">Enter</kbd>
       </button>
@@ -134,9 +133,7 @@ export function ResultContextMenu({
           onClick={() => { closeContextMenu(); onOpenFolder(folderPath); }}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-          </svg>
+          <FolderOpen className="w-4 h-4 text-yellow-500" />
           <span className="flex-1">폴더 열기</span>
         </button>
       )}
@@ -149,9 +146,7 @@ export function ResultContextMenu({
         }}
         className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
       >
-        <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-        </svg>
+        <ClipboardCopy className="w-4 h-4 text-emerald-400" />
         <span className="flex-1">경로 복사</span>
         <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>

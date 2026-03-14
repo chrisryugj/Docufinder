@@ -5,8 +5,6 @@ interface SettingsToggleProps {
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
-  /** 활성 시 색상 (기본: bg-blue-500) */
-  activeColor?: string;
 }
 
 export const SettingsToggle = memo(function SettingsToggle({
@@ -14,7 +12,6 @@ export const SettingsToggle = memo(function SettingsToggle({
   description,
   checked,
   onChange,
-  activeColor = "bg-blue-500",
 }: SettingsToggleProps) {
   return (
     <div className="flex items-center justify-between">
@@ -34,9 +31,10 @@ export const SettingsToggle = memo(function SettingsToggle({
         role="switch"
         aria-checked={checked}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-          checked ? activeColor : "bg-[var(--color-bg-tertiary)]"
-        }`}
+        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        style={{
+          backgroundColor: checked ? "var(--color-accent)" : "var(--color-bg-tertiary)",
+        }}
       >
         <span
           className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${

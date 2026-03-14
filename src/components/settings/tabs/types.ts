@@ -1,0 +1,73 @@
+import type { Settings } from "../../../types/settings";
+
+export interface TabProps {
+  settings: Settings;
+  onChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  setError?: (error: string | null) => void;
+}
+
+export const SEARCH_MODE_OPTIONS = [
+  { value: "keyword", label: "키워드 검색 (권장)" },
+  { value: "hybrid", label: "하이브리드 (모델 필요)" },
+  { value: "semantic", label: "의미 검색 (모델 필요)" },
+  { value: "filename", label: "파일명 검색" },
+];
+
+export const THEME_OPTIONS = [
+  { value: "light", label: "라이트 모드" },
+  { value: "dark", label: "다크 모드" },
+  { value: "system", label: "시스템 설정" },
+];
+
+export const MAX_RESULTS_OPTIONS = [
+  { value: "20", label: "20개" },
+  { value: "50", label: "50개 (기본)" },
+  { value: "100", label: "100개" },
+  { value: "200", label: "200개" },
+  { value: "500", label: "500개" },
+  { value: "1000", label: "1000개" },
+];
+
+export const VIEW_DENSITY_OPTIONS = [
+  { value: "normal", label: "기본 (넓게)" },
+  { value: "compact", label: "컴팩트 (좁게)" },
+];
+
+export const VECTOR_INDEXING_MODE_OPTIONS = [
+  { value: "manual", label: "수동" },
+  { value: "auto", label: "자동" },
+];
+
+export const INDEXING_INTENSITY_OPTIONS = [
+  { value: "fast", label: "빠르게 (CPU 최대)" },
+  { value: "balanced", label: "균형 (권장)" },
+  { value: "background", label: "백그라운드 (최소 부하)" },
+];
+
+export const RESULTS_PER_PAGE_OPTIONS = [
+  { value: "20", label: "20개" },
+  { value: "50", label: "50개 (기본)" },
+  { value: "100", label: "100개" },
+  { value: "200", label: "200개" },
+];
+
+export const MAX_FILE_SIZE_OPTIONS = [
+  { value: "50", label: "50 MB" },
+  { value: "100", label: "100 MB" },
+  { value: "200", label: "200 MB (기본)" },
+  { value: "500", label: "500 MB" },
+  { value: "0", label: "제한 없음" },
+];
+
+export const CONFIDENCE_STEP = 5;
+
+export const HIGHLIGHT_COLOR_PRESETS = [
+  { value: "", label: "기본", light: "#fde047", dark: "#854d0e" },
+  { value: "#fbbf24", label: "앰버", light: "#fbbf24", dark: "#b45309" },
+  { value: "#fb923c", label: "오렌지", light: "#fb923c", dark: "#c2410c" },
+  { value: "#f87171", label: "레드", light: "#f87171", dark: "#b91c1c" },
+  { value: "#c084fc", label: "퍼플", light: "#c084fc", dark: "#7c3aed" },
+  { value: "#60a5fa", label: "블루", light: "#60a5fa", dark: "#1d4ed8" },
+  { value: "#34d399", label: "그린", light: "#34d399", dark: "#059669" },
+  { value: "#2dd4bf", label: "틸", light: "#2dd4bf", dark: "#0d9488" },
+];

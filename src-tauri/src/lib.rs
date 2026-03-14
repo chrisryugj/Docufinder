@@ -464,6 +464,18 @@ pub fn run() {
             let models_dir = app_data_dir.join("models");
             std::fs::create_dir_all(&models_dir).ok();
 
+            // ORT_DYLIB_PATH 설정: 단일 스레드(setup) 시점에서 환경변수 설정
+            // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
+            // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
+            // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
+            {
+                let dll_path = models_dir.join("kosimcse-roberta-multitask").join("onnxruntime.dll");
+                if dll_path.exists() {
+                    unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
+                    tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
+                }
+            }
+
             // 모델 자동 다운로드 (시맨틱 활성화 시, 백그라운드)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
             maybe_download_models(
@@ -695,6 +707,7 @@ pub fn run() {
             commands::index::remove_folder,
             commands::index::get_index_status,
             commands::index::get_folder_stats,
+            commands::index::get_all_folder_stats,
             commands::index::get_folders_with_info,
             commands::index::toggle_favorite,
             commands::index::cancel_indexing,

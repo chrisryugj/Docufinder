@@ -1,0 +1,231 @@
+/* ============================================
+   DocuFinder Premium Design System
+   "Government Elegance" - Trustworthy yet State-of-the-Art
+   ============================================ */
+
+@theme {
+  /* 로컬 Pretendard + 시스템 폰트 폴백 */
+  --font-sans: 'Pretendard', 'Pretendard Variable', 'Malgun Gothic', system-ui, sans-serif;
+  --font-mono: 'Consolas', 'D2Coding', 'Fira Code', monospace;
+  --font-display: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+
+  /* Warm Terracotta palette */
+  --color-primary-50: #FFF7ED;
+  --color-primary-100: #FFEDD5;
+  --color-primary-200: #FED7AA;
+  --color-primary-300: #FDBA74;
+  --color-primary-400: #FB923C;
+  --color-primary-500: #F97316;
+  --color-primary-600: #EA580C;
+  --color-primary-700: #C2410C;
+  --color-primary-800: #9A3412;
+  --color-primary-900: #7C2D12;
+  --color-primary-950: #431407;
+
+  --shadow-glow: 0 0 20px -5px var(--color-accent-hover);
+  --shadow-glass: 0 8px 32px 0 rgba(28, 25, 23, 0.06);
+}
+
+:root {
+  /* ============================================
+     Color Palette — Precision Craft
+     Warm Stone base + Terracotta accent
+     ============================================ */
+
+  /* Backgrounds — warm ivory, not clinical white */
+  --color-bg-primary: #FAFAF7;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary: #F0EFEB;
+  --color-bg-subtle: #E7E5E4;
+
+  /* Sidebar */
+  --sidebar-width: 200px;
+  --sidebar-collapsed-width: 48px;
+  --color-sidebar-bg: #F5F5F0;
+  --color-sidebar-text: #1C1917;
+  --color-sidebar-muted: #78716C;
+  --color-sidebar-hover: rgba(28, 25, 23, 0.04);
+  --color-sidebar-active: rgba(194, 65, 12, 0.08);
+  --color-sidebar-border: #E7E5E4;
+  --color-sidebar-section: #A8A29E;
+
+  /* Typography — Stone palette */
+  --color-text-primary: #1C1917;
+  --color-text-secondary: #44403C;
+  --color-text-muted: #78716C;
+  --color-text-inverse: #FAFAF9;
+
+  /* Borders — warm stone */
+  --color-border: #E7E5E4;
+  --color-border-subtle: #F5F5F0;
+  --color-border-hover: #D6D3D1;
+
+  /* Accent — Deep Terracotta (human, warm, non-AI) */
+  --color-accent: #C2410C;
+  --color-accent-hover: #9A3412;
+  --color-accent-active: #7C2D12;
+  --color-accent-subtle: rgba(194, 65, 12, 0.06);
+  --color-accent-light: rgba(194, 65, 12, 0.06);
+  --color-accent-glow: rgba(194, 65, 12, 0.25);
+
+  /* Functional Colors */
+  --color-success: #059669;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+  --color-error-rgb: 220, 38, 38;
+  --color-info: #0284C7;
+
+  /* Component Aliases */
+  --color-primary-rgb: 194, 65, 12;
+  --color-primary-light: #EA580C;
+  --color-accent-bg: var(--color-accent-subtle);
+  --bg-primary: var(--color-bg-primary);
+  --text-primary: var(--color-text-primary);
+
+  /* Highlighting - Content */
+  --color-highlight-bg: rgba(251, 191, 36, 0.25);
+  --color-highlight-text: inherit;
+  --color-highlight-border: rgba(251, 191, 36, 0.6);
+  --color-highlight-refine-bg: rgba(74, 222, 128, 0.2);
+  --color-highlight-refine-text: inherit;
+  --color-highlight-refine-border: rgba(74, 222, 128, 0.5);
+
+  /* Highlighting - Filename */
+  --color-highlight-filename-bg: rgba(251, 146, 60, 0.25);
+  --color-highlight-filename-text: inherit;
+  --color-highlight-filename-border: rgba(251, 146, 60, 0.7);
+
+  /* File Type Colors */
+  --color-file-hwpx: #7C3AED;
+  --color-file-docx: #2563EB;
+  --color-file-xlsx: #16A34A;
+  --color-file-pdf: #DC2626;
+  --color-file-txt: #57534E;
+
+  /* File Type Backgrounds */
+  --color-file-hwpx-bg: rgba(124, 58, 237, 0.04);
+  --color-file-docx-bg: rgba(37, 99, 235, 0.04);
+  --color-file-xlsx-bg: rgba(22, 163, 74, 0.04);
+  --color-file-pdf-bg: rgba(220, 38, 38, 0.04);
+  --color-file-txt-bg: rgba(87, 83, 78, 0.03);
+
+  /* Shadows — warm-tinted */
+  --shadow-sm: 0 1px 2px 0 rgba(28, 25, 23, 0.04);
+  --shadow-md: 0 1px 3px 0 rgba(28, 25, 23, 0.06), 0 1px 2px -1px rgba(28, 25, 23, 0.06);
+  --shadow-lg: 0 4px 6px -1px rgba(28, 25, 23, 0.07), 0 2px 4px -2px rgba(28, 25, 23, 0.04);
+  --shadow-xl: 0 10px 15px -3px rgba(28, 25, 23, 0.08), 0 4px 6px -4px rgba(28, 25, 23, 0.04);
+  --shadow-card: 0 1px 3px rgba(28, 25, 23, 0.04), 0 0 0 1px rgba(28, 25, 23, 0.03);
+  --shadow-card-hover: 0 4px 12px rgba(28, 25, 23, 0.08), 0 0 0 1px rgba(194, 65, 12, 0.12);
+  --shadow-inner: inset 0 1px 2px 0 rgba(28, 25, 23, 0.04);
+
+  /* Radii */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  /* Transitions */
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================
+   Dark Mode Theme
+   ============================================ */
+.dark {
+  /* Backgrounds — warm dark, NOT blue-tinted */
+  --color-bg-primary: #111113;
+  --color-bg-secondary: #1A1A1F;
+  --color-bg-tertiary: #242429;
+  --color-bg-subtle: #2E2E33;
+
+  /* Sidebar */
+  --color-sidebar-bg: #0D0D0F;
+  --color-sidebar-text: #E7E5E4;
+  --color-sidebar-muted: #A8A29E;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.05);
+  --color-sidebar-active: rgba(234, 88, 12, 0.12);
+  --color-sidebar-border: rgba(255, 255, 255, 0.06);
+  --color-sidebar-section: #78716C;
+
+  /* Typography */
+  --color-text-primary: #FAFAF9;
+  --color-text-secondary: #D6D3D1;
+  --color-text-muted: #A8A29E;
+  --color-text-inverse: #1C1917;
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-hover: rgba(255, 255, 255, 0.14);
+
+  /* Accent — brighter terracotta for dark */
+  --color-accent: #EA580C;
+  --color-accent-hover: #F97316;
+  --color-accent-active: #C2410C;
+  --color-accent-subtle: rgba(234, 88, 12, 0.10);
+  --color-accent-light: rgba(234, 88, 12, 0.10);
+  --color-accent-glow: rgba(234, 88, 12, 0.25);
+
+  /* Functional */
+  --color-error-rgb: 248, 113, 113;
+  --color-primary-rgb: 234, 88, 12;
+  --color-primary-light: #F97316;
+  --color-accent-bg: rgba(234, 88, 12, 0.12);
+  --bg-primary: var(--color-bg-primary);
+  --text-primary: var(--color-text-primary);
+
+  /* Highlighting - Content */
+  --color-highlight-bg: rgba(253, 224, 71, 0.2);
+  --color-highlight-text: inherit;
+  --color-highlight-border: rgba(253, 224, 71, 0.5);
+  --color-highlight-refine-bg: rgba(74, 222, 128, 0.15);
+  --color-highlight-refine-text: inherit;
+  --color-highlight-refine-border: rgba(74, 222, 128, 0.4);
+
+  /* Highlighting - Filename */
+  --color-highlight-filename-bg: rgba(251, 146, 60, 0.2);
+  --color-highlight-filename-text: inherit;
+  --color-highlight-filename-border: rgba(251, 146, 60, 0.5);
+
+  /* File Type Colors */
+  --color-file-hwpx: #A78BFA;
+  --color-file-docx: #60A5FA;
+  --color-file-xlsx: #34D399;
+  --color-file-pdf: #F87171;
+  --color-file-txt: #A8A29E;
+
+  /* File Type Backgrounds */
+  --color-file-hwpx-bg: rgba(167, 139, 250, 0.08);
+  --color-file-docx-bg: rgba(96, 165, 250, 0.08);
+  --color-file-xlsx-bg: rgba(52, 211, 153, 0.08);
+  --color-file-pdf-bg: rgba(248, 113, 113, 0.08);
+  --color-file-txt-bg: rgba(168, 162, 158, 0.08);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 40px -8px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(234, 88, 12, 0.2);
+  --shadow-inner: inset 0 1px 3px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* ============================================
+   Global Reset & Base Styles
+   ============================================ */
+html,
+body,
+#root {
+  height: 100%;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  /* App-like feel */
+}

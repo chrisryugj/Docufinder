@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, ReactNode, useCallback } from "react";
+import { createPortal } from "react-dom";
+import type { CSSPropertiesWithVars } from "../../types/css";
 
 interface DropdownOption<T> {
   value: T;
@@ -27,15 +29,20 @@ export function Dropdown<T extends string | number>({
 }: DropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const selected = options.find((opt) => opt.value === value);
   const selectedIndex = options.findIndex((opt) => opt.value === value);
 
-  // 메뉴 열릴 때 선택된 항목으로 포커스 이동
+  // 메뉴 열릴 때 위치 계산 + 선택된 항목으로 포커스 이동
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
       setFocusedIndex(selectedIndex >= 0 ? selectedIndex : 0);
     } else {
       setFocusedIndex(-1);
@@ -49,20 +56,23 @@ export function Dropdown<T extends string | number>({
     }
   }, [isOpen, focusedIndex]);
 
-  // 외부 클릭 시 닫기
+  // 외부 클릭 시 닫기 (portal 메뉴 포함)
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
       if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        menuRef.current && !menuRef.current.contains(target)
       ) {
         setIsOpen(false);
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside);
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [isOpen]);
 
   // 키보드 네비게이션
   const handleKeyDown = useCallback(
@@ -116,6 +126,7 @@ export function Dropdown<T extends string | number>({
     <div ref={dropdownRef} className={`relative ${className}`} onKeyDown={handleKeyDown}>
       {/* Trigger */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
@@ -124,9 +135,8 @@ export function Dropdown<T extends string | number>({
           backgroundColor: "var(--color-bg-tertiary)",
           border: `1px solid ${isOpen ? "var(--color-accent)" : "var(--color-border)"}`,
           boxShadow: isOpen ? "0 0 0 2px var(--color-accent-muted)" : undefined,
-          // @ts-expect-error CSS custom property for focus ring
           "--tw-ring-color": "var(--color-accent)",
-        }}
+        } as CSSPropertiesWithVars}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-activedescendant={focusedIndex >= 0 ? `dropdown-option-${focusedIndex}` : undefined}
@@ -154,11 +164,15 @@ export function Dropdown<T extends string | number>({
         </svg>
       </button>
 
-      {/* Menu */}
-      {isOpen && (
+      {/* Menu — portal로 body에 렌더링 (overflow hidden 부모에서 잘림 방지) */}
+      {isOpen && createPortal(
         <div
-          className="absolute z-50 mt-1 w-full min-w-[160px] rounded-md py-1"
+          ref={menuRef}
+          className="fixed z-[9999] min-w-[160px] rounded-md py-1"
           style={{
+            top: menuPos.top,
+            left: menuPos.left,
+            width: Math.max(menuPos.width, 160),
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",
             boxShadow: "var(--shadow-lg)",
@@ -193,7 +207,8 @@ export function Dropdown<T extends string | number>({
               )}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
