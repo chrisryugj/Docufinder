@@ -157,6 +157,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // 검색 실행 함수 (결과 업데이트는 startTransition으로 입력 블로킹 방지)
   const executeSearch = useCallback(
     async (searchQuery: string, mode: SearchMode) => {
+      // 항상 ID 증가 — 빈 쿼리/캐시 히트 시에도 이전 비동기 검색 무효화
+      const currentId = ++searchIdRef.current;
+
       if (!searchQuery.trim()) {
         startTransition(() => {
           setResults([]);
@@ -180,8 +183,6 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         return;
       }
 
-      // 이전 검색 결과 무시를 위한 ID
-      const currentId = ++searchIdRef.current;
       setIsLoading(true);
       setError(null);
 
