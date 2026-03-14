@@ -1,4 +1,5 @@
-import { memo } from "react";
+import { memo, useState, useEffect } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import type { IndexStatus, IndexingProgress, VectorIndexingStatus } from "../../types/index";
 import { cleanPath } from "../../utils/cleanPath";
 
@@ -22,6 +23,9 @@ const phaseLabels: Record<string, string> = {
 };
 
 export const StatusBar = memo(function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, semanticEnabled }: StatusBarProps) {
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+
   const isIndexing = progress && progress.phase !== "completed" && progress.phase !== "cancelled";
   const isVectorIndexing = vectorStatus && vectorStatus.is_running && vectorStatus.total_chunks > 0;
   const hasPendingVectors = (vectorStatus?.pending_chunks ?? 0) > 0;
@@ -207,6 +211,9 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               >
                 시맨틱 시작
               </button>
+            )}
+            {appVersion && (
+              <span className="text-[10px] opacity-50">v{appVersion}</span>
             )}
           </div>
         </div>
