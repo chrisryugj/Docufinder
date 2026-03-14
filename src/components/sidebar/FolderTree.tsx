@@ -349,7 +349,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                 className="ml-9 mr-2 px-3 py-2 my-1 text-xs rounded space-y-0.5"
                 style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
               >
-                <div className="break-all font-mono">{displayPath}</div>
+                <div className="break-all">{displayPath}</div>
                 {folderStats[folder] && (
                   <div>
                     {folderStats[folder].indexed_count} 문서 / {folderStats[folder].file_count} 파일
