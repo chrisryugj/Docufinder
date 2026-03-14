@@ -53,6 +53,9 @@ pub struct Settings {
     /// 사용자 커스텀 제외 디렉토리 목록 (DEFAULT_EXCLUDED_DIRS에 추가됨)
     #[serde(default)]
     pub exclude_dirs: Vec<String>,
+    /// 증분 인덱싱 시 새 HWP 파일 감지 → 변환 알림 (기본: 비활성)
+    #[serde(default)]
+    pub hwp_auto_detect: bool,
 }
 
 fn default_include_subfolders() -> bool {
@@ -131,6 +134,7 @@ impl Default for Settings {
             results_per_page: 50,
             data_root: None,
             exclude_dirs: Vec::new(),
+            hwp_auto_detect: false,
         }
     }
 }

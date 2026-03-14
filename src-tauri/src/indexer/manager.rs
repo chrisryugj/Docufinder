@@ -38,15 +38,17 @@ pub struct IndexContext {
     pub runtime_settings: WatchRuntimeSettingsProvider,
     /// 증분 인덱싱 완료 시 호출되는 콜백 (프론트엔드 알림용)
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
-    /// 제외 디렉토리 목록 (대소문자 무시 비교)
     /// 벡터 워커 트리거 콜백 (watcher 증분 인덱싱 후 벡터 백필 시작)
     pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// HWP 파일 감지 콜백 (증분 인덱싱 시 새 HWP 파일 발견 알림)
+    pub on_hwp_detected: Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct WatchRuntimeSettings {
     pub max_file_size_mb: u64,
     pub excluded_dirs: Vec<String>,
+    pub hwp_auto_detect: bool,
 }
 
 pub type WatchRuntimeSettingsProvider = Arc<dyn Fn() -> WatchRuntimeSettings + Send + Sync>;
@@ -222,6 +224,7 @@ impl WatchManager {
 
         let file_count = pending.len();
         tracing::info!("Processing {} changed files", file_count);
+        let mut hwp_files: Vec<String> = Vec::new();
 
         let conn = match db::get_connection(&ctx.db_path) {
             Ok(c) => c,
@@ -324,6 +327,10 @@ impl WatchManager {
                     }
                 }
             } else {
+                // HWP 파일 수집 (변환 알림용)
+                if ext == "hwp" && runtime_settings.hwp_auto_detect {
+                    hwp_files.push(path.to_string_lossy().to_string());
+                }
                 // 파싱 불가: 메타데이터만 저장 (파일명 검색용)
                 // stale 벡터 정리 (metadata-only 전환 시)
                 Self::cleanup_stale_vectors(&conn, &path, &ctx.vector_index);
@@ -348,6 +355,13 @@ impl WatchManager {
         // 벡터 워커 트리거 (FTS 인덱싱 완료 후 pending 벡터 백필)
         if let Some(ref trigger) = ctx.on_vector_trigger {
             trigger();
+        }
+
+        // HWP 파일 감지 알림 (설정 활성 시)
+        if !hwp_files.is_empty() {
+            if let Some(ref callback) = ctx.on_hwp_detected {
+                callback(hwp_files);
+            }
         }
     }
 

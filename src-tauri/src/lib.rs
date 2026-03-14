@@ -508,6 +508,15 @@ pub fn run() {
                 }));
             }
 
+            // 증분 인덱싱 시 HWP 파일 감지 콜백 설정
+            {
+                let app_handle = app.handle().clone();
+                container.set_hwp_detected_callback(Arc::new(move |paths| {
+                    tracing::info!("[WatchManager] HWP files detected: {} files", paths.len());
+                    let _ = app_handle.emit("hwp-files-detected", paths);
+                }));
+            }
+
             // 기존 감시 폴더들 자동 감시 복원
             resume_watchers(&container);
 

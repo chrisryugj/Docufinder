@@ -401,6 +401,14 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 onChange={(v) => handleChange("include_subfolders", v)}
               />
 
+              {/* HWP 자동 감지 */}
+              <SettingsToggle
+                label="HWP 변환 알림"
+                description="새 HWP 파일 감지 시 HWPX 변환 안내 (한글 설치 필요)"
+                checked={settings.hwp_auto_detect ?? false}
+                onChange={(v) => handleChange("hwp_auto_detect", v)}
+              />
+
               {/* 제외 디렉토리 */}
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>

@@ -10,6 +10,7 @@ interface UseAppEventsOptions {
   refreshVectorStatus: () => Promise<unknown>;
   showToast: (message: string, type: ToastType, duration?: number) => string;
   updateToast: (id: string, update: { message: string; type: ToastType }, duration?: number) => void;
+  onHwpDetected?: (paths: string[]) => void;
 }
 
 /**
@@ -24,6 +25,7 @@ export function useAppEvents({
   refreshVectorStatus,
   showToast,
   updateToast,
+  onHwpDetected,
 }: UseAppEventsOptions) {
   const backgroundRefreshToastAtRef = useRef(0);
 
@@ -75,4 +77,14 @@ export function useAppEvents({
 
     return () => { unlisten.then((fn) => fn()).catch(() => {}); };
   }, [showToast, updateToast]);
+
+  // HWP 파일 감지 이벤트 (증분 인덱싱 시)
+  useEffect(() => {
+    if (!onHwpDetected) return;
+    const unlisten = listen<string[]>("hwp-files-detected", (event) => {
+      onHwpDetected(event.payload);
+    });
+
+    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
+  }, [onHwpDetected]);
 }

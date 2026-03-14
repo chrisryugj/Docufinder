@@ -132,6 +132,7 @@ impl SearchService {
                     location_hint: r.location_hint,
                     snippet: Some(improved),
                     modified_at: r.modified_at,
+                    has_hwp_pair: false,
                 }
             })
             .collect();
@@ -204,6 +205,7 @@ impl SearchService {
                         location_hint: Some(r.file_type.into()),
                         snippet: Some(name),
                         modified_at: Some(r.modified_at),
+                        has_hwp_pair: false,
                     }
                 })
                 .collect()
@@ -234,9 +236,13 @@ impl SearchService {
                     location_hint: Some(r.file_type),
                     snippet: Some(r.file_name),
                     modified_at: r.modified_at,
+                    has_hwp_pair: false,
                 })
                 .collect()
         };
+
+        // HWP/HWPX 중복 제거: 같은 디렉토리에 동명 .hwpx가 있으면 .hwp 숨김
+        let results = Self::dedup_hwp_hwpx(results);
 
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
@@ -323,6 +329,7 @@ impl SearchService {
                     location_hint: chunk.location_hint.clone(),
                     snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
                     modified_at: chunk.modified_at,
+                    has_hwp_pair: false,
                 })
                 })
             })
@@ -534,6 +541,7 @@ impl SearchService {
                         location_hint: fts_r.location_hint.clone(),
                         snippet: Some(improved),
                         modified_at: fts_r.modified_at,
+                        has_hwp_pair: false,
                     })
                 } else {
                     vector_only_chunks.get(&hr.chunk_id).and_then(|chunk| {
@@ -557,6 +565,7 @@ impl SearchService {
                             location_hint: chunk.location_hint.clone(),
                             snippet: None,
                             modified_at: chunk.modified_at,
+                    has_hwp_pair: false,
                         })
                     })
                 }
@@ -699,6 +708,82 @@ impl SearchService {
             SearchMode::Hybrid => "hybrid",
             SearchMode::Filename => "filename",
         }
+    }
+
+    /// HWP/HWPX 중복 제거: 같은 디렉토리에 동명 .hwpx가 있으면 .hwp 결과 숨김
+    /// HWPX 결과에는 has_hwp_pair = true 표시
+    fn dedup_hwp_hwpx(mut results: Vec<SearchResult>) -> Vec<SearchResult> {
+        use std::collections::HashSet;
+        use std::path::Path;
+
+        // 1. 결과에 포함된 HWPX 파일의 stem+dir 집합 구축
+        let hwpx_stems: HashSet<String> = results
+            .iter()
+            .filter(|r| {
+                r.file_name
+                    .rsplit('.')
+                    .next()
+                    .map(|e| e.eq_ignore_ascii_case("hwpx"))
+                    .unwrap_or(false)
+            })
+            .filter_map(|r| {
+                let p = Path::new(&r.file_path);
+                let dir = p.parent()?.to_string_lossy().to_lowercase();
+                let stem = p.file_stem()?.to_string_lossy().to_lowercase();
+                Some(format!("{}|{}", dir, stem))
+            })
+            .collect();
+
+        if hwpx_stems.is_empty() {
+            return results;
+        }
+
+        // 2. HWPX 결과에 has_hwp_pair 표시 (HWP가 존재하는지 확인)
+        let hwp_stems: HashSet<String> = results
+            .iter()
+            .filter(|r| {
+                r.file_name
+                    .rsplit('.')
+                    .next()
+                    .map(|e| e.eq_ignore_ascii_case("hwp"))
+                    .unwrap_or(false)
+            })
+            .filter_map(|r| {
+                let p = Path::new(&r.file_path);
+                let dir = p.parent()?.to_string_lossy().to_lowercase();
+                let stem = p.file_stem()?.to_string_lossy().to_lowercase();
+                Some(format!("{}|{}", dir, stem))
+            })
+            .collect();
+
+        for r in &mut results {
+            if r.file_name.rsplit('.').next().map(|e| e.eq_ignore_ascii_case("hwpx")).unwrap_or(false) {
+                let p = Path::new(&r.file_path);
+                if let (Some(dir), Some(stem)) = (p.parent(), p.file_stem()) {
+                    let key = format!("{}|{}", dir.to_string_lossy().to_lowercase(), stem.to_string_lossy().to_lowercase());
+                    if hwp_stems.contains(&key) {
+                        r.has_hwp_pair = true;
+                    }
+                }
+            }
+        }
+
+        // 3. HWP 중 대응 HWPX가 있는 것 제거
+        results.retain(|r| {
+            let ext = r.file_name.rsplit('.').next().unwrap_or("");
+            if !ext.eq_ignore_ascii_case("hwp") {
+                return true;
+            }
+            let p = Path::new(&r.file_path);
+            if let (Some(dir), Some(stem)) = (p.parent(), p.file_stem()) {
+                let key = format!("{}|{}", dir.to_string_lossy().to_lowercase(), stem.to_string_lossy().to_lowercase());
+                !hwpx_stems.contains(&key)
+            } else {
+                true
+            }
+        });
+
+        results
     }
 }
 
