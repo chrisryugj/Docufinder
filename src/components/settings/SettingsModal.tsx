@@ -15,6 +15,7 @@ interface SettingsModalProps {
   onThemeChange?: (theme: Settings["theme"]) => void;
   onSettingsSaved?: (settings: Settings) => void;
   onClearData?: () => Promise<void>;
+  onAutoIndexAllDrives?: () => Promise<void>;
 }
 
 const SEARCH_MODE_OPTIONS = [
@@ -84,7 +85,8 @@ const HIGHLIGHT_COLOR_PRESETS = [
   { value: "#2dd4bf", label: "틸", light: "#2dd4bf", dark: "#0d9488" },
 ];
 
-export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData, onAutoIndexAllDrives }: SettingsModalProps) {
+  const [isAutoIndexing, setIsAutoIndexing] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -641,6 +643,54 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               폴더 열기
             </Button>
           </div>
+
+          {/* 전체 드라이브 인덱싱 */}
+          {onAutoIndexAllDrives && (
+            <div className="flex items-center justify-between">
+              <div>
+                <label
+                  className="text-sm font-medium"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  전체 드라이브 인덱싱
+                </label>
+                <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  모든 드라이브를 스캔하여 문서 인덱싱 (시스템 폴더 자동 제외)
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                isLoading={isAutoIndexing}
+                disabled={isAutoIndexing}
+                onClick={async () => {
+                  const confirmed = await ask(
+                    "모든 드라이브를 스캔하여 문서를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+                    {
+                      title: "전체 드라이브 인덱싱",
+                      kind: "info",
+                      okLabel: "시작",
+                      cancelLabel: "취소",
+                    }
+                  );
+                  if (confirmed) {
+                    setIsAutoIndexing(true);
+                    try {
+                      await onAutoIndexAllDrives();
+                      onClose();
+                    } catch (err) {
+                      const message = err instanceof Error ? err.message : String(err);
+                      setError(`인덱싱 실패: ${message}`);
+                    } finally {
+                      setIsAutoIndexing(false);
+                    }
+                  }
+                }}
+              >
+                시작
+              </Button>
+            </div>
+          )}
 
           {/* 모든 데이터 초기화 */}
           <div className="flex items-center justify-between">
