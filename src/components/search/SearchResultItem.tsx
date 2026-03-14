@@ -261,8 +261,8 @@ export const SearchResultItem = memo(function SearchResultItem({
         >
           {/* 폴더 아이콘 */}
           <svg
-            className="w-3 h-3 mr-0.5 flex-shrink-0"
-            style={{ color: "var(--color-text-muted)", opacity: 0.6 }}
+            className="w-3.5 h-3.5 mr-0.5 flex-shrink-0"
+            style={{ color: "var(--color-accent)" }}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -270,25 +270,25 @@ export const SearchResultItem = memo(function SearchResultItem({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
           </svg>
           {formatPathSegments(folderPath).map((seg, i, arr) => (
-            <div key={i} className="flex items-center">
+            <div key={i} className="flex items-center leading-none">
               {seg.fullPath ? (
                 <button
                   onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
-                  className="text-[11px] px-1 py-0.5 rounded transition-colors hover:underline"
-                  style={{ color: "var(--color-text-muted)" }}
+                  className="text-xs font-medium px-1 py-0.5 rounded transition-colors hover:underline"
+                  style={{ color: "var(--color-text-secondary)" }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; e.currentTarget.style.backgroundColor = "var(--color-accent-light)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-muted)"; e.currentTarget.style.backgroundColor = "transparent"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-secondary)"; e.currentTarget.style.backgroundColor = "transparent"; }}
                   title={`${seg.fullPath} 열기`}
                 >
                   {seg.label}
                 </button>
               ) : (
-                <span className="text-[11px] px-1 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
+                <span className="text-xs px-1 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
                   {seg.label}
                 </span>
               )}
               {i < arr.length - 1 && (
-                <span className="text-[10px]" style={{ color: "var(--color-border-hover)", opacity: 0.6 }}>/</span>
+                <span className="text-[11px]" style={{ color: "var(--color-text-muted)", opacity: 0.4 }}>/</span>
               )}
             </div>
           ))}
