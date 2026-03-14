@@ -1,11 +1,13 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
-import type { SearchResult, GroupedSearchResult, ViewMode } from "../../types/search";
+import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
 import { HighlightedFilename } from "./HighlightedFilename";
+import { WelcomeHero } from "./WelcomeHero";
 import { cleanPath } from "../../utils/cleanPath";
-import { Badge } from "../ui/Badge";
+import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
+import { FileIcon } from "../ui/FileIcon";
 
 interface SearchResultListProps {
   results: SearchResult[];
@@ -36,6 +38,16 @@ interface SearchResultListProps {
   searchTime?: number | null;
   /** 결과 표시 단위 (더 보기 개수) */
   resultsPerPage?: number;
+  /** 웰컴 화면: 인덱싱된 파일 수 */
+  indexedFiles?: number;
+  /** 웰컴 화면: 인덱싱된 폴더 수 */
+  indexedFolders?: number;
+  /** 웰컴 화면: 최근 검색 */
+  recentSearches?: RecentSearch[];
+  /** 웰컴 화면: 최근 검색 클릭 */
+  onSelectSearch?: (query: string) => void;
+  /** 시맨틱 검색 활성 여부 */
+  semanticEnabled?: boolean;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -67,6 +79,11 @@ export const SearchResultList = memo(function SearchResultList({
   minConfidence = 0,
   searchTime,
   resultsPerPage = DEFAULT_RESULTS_PER_PAGE,
+  indexedFiles,
+  indexedFolders,
+  recentSearches,
+  onSelectSearch,
+  semanticEnabled,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -302,9 +319,7 @@ export const SearchResultList = memo(function SearchResultList({
                       }
                     }}
                   >
-                    <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                    <FileIcon fileName={result.file_name} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
                         <HighlightedFilename filename={result.file_name} query={query} />
@@ -313,12 +328,9 @@ export const SearchResultList = memo(function SearchResultList({
                         {cleanPath(result.file_path)}
                       </div>
                     </div>
-                    <div
-                      className="text-xs px-2 py-0.5 rounded"
-                      style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}
-                    >
-                      {result.location_hint || result.file_path.split('.').pop()?.toUpperCase()}
-                    </div>
+                    <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
+                      {(result.file_name.split('.').pop() || '').toUpperCase()}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -482,26 +494,15 @@ export const SearchResultList = memo(function SearchResultList({
     );
   }
 
-  // 초기 상태 - 온보딩 가이드
+  // 초기 상태 — 웰컴 히어로
   return (
-    <div className="text-center py-16">
-      <img
-        src="/icon.png"
-        alt="Anything"
-        className="w-16 h-16 mx-auto mb-6 object-contain"
-      />
-      <h3
-        className="text-xl font-semibold mb-4"
-        style={{ color: "var(--color-text-primary)" }}
-      >
-        무엇이든 찾아드려요
-      </h3>
-      <div className="space-y-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        <p>📄 한글, 워드, 엑셀, PDF 문서 내용 검색</p>
-        <p>🧠 AI가 의미까지 파악하는 시맨틱 검색</p>
-        <p>⚡ 폴더 추가하면 자동으로 변경사항 반영</p>
-      </div>
-    </div>
+    <WelcomeHero
+      indexedFiles={indexedFiles}
+      indexedFolders={indexedFolders}
+      recentSearches={recentSearches}
+      onSelectSearch={onSelectSearch}
+      semanticEnabled={semanticEnabled}
+    />
   );
 });
 

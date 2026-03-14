@@ -559,13 +559,30 @@ pub fn run() {
             let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
+            // 트레이 전용 아이콘 로드 (anything-l.png), 실패 시 기본 아이콘 fallback
+            let tray_icon = {
+                let tray_icon_path = app.path().resource_dir()
+                    .ok()
+                    .map(|d| d.join("icons").join("tray-icon.png"))
+                    .unwrap_or_default();
+                if tray_icon_path.exists() {
+                    match tauri::image::Image::from_path(&tray_icon_path) {
+                        Ok(img) => {
+                            tracing::info!("Loaded tray icon from {:?}", tray_icon_path);
+                            img
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to load tray icon: {e}, falling back to default");
+                            app.default_window_icon().cloned().unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
+                        }
+                    }
+                } else {
+                    tracing::debug!("Tray icon file not found at {:?}, using default", tray_icon_path);
+                    app.default_window_icon().cloned().unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
+                }
+            };
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon()
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        tracing::warn!("Default window icon not found, tray icon may not display correctly");
-                        tauri::image::Image::new(&[], 0, 0)
-                    }))
+                .icon(tray_icon)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .tooltip("Anything")

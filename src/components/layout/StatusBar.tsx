@@ -35,35 +35,35 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
   return (
     <footer
-      className="px-4 py-2.5 border-t"
+      className="px-3 py-1.5 border-t"
       style={{
         backgroundColor: "var(--color-bg-secondary)",
         borderColor: "var(--color-border)",
       }}
     >
       {isIndexing ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {/* 진행률 정보 */}
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <span className="animate-pulse" style={{ color: "var(--color-primary)" }}>●</span>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
               <span style={{ color: "var(--color-text-secondary)" }}>
                 {phaseLabels[progress.phase] || progress.phase}
               </span>
               {progress.phase !== "preparing" && (
                 <span style={{ color: "var(--color-text-muted)" }}>
-                  {progress.processed_files} / {progress.total_files}
+                  {progress.processed_files}/{progress.total_files}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {progress.phase !== "preparing" && (
-                <span style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
+                <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
               )}
               {onCancelIndexing && (
                 <button
                   onClick={onCancelIndexing}
-                  className="px-3 py-1 text-xs rounded btn-cancel-hover"
+                  className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover"
                 >
                   취소
                 </button>
@@ -73,20 +73,20 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
           {/* 진행률 바 */}
           <div
-            className="h-1.5 rounded-full overflow-hidden"
+            className="h-1 rounded-full overflow-hidden"
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
             {progress.phase === "preparing" ? (
               <div
                 className="h-full w-1/3 rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]"
-                style={{ backgroundColor: "var(--color-primary)" }}
+                style={{ backgroundColor: "var(--color-accent)" }}
               />
             ) : (
               <div
-                className="h-full transition-all duration-300"
+                className="h-full rounded-full transition-all duration-300"
                 style={{
                   width: `${percent}%`,
-                  backgroundColor: "var(--color-primary)",
+                  backgroundColor: "var(--color-accent)",
                 }}
               />
             )}
@@ -95,7 +95,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           {/* 현재 파일명 */}
           {progress.current_file && (
             <div
-              className="text-xs truncate"
+              className="text-[11px] truncate"
               style={{ color: "var(--color-text-muted)" }}
               title={cleanPath(progress.current_file)}
             >
@@ -104,24 +104,24 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           )}
         </div>
       ) : isVectorIndexing ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {/* 벡터 인덱싱 진행률 */}
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <span className="animate-pulse" style={{ color: "var(--color-accent)" }}>●</span>
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
               <span style={{ color: "var(--color-text-secondary)" }}>
-                시맨틱 인덱싱 중
+                시맨틱 인덱싱
               </span>
               <span style={{ color: "var(--color-text-muted)" }}>
-                {vectorStatus.processed_chunks} / {vectorStatus.total_chunks}
+                {vectorStatus.processed_chunks}/{vectorStatus.total_chunks}
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <span style={{ color: "var(--color-text-muted)" }}>{vectorPercent}%</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{vectorPercent}%</span>
               {onCancelVectorIndexing && (
                 <button
                   onClick={onCancelVectorIndexing}
-                  className="px-3 py-1 text-xs rounded btn-cancel-hover"
+                  className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover"
                 >
                   취소
                 </button>
@@ -131,11 +131,11 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
           {/* 진행률 바 */}
           <div
-            className="h-1.5 rounded-full overflow-hidden"
+            className="h-1 rounded-full overflow-hidden"
             style={{ backgroundColor: "var(--color-bg-tertiary)" }}
           >
             <div
-              className="h-full transition-all duration-300"
+              className="h-full rounded-full transition-all duration-300"
               style={{
                 width: `${vectorPercent}%`,
                 backgroundColor: "var(--color-accent)",
@@ -146,7 +146,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           {/* 현재 파일명 */}
           {vectorStatus.current_file && (
             <div
-              className="text-xs truncate"
+              className="text-[11px] truncate"
               style={{ color: "var(--color-text-muted)" }}
               title={cleanPath(vectorStatus.current_file)}
             >
@@ -156,46 +156,44 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
         </div>
       ) : (
         <div
-          className="flex justify-between text-sm"
+          className="flex justify-between text-xs"
           style={{ color: "var(--color-text-muted)" }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <span>
-              <span style={{ color: "var(--color-text-secondary)" }}>
+              <span className="font-medium" style={{ color: "var(--color-text-secondary)" }}>
                 {status?.indexed_files ?? 0}
               </span>
               {" 문서"}
               {status && status.total_files > status.indexed_files && (
-                <span style={{ color: "var(--color-text-muted)" }}>
-                  {" / "}{status.total_files} 파일
+                <span>
+                  {" / "}{status.total_files}
                 </span>
               )}
             </span>
-            {/* 시맨틱 분석 대기 상태 표시 */}
             {semanticEnabled && hasPendingVectors && !isVectorIndexing && (
-              <span style={{ color: "var(--color-text-muted)" }} title="AI가 문서 내용을 분석하여 의미 기반 검색을 준비합니다">
-                | 시맨틱 대기:{" "}
+              <span title="AI가 문서 내용을 분석하여 의미 기반 검색을 준비합니다">
+                · 시맨틱 대기{" "}
                 <span style={{ color: "var(--color-accent)" }}>
                   {vectorStatus?.pending_chunks ?? 0}
                 </span>
               </span>
             )}
-            {/* 시맨틱 완료 상태 */}
             {semanticEnabled && isVectorComplete && (status?.vectors_count ?? 0) > 0 && (
-              <span style={{ color: "var(--color-text-muted)" }} title="시맨틱 검색: 키워드가 정확히 일치하지 않아도 의미가 비슷한 문서를 찾아줍니다">
-                | 시맨틱:{" "}
+              <span title="시맨틱 검색 활성화됨">
+                · 시맨틱{" "}
                 <span style={{ color: "var(--color-success, #22c55e)" }}>✓</span>
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <span>
               {status?.watched_folders.length ? (
                 <>
-                  폴더:{" "}
-                  <span style={{ color: "var(--color-text-secondary)" }}>
-                    {status.watched_folders.length}개
+                  <span className="font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                    {status.watched_folders.length}
                   </span>
+                  {" 폴더"}
                 </>
               ) : (
                 "폴더를 추가하세요"
@@ -204,8 +202,8 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             {semanticEnabled && onStartVectorIndexing && !isVectorIndexing && hasPendingVectors && (
               <button
                 onClick={onStartVectorIndexing}
-                className="px-2 py-0.5 text-xs rounded btn-accent-start-hover"
-                title="벡터 인덱싱을 시작합니다. 하이브리드/의미 검색에 필요합니다."
+                className="px-1.5 py-0.5 text-[11px] rounded btn-accent-start-hover font-medium"
+                title="벡터 인덱싱을 시작합니다"
               >
                 시맨틱 시작
               </button>

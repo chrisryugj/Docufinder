@@ -61,15 +61,7 @@ export const HighlightedFilename = memo(function HighlightedFilename({ filename,
     }
     // 하이라이트 텍스트
     parts.push(
-      <mark
-        key={`mark-${i}`}
-        style={{
-          backgroundColor: "var(--color-highlight-filename-bg)",
-          color: "var(--color-highlight-filename-text)",
-          borderRadius: "2px",
-          padding: "0 1px",
-        }}
-      >
+      <mark key={`mark-${i}`} className="hl-filename">
         {filename.slice(start, end)}
       </mark>
     );

@@ -6,6 +6,8 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
+  /** 헤더 타이틀 아래 추가 콘텐츠 (탭 바 등) */
+  headerExtra?: ReactNode;
   size?: "sm" | "md" | "lg";
   closable?: boolean; // ESC/배경 클릭/X 버튼으로 닫기 허용 여부
 }
@@ -20,7 +22,7 @@ const sizeClasses = {
 const FOCUSABLE_SELECTOR =
   'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ isOpen, onClose, title, children, footer, size = "md", closable = true }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, footer, headerExtra, size = "md", closable = true }: ModalProps) {
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
@@ -95,8 +97,8 @@ export function Modal({ isOpen, onClose, title, children, footer, size = "md", c
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-sm"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.5)" }}
+      className="fixed inset-0 flex items-start justify-center z-50 pt-[10vh]"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.4)" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -104,7 +106,7 @@ export function Modal({ isOpen, onClose, title, children, footer, size = "md", c
     >
       <div
         ref={modalRef}
-        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-xl max-h-[85vh] flex flex-col`}
+        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-lg max-h-[80vh] flex flex-col`}
         style={{
           backgroundColor: "var(--color-bg-secondary)",
           boxShadow: "var(--shadow-xl)",
@@ -113,16 +115,19 @@ export function Modal({ isOpen, onClose, title, children, footer, size = "md", c
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-6 py-4 border-b"
+          className="shrink-0 flex items-center justify-between px-6 py-3 border-b"
           style={{ borderColor: "var(--color-border)" }}
         >
-          <h2
-            id={titleId}
-            className="text-lg font-semibold"
-            style={{ color: "var(--color-text-primary)" }}
-          >
-            {title}
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2
+              id={titleId}
+              className="text-base font-bold"
+              style={{ color: "var(--color-text-primary)", letterSpacing: "-0.01em" }}
+            >
+              {title}
+            </h2>
+            {headerExtra}
+          </div>
           {closable && (
             <button
               onClick={onClose}

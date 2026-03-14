@@ -44,21 +44,21 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     return (
       <div className="max-w-4xl mx-auto w-full">
         <div
-          className="flex items-center px-4 py-3.5 rounded-xl transition-all duration-200 focus-within:ring-2"
+          className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",
-            boxShadow: "var(--shadow-card)",
-            ["--tw-ring-color" as string]: "var(--color-accent-light)",
+            boxShadow: "var(--shadow-sm)",
           }}
         >
+          {/* Search Icon */}
           <svg
-            className="w-5 h-5 flex-shrink-0"
+            className="w-4.5 h-4.5 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
             viewBox="0 0 24 24"
-            style={{ color: "var(--color-text-muted)" }}
+            style={{ color: "var(--color-text-muted)", width: "18px", height: "18px" }}
           >
             <path
               strokeLinecap="round"
@@ -67,18 +67,24 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             />
           </svg>
 
+          {/* Input */}
           <input
             ref={innerRef}
             type="text"
             defaultValue={query}
             {...imeHandlers}
-            placeholder="검색어 입력..."
-            className="flex-1 bg-transparent border-none text-base focus:outline-none ml-3"
-            style={{ color: "var(--color-text-primary)" }}
+            placeholder="예: 2024년 예산 집행현황, 민원처리 규정, 회의록..."
+            className="flex-1 bg-transparent border-none focus:outline-none ml-3"
+            style={{
+              color: "var(--color-text-primary)",
+              fontSize: "15px",
+              fontWeight: 500,
+              letterSpacing: "0.01em",
+            }}
             aria-label="검색어 입력"
           />
 
-          {/* 단축키 힌트 */}
+          {/* Shortcut Hint */}
           {!query && (
             <kbd
               className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
@@ -92,15 +98,20 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             </kbd>
           )}
 
+          {/* Loading Spinner */}
           {isLoading && (
             <div
-              className="w-5 h-5 rounded-full border-2 animate-spin ml-2"
-              style={{ borderColor: "var(--color-border)", borderTopColor: "var(--color-accent)" }}
+              className="w-4 h-4 rounded-full animate-spin ml-2"
+              style={{
+                border: "1.5px solid var(--color-border)",
+                borderTopColor: "var(--color-accent)",
+              }}
               role="status"
               aria-label="검색 중"
             />
           )}
 
+          {/* Search Mode */}
           <SearchModeDropdown
             searchMode={searchMode}
             onSearchModeChange={onSearchModeChange}

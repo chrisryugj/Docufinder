@@ -19,7 +19,7 @@ export const RecentSearches = memo(function RecentSearches({
   if (searches.length === 0) {
     return (
       <div
-        className="text-base py-2 px-3"
+        className="text-sm py-2 px-3"
         style={{ color: "var(--color-sidebar-muted)" }}
       >
         최근 검색 기록이 없습니다
@@ -53,29 +53,29 @@ export const RecentSearches = memo(function RecentSearches({
               {/* 검색어 */}
               <button
                 onClick={() => onSelect(search.query)}
-                className="flex-1 text-left text-base truncate transition-colors"
+                className="flex-1 text-left text-sm truncate transition-colors"
                 style={{ color: "var(--color-sidebar-text)" }}
                 title={search.query}
               >
                 {search.query}
               </button>
 
-              {/* 시간 배지 */}
+              {/* 시간 배지 (호버 시 삭제 버튼으로 교체) */}
               <span
-                className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-                style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
+                className="text-[11px] flex-shrink-0 group-hover:hidden"
+                style={{ color: "var(--color-sidebar-muted)" }}
                 title={new Date(search.timestamp).toLocaleString("ko-KR")}
               >
                 {formatRelativeTime(search.timestamp)}
               </span>
 
-              {/* 삭제 버튼 */}
+              {/* 삭제 버튼 (호버 시만 표시) */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(search.query);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded transition-all duration-200 scale-90 hover:scale-100"
+                className="hidden group-hover:flex p-1 rounded transition-all duration-200 hover:scale-110 flex-shrink-0"
                 style={{ color: "var(--color-sidebar-muted)" }}
                 aria-label={`"${search.query}" 검색 기록 삭제`}
               >

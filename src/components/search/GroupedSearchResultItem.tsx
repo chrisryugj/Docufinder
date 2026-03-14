@@ -2,10 +2,8 @@ import { memo, useMemo } from "react";
 import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
-import { ConfidenceBadge } from "../ui/ConfidenceBadge";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
-import { getMatchTypeBadge } from "./matchType";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 
 interface GroupedSearchResultItemProps {
@@ -43,6 +41,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 }: GroupedSearchResultItemProps) {
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
+  const stripeClass = getStripeClass(group.file_name);
 
   // 검색어를 키워드로 분리 (snippet 없을 때 폴백 하이라이트용)
   const fallbackKeywords = useMemo(() => {
@@ -75,7 +74,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 
 
   return (
-    <div id={domId} className="result-card" style={{ padding: isCompact ? "0.75rem 1rem" : "1rem 1.25rem" }} onContextMenu={handleContextMenu} data-context-menu>
+    <div id={domId} className={`result-card ${stripeClass}`} style={{ padding: isCompact ? "0.625rem 0.875rem" : "0.75rem 1rem" }} onContextMenu={handleContextMenu} data-context-menu>
       {/* 그룹 헤더 */}
       <div className={`flex items-center justify-between ${isCompact ? "mb-2" : "mb-3"}`}>
         <div
@@ -91,12 +90,12 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         </div>
 
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          {/* 액션 버튼 */}
-          <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
+          {/* 액션 버튼 — colored */}
+          <div className="flex items-center gap-1">
             <button
               onClick={handleCopyPath}
-              className="p-1.5 rounded transition-colors"
-              style={{ color: "var(--color-text-muted)" }}
+              className="p-1.5 rounded transition-colors btn-icon-hover"
+              style={{ color: "var(--color-accent)" }}
               title="경로 복사"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -106,8 +105,8 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             {onOpenFolder && (
               <button
                 onClick={handleOpenFolder}
-                className="p-1.5 rounded transition-colors"
-                style={{ color: "var(--color-text-muted)" }}
+                className="p-1.5 rounded transition-colors btn-icon-hover"
+                style={{ color: "var(--color-warning)" }}
                 title="폴더 열기"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,8 +116,19 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             )}
           </div>
 
-          {/* 신뢰도 */}
-          <ConfidenceBadge confidence={group.top_confidence} />
+          {/* 신뢰도 — number only */}
+          <span
+            className="text-xs font-semibold tabular-nums"
+            style={{
+              color: group.top_confidence >= 70
+                ? "var(--color-success)"
+                : group.top_confidence >= 40
+                  ? "var(--color-warning)"
+                  : "var(--color-text-muted)",
+            }}
+          >
+            {Math.round(group.top_confidence)}%
+          </span>
 
           {/* 파일 타입 */}
           <Badge variant={getFileTypeBadgeVariant(group.file_name)}>
@@ -130,7 +140,6 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       {/* 청크 목록 */}
       <div className={isCompact ? "space-y-1" : "space-y-2"}>
         {displayChunks.map((chunk, idx) => {
-          const matchBadge = getMatchTypeBadge(chunk.match_type);
           const effectiveFullText = chunk.snippet || chunk.content_preview;
           const preview = buildPreviewContext({
             previewText: chunk.content_preview,
@@ -142,31 +151,23 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
           return (
           <div
             key={`${chunk.chunk_index}-${idx}`}
-            className={`flex rounded-md cursor-pointer result-item-hover ${isCompact ? "gap-1.5 p-1.5" : "gap-2 p-2"}`}
+            className={`flex rounded cursor-pointer result-item-hover ${isCompact ? "gap-1.5 p-1" : "gap-2 p-1.5"}`}
             onClick={() => onOpenFile(chunk.file_path, chunk.page_number)}
           >
-            {/* 위치 표시 */}
-            <div className={`flex-shrink-0 ${isCompact ? "w-16" : "w-20"} text-xs`} style={{ color: "var(--color-text-muted)" }}>
-              <div>
-                {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
-              </div>
-              {!isCompact && (
-                <div className="mt-1">
-                  <Badge variant={matchBadge.variant}>
-                    {matchBadge.label}
-                  </Badge>
-                </div>
-              )}
+            {/* Location */}
+            <div className="flex-shrink-0 w-12 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+              {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
             </div>
 
-            {/* 내용 미리보기 */}
+            {/* Preview */}
             <div className="flex-1 min-w-0">
               <p
-                className={`leading-relaxed ${isCompact ? "text-xs" : "text-sm"}`}
                 style={{
                   color: "var(--color-text-secondary)",
+                  fontSize: "13px",
+                  lineHeight: "1.7",
                   display: "-webkit-box",
-                  WebkitLineClamp: isCompact ? 2 : 4,
+                  WebkitLineClamp: isCompact ? 2 : 3,
                   WebkitBoxOrient: "vertical",
                   overflow: "hidden",
                   whiteSpace: "pre-line",
@@ -182,8 +183,19 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               </p>
             </div>
 
-            {/* 신뢰도 (컴팩트) */}
-            <ConfidenceBadge confidence={chunk.confidence} compact showBar={false} />
+            {/* Confidence — number only */}
+            <span
+              className="text-[11px] font-medium tabular-nums flex-shrink-0"
+              style={{
+                color: chunk.confidence >= 70
+                  ? "var(--color-success)"
+                  : chunk.confidence >= 40
+                    ? "var(--color-warning)"
+                    : "var(--color-text-muted)",
+              }}
+            >
+              {Math.round(chunk.confidence)}%
+            </span>
           </div>
         );
         })}
@@ -203,7 +215,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       {/* 경로 - 컴팩트 모드에서 숨김 */}
       {!isCompact && (
         <p
-          className="text-xs mt-2 truncate font-mono"
+          className="text-[13px] mt-2 truncate font-mono"
           style={{ color: "var(--color-text-muted)" }}
           title={group.file_path}
         >
@@ -224,6 +236,18 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     </div>
   );
 });
+
+function getStripeClass(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const map: Record<string, string> = {
+    hwpx: "result-stripe-hwpx", hwp: "result-stripe-hwp",
+    docx: "result-stripe-docx", doc: "result-stripe-docx",
+    xlsx: "result-stripe-xlsx", xls: "result-stripe-xlsx",
+    pdf: "result-stripe-pdf", pptx: "result-stripe-pptx",
+    txt: "result-stripe-txt",
+  };
+  return map[ext] || "result-stripe-txt";
+}
 
 function formatBreadcrumb(path: string): string {
   let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");

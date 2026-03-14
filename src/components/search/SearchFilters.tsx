@@ -109,7 +109,7 @@ export const SearchFilters = memo(function SearchFilters({
 
       {showKeywordOnlyToggle && (
         <label
-          className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 rounded border cursor-pointer transition-colors"
           style={{
             borderColor: filters.keywordOnly ? "var(--color-accent)" : "var(--color-border)",
             backgroundColor: filters.keywordOnly ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
@@ -120,7 +120,7 @@ export const SearchFilters = memo(function SearchFilters({
             type="checkbox"
             checked={filters.keywordOnly}
             onChange={(e) => onFiltersChange({ ...filters, keywordOnly: e.target.checked })}
-            className="accent-[var(--color-accent)] w-3.5 h-3.5"
+            className="accent-[var(--color-accent)] w-3 h-3"
             aria-label="키워드 포함 결과만 보기"
           />
           키워드 포함만
@@ -129,7 +129,7 @@ export const SearchFilters = memo(function SearchFilters({
 
       {showExcludeFilenameToggle && (
         <label
-          className="flex items-center gap-1.5 px-2 py-1 rounded border cursor-pointer transition-colors"
+          className="flex items-center gap-1 px-2 py-0.5 rounded border cursor-pointer transition-colors"
           style={{
             borderColor: filters.excludeFilename ? "var(--color-accent)" : "var(--color-border)",
             backgroundColor: filters.excludeFilename ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
@@ -140,7 +140,7 @@ export const SearchFilters = memo(function SearchFilters({
             type="checkbox"
             checked={filters.excludeFilename}
             onChange={(e) => onFiltersChange({ ...filters, excludeFilename: e.target.checked })}
-            className="accent-[var(--color-accent)] w-3.5 h-3.5"
+            className="accent-[var(--color-accent)] w-3 h-3"
             aria-label="파일명 검색 결과 제외"
           />
           파일명 제외
@@ -163,10 +163,10 @@ export const SearchFilters = memo(function SearchFilters({
             value={refineQuery}
             onChange={(e) => onRefineQueryChange(e.target.value)}
             placeholder="결과 내 검색..."
-            className="pl-6 pr-6 py-1 rounded border transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+            className="pl-6 pr-6 py-0.5 rounded border transition-colors focus:outline-none"
             style={{
-              width: "140px",
-              maxWidth: "200px",
+              width: "130px",
+              maxWidth: "180px",
               backgroundColor: "var(--color-bg-secondary)",
               borderColor: refineQuery ? "var(--color-accent)" : "var(--color-border)",
               color: "var(--color-text-primary)",
@@ -192,7 +192,7 @@ export const SearchFilters = memo(function SearchFilters({
       {hasActiveFilters && (
         <button
           onClick={handleReset}
-          className="px-2 py-1 border border-transparent rounded-md text-xs font-medium btn-reset-hover"
+          className="px-1.5 py-0.5 border border-transparent rounded text-xs font-medium btn-reset-hover"
           aria-label="필터 초기화"
         >
           초기화
@@ -238,8 +238,8 @@ function ScopeDropdown({
       <select
         value={value ?? "__all__"}
         onChange={(e) => onChange(e.target.value === "__all__" ? null : e.target.value)}
-        className="appearance-none pl-2 pr-6 py-1 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+        className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
+          transition-colors focus:outline-none"
         style={{
           backgroundColor: isActive ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
           borderColor: isActive ? "var(--color-accent)" : "var(--color-border)",
@@ -280,8 +280,8 @@ function FilterDropdown<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="appearance-none pl-2 pr-6 py-1 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none focus:ring-1 focus:ring-offset-0"
+        className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
+          transition-colors focus:outline-none"
         style={{
           backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
           borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
