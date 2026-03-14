@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
+type HwpDetectedCallback = RwLock<Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>>;
 type VectorProgressState = Arc<RwLock<Option<VectorProgressCallback>>>;
 
 /// DI 컨테이너 - 앱 전역 의존성 관리
@@ -56,6 +57,8 @@ pub struct AppContainer {
     settings_cache: Arc<RwLock<Settings>>,
     /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
     incremental_update_callback: IncrementalCallback,
+    /// HWP 파일 감지 시 프론트엔드 알림 콜백
+    hwp_detected_callback: HwpDetectedCallback,
     vector_progress_callback: VectorProgressState,
 }
 
@@ -102,6 +105,7 @@ impl AppContainer {
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             settings_cache: Arc::new(RwLock::new(cached_settings)),
             incremental_update_callback: RwLock::new(None),
+            hwp_detected_callback: RwLock::new(None),
             vector_progress_callback: Arc::new(RwLock::new(None)),
         }
     }
@@ -236,6 +240,12 @@ impl AppContainer {
         }
     }
 
+    pub fn set_hwp_detected_callback(&self, callback: Arc<dyn Fn(Vec<String>) + Send + Sync>) {
+        if let Ok(mut cb) = self.hwp_detected_callback.write() {
+            *cb = Some(callback);
+        }
+    }
+
     pub fn set_vector_progress_callback(&self, callback: VectorProgressCallback) {
         if let Ok(mut cb) = self.vector_progress_callback.write() {
             *cb = Some(callback);
@@ -265,6 +275,7 @@ impl AppContainer {
                     WatchRuntimeSettings {
                         max_file_size_mb: settings.max_file_size_mb,
                         excluded_dirs,
+                        hwp_auto_detect: settings.hwp_auto_detect,
                     }
                 });
                 // 벡터 워커 트리거 콜백: watcher 증분 인덱싱 후 pending 벡터 자동 백필
@@ -303,6 +314,11 @@ impl AppContainer {
                         _ => None,
                     }
                 };
+                let hwp_callback = self
+                    .hwp_detected_callback
+                    .read()
+                    .ok()
+                    .and_then(|cb| cb.clone());
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
@@ -311,6 +327,7 @@ impl AppContainer {
                     runtime_settings,
                     on_incremental_update: callback,
                     on_vector_trigger: vector_trigger,
+                    on_hwp_detected: hwp_callback,
                 };
 
                 WatchManager::new(ctx)

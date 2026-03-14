@@ -370,6 +370,15 @@ export const SearchResultList = memo(function SearchResultList({
                         {cleanPath(result.file_path)}
                       </div>
                     </div>
+                    {result.has_hwp_pair && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                        style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "var(--color-warning, #f59e0b)" }}
+                        title="같은 위치에 원본 HWP 파일이 있습니다"
+                      >
+                        HWP
+                      </span>
+                    )}
                     <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
                       {(result.file_name.split('.').pop() || '').toUpperCase()}
                     </Badge>

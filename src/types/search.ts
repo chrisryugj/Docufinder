@@ -18,6 +18,8 @@ export interface SearchResult {
   snippet?: string;
   /** 파일 수정 시간 (Unix timestamp, 초) */
   modified_at: number | null;
+  /** 같은 경로에 원본 HWP 파일이 존재하는 HWPX */
+  has_hwp_pair?: boolean;
 }
 
 /** 검색 매칭 타입 */

@@ -33,6 +33,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
+  const [pendingHwpFiles, setPendingHwpFiles] = useState<string[]>([]);
   const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
   const autoIndexPromptShownRef = useRef(false);
 
@@ -247,8 +248,18 @@ function App() {
     }
   }, [vectorJustCompleted, showToast, clearVectorCompleted, query, invalidateSearch]);
 
-  // Tauri 이벤트 리스너 (증분 인덱싱 + 모델 다운로드)
-  useAppEvents({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast });
+  // HWP 감지 콜백 (증분 인덱싱 시)
+  const handleHwpDetected = useCallback((paths: string[]) => {
+    setPendingHwpFiles((prev) => [...prev, ...paths]);
+    showToast(
+      `새 HWP 파일 ${paths.length}개 발견 — 변환하려면 아래 배너를 확인하세요`,
+      "info",
+      5000
+    );
+  }, [showToast]);
+
+  // Tauri 이벤트 리스너 (증분 인덱싱 + 모델 다운로드 + HWP 감지)
+  useAppEvents({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast, onHwpDetected: handleHwpDetected });
 
   // OTA 자동 업데이트
   const updater = useUpdater();
@@ -680,9 +691,12 @@ function App() {
       />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <IndexingReportModal
-        isOpen={reportResults.length > 0}
-        onClose={() => setReportResults([])}
-        results={reportResults}
+        isOpen={reportResults.length > 0 || pendingHwpFiles.length > 0}
+        onClose={() => { setReportResults([]); setPendingHwpFiles([]); }}
+        results={pendingHwpFiles.length > 0 && reportResults.length === 0
+          ? [{ success: true, indexed_count: 0, failed_count: 0, hwp_files: pendingHwpFiles } as AddFolderResult]
+          : reportResults
+        }
         onReindex={async (convertedPaths) => {
           // 변환된 HWPX 파일이 속한 watched folder를 찾아 resume_indexing
           const watchedFolders = status?.watched_folders ?? [];

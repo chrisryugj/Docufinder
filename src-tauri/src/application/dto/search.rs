@@ -73,6 +73,9 @@ pub struct SearchResult {
     pub snippet: Option<String>,
     /// 파일 수정 시간 (Unix timestamp, 초)
     pub modified_at: Option<i64>,
+    /// 같은 경로에 원본 HWP 파일이 존재하는 HWPX인 경우 true
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_hwp_pair: bool,
 }
 
 /// 검색 응답 DTO
