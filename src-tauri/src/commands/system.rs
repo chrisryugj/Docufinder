@@ -18,35 +18,28 @@ pub struct SuggestedFolder {
 pub async fn get_suggested_folders() -> ApiResult<Vec<SuggestedFolder>> {
     let mut suggestions = Vec::new();
 
-    // 1. Known Folders (dirs 크레이트)
-    if let Some(p) = dirs::desktop_dir() {
-        if p.exists() {
-            suggestions.push(SuggestedFolder {
-                path: p.to_string_lossy().to_string(),
-                label: "바탕화면".into(),
-                category: "known".into(),
-                exists: true,
-            });
-        }
-    }
-    if let Some(p) = dirs::document_dir() {
-        if p.exists() {
-            suggestions.push(SuggestedFolder {
-                path: p.to_string_lossy().to_string(),
-                label: "문서".into(),
-                category: "known".into(),
-                exists: true,
-            });
-        }
-    }
-    if let Some(p) = dirs::download_dir() {
-        if p.exists() {
-            suggestions.push(SuggestedFolder {
-                path: p.to_string_lossy().to_string(),
-                label: "다운로드".into(),
-                category: "known".into(),
-                exists: true,
-            });
+    // 1. Known Folders — dirs 크레이트 + USERPROFILE 폴백
+    let known_folders: Vec<(&str, Option<std::path::PathBuf>, &str)> = vec![
+        ("바탕화면", dirs::desktop_dir(), "Desktop"),
+        ("문서", dirs::document_dir(), "Documents"),
+        ("다운로드", dirs::download_dir(), "Downloads"),
+    ];
+    let userprofile = std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from);
+
+    for (label, dir_path, fallback_name) in known_folders {
+        // dirs 크레이트 결과 → USERPROFILE 폴백 순서
+        let resolved = dir_path.or_else(|| {
+            userprofile.as_ref().map(|up| up.join(fallback_name))
+        });
+        if let Some(p) = resolved {
+            if p.exists() {
+                suggestions.push(SuggestedFolder {
+                    path: p.to_string_lossy().to_string(),
+                    label: label.into(),
+                    category: "known".into(),
+                    exists: true,
+                });
+            }
         }
     }
 

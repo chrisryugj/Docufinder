@@ -171,24 +171,11 @@ export const HighlightedText = memo(function HighlightedText({
     if (start > lastIndex) {
       parts.push(...formatAndRender(actualText.slice(lastIndex, start), `pre-${i}`, formatMode));
     }
-    // 하이라이트 텍스트 - 타입에 따라 색상 다르게
-    const bgColor = type === 'refine' || type === 'both'
-      ? "var(--color-highlight-refine-bg)"
-      : "var(--color-highlight-bg)";
-    const textColor = type === 'refine' || type === 'both'
-      ? "var(--color-highlight-refine-text)"
-      : "var(--color-highlight-text)";
+    // 하이라이트 텍스트 - 타입에 따라 클래스 다르게
+    const hlClass = type === 'both' ? 'hl-both' : type === 'refine' ? 'hl-refine' : 'hl-search';
 
     parts.push(
-      <mark
-        key={`mark-${i}`}
-        style={{
-          backgroundColor: bgColor,
-          color: textColor,
-          borderRadius: "2px",
-          padding: "0 2px",
-        }}
-      >
+      <mark key={`mark-${i}`} className={hlClass}>
         {actualText.slice(start, end)}
       </mark>
     );

@@ -3,10 +3,8 @@ import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
-import { getMatchTypeBadge } from "./matchType";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
-import { ConfidenceBadge } from "../ui/ConfidenceBadge";
 import { Tooltip } from "../ui/Tooltip";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
@@ -21,10 +19,25 @@ interface SearchResultItemProps {
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
-  /** 결과 내 검색 키워드 (추가 하이라이트용) */
   refineKeywords?: string[];
-  /** 검색어 (파일명 하이라이트용) */
   query?: string;
+}
+
+/** Get file-type stripe CSS class */
+function getStripeClass(fileName: string): string {
+  const ext = fileName.split(".").pop()?.toLowerCase() || "";
+  const map: Record<string, string> = {
+    hwpx: "result-stripe-hwpx",
+    hwp: "result-stripe-hwp",
+    docx: "result-stripe-docx",
+    doc: "result-stripe-docx",
+    xlsx: "result-stripe-xlsx",
+    xls: "result-stripe-xlsx",
+    pdf: "result-stripe-pdf",
+    pptx: "result-stripe-pptx",
+    txt: "result-stripe-txt",
+  };
+  return map[ext] || "result-stripe-txt";
 }
 
 export const SearchResultItem = memo(function SearchResultItem({
@@ -41,11 +54,9 @@ export const SearchResultItem = memo(function SearchResultItem({
   query = "",
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
-
-  // 경로에서 폴더 추출
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
 
-  // 수정일 포맷팅
+  // Modified date
   const modifiedAtMs = result.modified_at ? result.modified_at * 1000 : null;
   const relativeTime = modifiedAtMs ? formatRelativeTime(modifiedAtMs) : null;
   const absoluteDate = modifiedAtMs
@@ -55,10 +66,10 @@ export const SearchResultItem = memo(function SearchResultItem({
       })
     : null;
 
-  // 컨텍스트 메뉴
+  // Context menu
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
 
-  // snippet에서 [[HL]] 마커 제거 (펼친 상태에서 태그 노출 방지)
+  // Text processing
   const cleanSnippet = result.snippet?.replace(/\[\[HL\]\]/g, '').replace(/\[\[\/HL\]\]/g, '');
   const effectiveFullText = cleanSnippet || result.content_preview;
   const expandedView = isExpanded
@@ -79,9 +90,7 @@ export const SearchResultItem = memo(function SearchResultItem({
   const displayRanges = isExpanded
     ? expandedView?.ranges ?? result.highlight_ranges
     : previewView?.ranges ?? [];
-  const matchBadge = getMatchTypeBadge(result.match_type);
 
-  // 경로 복사
   const handleCopyPath = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -94,7 +103,6 @@ export const SearchResultItem = memo(function SearchResultItem({
     [result.file_path, onCopyPath]
   );
 
-  // 폴더 열기
   const handleOpenFolder = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -106,56 +114,38 @@ export const SearchResultItem = memo(function SearchResultItem({
   return (
     <div
       id={`search-result-${index}`}
-      className="search-result-item result-card"
+      className={`search-result-item result-card ${getStripeClass(result.file_name)}`}
       style={{
         "--item-index": index,
-        padding: isCompact ? "0.375rem 0.5rem" : "0.75rem 1rem",
+        padding: isCompact ? "0.375rem 0.625rem" : "0.625rem 0.875rem",
         ...(isSelected && {
           borderColor: "var(--color-accent)",
           backgroundColor: "var(--color-accent-light)",
-          boxShadow: "0 0 0 3px var(--color-accent-muted)",
         }),
       } as React.CSSProperties}
       role="option"
       aria-selected={isSelected}
-      aria-label={`${result.file_name} - ${result.match_type} 검색 결과`}
+      aria-label={`${result.file_name} 검색 결과`}
       tabIndex={isSelected ? 0 : -1}
       onContextMenu={handleContextMenu}
       data-context-menu
     >
-      {/* 헤더 */}
-      <div className={`flex items-start justify-between ${isCompact ? "mb-1" : "mb-2"}`}>
+      {/* Row 1: Filename + confidence + time */}
+      <div className="flex items-center justify-between mb-1.5">
         <div
-          className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text ${isCompact ? "gap-2" : "gap-2.5"}`}
+          className="flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text gap-2"
           onClick={() => onOpenFile(result.file_path, result.page_number)}
-          title={[
-            result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기",
-            absoluteDate ? `수정: ${relativeTime} (${absoluteDate})` : null,
-          ].filter(Boolean).join("\n")}
+          title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
         >
-          <FileIcon fileName={result.file_name} size={isCompact ? "sm" : "md"} />
+          <FileIcon fileName={result.file_name} size="sm" />
           <span
             className="truncate"
-            style={{ fontSize: isCompact ? "0.9375rem" : "1.125rem", fontWeight: 600 }}
+            style={{ fontSize: "14px", fontWeight: 700, letterSpacing: "-0.01em" }}
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
-          {relativeTime && (
-            <Tooltip
-              content={absoluteDate}
-              position="bottom"
-              delay={200}
-            >
-              <span
-                className="flex-shrink-0 text-[10px] font-normal"
-                style={{ color: "var(--color-text-muted)" }}
-              >
-                {relativeTime}
-              </span>
-            </Tooltip>
-          )}
           <svg
-            className="w-4 h-4 flex-shrink-0 opacity-0 group-hover/filename:opacity-100 transition-opacity"
+            className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-60 transition-opacity"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -164,61 +154,48 @@ export const SearchResultItem = memo(function SearchResultItem({
           </svg>
         </div>
 
-        {/* 액션 버튼 + 뱃지 */}
-        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-          {/* 액션 버튼들 - 항상 노출 (opacity 0.5 → hover 1) */}
-          <div className="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-            {/* 경로 복사 */}
-            <button
-              onClick={handleCopyPath}
-              className="p-1.5 rounded btn-icon-hover"
-              title="경로 복사"
-              aria-label="파일 경로 복사"
-            >
-              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-              </svg>
-            </button>
+        {/* Right side: confidence % + time + file type */}
+        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+          {/* Confidence — number only */}
+          <span
+            className="text-xs font-semibold tabular-nums"
+            style={{
+              color: result.confidence >= 70
+                ? "var(--color-success)"
+                : result.confidence >= 40
+                  ? "var(--color-warning)"
+                  : "var(--color-text-muted)",
+            }}
+          >
+            {Math.round(result.confidence)}%
+          </span>
 
-            {/* 폴더 열기 */}
-            {onOpenFolder && (
-              <button
-                onClick={handleOpenFolder}
-                className="p-1.5 rounded btn-icon-hover"
-                title="폴더 열기"
-                aria-label="상위 폴더 열기"
+          {/* Relative time */}
+          {relativeTime && (
+            <Tooltip content={absoluteDate} position="bottom" delay={200}>
+              <span
+                className="text-[11px] tabular-nums"
+                style={{ color: "var(--color-text-muted)" }}
               >
-                <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                </svg>
-              </button>
-            )}
-          </div>
+                {relativeTime}
+              </span>
+            </Tooltip>
+          )}
 
-          {/* 신뢰도 */}
-          <ConfidenceBadge confidence={result.confidence} />
-
-          {/* 뱃지 */}
-          {result.location_hint ? (
-            <Badge variant="success">{result.location_hint}</Badge>
-          ) : result.page_number ? (
-            <Badge variant="primary">{result.page_number}p</Badge>
-          ) : null}
-          <Badge variant={matchBadge.variant}>{matchBadge.label}</Badge>
+          {/* File type badge */}
           <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
             {fileExt.toUpperCase()}
           </Badge>
         </div>
       </div>
 
-      {/* 내용 */}
+      {/* Row 2: Content preview */}
       <div
-        className={`cursor-pointer rounded-md flex gap-2 hover-bg-tertiary ${isCompact ? "p-1 -mx-1" : "p-2 -mx-2"}`}
+        className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1"
         onClick={onToggleExpand}
       >
-        {/* 토글 아이콘 (아래/위 chevron) */}
         <svg
-          className={`w-3.5 h-3.5 flex-shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-180" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
           fill="none"
           stroke="currentColor"
@@ -228,10 +205,10 @@ export const SearchResultItem = memo(function SearchResultItem({
         </svg>
         <div className="flex-1 min-w-0">
           <p
-            className={isCompact ? "text-xs" : "text-sm"}
             style={{
               color: "var(--color-text-secondary)",
-              lineHeight: isCompact ? "1.5" : "1.6",
+              fontSize: "13px",
+              lineHeight: "1.7",
               letterSpacing: "0.3px",
               ...(!isExpanded && {
                 display: "-webkit-box",
@@ -249,53 +226,79 @@ export const SearchResultItem = memo(function SearchResultItem({
               formatMode={isExpanded ? "full" : "preview"}
             />
           </p>
-          {/* 블러 그라데이션 제거 — line-clamp로 자연스럽게 잘림 */}
         </div>
       </div>
 
-      {/* 경로 (브레드크럼 스타일) - 컴팩트 모드에서는 숨김 */}
+      {/* Row 3: Path + action buttons */}
       {!isCompact && (
-        <div
-          className="flex flex-wrap items-center gap-0.5 mt-2.5"
-          title={result.file_path.replace(/^\\\\\?\\/, "")}
-        >
-          {/* 폴더 아이콘 */}
-          <svg
-            className="w-3.5 h-3.5 mr-0.5 flex-shrink-0"
-            style={{ color: "var(--color-accent)" }}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div className="flex items-center justify-between mt-1.5">
+          {/* Breadcrumb path */}
+          <div
+            className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
+            title={result.file_path.replace(/^\\\\\?\\/, "")}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-          </svg>
-          {formatPathSegments(folderPath).map((seg, i, arr) => (
-            <div key={i} className="flex items-center leading-none">
-              {seg.fullPath ? (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
-                  className="text-xs font-medium px-1 py-0.5 rounded transition-colors hover:underline"
-                  style={{ color: "var(--color-text-secondary)" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; e.currentTarget.style.backgroundColor = "var(--color-accent-light)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-secondary)"; e.currentTarget.style.backgroundColor = "transparent"; }}
-                  title={`${seg.fullPath} 열기`}
-                >
-                  {seg.label}
-                </button>
-              ) : (
-                <span className="text-xs px-1 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
-                  {seg.label}
-                </span>
-              )}
-              {i < arr.length - 1 && (
-                <span className="text-[11px]" style={{ color: "var(--color-text-muted)", opacity: 0.4 }}>/</span>
-              )}
-            </div>
-          ))}
+            {formatPathSegments(folderPath).map((seg, i, arr) => (
+              <div key={i} className="flex items-center leading-none">
+                {seg.fullPath ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
+                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline"
+                    style={{ color: "var(--color-text-muted)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "var(--color-accent)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "var(--color-text-muted)";
+                    }}
+                    title={`${seg.fullPath} 열기`}
+                  >
+                    {seg.label}
+                  </button>
+                ) : (
+                  <span className="text-xs px-0.5 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
+                    {seg.label}
+                  </span>
+                )}
+                {i < arr.length - 1 && (
+                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-muted)", opacity: 0.3 }}>/</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Action buttons — always visible, colored */}
+          <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
+            {result.page_number && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
+                {result.page_number}p
+              </span>
+            )}
+            <button
+              onClick={handleCopyPath}
+              className="p-1 rounded btn-icon-hover"
+              title="경로 복사"
+              aria-label="파일 경로 복사"
+            >
+              <svg className="w-3.5 h-3.5" style={{ color: "var(--color-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+              </svg>
+            </button>
+            {onOpenFolder && (
+              <button
+                onClick={handleOpenFolder}
+                className="p-1 rounded btn-icon-hover"
+                title="폴더 열기"
+                aria-label="상위 폴더 열기"
+              >
+                <svg className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* 컨텍스트 메뉴 */}
       <ResultContextMenu
         filePath={result.file_path}
         folderPath={folderPath}
@@ -310,18 +313,15 @@ export const SearchResultItem = memo(function SearchResultItem({
   );
 });
 
-/** 경로를 세그먼트 배열로 변환 (각 세그먼트에 표시명 + 전체 경로 포함) */
 function formatPathSegments(path: string): { label: string; fullPath: string }[] {
   const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
   const parts = cleanPath.split(/[/\\]/).filter(Boolean);
 
-  // 각 세그먼트에 해당 깊이까지의 전체 경로를 붙임
   const segments = parts.map((part, i) => ({
     label: part,
     fullPath: parts.slice(0, i + 1).join("\\"),
   }));
 
-  // 6개 초과 시 처음 2개 + … + 마지막 2개
   if (segments.length > 6) {
     return [
       ...segments.slice(0, 2),
@@ -345,7 +345,6 @@ function buildExpandedContext(
     : findFirstRangeAnchor(ranges);
   const effectiveAnchor = anchor ?? findFirstRangeAnchor(ranges);
   if (!effectiveAnchor) {
-    // 하이라이트 없으면 앞부분만 제한
     const limitedText = fullText.slice(0, 600);
     return {
       text: limitedText + (fullText.length > 600 ? "..." : ""),
@@ -353,7 +352,6 @@ function buildExpandedContext(
     };
   }
 
-  // 하이라이트 전후로 컨텍스트 제한
   const startOffset = Math.max(0, effectiveAnchor.start - EXPANDED_CONTEXT_BEFORE_CHARS);
   const endOffset = Math.min(fullText.length, effectiveAnchor.end + EXPANDED_CONTEXT_AFTER_CHARS);
 
@@ -366,12 +364,10 @@ function buildExpandedContext(
       return [clippedStart, clippedEnd] as [number, number];
     });
 
-  // 앞뒤 생략 표시
   const prefix = startOffset > 0 ? "..." : "";
   const suffix = endOffset < fullText.length ? "..." : "";
   const finalText = prefix + trimmedText + suffix;
 
-  // prefix로 인한 range offset 조정
   const offsetAdjust = prefix.length;
   const adjustedRanges = trimmedRanges.map(
     ([start, end]) => [start + offsetAdjust, end + offsetAdjust] as [number, number]
@@ -389,47 +385,31 @@ function findSnippetAnchor(
   let fallback: { start: number; end: number } | null = null;
 
   for (const segment of segments) {
-    if (!segment.includes("[[HL]]")) {
-      continue;
-    }
-
+    if (!segment.includes("[[HL]]")) continue;
     const parsed = parseSnippetSegment(segment);
-    if (!parsed.text.trim()) {
-      continue;
-    }
+    if (!parsed.text.trim()) continue;
 
     let searchStart = 0;
     while (true) {
       const index = fullText.indexOf(parsed.text, searchStart);
-      if (index === -1) {
-        break;
-      }
+      if (index === -1) break;
 
       const candidate = parsed.ranges.length
-        ? {
-            start: index + parsed.ranges[0][0],
-            end: index + parsed.ranges[0][1],
-          }
+        ? { start: index + parsed.ranges[0][0], end: index + parsed.ranges[0][1] }
         : { start: index, end: index + parsed.text.length };
 
-      if (!fallback) {
-        fallback = candidate;
-      }
+      if (!fallback) fallback = candidate;
 
       if (ranges.some(([rangeStart, rangeEnd]) => candidate.start >= rangeStart && candidate.end <= rangeEnd)) {
         return candidate;
       }
-
       searchStart = index + parsed.text.length;
     }
   }
-
   return fallback;
 }
 
-function parseSnippetSegment(
-  segment: string
-): { text: string; ranges: [number, number][] } {
+function parseSnippetSegment(segment: string): { text: string; ranges: [number, number][] } {
   const ranges: [number, number][] = [];
   let text = "";
   let i = 0;
@@ -453,24 +433,14 @@ function parseSnippetSegment(
       i += 1;
     }
   }
-
   return { text, ranges };
 }
 
-function findFirstRangeAnchor(
-  ranges: [number, number][]
-): { start: number; end: number } | null {
-  if (ranges.length === 0) {
-    return null;
-  }
-
+function findFirstRangeAnchor(ranges: [number, number][]): { start: number; end: number } | null {
+  if (ranges.length === 0) return null;
   let [start, end] = ranges[0];
   for (const [rangeStart, rangeEnd] of ranges) {
-    if (rangeStart < start) {
-      start = rangeStart;
-      end = rangeEnd;
-    }
+    if (rangeStart < start) { start = rangeStart; end = rangeEnd; }
   }
-
   return { start, end };
 }

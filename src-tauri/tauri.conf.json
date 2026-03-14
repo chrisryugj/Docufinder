@@ -37,7 +37,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/FilePathCheckerModuleExample.dll": "FilePathCheckerModuleExample.dll"
+      "resources/FilePathCheckerModuleExample.dll": "FilePathCheckerModuleExample.dll",
+      "icons/tray-icon.png": "icons/tray-icon.png"
     },
     "windows": {
       "certificateThumbprint": null,

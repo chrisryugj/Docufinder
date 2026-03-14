@@ -24,6 +24,7 @@ interface ContextMenuState {
 }
 
 export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFoldersProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [folders, setFolders] = useState<SuggestedFolder[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -119,24 +120,35 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
 
   return (
     <>
-      {/* 점선 구분 + 라벨 */}
-      <div className="flex items-center gap-2 mx-3 mt-3 mb-1.5">
+      {/* 접기/펴기 헤더 */}
+      <div className="flex items-center gap-2 mx-3 mt-3 mb-1">
         <div className="flex-1 border-t border-dashed" style={{ borderColor: "var(--color-sidebar-border)" }} />
-        <span
-          className="text-[10px] font-medium uppercase tracking-wider shrink-0"
-          style={{ color: "var(--color-sidebar-muted)", opacity: 0.7 }}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider shrink-0 hover-sidebar-section"
+          style={{ opacity: 0.7 }}
         >
-          추천
-        </span>
+          <svg
+            className={`w-3 h-3 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          추천 ({unregistered.length})
+        </button>
         <div className="flex-1 border-t border-dashed" style={{ borderColor: "var(--color-sidebar-border)" }} />
       </div>
 
       {/* 추천 폴더 목록 */}
-      <div className="space-y-0.5">
-        {unregistered.map((folder) => (
-          <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
-        ))}
-      </div>
+      {isExpanded && (
+        <div className="space-y-0.5">
+          {unregistered.map((folder) => (
+            <FolderItem key={folder.path} folder={folder} onAdd={onAddFolder} onContextMenu={handleContextMenu} />
+          ))}
+        </div>
+      )}
 
       {/* 컨텍스트 메뉴 */}
       {contextMenu.isOpen && createPortal(

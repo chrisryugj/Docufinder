@@ -155,7 +155,8 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
           className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
           aria-label="검색 영역 확장"
         >
-          <img src="/icon.png" alt="Anything" className="w-6 h-6 object-contain" />
+          <img src="/anything.png" alt="Anything" className="w-6 h-6 object-contain dark:hidden" />
+          <img src="/anything-l.png" alt="Anything" className="w-6 h-6 object-contain hidden dark:block" />
         </button>
 
         {/* 검색 입력 */}
@@ -185,7 +186,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             type="text"
             defaultValue={query}
             {...imeHandlers}
-            placeholder="검색어 입력..."
+            placeholder="예: 예산 집행현황, 민원처리 규정..."
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}
             aria-label="검색어 입력"

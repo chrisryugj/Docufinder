@@ -238,13 +238,43 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     });
   };
 
+  // 모든 폴더가 드라이브 루트인지 감지 (전체 PC 인덱싱 모드)
+  const isDriveRoot = (p: string) => /^([A-Za-z]:\\?|\\\\?\?\\[A-Za-z]:\\?)$/.test(p.replace(/[\\/]+$/, "").replace(/^\\\\\?\\/, ""));
+  const isFullPcMode = folders.length > 0 && folders.every(isDriveRoot);
+  const totalIndexed = isFullPcMode
+    ? Object.values(folderStats).reduce((sum, s) => sum + s.indexed_count, 0)
+    : 0;
+  const driveLetters = isFullPcMode
+    ? folders.map((f) => f.replace(/^\\\\\?\\/, "").charAt(0).toUpperCase()).sort().join(", ")
+    : "";
+
   if (folders.length === 0) {
     return (
       <div
-        className="text-base py-2 px-3"
+        className="text-sm py-2 px-3"
         style={{ color: "var(--color-sidebar-muted)" }}
       >
         등록된 폴더가 없습니다
+      </div>
+    );
+  }
+
+  // 전체 PC 인덱싱 모드: 요약 표시
+  if (isFullPcMode) {
+    return (
+      <div className="px-3 py-2 space-y-1.5">
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-success)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span className="text-sm font-medium" style={{ color: "var(--color-sidebar-text)" }}>
+            전체 PC 인덱싱
+          </span>
+        </div>
+        <div className="text-xs space-y-0.5 pl-6" style={{ color: "var(--color-sidebar-muted)" }}>
+          <div>드라이브: {driveLetters}</div>
+          {totalIndexed > 0 && <div>{totalIndexed.toLocaleString()}개 문서</div>}
+        </div>
       </div>
     );
   }
@@ -285,7 +315,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 폴더 이름 */}
               <span
-                className="flex-1 text-base truncate font-medium"
+                className="flex-1 text-sm truncate font-medium"
                 title={displayPath}
               >
                 {getFolderName(folder)}

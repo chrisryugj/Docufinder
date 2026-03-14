@@ -557,11 +557,14 @@ pub async fn resume_indexing(
 /// 인덱스 상태 조회
 #[tauri::command]
 pub async fn get_index_status(state: State<'_, RwLock<AppContainer>>) -> ApiResult<IndexStatus> {
-    let service = {
+    let (service, model_available) = {
         let container = state.read()?;
-        container.index_service()
+        (container.index_service(), container.is_semantic_available())
     };
-    service.get_status().await.map_err(ApiError::from)
+    let mut status = service.get_status().await.map_err(ApiError::from)?;
+    // OnceCell 초기화 여부가 아닌 모델 파일 존재 여부로 판단
+    status.semantic_available = model_available;
+    Ok(status)
 }
 
 /// 벡터 인덱싱 상태 조회

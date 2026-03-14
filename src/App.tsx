@@ -497,8 +497,8 @@ function App() {
 
       {/* 메인 콘텐츠 */}
       <div
-        className={`flex flex-col h-screen transition-all duration-300 ease-in-out
-          ${sidebarOpen ? "pl-[var(--sidebar-width)]" : "pl-0"}`}
+        className="flex flex-col h-screen transition-all duration-200 ease-out"
+        style={{ paddingLeft: sidebarOpen ? "var(--sidebar-width)" : "var(--sidebar-collapsed-width)" }}
       >
         {/* Compact Search Bar (스크롤 시 표시) */}
         {isCollapsed && (
@@ -539,8 +539,14 @@ function App() {
               onAddFolder={handleAddFolder}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
+              onGoHome={() => {
+                setQuery("");
+                setSelectedIndex(-1);
+                searchInputRef.current?.focus();
+              }}
               isIndexing={isIndexing}
               isSidebarOpen={sidebarOpen}
+              hasQuery={query.length > 0}
             />
           </div>
         )}
@@ -635,6 +641,11 @@ function App() {
                 minConfidence={minConfidence}
                 searchTime={searchTime}
                 resultsPerPage={resultsPerPage}
+                indexedFiles={status?.indexed_files ?? 0}
+                indexedFolders={status?.watched_folders?.length ?? 0}
+                recentSearches={recentSearches}
+                onSelectSearch={handleSelectSearch}
+                semanticEnabled={semanticEnabled}
               />
             </div>
           </main>

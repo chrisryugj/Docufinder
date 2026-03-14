@@ -3,13 +3,13 @@ import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import type { Settings, VectorIndexingMode, ViewDensity } from "../types/settings";
 import type { SearchMode } from "../types/search";
 
-function isLightColor(hex: string): boolean {
+function hexToRgba(hex: string, alpha: number): string {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!result) return true;
+  if (!result) return hex;
   const r = parseInt(result[1], 16);
   const g = parseInt(result[2], 16);
   const b = parseInt(result[3], 16);
-  return (r * 299 + g * 587 + b * 114) / 1000 > 128;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 interface UseAppSettingsOptions {
@@ -28,20 +28,24 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
     const root = document.documentElement;
 
     if (settings.highlight_filename_color) {
-      root.style.setProperty("--color-highlight-filename-bg", settings.highlight_filename_color);
-      const isLightBg = isLightColor(settings.highlight_filename_color);
-      root.style.setProperty("--color-highlight-filename-text", isLightBg ? "#0f172a" : "#fef3c7");
+      const c = settings.highlight_filename_color;
+      root.style.setProperty("--color-highlight-filename-bg", hexToRgba(c, 0.25));
+      root.style.setProperty("--color-highlight-filename-border", hexToRgba(c, 0.7));
+      root.style.setProperty("--color-highlight-filename-text", "inherit");
     } else {
       root.style.removeProperty("--color-highlight-filename-bg");
+      root.style.removeProperty("--color-highlight-filename-border");
       root.style.removeProperty("--color-highlight-filename-text");
     }
 
     if (settings.highlight_content_color) {
-      root.style.setProperty("--color-highlight-bg", settings.highlight_content_color);
-      const isLightBg = isLightColor(settings.highlight_content_color);
-      root.style.setProperty("--color-highlight-text", isLightBg ? "#0f172a" : "#fef08a");
+      const c = settings.highlight_content_color;
+      root.style.setProperty("--color-highlight-bg", hexToRgba(c, 0.25));
+      root.style.setProperty("--color-highlight-border", hexToRgba(c, 0.6));
+      root.style.setProperty("--color-highlight-text", "inherit");
     } else {
       root.style.removeProperty("--color-highlight-bg");
+      root.style.removeProperty("--color-highlight-border");
       root.style.removeProperty("--color-highlight-text");
     }
   }, []);

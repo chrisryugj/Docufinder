@@ -220,6 +220,24 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       onClose={onClose}
       title="설정"
       size="lg"
+      headerExtra={
+        <div className="flex items-center gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="px-2.5 py-1 text-sm transition-colors rounded-md"
+              style={{
+                color: activeTab === tab.id ? "var(--color-accent)" : "var(--color-text-muted)",
+                fontWeight: activeTab === tab.id ? 600 : 400,
+                backgroundColor: activeTab === tab.id ? "var(--color-accent-light)" : "transparent",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      }
       footer={
         <div className="flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>
@@ -237,7 +255,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     >
       {error && (
         <div
-          className="mb-4 p-3 rounded-lg text-sm"
+          className="mb-3 p-2.5 rounded-md text-xs"
           style={{
             backgroundColor: "rgba(239, 68, 68, 0.1)",
             border: "1px solid rgba(239, 68, 68, 0.3)",
@@ -250,32 +268,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
       {settings && (
         <div className="space-y-3">
-          {/* Tab Bar */}
-          <div
-            className="flex gap-0 -mx-1"
-            style={{ borderBottom: "1px solid var(--color-border)" }}
-          >
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="px-4 py-2 text-sm font-medium transition-colors relative"
-                style={{
-                  color: activeTab === tab.id
-                    ? "var(--color-accent)"
-                    : "var(--color-text-muted)",
-                }}
-              >
-                {tab.label}
-                {activeTab === tab.id && (
-                  <span
-                    className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full"
-                    style={{ backgroundColor: "var(--color-accent)" }}
-                  />
-                )}
-              </button>
-            ))}
-          </div>
 
           {/* === Tab: 일반 === */}
           {activeTab === "general" && (
@@ -283,7 +275,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               {/* 테마 + 검색 모드 (2열) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                  <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                     테마
                   </label>
                   <Dropdown
@@ -294,7 +286,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                  <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                     기본 검색 모드
                   </label>
                   <Dropdown
@@ -305,14 +297,14 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   />
                 </div>
               </div>
-              <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                 키워드: FTS5 전문 검색 / 하이브리드: 키워드 + 의미 검색 (시맨틱 활성화 필요)
               </p>
 
               {/* 최대 결과 + 표시 단위 (2열) */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                  <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                     최대 검색 결과
                   </label>
                   <Dropdown
@@ -323,7 +315,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                  <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                     결과 표시 단위
                   </label>
                   <Dropdown
@@ -334,13 +326,13 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                   />
                 </div>
               </div>
-              <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                 한 번에 표시할 결과 수. "더 보기"를 눌러 추가 로드
               </p>
 
               {/* 결과 보기 밀도 */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   검색 결과 보기
                 </label>
                 <Dropdown
@@ -359,7 +351,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               {/* 최소 신뢰도 */}
               <div>
                 <label
-                  className="flex items-center text-xs font-medium mb-1"
+                  className="flex items-center text-sm font-medium mb-1"
                   style={{ color: "var(--color-text-secondary)" }}
                 >
                   최소 신뢰도
@@ -389,11 +381,11 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     step={CONFIDENCE_STEP}
                     value={settings.min_confidence}
                     onChange={(e) => handleChange("min_confidence", Number(e.target.value))}
-                    className="flex-1 accent-blue-500"
+                    className="flex-1 accent-[var(--color-accent)]"
                     aria-label="최소 신뢰도 설정"
                   />
                   <div
-                    className="min-w-[40px] text-xs font-semibold text-right"
+                    className="min-w-[40px] text-sm font-semibold text-right"
                     style={{ color: "var(--color-text-primary)" }}
                   >
                     {settings.min_confidence}%
@@ -411,7 +403,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
               {/* 제외 디렉토리 */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   제외 디렉토리
                   <span className="font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>
                     (줄바꿈 구분, 기본: Windows·Program Files·AppData 등)
@@ -458,13 +450,13 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 {(settings.semantic_search_enabled ?? false) && (
                   <div className="mt-2 space-y-2">
                     <p
-                      className="text-[11px] px-2 py-1 rounded"
+                      className="text-xs px-2 py-1 rounded"
                       style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", color: "var(--color-text-secondary)" }}
                     >
                       메모리 약 1GB 추가 사용. 저사양 PC(4GB RAM)에서는 성능 저하 가능
                     </p>
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>벡터 인덱싱 모드</label>
+                      <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>벡터 인덱싱 모드</label>
                       <Dropdown options={VECTOR_INDEXING_MODE_OPTIONS} value={settings.vector_indexing_mode ?? "manual"} onChange={(value) => handleChange("vector_indexing_mode", value as Settings["vector_indexing_mode"])} placeholder="모드 선택" />
                     </div>
                   </div>
@@ -515,10 +507,10 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
               {/* 성능 설정 */}
               <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
-                <h3 className="text-xs font-medium mb-2" style={{ color: "var(--color-text-primary)" }}>성능</h3>
+                <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>성능</h3>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                       인덱싱 강도
                     </label>
                     <Dropdown
@@ -529,7 +521,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                    <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                       최대 파일 크기
                     </label>
                     <Dropdown
@@ -544,12 +536,12 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
               {/* 데이터 관리 */}
               <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
-                <h3 className="text-xs font-medium mb-2" style={{ color: "var(--color-text-primary)" }}>데이터 관리</h3>
+                <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>데이터 관리</h3>
               </div>
 
               {/* 데이터 저장 경로 */}
               <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                   데이터 저장 경로
                   <span className="font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>(변경 시 재시작 필요)</span>
                 </label>
@@ -592,8 +584,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               {/* 액션 버튼 행 */}
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>로그 폴더</label>
-                  <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>오류 로그 (7일 보존)</p>
+                  <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>로그 폴더</label>
+                  <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>오류 로그 (7일 보존)</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -614,8 +606,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               {onAutoIndexAllDrives && (
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>전체 드라이브 인덱싱</label>
-                    <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>모든 드라이브 스캔 (시스템 폴더 자동 제외)</p>
+                    <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>전체 드라이브 인덱싱</label>
+                    <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>모든 드라이브 스캔 (시스템 폴더 자동 제외)</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -648,8 +640,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="text-xs font-medium" style={{ color: "var(--color-text-secondary)" }}>모든 데이터 초기화</label>
-                  <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>문서·벡터·폴더 전체 삭제 (원본 파일 무관)</p>
+                  <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>모든 데이터 초기화</label>
+                  <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>문서·벡터·폴더 전체 삭제 (원본 파일 무관)</p>
                 </div>
                 <Button
                   variant="danger"
