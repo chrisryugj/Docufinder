@@ -1,8 +1,9 @@
 /**
  * Unix timestamp를 상대 시간 문자열로 변환
  * 예: "방금", "5분 전", "3시간 전", "어제", "3일 전"
+ * compact: "방금", "5분전", "3시간전", "어제", "3/5", "25/3/5"
  */
-export function formatRelativeTime(timestamp: number): string {
+export function formatRelativeTime(timestamp: number, compact = false): string {
   const now = Date.now();
   const diff = now - timestamp;
 
@@ -16,11 +17,11 @@ export function formatRelativeTime(timestamp: number): string {
   }
 
   if (minutes < 60) {
-    return `${minutes}분 전`;
+    return compact ? `${minutes}분전` : `${minutes}분 전`;
   }
 
   if (hours < 24) {
-    return `${hours}시간 전`;
+    return compact ? `${hours}시간전` : `${hours}시간 전`;
   }
 
   if (days === 1) {
@@ -28,7 +29,7 @@ export function formatRelativeTime(timestamp: number): string {
   }
 
   if (days < 7) {
-    return `${days}일 전`;
+    return compact ? `${days}일전` : `${days}일 전`;
   }
 
   // 7일 이상은 날짜 표시
@@ -39,8 +40,9 @@ export function formatRelativeTime(timestamp: number): string {
   // 올해면 월/일만, 아니면 년도 포함
   const thisYear = new Date().getFullYear();
   if (date.getFullYear() === thisYear) {
-    return `${month}월 ${day}일`;
+    return compact ? `${month}/${day}` : `${month}월 ${day}일`;
   }
 
-  return `${date.getFullYear()}. ${month}. ${day}`;
+  const year = date.getFullYear();
+  return compact ? `${year % 100}/${month}/${day}` : `${year}. ${month}. ${day}`;
 }

@@ -170,10 +170,52 @@ export const SearchResultList = memo(function SearchResultList({
   // 전체 결과 (파일명 + 내용)
   const hasResults = results.length > 0 || filenameResults.length > 0;
 
+  // 검색 중 (결과 없음) — 전체 화면 스피너
+  if (isLoading && !hasResults && query.trim()) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-4">
+        <div className="relative w-12 h-12">
+          <div
+            className="absolute inset-0 rounded-full animate-spin"
+            style={{
+              border: "2.5px solid var(--color-border)",
+              borderTopColor: "var(--color-accent)",
+            }}
+          />
+          <div
+            className="absolute inset-2 rounded-full animate-spin"
+            style={{
+              border: "2px solid transparent",
+              borderBottomColor: "var(--color-accent-hover)",
+              animationDirection: "reverse",
+              animationDuration: "0.6s",
+            }}
+          />
+        </div>
+        <p className="text-sm font-medium animate-pulse" style={{ color: "var(--color-text-muted)" }}>
+          검색 중...
+        </p>
+      </div>
+    );
+  }
+
   // 결과가 있을 때
   if (hasResults) {
     return (
       <div className="space-y-3" aria-busy={isLoading} aria-live="polite">
+        {/* 검색 중 인라인 인디케이터 */}
+        {isLoading && (
+          <div
+            className="h-0.5 rounded-full overflow-hidden"
+            style={{ backgroundColor: "var(--color-border)" }}
+          >
+            <div
+              className="h-full rounded-full animate-search-bar"
+              style={{ backgroundColor: "var(--color-accent)", width: "40%" }}
+            />
+          </div>
+        )}
+
         {/* 툴바: 뷰 모드 + 결과 수 (좌측) | 복사/CSV (우측) */}
         <div className="flex items-center gap-3 mb-2">
           {/* 좌측: 뷰 모드 토글 + 결과 수 */}

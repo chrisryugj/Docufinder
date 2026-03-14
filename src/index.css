@@ -324,6 +324,10 @@ body,
   }
 }
 
+.animate-search-bar {
+  animation: indeterminate 1.2s ease-in-out infinite;
+}
+
 .animate-fade-in {
   animation: fadeIn var(--transition-normal) forwards;
 }

@@ -357,7 +357,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                 )}
                 {folderStats[folder]?.last_indexed && (
                   <div>
-                    마지막 인덱싱 {formatRelativeTime(folderStats[folder].last_indexed * 1000)}
+                    인덱싱 {formatRelativeTime(folderStats[folder].last_indexed * 1000, true)}
                   </div>
                 )}
               </div>
