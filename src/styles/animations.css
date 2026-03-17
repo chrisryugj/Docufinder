@@ -15,7 +15,7 @@
 }
 
 .animate-modal-enter {
-  animation: modal-enter 0.2s ease-out;
+  animation: modal-enter 0.2s var(--ease-out-expo);
 }
 
 @keyframes fadeIn {
@@ -67,7 +67,7 @@
 }
 
 .animate-search-bar {
-  animation: indeterminate 1.2s ease-in-out infinite;
+  animation: indeterminate 1.2s var(--ease-in-out-sine) infinite;
 }
 
 .animate-fade-in {
@@ -104,7 +104,7 @@
 }
 
 .micro-press:active {
-  animation: btn-press 0.15s ease-out;
+  animation: btn-press 0.15s var(--ease-out-expo);
 }
 
 /* Card Hover Lift Effect */
@@ -137,7 +137,7 @@
 }
 
 .micro-bounce {
-  animation: bounce-check 0.3s ease-out;
+  animation: bounce-check 0.3s var(--ease-out-expo);
 }
 
 /* Focus Glow Effect */
@@ -153,7 +153,7 @@
 }
 
 .micro-pulse-focus:focus {
-  animation: subtle-pulse 1.5s ease-in-out infinite;
+  animation: subtle-pulse 1.5s var(--ease-in-out-sine) infinite;
 }
 
 /* Ripple Effect (click) */
@@ -184,7 +184,7 @@
 }
 
 .micro-ripple:active::after {
-  animation: ripple 0.4s ease-out;
+  animation: ripple 0.4s var(--ease-out-expo);
 }
 
 /* Smooth Entry Animation for Lists */
@@ -200,7 +200,7 @@
 }
 
 .micro-list-enter {
-  animation: list-item-enter 0.2s ease-out forwards;
+  animation: list-item-enter 0.2s var(--ease-out-expo) forwards;
 }
 
 /* Icon Rotate on Hover */
@@ -225,7 +225,7 @@
   to { opacity: 1; transform: scale(1); }
 }
 .ctx-menu-animate {
-  animation: ctx-menu-in 0.12s ease-out;
+  animation: ctx-menu-in 0.12s var(--ease-out-expo);
   transform-origin: top left;
 }
 

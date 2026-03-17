@@ -119,10 +119,10 @@ export const SearchResultItem = memo(function SearchResultItem({
       className={`search-result-item result-card ${getStripeClass(result.file_name)}`}
       style={{
         "--item-index": index,
-        padding: isCompact ? "0.375rem 0.625rem" : "0.625rem 0.875rem",
+        padding: isCompact ? "0.5rem 0.625rem" : "0.75rem 0.875rem",
         ...(isSelected && {
-          borderColor: "var(--color-accent)",
           backgroundColor: "var(--color-accent-light)",
+          boxShadow: "inset 3px 0 0 var(--color-accent)",
         }),
       } as React.CSSProperties}
       role="option"
@@ -141,8 +141,8 @@ export const SearchResultItem = memo(function SearchResultItem({
         >
           <FileIcon fileName={result.file_name} size="sm" />
           <span
-            className="truncate"
-            style={{ fontSize: "14px", fontWeight: 700, letterSpacing: "-0.01em" }}
+            className="truncate ts-base"
+            style={{ fontWeight: 700, letterSpacing: "-0.01em" }}
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
@@ -197,7 +197,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           <p
             style={{
               color: "var(--color-text-secondary)",
-              fontSize: "13px",
+              fontSize: "var(--text-sm)",
               lineHeight: "1.7",
               letterSpacing: "0.3px",
               ...(!isExpanded && {
@@ -232,14 +232,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 {seg.fullPath ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
-                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline"
-                    style={{ color: "var(--color-text-muted)" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "var(--color-accent)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "var(--color-text-muted)";
-                    }}
+                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
                     title={`${seg.fullPath} 열기`}
                   >
                     {seg.label}

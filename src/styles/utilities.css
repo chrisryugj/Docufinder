@@ -1,4 +1,28 @@
 /* ============================================
+   Semantic Color Utilities (인라인 style 대체)
+   ============================================ */
+
+/* Backgrounds */
+.bg-primary   { background-color: var(--color-bg-primary); }
+.bg-secondary { background-color: var(--color-bg-secondary); }
+.bg-tertiary  { background-color: var(--color-bg-tertiary); }
+.bg-subtle    { background-color: var(--color-bg-subtle); }
+.bg-accent-subtle { background-color: var(--color-accent-subtle); }
+
+/* Text Colors */
+.clr-primary   { color: var(--color-text-primary); }
+.clr-secondary { color: var(--color-text-secondary); }
+.clr-muted     { color: var(--color-text-muted); }
+.clr-accent    { color: var(--color-accent); }
+.clr-success   { color: var(--color-success); }
+.clr-warning   { color: var(--color-warning); }
+.clr-error     { color: var(--color-error); }
+
+/* Borders */
+.border-default { border-color: var(--color-border); }
+.border-subtle  { border-color: var(--color-border-subtle); }
+
+/* ============================================
    Hover Utility Classes (DOM 조작 대체용)
    ============================================ */
 

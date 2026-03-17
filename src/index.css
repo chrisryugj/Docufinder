@@ -1,6 +1,7 @@
 /* All @import statements must come first */
-/* 외부 폰트 제거 - 내부망 환경 최적화 */
+/* 로컬 번들 폰트 */
 @import "./assets/fonts/pretendard.css";
+@import "@fontsource-variable/outfit";
 @import "tailwindcss";
 @import './styles/variables.css';
 @import './styles/animations.css';

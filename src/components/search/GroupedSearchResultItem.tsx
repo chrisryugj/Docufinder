@@ -5,6 +5,7 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
+import { formatPathSegments } from "../../utils/searchTextUtils";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 
 interface GroupedSearchResultItemProps {
@@ -161,7 +162,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               <p
                 style={{
                   color: "var(--color-text-secondary)",
-                  fontSize: "13px",
+                  fontSize: "var(--text-sm)",
                   lineHeight: "1.7",
                   display: "-webkit-box",
                   WebkitLineClamp: isCompact ? 2 : 3,
@@ -209,15 +210,35 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         )}
       </div>
 
-      {/* 경로 - 컴팩트 모드에서 숨김 */}
+      {/* 경로 + 액션 버튼 — SearchResultItem Row 3와 동일 */}
       {!isCompact && (
-        <p
-          className="text-[13px] mt-2 truncate font-mono"
-          style={{ color: "var(--color-text-muted)" }}
-          title={group.file_path}
-        >
-          {formatBreadcrumb(folderPath)}
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <div
+            className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
+            title={group.file_path.replace(/^\\\\\?\\/, "")}
+          >
+            {formatPathSegments(folderPath).map((seg, i, arr) => (
+              <div key={i} className="flex items-center leading-none">
+                {seg.fullPath ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
+                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
+                    title={`${seg.fullPath} 열기`}
+                  >
+                    {seg.label}
+                  </button>
+                ) : (
+                  <span className="text-xs px-0.5 py-0.5 clr-muted" style={{ opacity: 0.5 }}>
+                    {seg.label}
+                  </span>
+                )}
+                {i < arr.length - 1 && (
+                  <span className="text-[11px] mx-px clr-muted" style={{ opacity: 0.3 }}>/</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* 컨텍스트 메뉴 (공용 컴포넌트 사용) */}
@@ -246,11 +267,3 @@ function getStripeClass(fileName: string): string {
   return map[ext] || "result-stripe-txt";
 }
 
-function formatBreadcrumb(path: string): string {
-  let cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
-  const parts = cleanPath.replace(/\\/g, "/").split("/").filter(Boolean);
-  if (parts.length <= 3) {
-    return parts.join(" › ");
-  }
-  return `${parts[0]} › ... › ${parts.slice(-2).join(" › ")}`;
-}

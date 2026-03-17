@@ -2,6 +2,22 @@
    Component Styles
    ============================================ */
 
+/* Noise Texture Overlay — 미세한 질감으로 flat 배경에 깊이감 추가 */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+}
+
+.dark .noise-overlay {
+  opacity: 0.04;
+}
+
 /* Glassmorphism - blur 제거 (저사양/내부망 최적화) */
 .glass {
   background: rgba(255, 255, 255, 0.95);
@@ -22,20 +38,24 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Result Card — file type indicator */
+/* Result Row — borderless, divider-separated */
 .result-card {
-  background-color: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+  transition: background-color var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
 
 .result-card:hover {
-  border-color: var(--color-border-hover);
-  box-shadow: var(--shadow-card-hover);
+  background-color: var(--color-bg-secondary);
+}
+
+/* Result list divider container */
+.result-list-divided > .group + .group {
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 /* Search Highlight Marks */
@@ -107,6 +127,19 @@ mark.hl-filename {
   background-clip: content-box;
 }
 
+/* Lucide 아이콘 기본 stroke-width: 2 → 1.5 (더 세련된 미학) */
+.lucide {
+  stroke-width: 1.5 !important;
+}
+
+/* Heading tracking — 큰 텍스트일수록 자간을 조임 */
+.ts-hero, .ts-2xl, .ts-xl {
+  letter-spacing: -0.03em;
+}
+.ts-lg {
+  letter-spacing: -0.02em;
+}
+
 /* Typography Helpers */
 .text-display {
   font-family: var(--font-display);
@@ -115,6 +148,17 @@ mark.hl-filename {
 .text-mono {
   font-family: var(--font-mono);
 }
+
+/* Type Scale Classes */
+.ts-2xs { font-size: var(--text-2xs); }
+.ts-xs  { font-size: var(--text-xs); }
+.ts-sm  { font-size: var(--text-sm); }
+.ts-base { font-size: var(--text-base); }
+.ts-md  { font-size: var(--text-md); }
+.ts-lg  { font-size: var(--text-lg); }
+.ts-xl  { font-size: var(--text-xl); }
+.ts-2xl { font-size: var(--text-2xl); }
+.ts-hero { font-size: var(--text-hero); }
 
 .text-gradient {
   background: linear-gradient(135deg, var(--color-accent) 0%, #D97706 100%);
@@ -182,7 +226,7 @@ mark.hl-filename {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   box-shadow: var(--shadow-inner);
-  transition: all 0.2s ease;
+  transition: all 0.2s var(--ease-out-expo);
 }
 
 .input-modern:focus {

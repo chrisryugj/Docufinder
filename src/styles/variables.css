@@ -7,7 +7,8 @@
   /* 로컬 Pretendard + 시스템 폰트 폴백 */
   --font-sans: 'Pretendard', 'Pretendard Variable', 'Malgun Gothic', system-ui, sans-serif;
   --font-mono: 'Consolas', 'D2Coding', 'Fira Code', monospace;
-  --font-display: 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+  /* Outfit: 영문 디스플레이용 (헤딩, 앱 이름, 배지 등) */
+  --font-display: 'Outfit Variable', 'Pretendard', system-ui, sans-serif;
 
   /* Warm Terracotta palette */
   --color-primary-50: #FFF7ED;
@@ -125,10 +126,26 @@
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
 
+  /* Type Scale (1.25 ratio) */
+  --text-2xs: 0.625rem;   /* 10px — 버전, 최소 메타 */
+  --text-xs: 0.6875rem;   /* 11px — 배지, 타임스탬프 */
+  --text-sm: 0.8125rem;   /* 13px — 보조 텍스트, 경로 */
+  --text-base: 0.875rem;  /* 14px — 본문 기본 */
+  --text-md: 0.9375rem;   /* 15px — 검색바 입력 */
+  --text-lg: 1.125rem;    /* 18px — 서브헤딩 */
+  --text-xl: 1.5625rem;   /* 25px — 섹션 타이틀 */
+  --text-2xl: 1.953rem;   /* 31px — 페이지 타이틀 */
+  --text-hero: 2.75rem;   /* 44px — 히어로 */
+
+  /* Easing Curves */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-sine: cubic-bezier(0.37, 0, 0.63, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
   /* Transitions */
-  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-spring: 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-fast: 120ms var(--ease-out-expo);
+  --transition-normal: 200ms var(--ease-out-expo);
+  --transition-spring: 400ms var(--ease-spring);
 }
 
 /* ============================================
