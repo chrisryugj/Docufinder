@@ -61,8 +61,8 @@
 
         <Icon Id="ProductIcon" SourceFile="{{icon_path}}"/>
         <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
-        <Property Id="ARPNOREPAIR" Value="yes" Secure="yes" />      <!-- Remove repair -->
-        <SetProperty Id="ARPNOMODIFY" Value="1" After="InstallValidate" Sequence="execute"/>
+        <!-- Allow modify and repair in Add/Remove Programs -->
+        <Property Id="ARPNOREPAIR" Value="no" Secure="yes" />
 
         {{#if homepage}}
         <Property Id="ARPURLINFOABOUT" Value="{{homepage}}"/>
