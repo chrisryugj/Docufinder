@@ -3,18 +3,21 @@
 use crate::domain::errors::DomainError;
 use std::path::{Path, PathBuf};
 
-/// 시스템 폴더 블랙리스트
-const BLOCKED_PATHS: &[&str] = &[
+/// 시스템 폴더 블랙리스트 (단일 경로 컴포넌트 매칭)
+const BLOCKED_COMPONENTS: &[&str] = &[
     "windows",
     "system32",
     "program files",
+    "program files (x86)",
     "programdata",
     "$recycle.bin",
-    "appdata\\local\\temp",
     "node_modules",
     ".git",
     "target",
 ];
+
+/// 다중 컴포넌트 블랙리스트 (연속 경로 세그먼트 매칭)
+const BLOCKED_SEQUENCES: &[&[&str]] = &[&["appdata", "local", "temp"]];
 
 /// 감시 폴더 엔티티 (비즈니스 로직 포함)
 #[derive(Debug, Clone)]
@@ -53,12 +56,32 @@ impl WatchedFolder {
         }
     }
 
-    /// 안전한 경로인지 검증
+    /// 안전한 경로인지 검증 (컴포넌트 기반 매칭으로 false positive 방지)
     fn validate_safe_path(path: &Path) -> Result<(), DomainError> {
-        let path_str = path.to_string_lossy().to_lowercase();
+        let components: Vec<String> = path
+            .components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(os) => os.to_str().map(|s| s.to_lowercase()),
+                _ => None,
+            })
+            .collect();
 
-        for blocked in BLOCKED_PATHS {
-            if path_str.contains(blocked) {
+        // 단일 컴포넌트 매칭: "windows" == 경로의 개별 폴더명
+        for blocked in BLOCKED_COMPONENTS {
+            if components.iter().any(|c| c == blocked) {
+                return Err(DomainError::ForbiddenPath {
+                    path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+
+        // 다중 컴포넌트 시퀀스 매칭: ["appdata", "local", "temp"] 연속 존재 확인
+        for seq in BLOCKED_SEQUENCES {
+            if seq.len() <= components.len()
+                && components.windows(seq.len()).any(|window| {
+                    window.iter().zip(seq.iter()).all(|(c, s)| c == s)
+                })
+            {
                 return Err(DomainError::ForbiddenPath {
                     path: path.to_string_lossy().to_string(),
                 });
@@ -154,6 +177,37 @@ mod tests {
 
         // .git
         assert!(WatchedFolder::new(PathBuf::from("C:\\project\\.git"), 0).is_err());
+
+        // target (빌드 디렉토리)
+        assert!(WatchedFolder::new(PathBuf::from("C:\\project\\target"), 0).is_err());
+
+        // 다중 컴포넌트: appdata\local\temp
+        assert!(
+            WatchedFolder::new(PathBuf::from("C:\\Users\\User\\AppData\\Local\\Temp"), 0).is_err()
+        );
+    }
+
+    #[test]
+    fn test_blocked_paths_no_false_positives() {
+        // "windows"가 폴더명 일부에 포함되지만 독립 컴포넌트가 아닌 경우 → 허용
+        assert!(
+            WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\my-windows-backup"), 0).is_ok()
+        );
+
+        // "target"이 폴더명 일부에 포함 → 허용
+        assert!(WatchedFolder::new(PathBuf::from("D:\\target-market\\docs"), 0).is_ok());
+
+        // "git"이 폴더명 일부에 포함 → 허용 (.git은 차단하지만 git-repos는 아님)
+        assert!(WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\git-repos"), 0).is_ok());
+
+        // "program"이 포함되지만 "program files"와 다름 → 허용
+        assert!(WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\programs"), 0).is_ok());
+
+        // appdata가 있지만 local\temp 시퀀스가 아님 → 허용
+        assert!(
+            WatchedFolder::new(PathBuf::from("C:\\Users\\User\\AppData\\Roaming\\MyApp"), 0)
+                .is_ok()
+        );
     }
 
     #[test]
