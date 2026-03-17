@@ -77,7 +77,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             className="flex-1 bg-transparent border-none focus:outline-none ml-3"
             style={{
               color: "var(--color-text-primary)",
-              fontSize: "15px",
+              fontSize: "var(--text-md)",
               fontWeight: 500,
               letterSpacing: "0.01em",
             }}

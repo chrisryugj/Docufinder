@@ -491,6 +491,9 @@ function App() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
+      {/* Noise texture overlay */}
+      <div className="noise-overlay" aria-hidden="true" />
+
       {/* OTA 업데이트 배너 */}
       <UpdateBanner updater={updater} />
 

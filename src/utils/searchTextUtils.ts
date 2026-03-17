@@ -14,11 +14,11 @@ export function formatPathSegments(path: string): { label: string; fullPath: str
     fullPath: parts.slice(0, i + 1).join("\\"),
   }));
 
-  if (segments.length > 6) {
+  if (segments.length > 10) {
     return [
-      ...segments.slice(0, 2),
+      ...segments.slice(0, 3),
       { label: "\u2026", fullPath: "" },
-      ...segments.slice(-2),
+      ...segments.slice(-4),
     ];
   }
   return segments;

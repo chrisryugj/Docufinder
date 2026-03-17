@@ -4,6 +4,7 @@ import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch } from "
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
+import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { WelcomeHero } from "./WelcomeHero";
 import { cleanPath } from "../../utils/cleanPath";
@@ -169,33 +170,9 @@ export const SearchResultList = memo(function SearchResultList({
   // 전체 결과 (파일명 + 내용)
   const hasResults = results.length > 0 || filenameResults.length > 0;
 
-  // 검색 중 (결과 없음) — 전체 화면 스피너
+  // 검색 중 (결과 없음) — 스켈레톤 로더
   if (isLoading && !hasResults && query.trim()) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4">
-        <div className="relative w-12 h-12">
-          <div
-            className="absolute inset-0 rounded-full animate-spin"
-            style={{
-              border: "2.5px solid var(--color-border)",
-              borderTopColor: "var(--color-accent)",
-            }}
-          />
-          <div
-            className="absolute inset-2 rounded-full animate-spin"
-            style={{
-              border: "2px solid transparent",
-              borderBottomColor: "var(--color-accent-hover)",
-              animationDirection: "reverse",
-              animationDuration: "0.6s",
-            }}
-          />
-        </div>
-        <p className="text-sm font-medium animate-pulse" style={{ color: "var(--color-text-muted)" }}>
-          검색 중...
-        </p>
-      </div>
-    );
+    return <SearchResultSkeleton count={6} />;
   }
 
   // 결과가 있을 때
@@ -410,7 +387,7 @@ export const SearchResultList = memo(function SearchResultList({
           viewMode === "grouped" && groupedResults.length > 0 ? (
             // 그룹 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={isCompact ? "space-y-1" : "space-y-3"}>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
                 {groupedResults.slice(0, visibleCount).map((group, index) => (
                   <GroupedSearchResultItem
                     key={group.file_path}
@@ -437,12 +414,15 @@ export const SearchResultList = memo(function SearchResultList({
           ) : (
             // 플랫 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={isCompact ? "space-y-1" : "space-y-3"}>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
                 {results.slice(0, visibleCount).map((result, index) => (
                   <div
                     key={`${result.file_path}-${result.chunk_index}-${index}`}
-                    className="group"
-                    style={{ contain: "layout style" }}
+                    className={`group ${index < 10 ? "stagger-item" : ""}`}
+                    style={{
+                      contain: "layout style",
+                      ...(index < 10 && { animationDelay: `${index * 30}ms` }),
+                    }}
                   >
                     <SearchResultItem
                       result={result}

@@ -26,8 +26,8 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         <img src="/anything.png" alt="Anything" className="w-7 h-7 flex-shrink-0 object-contain dark:hidden" />
         <img src="/anything-l.png" alt="Anything" className="w-7 h-7 flex-shrink-0 object-contain hidden dark:block" />
         <h1
-          className="text-[15px] font-bold tracking-tight leading-none"
-          style={{ color: "var(--color-text-primary)", letterSpacing: "-0.02em" }}
+          className="ts-md font-bold leading-none text-display"
+          style={{ color: "var(--color-text-primary)", letterSpacing: "-0.03em" }}
         >
           Anything<span style={{ color: "var(--color-accent)", fontWeight: 800 }}>.</span>
         </h1>
@@ -41,21 +41,30 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         <button
           onClick={onAddFolder}
           disabled={isIndexing}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed btn-icon-hover"
+          className="flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full ts-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover-btn-secondary group"
+          style={{
+            backgroundColor: "var(--color-bg-tertiary)",
+            border: "1px solid var(--color-border)",
+          }}
           aria-label="폴더 추가"
         >
           {isIndexing ? (
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 pr-1">
               <span
                 className="w-3 h-3 rounded-full animate-spin"
                 style={{ border: "1.5px solid var(--color-text-muted)", borderTopColor: "var(--color-accent)" }}
               />
-              <span style={{ color: "var(--color-text-muted)" }}>인덱싱 중</span>
+              <span className="clr-muted">인덱싱 중</span>
             </span>
           ) : (
             <>
-              <Plus className="w-3.5 h-3.5" />
-              <span style={{ color: "var(--color-text-secondary)" }}>폴더 추가</span>
+              <span className="clr-secondary">폴더 추가</span>
+              <span
+                className="w-6 h-6 rounded-full flex items-center justify-center transition-transform group-hover:scale-105"
+                style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+              >
+                <Plus className="w-3 h-3" strokeWidth={2.5} />
+              </span>
             </>
           )}
         </button>
