@@ -73,8 +73,17 @@
   --color-success: #059669;
   --color-warning: #D97706;
   --color-error: #DC2626;
+  --color-error-hover: #991B1B;
   --color-error-rgb: 220, 38, 38;
+  --color-error-bg: rgba(220, 38, 38, 0.1);
   --color-info: #0284C7;
+  --color-info-bg: rgba(2, 132, 199, 0.1);
+  --color-favorite: #FACC15;
+  --color-favorite-bg: rgba(250, 204, 21, 0.15);
+  --color-warning-bg: rgba(217, 119, 6, 0.2);
+
+  /* Backdrop */
+  --color-backdrop: rgba(0, 0, 0, 0.4);
 
   /* Component Aliases */
   --color-primary-rgb: 194, 65, 12;
@@ -187,7 +196,14 @@
   --color-accent-glow: rgba(234, 88, 12, 0.25);
 
   /* Functional */
+  --color-error-hover: #B91C1C;
   --color-error-rgb: 248, 113, 113;
+  --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-info-bg: rgba(56, 189, 248, 0.1);
+  --color-favorite: #FDE047;
+  --color-favorite-bg: rgba(253, 224, 71, 0.15);
+  --color-warning-bg: rgba(234, 88, 12, 0.2);
+  --color-backdrop: rgba(0, 0, 0, 0.6);
   --color-primary-rgb: 234, 88, 12;
   --color-primary-light: #F97316;
   --color-accent-bg: rgba(234, 88, 12, 0.12);

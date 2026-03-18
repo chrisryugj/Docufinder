@@ -153,7 +153,7 @@ export const SearchResultItem = memo(function SearchResultItem({
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {/* Confidence — number only */}
           <span
-            className="text-xs font-semibold tabular-nums"
+            className="text-[11px] font-semibold tabular-nums leading-none"
             style={{
               color: result.confidence >= 70
                 ? "var(--color-success)"
@@ -169,7 +169,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           {relativeTime && (
             <Tooltip content={absoluteDate} position="bottom" delay={200}>
               <span
-                className="text-[11px] tabular-nums"
+                className="text-[11px] tabular-nums leading-none"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 {relativeTime}
@@ -184,9 +184,9 @@ export const SearchResultItem = memo(function SearchResultItem({
         </div>
       </div>
 
-      {/* Row 2: Content preview */}
+      {/* Row 2: Content preview (pl-6 = FileIcon 16px + gap 8px 정렬) */}
       <div
-        className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1"
+        className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1 pl-6"
         onClick={onToggleExpand}
       >
         <ChevronDown
@@ -219,9 +219,9 @@ export const SearchResultItem = memo(function SearchResultItem({
         </div>
       </div>
 
-      {/* Row 3: Path + action buttons */}
+      {/* Row 3: Path + action buttons (pl-6 = Row 1 FileIcon 정렬) */}
       {!isCompact && (
-        <div className="flex items-center justify-between mt-1.5">
+        <div className="flex items-center justify-between mt-1.5 pl-6">
           {/* Breadcrumb path */}
           <div
             className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"

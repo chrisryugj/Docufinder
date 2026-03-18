@@ -66,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
                   오류 상세 정보
                 </summary>
-                <pre className="mt-2 text-xs text-red-500 whitespace-pre-wrap break-words">
+                <pre className="mt-2 text-xs clr-error whitespace-pre-wrap break-words">
                   {this.state.error.message}
                 </pre>
               </details>

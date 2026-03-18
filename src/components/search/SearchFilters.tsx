@@ -163,7 +163,7 @@ export const SearchFilters = memo(function SearchFilters({
             value={refineQuery}
             onChange={(e) => onRefineQueryChange(e.target.value)}
             placeholder="결과 내 검색..."
-            className="pl-6 pr-6 py-0.5 rounded border transition-colors focus:outline-none"
+            className="pl-6 pr-6 py-0.5 rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
             style={{
               width: "130px",
               maxWidth: "180px",
@@ -239,7 +239,7 @@ function ScopeDropdown({
         value={value ?? "__all__"}
         onChange={(e) => onChange(e.target.value === "__all__" ? null : e.target.value)}
         className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none"
+          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
         style={{
           backgroundColor: isActive ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
           borderColor: isActive ? "var(--color-accent)" : "var(--color-border)",
@@ -281,7 +281,7 @@ function FilterDropdown<T extends string>({
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
         className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none"
+          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
         style={{
           backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
           borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",

@@ -72,7 +72,7 @@ export function VectorIndexingFAB({
                 e.stopPropagation();
                 onCancel();
               }}
-              className="p-1.5 rounded-lg transition-all hover:bg-red-500/20 hover:text-red-400 group"
+              className="p-1.5 rounded-lg transition-all hover-action-danger group"
               title="취소"
             >
               <X className="w-3.5 h-3.5 transition-transform group-hover:rotate-90" />

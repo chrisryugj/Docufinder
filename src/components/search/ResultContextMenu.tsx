@@ -119,7 +119,7 @@ export function ResultContextMenu({
         onClick={() => { closeContextMenu(); onOpenFile(filePath, pageNumber); }}
         className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
       >
-        <ExternalLink className="w-4 h-4 text-blue-400" />
+        <ExternalLink className="w-4 h-4 clr-info" />
         <span className="flex-1">파일 열기</span>
         <kbd className="text-[10px] font-mono opacity-40">Enter</kbd>
       </button>
@@ -133,7 +133,7 @@ export function ResultContextMenu({
           onClick={() => { closeContextMenu(); onOpenFolder(folderPath); }}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <FolderOpen className="w-4 h-4 text-yellow-500" />
+          <FolderOpen className="w-4 h-4 clr-warning" />
           <span className="flex-1">폴더 열기</span>
         </button>
       )}
@@ -146,7 +146,7 @@ export function ResultContextMenu({
         }}
         className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
       >
-        <ClipboardCopy className="w-4 h-4 text-emerald-400" />
+        <ClipboardCopy className="w-4 h-4 clr-success" />
         <span className="flex-1">경로 복사</span>
         <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>

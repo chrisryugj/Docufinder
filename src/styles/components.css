@@ -44,18 +44,19 @@
   border: none;
   border-radius: var(--radius-md);
   box-shadow: none;
-  transition: background-color var(--transition-fast);
+  transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
 
 .result-card:hover {
   background-color: var(--color-bg-secondary);
+  box-shadow: var(--shadow-sm);
 }
 
 /* Result list divider container */
 .result-list-divided > .group + .group {
-  border-top: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--color-border);
 }
 
 /* Search Highlight Marks */
@@ -102,7 +103,7 @@ mark.hl-filename {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D6D3D1;
+  background: var(--color-border-hover);
   border-radius: 99px;
   border: 2px solid transparent;
   background-clip: content-box;
@@ -110,7 +111,7 @@ mark.hl-filename {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #A8A29E;
+  background: var(--color-text-muted);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -248,13 +249,13 @@ mark.hl-filename {
 
 /* 컨텍스트 메뉴 위험 액션 (삭제/제거) */
 .ctx-menu-item-danger {
-  color: #f87171;
+  color: var(--color-error);
   background-color: transparent;
   transition: background-color 0.15s, color 0.15s;
 }
 .ctx-menu-item-danger:hover {
-  background-color: rgba(248, 113, 113, 0.15);
-  color: #fca5a5;
+  background-color: var(--color-error-bg);
+  color: var(--color-error);
 }
 
 /* 즐겨찾기 토글 메뉴 아이템 */
@@ -264,9 +265,9 @@ mark.hl-filename {
   transition: background-color 0.15s, color 0.15s;
 }
 .ctx-menu-item-favorite--active {
-  color: #facc15;
+  color: var(--color-favorite);
 }
 .ctx-menu-item-favorite:hover {
-  background-color: rgba(250, 204, 21, 0.15);
-  color: #facc15;
+  background-color: var(--color-favorite-bg);
+  color: var(--color-favorite);
 }

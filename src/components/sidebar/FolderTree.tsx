@@ -294,7 +294,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                 />
                 {/* 즐겨찾기 표시 (별) */}
                 {isFavorite && (
-                  <Star className="absolute -top-1 -right-1 w-2.5 h-2.5 text-yellow-400" fill="currentColor" />
+                  <Star className="absolute -top-1 -right-1 w-2.5 h-2.5 clr-favorite" fill="currentColor" />
                 )}
               </div>
 
@@ -308,7 +308,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 인덱싱 미완료 표시 */}
               {folderInfo[folder]?.indexing_status === "indexing" && (
-                <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-500/20 text-amber-400 flex-shrink-0" title="인덱싱 미완료 - 자동 재개 중">
+                <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded flex-shrink-0" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning)" }} title="인덱싱 미완료 - 자동 재개 중">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   재개중
                 </span>
@@ -382,7 +382,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           role="menuitem"
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <FolderOpen className="w-4 h-4 text-yellow-500" />
+          <FolderOpen className="w-4 h-4 clr-warning" />
           탐색기에서 열기
         </button>
         {/* 재인덱싱 */}
@@ -391,7 +391,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           onClick={handleReindex}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4 text-blue-400" />
+          <RefreshCw className="w-4 h-4 clr-info" />
           재인덱싱
         </button>
         {onRemoveFolder && (

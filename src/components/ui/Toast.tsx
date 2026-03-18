@@ -79,7 +79,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
       {toast.type !== "loading" && (
         <button
           onClick={handleDismiss}
-          className="p-1 rounded hover:bg-white/20 transition-colors"
+          className="p-1 rounded hover-bg-tertiary transition-colors"
           aria-label="닫기"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

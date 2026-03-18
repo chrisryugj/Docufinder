@@ -25,7 +25,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ${leftIcon ? "pl-12" : "pl-4"}
             ${rightIcon ? "pr-12" : "pr-4"}
             py-3
-            ${error ? "border-red-500 focus:ring-red-500" : ""}
+            ${error ? "border-[var(--color-error)] focus:ring-[var(--color-error)]" : ""}
             ${className}
           `}
           style={{
@@ -41,7 +41,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {rightIcon}
           </div>
         )}
-        {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-1 text-sm clr-error">{error}</p>}
       </div>
     );
   }

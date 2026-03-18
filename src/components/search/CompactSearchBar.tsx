@@ -162,7 +162,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
 
         {/* 검색 입력 */}
         <div
-          className="flex items-center flex-1 min-w-0 px-3 py-1.5 rounded-lg"
+          className="flex items-center flex-1 min-w-0 px-3 py-1.5 rounded-lg focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",

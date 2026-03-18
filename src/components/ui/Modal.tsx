@@ -103,7 +103,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
   return (
     <div
       className="fixed inset-0 flex items-start justify-center z-50 pt-[10vh]"
-      style={{ backgroundColor: "rgba(0, 0, 0, 0.4)" }}
+      style={{ backgroundColor: "var(--color-backdrop)" }}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"

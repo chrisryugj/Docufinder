@@ -17,6 +17,8 @@
 .clr-success   { color: var(--color-success); }
 .clr-warning   { color: var(--color-warning); }
 .clr-error     { color: var(--color-error); }
+.clr-info      { color: var(--color-info); }
+.clr-favorite  { color: var(--color-favorite); }
 
 /* Borders */
 .border-default { border-color: var(--color-border); }
@@ -95,8 +97,8 @@
   transition: all var(--transition-fast);
 }
 .hover-btn-danger:hover:not(:disabled) {
-  background-color: #991B1B;
-  border-color: #991B1B;
+  background-color: var(--color-error-hover);
+  border-color: var(--color-error-hover);
 }
 .hover-btn-danger:active:not(:disabled) {
   transform: scale(0.98);
@@ -125,7 +127,7 @@
 }
 .hover-action-danger:hover {
   color: var(--color-error);
-  background-color: rgba(239, 68, 68, 0.1);
+  background-color: var(--color-error-bg);
 }
 
 /* Dropdown Option Hover */
@@ -221,7 +223,7 @@
 }
 .btn-reset-hover:hover {
   color: var(--color-error);
-  background-color: rgba(239, 68, 68, 0.1);
+  background-color: var(--color-error-bg);
 }
 
 /* transparent → tertiary hover */

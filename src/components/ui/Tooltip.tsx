@@ -133,7 +133,7 @@ export function Tooltip({
   return (
     <div
       ref={triggerRef}
-      className="relative inline-block overflow-visible"
+      className="relative inline-flex items-center overflow-visible"
       onMouseEnter={showTooltip}
       onMouseLeave={hideTooltip}
       onFocus={showTooltip}

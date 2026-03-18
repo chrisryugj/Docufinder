@@ -166,7 +166,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
             onClick={handleAddFolder}
             className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
           >
-            <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 clr-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
             폴더 추가
@@ -175,7 +175,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
             onClick={handleOpenFolder}
             className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
           >
-            <svg className="w-4 h-4 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 clr-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
             </svg>
             탐색기에서 열기

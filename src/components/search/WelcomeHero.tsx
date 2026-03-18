@@ -10,11 +10,11 @@ interface WelcomeHeroProps {
 }
 
 const FILE_TYPES = [
-  { label: "HWPX", color: "var(--color-file-hwpx)" },
-  { label: "DOCX", color: "var(--color-file-docx)" },
-  { label: "XLSX", color: "var(--color-file-xlsx)" },
-  { label: "PDF", color: "var(--color-file-pdf)" },
-  { label: "TXT", color: "var(--color-file-txt)" },
+  { label: "HWPX", color: "var(--color-file-hwpx)", bg: "var(--color-file-hwpx-bg)", border: "color-mix(in srgb, var(--color-file-hwpx) 20%, transparent)" },
+  { label: "DOCX", color: "var(--color-file-docx)", bg: "var(--color-file-docx-bg)", border: "color-mix(in srgb, var(--color-file-docx) 20%, transparent)" },
+  { label: "XLSX", color: "var(--color-file-xlsx)", bg: "var(--color-file-xlsx-bg)", border: "color-mix(in srgb, var(--color-file-xlsx) 20%, transparent)" },
+  { label: "PDF", color: "var(--color-file-pdf)", bg: "var(--color-file-pdf-bg)", border: "color-mix(in srgb, var(--color-file-pdf) 20%, transparent)" },
+  { label: "TXT", color: "var(--color-file-txt)", bg: "var(--color-file-txt-bg)", border: "color-mix(in srgb, var(--color-file-txt) 20%, transparent)" },
 ];
 
 export const WelcomeHero = memo(function WelcomeHero({
@@ -56,8 +56,8 @@ export const WelcomeHero = memo(function WelcomeHero({
             className="px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase text-display"
             style={{
               color: ft.color,
-              backgroundColor: `color-mix(in srgb, ${ft.color} 10%, transparent)`,
-              border: `1px solid color-mix(in srgb, ${ft.color} 20%, transparent)`,
+              backgroundColor: ft.bg,
+              border: `1px solid ${ft.border}`,
             }}
           >
             {ft.label}
@@ -68,7 +68,7 @@ export const WelcomeHero = memo(function WelcomeHero({
       {/* Decorative divider */}
       <div className="flex items-center gap-3 mb-12 stagger-item" style={{ animationDelay: "280ms" }}>
         <div className="w-8 h-px bg-tertiary" />
-        <div className="w-1.5 h-1.5 rounded-full bg-accent-subtle opacity-50" style={{ backgroundColor: "var(--color-accent)" }} />
+        <div className="w-1.5 h-1.5 rounded-full opacity-50" style={{ backgroundColor: "var(--color-accent)" }} />
         <div className="w-8 h-px bg-tertiary" />
       </div>
 

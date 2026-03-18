@@ -10,6 +10,7 @@ import { WelcomeHero } from "./WelcomeHero";
 import { cleanPath } from "../../utils/cleanPath";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
+import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 
 interface SearchResultListProps {
   results: SearchResult[];
@@ -310,42 +311,14 @@ export const SearchResultList = memo(function SearchResultList({
             {!isFilenameCollapsed && (
               <div className={isCompact ? "space-y-1" : "space-y-2"}>
                 {filenameResults.map((result, index) => (
-                  <div
+                  <FilenameResultItem
                     key={`filename-${result.file_path}-${index}`}
-                    className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-[var(--color-bg-tertiary)]"
-                    style={{ backgroundColor: "var(--color-bg-secondary)" }}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onOpenFile(result.file_path)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onOpenFile(result.file_path);
-                      }
-                    }}
-                  >
-                    <FileIcon fileName={result.file_name} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
-                        <HighlightedFilename filename={result.file_name} query={query} />
-                      </div>
-                      <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
-                        {cleanPath(result.file_path)}
-                      </div>
-                    </div>
-                    {result.has_hwp_pair && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                        style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "var(--color-warning, #f59e0b)" }}
-                        title="같은 위치에 원본 HWP 파일이 있습니다"
-                      >
-                        HWP
-                      </span>
-                    )}
-                    <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
-                      {(result.file_name.split('.').pop() || '').toUpperCase()}
-                    </Badge>
-                  </div>
+                    result={result}
+                    query={query}
+                    onOpenFile={onOpenFile}
+                    onCopyPath={onCopyPath}
+                    onOpenFolder={onOpenFolder}
+                  />
                 ))}
               </div>
             )}
@@ -548,6 +521,73 @@ function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
         <ChevronDown className="w-4 h-4" />
         {remaining}개 더 보기
       </button>
+    </div>
+  );
+}
+
+/** 파일명 매치 결과 아이템 (컨텍스트 메뉴 포함) */
+function FilenameResultItem({
+  result,
+  query,
+  onOpenFile,
+  onCopyPath,
+  onOpenFolder,
+}: {
+  result: SearchResult;
+  query: string;
+  onOpenFile: (filePath: string, page?: number | null) => void;
+  onCopyPath?: (path: string) => void;
+  onOpenFolder?: (path: string) => void;
+}) {
+  const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
+  const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
+
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-[var(--color-bg-tertiary)]"
+      style={{ backgroundColor: "var(--color-bg-secondary)" }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenFile(result.file_path)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenFile(result.file_path);
+        }
+      }}
+      onContextMenu={handleContextMenu}
+      data-context-menu
+    >
+      <FileIcon fileName={result.file_name} size="sm" />
+      <div className="flex-1 min-w-0">
+        <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
+          <HighlightedFilename filename={result.file_name} query={query} />
+        </div>
+        <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+          {cleanPath(result.file_path)}
+        </div>
+      </div>
+      {result.has_hwp_pair && (
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+          style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+          title="같은 위치에 원본 HWP 파일이 있습니다"
+        >
+          HWP
+        </span>
+      )}
+      <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
+        {(result.file_name.split('.').pop() || '').toUpperCase()}
+      </Badge>
+      <ResultContextMenu
+        filePath={result.file_path}
+        folderPath={folderPath}
+        onOpenFile={onOpenFile}
+        onCopyPath={onCopyPath}
+        onOpenFolder={onOpenFolder}
+        contextMenu={contextMenu}
+        closeContextMenu={closeContextMenu}
+      />
     </div>
   );
 }

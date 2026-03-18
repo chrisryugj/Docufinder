@@ -44,7 +44,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     return (
       <div className="max-w-4xl mx-auto w-full">
         <div
-          className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200"
+          className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: "1px solid var(--color-border)",
