@@ -388,6 +388,9 @@ pub fn clear_all_data(conn: &Connection) -> Result<()> {
         // watched_folders
         conn.execute("DELETE FROM watched_folders", [])?;
 
+        // search_queries (자동완성 히스토리)
+        let _ = conn.execute("DELETE FROM search_queries", []);
+
         Ok(())
     })();
 
@@ -793,6 +796,174 @@ pub fn get_pending_vector_file_ids(conn: &Connection) -> Result<Vec<i64>> {
 
     let results = stmt.query_map([], |row| row.get(0))?;
     results.collect()
+}
+
+// ==================== 자동완성 (v2.3) ====================
+
+/// fts5vocab에서 prefix 매칭 용어 조회
+pub fn get_vocab_suggestions(
+    conn: &Connection,
+    prefix: &str,
+    limit: usize,
+) -> Result<Vec<(String, i64)>> {
+    let prefix_lower = prefix.to_lowercase();
+    let mut stmt = conn.prepare(
+        "SELECT term, doc FROM chunks_fts_vocab
+         WHERE term >= ?1 AND term < ?2
+         ORDER BY doc DESC
+         LIMIT ?3",
+    )?;
+
+    // prefix 범위 검색: 'abc' <= term < 'abd'
+    let upper = increment_string(&prefix_lower);
+    let rows = stmt.query_map(params![prefix_lower, upper, limit as i64], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+
+    rows.collect()
+}
+
+/// 문자열 마지막 문자를 1 증가 (prefix 범위 검색용)
+fn increment_string(s: &str) -> String {
+    let mut chars: Vec<char> = s.chars().collect();
+    if let Some(last) = chars.last_mut() {
+        *last = char::from_u32(*last as u32 + 1).unwrap_or(*last);
+    }
+    chars.into_iter().collect()
+}
+
+/// 검색어 저장/빈도 증가
+pub fn upsert_search_query(conn: &Connection, query: &str) -> Result<()> {
+    let now = current_timestamp();
+    conn.execute(
+        "INSERT INTO search_queries (query, frequency, last_searched_at)
+         VALUES (?1, 1, ?2)
+         ON CONFLICT(query) DO UPDATE SET
+           frequency = frequency + 1,
+           last_searched_at = ?2",
+        params![query, now],
+    )?;
+    Ok(())
+}
+
+/// 최근/빈출 검색어 prefix 매칭 조회
+pub fn get_search_query_suggestions(
+    conn: &Connection,
+    prefix: &str,
+    limit: usize,
+) -> Result<Vec<(String, i64)>> {
+    let pattern = format!("{}%", escape_like_pattern(prefix));
+    let mut stmt = conn.prepare(
+        "SELECT query, frequency FROM search_queries
+         WHERE query LIKE ?1 ESCAPE '\\'
+         ORDER BY frequency DESC, last_searched_at DESC
+         LIMIT ?2",
+    )?;
+
+    let rows = stmt.query_map(params![pattern, limit as i64], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+
+    rows.collect()
+}
+
+// ==================== 통계 대시보드 (v2.3) ====================
+
+/// 파일 유형별 문서 수
+pub fn get_file_type_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT file_type, COUNT(*) as cnt FROM files GROUP BY file_type ORDER BY cnt DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    rows.collect()
+}
+
+/// 연도별 문서 수 (modified_at 기준)
+pub fn get_year_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT COALESCE(strftime('%Y', datetime(modified_at, 'unixepoch')), '미분류') as year,
+                COUNT(*) as cnt
+         FROM files
+         GROUP BY year
+         ORDER BY year DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    rows.collect()
+}
+
+/// 최근 수정된 문서 Top N
+pub fn get_recent_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, name, modified_at FROM files
+         WHERE modified_at IS NOT NULL
+         ORDER BY modified_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    rows.collect()
+}
+
+/// 가장 큰 문서 Top N
+pub fn get_largest_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, name, size FROM files
+         WHERE size IS NOT NULL
+         ORDER BY size DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    rows.collect()
+}
+
+/// 폴더별 문서 수 (watched_folders 기준)
+pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let folders = get_watched_folders(conn)?;
+    let mut result = Vec::new();
+
+    for folder in folders {
+        let escaped_unix = escape_like_pattern(&folder.replace('\\', "/"));
+        let escaped_win = escape_like_pattern(&folder.replace('/', "\\"));
+        let pattern_unix = format!("{}/%", escaped_unix);
+        let pattern_win = format!("{}\\\\%", escaped_win);
+
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
+            params![pattern_unix, pattern_win],
+            |row| row.get(0),
+        )?;
+
+        if count > 0 {
+            result.push((folder, count));
+        }
+    }
+
+    result.sort_by(|a, b| b.1.cmp(&a.1));
+    Ok(result)
+}
+
+/// 총 문서 크기 (바이트)
+pub fn get_total_size(conn: &Connection) -> Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(size), 0) FROM files",
+        [],
+        |row| row.get(0),
+    )
 }
 
 /// 모든 파일의 vector_indexed_at을 NULL로 리셋

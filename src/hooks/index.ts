@@ -14,3 +14,4 @@ export { useTheme } from "./useTheme";
 export type { Theme, ResolvedTheme } from "./useTheme";
 export { useCollapsibleSearch } from "./useCollapsibleSearch";
 export { useIMEComposition } from "./useIMEComposition";
+export { useAutoComplete, saveSearchQuery } from "./useAutoComplete";

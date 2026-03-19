@@ -132,3 +132,40 @@ export const DATE_RANGE_OPTIONS: { value: DateRangeFilter; label: string }[] = [
   { value: "week", label: "7일" },
   { value: "month", label: "30일" },
 ];
+
+// =====================
+// 자동완성 (v2.3)
+// =====================
+
+/** 자동완성 제안 항목 */
+export interface SuggestionItem {
+  text: string;
+  source: "history" | "vocab";
+  frequency: number;
+}
+
+// =====================
+// 통계 대시보드 (v2.3)
+// =====================
+
+export interface StatEntry {
+  label: string;
+  count: number;
+}
+
+export interface FileEntry {
+  path: string;
+  name: string;
+  value: number;
+}
+
+export interface DocumentStatistics {
+  total_files: number;
+  indexed_files: number;
+  total_size: number;
+  file_types: StatEntry[];
+  years: StatEntry[];
+  folders: StatEntry[];
+  recent_files: FileEntry[];
+  largest_files: FileEntry[];
+}

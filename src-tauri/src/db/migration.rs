@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 7;
+const CURRENT_SCHEMA_VERSION: i32 = 8;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -210,6 +210,33 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         )?;
         set_schema_version(&conn, 7)?;
         tracing::info!("Schema migrated to v7 (bookmarks)");
+    }
+
+    // === v8: 검색어 자동완성 (fts5vocab + search_queries) ===
+    if current_version < 8 {
+        // fts5vocab: 인덱싱된 용어 빈도 조회용 가상 테이블
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts_vocab USING fts5vocab(chunks_fts, 'row')",
+            [],
+        )?;
+
+        // 검색어 히스토리 (빈도 추적)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS search_queries (
+                id INTEGER PRIMARY KEY,
+                query TEXT UNIQUE NOT NULL,
+                frequency INTEGER NOT NULL DEFAULT 1,
+                last_searched_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_search_queries_freq ON search_queries(frequency DESC)",
+            [],
+        )?;
+
+        set_schema_version(&conn, 8)?;
+        tracing::info!("Schema migrated to v8 (autocomplete: fts5vocab + search_queries)");
     }
 
     tracing::info!(
