@@ -107,6 +107,7 @@
   /* File Type Colors */
   --color-file-hwpx: #7C3AED;
   --color-file-docx: #2563EB;
+  --color-file-pptx: #D97706;
   --color-file-xlsx: #16A34A;
   --color-file-pdf: #DC2626;
   --color-file-txt: #57534E;
@@ -114,6 +115,7 @@
   /* File Type Backgrounds */
   --color-file-hwpx-bg: rgba(124, 58, 237, 0.04);
   --color-file-docx-bg: rgba(37, 99, 235, 0.04);
+  --color-file-pptx-bg: rgba(217, 119, 6, 0.04);
   --color-file-xlsx-bg: rgba(22, 163, 74, 0.04);
   --color-file-pdf-bg: rgba(220, 38, 38, 0.04);
   --color-file-txt-bg: rgba(87, 83, 78, 0.03);
@@ -225,6 +227,7 @@
   /* File Type Colors */
   --color-file-hwpx: #A78BFA;
   --color-file-docx: #60A5FA;
+  --color-file-pptx: #FBBF24;
   --color-file-xlsx: #34D399;
   --color-file-pdf: #F87171;
   --color-file-txt: #A8A29E;
@@ -232,6 +235,7 @@
   /* File Type Backgrounds */
   --color-file-hwpx-bg: rgba(167, 139, 250, 0.08);
   --color-file-docx-bg: rgba(96, 165, 250, 0.08);
+  --color-file-pptx-bg: rgba(251, 191, 36, 0.08);
   --color-file-xlsx-bg: rgba(52, 211, 153, 0.08);
   --color-file-pdf-bg: rgba(248, 113, 113, 0.08);
   --color-file-txt-bg: rgba(168, 162, 158, 0.08);

@@ -2,7 +2,7 @@
 
 /// 지원하는 파일 확장자 목록
 /// 참고: "hwp"는 파서 미지원 (파싱 실패 시 변환 대상으로 수집됨, pipeline.rs 참조)
-pub const SUPPORTED_EXTENSIONS: &[&str] = &["txt", "md", "hwpx", "hwp", "docx", "xlsx", "xls", "pdf"];
+pub const SUPPORTED_EXTENSIONS: &[&str] = &["txt", "md", "hwpx", "hwp", "docx", "pptx", "xlsx", "xls", "pdf"];
 
 // ============================================
 // 보안 관련 상수

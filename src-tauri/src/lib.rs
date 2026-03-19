@@ -728,6 +728,11 @@ pub fn run() {
             commands::file::get_log_dir,
             commands::file::open_log_dir,
             commands::system::get_suggested_folders,
+            commands::preview::load_document_preview,
+            commands::preview::add_bookmark,
+            commands::preview::remove_bookmark,
+            commands::preview::update_bookmark_note,
+            commands::preview::get_bookmarks,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

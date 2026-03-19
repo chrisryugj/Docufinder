@@ -54,6 +54,7 @@ impl SqliteFileRepository {
         match s {
             "hwpx" => FileType::Hwpx,
             "docx" => FileType::Docx,
+            "pptx" => FileType::Pptx,
             "xlsx" => FileType::Xlsx,
             "pdf" => FileType::Pdf,
             "txt" => FileType::Txt,

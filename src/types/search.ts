@@ -78,7 +78,7 @@ export const SEARCH_MODES: SearchModeInfo[] = [
 export type SortOption = "relevance" | "confidence" | "date_desc" | "date_asc" | "name" | "size";
 
 /** 파일 타입 필터 */
-export type FileTypeFilter = "all" | "hwpx" | "docx" | "xlsx" | "pdf" | "txt";
+export type FileTypeFilter = "all" | "hwpx" | "docx" | "pptx" | "xlsx" | "pdf" | "txt";
 
 /** 날짜 범위 필터 */
 export type DateRangeFilter = "all" | "today" | "week" | "month";
@@ -119,6 +119,7 @@ export const FILE_TYPE_OPTIONS: { value: FileTypeFilter; label: string }[] = [
   { value: "all", label: "전체" },
   { value: "hwpx", label: "한글" },
   { value: "docx", label: "워드" },
+  { value: "pptx", label: "파워포인트" },
   { value: "xlsx", label: "엑셀" },
   { value: "pdf", label: "PDF" },
   { value: "txt", label: "텍스트" },

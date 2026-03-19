@@ -17,6 +17,8 @@ const colorMap: Record<string, string> = {
   hwpx: "var(--color-file-hwpx)",
   docx: "var(--color-file-docx)",
   doc: "var(--color-file-docx)",
+  pptx: "var(--color-file-pptx)",
+  ppt: "var(--color-file-pptx)",
   xlsx: "var(--color-file-xlsx)",
   xls: "var(--color-file-xlsx)",
   pdf: "var(--color-file-pdf)",
@@ -60,6 +62,9 @@ export function getFileTypeLabel(fileName: string): string {
     case "docx":
     case "doc":
       return "워드";
+    case "pptx":
+    case "ppt":
+      return "파워포인트";
     case "xlsx":
     case "xls":
       return "엑셀";

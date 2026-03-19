@@ -1,6 +1,7 @@
 pub mod docx;
 pub mod hwpx;
 pub mod pdf;
+pub mod pptx;
 pub mod txt;
 pub mod xlsx;
 
@@ -65,6 +66,7 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
         "txt" | "md" => txt::parse(path),
         "hwpx" => hwpx::parse(path),
         "docx" => docx::parse(path),
+        "pptx" => pptx::parse(path),
         "xlsx" | "xls" => {
             // calamine 라이브러리 내부 패닉 방지 (손상된 xls 파일 등)
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| xlsx::parse(path)))

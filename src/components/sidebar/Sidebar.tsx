@@ -1,9 +1,11 @@
 import { useState, memo } from "react";
-import { ChevronLeft, ChevronRight, Plus, Clock, Folder, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Clock, Folder, Trash2, Bookmark } from "lucide-react";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
 import { SuggestedFolders } from "./SuggestedFolders";
+import { BookmarkList } from "./BookmarkList";
 import type { RecentSearch } from "../../types/search";
+import type { BookmarkInfo } from "../../hooks/useBookmarks";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -18,6 +20,9 @@ interface SidebarProps {
   onSelectSearch: (query: string) => void;
   onRemoveSearch: (query: string) => void;
   onClearSearches: () => void;
+  bookmarks?: BookmarkInfo[];
+  onBookmarkSelect?: (filePath: string, pageNumber?: number | null) => void;
+  onBookmarkRemove?: (id: number) => void;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -33,6 +38,9 @@ export const Sidebar = memo(function Sidebar({
   onSelectSearch,
   onRemoveSearch,
   onClearSearches,
+  bookmarks = [],
+  onBookmarkSelect,
+  onBookmarkRemove,
 }: SidebarProps) {
   const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
@@ -105,6 +113,16 @@ export const Sidebar = memo(function Sidebar({
             >
               <Clock className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
+            {bookmarks.length > 0 && (
+              <button
+                onClick={() => onBookmarkSelect?.(bookmarks[0]?.file_path)}
+                className="p-2 rounded-md btn-icon-hover"
+                title={`북마크 (${bookmarks.length})`}
+                aria-label="북마크"
+              >
+                <Bookmark className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
+              </button>
+            )}
             {/* Folder count indicator */}
             {watchedFolders.length > 0 && (
               <div className="mt-1 flex flex-col items-center">
@@ -210,6 +228,15 @@ export const Sidebar = memo(function Sidebar({
                   />
                 )}
               </section>
+
+              {/* Section: Bookmarks */}
+              {onBookmarkSelect && (
+                <BookmarkList
+                  bookmarks={bookmarks}
+                  onSelect={onBookmarkSelect}
+                  onRemove={onBookmarkRemove || (() => {})}
+                />
+              )}
             </div>
 
             {/* Footer */}

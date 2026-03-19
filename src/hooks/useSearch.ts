@@ -355,6 +355,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         all: [],
         hwpx: ["hwpx"],
         docx: ["docx", "doc"],
+        pptx: ["pptx", "ppt"],
         xlsx: ["xlsx", "xls"],
         pdf: ["pdf"],
         txt: ["txt", "md"],
