@@ -279,6 +279,48 @@ function App() {
   // 북마크
   const { bookmarks, addBookmark, removeBookmark } = useBookmarks({ showToast });
 
+  // 유사 문서 검색
+  const [similarResults, setSimilarResults] = useState<import("./types/search").SearchResult[]>([]);
+  const [similarSourceFile, setSimilarSourceFile] = useState<string | null>(null);
+  const handleFindSimilar = useCallback(async (filePath: string) => {
+    try {
+      showToast("유사 문서 검색 중...", "info");
+      const response = await invoke<{ results: import("./types/search").SearchResult[] }>("find_similar_documents", { filePath });
+      setSimilarResults(response.results);
+      setSimilarSourceFile(filePath.split(/[/\\]/).pop() || filePath);
+      showToast(`유사 문서 ${response.results.length}건 발견`, "success");
+    } catch {
+      showToast("유사 문서 검색 실패 (시맨틱 검색이 활성화되어 있어야 합니다)", "error");
+    }
+  }, [showToast]);
+  const clearSimilarResults = useCallback(() => {
+    setSimilarResults([]);
+    setSimilarSourceFile(null);
+  }, []);
+
+  // 문서 카테고리 캐시
+  const [categories, setCategories] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!semanticEnabled || filteredResults.length === 0) return;
+    // 새 파일 경로만 분류 요청
+    const newPaths = filteredResults
+      .map(r => r.file_path)
+      .filter((p, i, arr) => arr.indexOf(p) === i && !categories[p]);
+
+    if (newPaths.length === 0) return;
+
+    // 최대 10개씩 분류 (성능)
+    const batch = newPaths.slice(0, 10);
+    batch.forEach(async (filePath) => {
+      try {
+        const cat = await invoke<string>("classify_document", { filePath });
+        setCategories(prev => ({ ...prev, [filePath]: cat }));
+      } catch {
+        // 분류 실패 시 무시
+      }
+    });
+  }, [filteredResults, semanticEnabled]); // categories는 의도적으로 제외 (무한 루프 방지)
+
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
 
@@ -663,6 +705,38 @@ function App() {
 
             <main className="px-6 pb-20">
               <div className={`mx-auto mt-4 ${previewFilePath ? "max-w-3xl" : "max-w-4xl"}`}>
+                {/* 유사 문서 결과 배너 */}
+                {similarResults.length > 0 && (
+                  <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                        "{similarSourceFile}"와 유사한 문서 ({similarResults.length}건)
+                      </h3>
+                      <button
+                        onClick={clearSimilarResults}
+                        className="text-xs px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]"
+                      >
+                        닫기
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {similarResults.slice(0, 10).map((r, i) => (
+                        <div
+                          key={`sim-${i}`}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--color-bg-tertiary)] cursor-pointer transition-colors"
+                          onClick={() => handleOpenFile(r.file_path, r.page_number)}
+                        >
+                          <span className="text-xs font-mono text-[var(--color-text-muted)] w-6 text-right">{r.confidence}%</span>
+                          <span className="text-sm truncate text-[var(--color-text-primary)]">{r.file_name}</span>
+                          <span className="text-[10px] text-[var(--color-text-muted)] truncate ml-auto max-w-[200px]">
+                            {r.content_preview?.slice(0, 80)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <SearchResultList
                   results={filteredResults}
                   filenameResults={filters.excludeFilename ? [] : filenameResults}
@@ -690,6 +764,8 @@ function App() {
                   onSelectSearch={handleSelectSearch}
                   semanticEnabled={semanticEnabled}
                   onSelectResult={setSelectedIndex}
+                  onFindSimilar={semanticEnabled ? handleFindSimilar : undefined}
+                  categories={categories}
                 />
               </div>
             </main>

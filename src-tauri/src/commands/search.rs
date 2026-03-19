@@ -157,3 +157,64 @@ pub async fn search_hybrid(
         .await
         .map_err(ApiError::from)
 }
+
+/// 유사 문서 검색 (파일 경로 기반)
+#[tauri::command]
+pub async fn find_similar_documents(
+    file_path: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<SearchResponse> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+
+    let (service, max_results) = {
+        let container = state.read()?;
+        let max_results = container.get_settings().max_results;
+        (container.search_service(), max_results)
+    };
+
+    service
+        .find_similar(&file_path, max_results.min(20)) // 유사문서는 최대 20개
+        .await
+        .map_err(ApiError::from)
+}
+
+/// 문서 카테고리 분류
+#[tauri::command]
+pub async fn classify_document(
+    file_path: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<String> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+
+    let (service, db_path) = {
+        let container = state.read()?;
+        (container.search_service(), container.db_path.to_string_lossy().to_string())
+    };
+
+    // 파일의 첫 번째 청크 텍스트 가져오기
+    let text = tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        let conn = crate::db::get_connection(std::path::Path::new(&db_path))?;
+        let chunk_ids = crate::db::get_chunk_ids_for_path(&conn, &file_path)
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        if chunk_ids.is_empty() {
+            return Ok(String::new());
+        }
+
+        let chunks = crate::db::get_chunks_by_ids(&conn, &[chunk_ids[0]])
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        Ok(chunks.first().map(|c| c.content.clone()).unwrap_or_default())
+    })
+    .await??;
+
+    if text.is_empty() {
+        return Ok("기타".to_string());
+    }
+
+    service.classify_document(&text).map_err(ApiError::from)
+}

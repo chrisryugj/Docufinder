@@ -52,6 +52,10 @@ interface SearchResultListProps {
   semanticEnabled?: boolean;
   /** 결과 선택 시 콜백 (미리보기 연동) */
   onSelectResult?: (index: number) => void;
+  /** 유사 문서 찾기 콜백 */
+  onFindSimilar?: (filePath: string) => void;
+  /** 파일별 카테고리 맵 */
+  categories?: Record<string, string>;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -88,6 +92,8 @@ export const SearchResultList = memo(function SearchResultList({
   onSelectSearch,
   semanticEnabled,
   onSelectResult,
+  onFindSimilar,
+  categories,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -274,6 +280,8 @@ export const SearchResultList = memo(function SearchResultList({
                       onOpenFolder={onOpenFolder}
                       refineKeywords={refineKeywords}
                       query={query}
+                      onFindSimilar={onFindSimilar}
+                      category={categories?.[result.file_path]}
                     />
                   </div>
                 ))}

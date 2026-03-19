@@ -703,6 +703,8 @@ pub fn run() {
             commands::search::search_filename,
             commands::search::search_semantic,
             commands::search::search_hybrid,
+            commands::search::find_similar_documents,
+            commands::search::classify_document,
             commands::index::add_folder,
             commands::index::remove_folder,
             commands::index::get_index_status,

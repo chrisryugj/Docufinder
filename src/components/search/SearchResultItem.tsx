@@ -1,5 +1,5 @@
 import { useCallback, memo } from "react";
-import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen } from "lucide-react";
+import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
@@ -23,6 +23,8 @@ interface SearchResultItemProps {
   onOpenFolder?: (path: string) => void;
   refineKeywords?: string[];
   query?: string;
+  onFindSimilar?: (filePath: string) => void;
+  category?: string;
 }
 
 /** Get file-type stripe CSS class */
@@ -54,6 +56,8 @@ export const SearchResultItem = memo(function SearchResultItem({
   onOpenFolder,
   refineKeywords,
   query = "",
+  onFindSimilar,
+  category,
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -181,6 +185,9 @@ export const SearchResultItem = memo(function SearchResultItem({
           <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
             {fileExt.toUpperCase()}
           </Badge>
+          {category && category !== "기타" && (
+            <Badge variant="secondary">{category}</Badge>
+          )}
         </div>
       </div>
 
@@ -272,6 +279,19 @@ export const SearchResultItem = memo(function SearchResultItem({
                 aria-label="상위 폴더 열기"
               >
                 <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+              </button>
+            )}
+            {onFindSimilar && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFindSimilar(result.file_path);
+                }}
+                className="p-1 rounded btn-icon-hover"
+                title="유사 문서 찾기"
+                aria-label="유사 문서 찾기"
+              >
+                <Search className="w-3.5 h-3.5" style={{ color: "var(--color-info)" }} />
               </button>
             )}
           </div>
