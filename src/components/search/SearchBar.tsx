@@ -22,6 +22,7 @@ interface SearchBarProps {
   onSuggestionSelect?: (text: string) => void;
   onSuggestionsKeyDown?: (e: React.KeyboardEvent) => string | null;
   onSuggestionsClose?: () => void;
+  onSuggestionsSetIndex?: (index: number) => void;
 }
 
 export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
@@ -43,6 +44,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       onSuggestionSelect,
       onSuggestionsKeyDown,
       onSuggestionsClose,
+      onSuggestionsSetIndex,
     },
     ref
   ) => {
@@ -120,6 +122,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             role="combobox"
             aria-expanded={isSuggestionsOpen}
             aria-autocomplete="list"
+            aria-owns={isSuggestionsOpen ? "suggestion-listbox" : undefined}
+            aria-activedescendant={
+              isSuggestionsOpen && suggestionsSelectedIndex >= 0
+                ? `suggestion-${suggestionsSelectedIndex}`
+                : undefined
+            }
           />
 
           {/* Shortcut Hint */}
@@ -160,6 +168,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
         {/* 자동완성 드롭다운 */}
         {isSuggestionsOpen && suggestions.length > 0 && (
           <div
+            id="suggestion-listbox"
             className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-lg"
             style={{
               backgroundColor: "var(--color-bg-secondary)",
@@ -169,6 +178,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           >
             {suggestions.map((item, index) => (
               <button
+                id={`suggestion-${index}`}
                 key={`${item.source}-${item.text}`}
                 className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors"
                 style={{
@@ -178,7 +188,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
                       : "transparent",
                   color: "var(--color-text-primary)",
                 }}
-                onMouseEnter={() => {/* 선택 인덱스는 키보드로만 제어 */}}
+                onMouseEnter={() => onSuggestionsSetIndex?.(index)}
                 onMouseDown={(e) => {
                   e.preventDefault(); // blur 방지
                   onSuggestionSelect?.(item.text);
