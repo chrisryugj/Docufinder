@@ -16,6 +16,7 @@ $RERANK_TOKENIZER_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/re
 
 # === ONNX Runtime ===
 $ONNX_RUNTIME_URL = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip"
+$ONNX_RUNTIME_SHA256 = ""  # TODO: 첫 다운로드 후 해시 기록 (Get-FileHash로 계산)
 
 # models 폴더 생성
 if (-not (Test-Path $EMBED_MODEL_DIR)) {
@@ -31,6 +32,19 @@ if (-not (Test-Path $onnxDll)) {
     Write-Host "[1/3] ONNX Runtime 다운로드 중..." -ForegroundColor Yellow
     $zipPath = Join-Path $env:TEMP "onnxruntime.zip"
     Invoke-WebRequest -Uri $ONNX_RUNTIME_URL -OutFile $zipPath
+
+    # SHA-256 검증 (해시가 설정된 경우)
+    if ($ONNX_RUNTIME_SHA256 -ne "") {
+        $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+        if ($hash -ne $ONNX_RUNTIME_SHA256) {
+            Remove-Item $zipPath -Force
+            throw "ONNX Runtime ZIP SHA-256 검증 실패! 예상: $ONNX_RUNTIME_SHA256, 실제: $hash"
+        }
+        Write-Host "  -> SHA-256 검증 통과" -ForegroundColor Green
+    } else {
+        $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+        Write-Host "  -> SHA-256 해시 (스크립트에 기록 권장): $hash" -ForegroundColor Yellow
+    }
 
     $extractPath = Join-Path $env:TEMP "onnxruntime"
     Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force

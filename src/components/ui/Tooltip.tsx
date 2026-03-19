@@ -62,6 +62,10 @@ export function Tooltip({
           case "left":   top = rect.top + rect.height / 2; left = rect.left - gap; break;
           case "right":  top = rect.top + rect.height / 2; left = rect.right + gap; break;
         }
+        // 뷰포트 경계 클램핑 (화면 밖 방지)
+        const margin = 8;
+        left = Math.max(margin, Math.min(left, window.innerWidth - margin));
+        top = Math.max(margin, Math.min(top, window.innerHeight - margin));
         setPortalPos({ top, left });
       }
       setIsVisible(true);

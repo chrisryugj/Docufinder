@@ -29,7 +29,6 @@ jobs:
 
       - name: Security audit (npm)
         run: pnpm audit --audit-level high
-        continue-on-error: true
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
@@ -84,4 +83,3 @@ jobs:
       - name: Security audit (cargo)
         run: cargo install cargo-audit --quiet && cargo audit
         working-directory: src-tauri
-        continue-on-error: true

@@ -193,167 +193,28 @@ export const SearchResultList = memo(function SearchResultList({
           </div>
         )}
 
-        {/* 툴바: 뷰 모드 + 결과 수 (좌측) | 복사/CSV (우측) */}
-        <div className="flex items-center gap-3 mb-2">
-          {/* 좌측: 뷰 모드 토글 + 결과 수 */}
-          <div className="flex items-center gap-2">
-            {/* 뷰 모드 토글 */}
-            {onViewModeChange && (
-              <div className="flex items-center gap-0.5 border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>
-                <button
-                  onClick={() => onViewModeChange("flat")}
-                  className="p-1.5 rounded-sm transition-colors"
-                  style={{
-                    backgroundColor: viewMode === "flat" ? "var(--color-bg-secondary)" : "transparent",
-                    color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
-                    boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-                  }}
-                  title="목록 보기"
-                  aria-label="목록 보기"
-                  aria-pressed={viewMode === "flat"}
-                >
-                  <List className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => onViewModeChange("grouped")}
-                  className="p-1.5 rounded-sm transition-colors"
-                  style={{
-                    backgroundColor: viewMode === "grouped" ? "var(--color-bg-secondary)" : "transparent",
-                    color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
-                    boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
-                  }}
-                  title="파일별 그룹 보기"
-                  aria-label="파일별 그룹 보기"
-                  aria-pressed={viewMode === "grouped"}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          resultCount={resultCount}
+          totalResultCount={totalResultCount}
+          minConfidence={minConfidence}
+          searchTime={searchTime}
+          onCopyAll={onCopyAll}
+          onExportCSV={onExportCSV}
+        />
 
-            {/* 결과 수 + 신뢰도 + 검색 시간 배지 */}
-            {resultCount !== undefined && resultCount > 0 && (
-              <div className="flex items-center gap-0.5">
-                <Badge variant="secondary">
-                  {totalResultCount !== undefined && totalResultCount !== resultCount
-                    ? `${totalResultCount}개 중 ${resultCount}개`
-                    : `${resultCount}개`}
-                </Badge>
-                {minConfidence > 0 && (
-                  <Badge variant="primary">{minConfidence}%↑</Badge>
-                )}
-                {searchTime !== null && searchTime !== undefined && (
-                  <Badge variant="secondary">{searchTime}ms</Badge>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* 우측: 복사/CSV */}
-          <div className="flex gap-2 ml-auto">
-            <button
-              onClick={onCopyAll}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
-              title="검색 결과 클립보드 복사"
-              aria-label="검색 결과 클립보드 복사"
-            >
-              <ClipboardCopy className="w-3.5 h-3.5" />
-              복사
-            </button>
-            <button
-              onClick={onExportCSV}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
-              title="CSV 파일로 내보내기"
-              aria-label="CSV 파일로 내보내기"
-            >
-              <FileDown className="w-3.5 h-3.5" />
-              CSV
-            </button>
-          </div>
-        </div>
-
-        {/* 파일명 매치 섹션 (토글 가능) */}
-        {filenameResults.length > 0 && (
-          <div className="mb-2">
-            <button
-              type="button"
-              onClick={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
-              aria-expanded={!isFilenameCollapsed}
-              className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left hover-bg-subtle"
-              style={{
-                borderLeft: "3px solid var(--color-text-muted)",
-                backgroundColor: "var(--color-bg-tertiary)",
-              }}
-            >
-              <ChevronRight
-                className={`w-3.5 h-3.5 transition-transform ${isFilenameCollapsed ? "" : "rotate-90"}`}
-                style={{ color: "var(--color-text-muted)" }}
-              />
-              <FileText className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
-              <span className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-                파일명 매치
-              </span>
-              <span
-                className="text-xs px-1.5 py-0.5 rounded-full"
-                style={{
-                  border: "1px solid var(--color-border-hover)",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                {filenameResults.length}
-              </span>
-              {isFilenameCollapsed && (
-                <span className="text-xs ml-auto" style={{ color: "var(--color-text-muted)" }}>
-                  클릭하여 펼치기
-                </span>
-              )}
-            </button>
-            {!isFilenameCollapsed && (
-              <div className={isCompact ? "space-y-1" : "space-y-2"}>
-                {filenameResults.map((result, index) => (
-                  <FilenameResultItem
-                    key={`filename-${result.file_path}-${index}`}
-                    result={result}
-                    query={query}
-                    onOpenFile={onOpenFile}
-                    onCopyPath={onCopyPath}
-                    onOpenFolder={onOpenFolder}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 섹션 구분선 */}
-        {filenameResults.length > 0 && results.length > 0 && (
-          <div className="my-4" style={{ borderTop: "1px solid var(--color-border)" }} />
-        )}
-
-        {/* 내용 매치 섹션 헤더 */}
-        {filenameResults.length > 0 && results.length > 0 && (
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2"
-            style={{
-              borderLeft: "3px solid var(--color-accent)",
-              backgroundColor: "var(--color-accent-subtle)",
-            }}
-          >
-            <FileSearch className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
-            <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-              내용 매치
-            </span>
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-              style={{
-                backgroundColor: "var(--color-accent-subtle)",
-                color: "var(--color-accent)",
-              }}
-            >
-              {results.length}
-            </span>
-          </div>
-        )}
+        <FilenameResultsSection
+          filenameResults={filenameResults}
+          contentResultCount={results.length}
+          isCollapsed={isFilenameCollapsed}
+          onToggleCollapse={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
+          isCompact={isCompact}
+          query={query}
+          onOpenFile={onOpenFile}
+          onCopyPath={onCopyPath}
+          onOpenFolder={onOpenFolder}
+        />
 
         {/* 결과 목록 */}
         {results.length > 0 && (
@@ -522,6 +383,207 @@ function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
         {remaining}개 더 보기
       </button>
     </div>
+  );
+}
+
+/** 결과 툴바: 뷰 모드 + 결과 수 + 복사/CSV */
+function ResultsToolbar({
+  viewMode,
+  onViewModeChange,
+  resultCount,
+  totalResultCount,
+  minConfidence = 0,
+  searchTime,
+  onCopyAll,
+  onExportCSV,
+}: {
+  viewMode: ViewMode;
+  onViewModeChange?: (mode: ViewMode) => void;
+  resultCount?: number;
+  totalResultCount?: number;
+  minConfidence?: number;
+  searchTime?: number | null;
+  onCopyAll?: () => void;
+  onExportCSV?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 mb-2">
+      <div className="flex items-center gap-2">
+        {onViewModeChange && (
+          <div className="flex items-center gap-0.5 border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>
+            <button
+              onClick={() => onViewModeChange("flat")}
+              className="p-1.5 rounded-sm transition-colors"
+              style={{
+                backgroundColor: viewMode === "flat" ? "var(--color-bg-secondary)" : "transparent",
+                color: viewMode === "flat" ? "var(--color-accent)" : "var(--color-text-muted)",
+                boxShadow: viewMode === "flat" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+              }}
+              title="목록 보기"
+              aria-label="목록 보기"
+              aria-pressed={viewMode === "flat"}
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onViewModeChange("grouped")}
+              className="p-1.5 rounded-sm transition-colors"
+              style={{
+                backgroundColor: viewMode === "grouped" ? "var(--color-bg-secondary)" : "transparent",
+                color: viewMode === "grouped" ? "var(--color-accent)" : "var(--color-text-muted)",
+                boxShadow: viewMode === "grouped" ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+              }}
+              title="파일별 그룹 보기"
+              aria-label="파일별 그룹 보기"
+              aria-pressed={viewMode === "grouped"}
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        {resultCount !== undefined && resultCount > 0 && (
+          <div className="flex items-center gap-0.5">
+            <Badge variant="secondary">
+              {totalResultCount !== undefined && totalResultCount !== resultCount
+                ? `${totalResultCount}개 중 ${resultCount}개`
+                : `${resultCount}개`}
+            </Badge>
+            {minConfidence > 0 && (
+              <Badge variant="primary">{minConfidence}%↑</Badge>
+            )}
+            {searchTime !== null && searchTime !== undefined && (
+              <Badge variant="secondary">{searchTime}ms</Badge>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="flex gap-2 ml-auto">
+        <button
+          onClick={onCopyAll}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
+          title="검색 결과 클립보드 복사"
+          aria-label="검색 결과 클립보드 복사"
+        >
+          <ClipboardCopy className="w-3.5 h-3.5" />
+          복사
+        </button>
+        <button
+          onClick={onExportCSV}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
+          title="CSV 파일로 내보내기"
+          aria-label="CSV 파일로 내보내기"
+        >
+          <FileDown className="w-3.5 h-3.5" />
+          CSV
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 파일명 매치 섹션 (토글 가능) + 내용 매치 헤더 */
+function FilenameResultsSection({
+  filenameResults,
+  contentResultCount,
+  isCollapsed,
+  onToggleCollapse,
+  isCompact,
+  query,
+  onOpenFile,
+  onCopyPath,
+  onOpenFolder,
+}: {
+  filenameResults: SearchResult[];
+  contentResultCount: number;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  isCompact: boolean;
+  query: string;
+  onOpenFile: (filePath: string, page?: number | null) => void;
+  onCopyPath?: (path: string) => void;
+  onOpenFolder?: (path: string) => void;
+}) {
+  if (filenameResults.length === 0) return null;
+
+  return (
+    <>
+      <div className="mb-2">
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          aria-expanded={!isCollapsed}
+          className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2 w-full text-left hover-bg-subtle"
+          style={{
+            borderLeft: "3px solid var(--color-text-muted)",
+            backgroundColor: "var(--color-bg-tertiary)",
+          }}
+        >
+          <ChevronRight
+            className={`w-3.5 h-3.5 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+            style={{ color: "var(--color-text-muted)" }}
+          />
+          <FileText className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+          <span className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
+            파일명 매치
+          </span>
+          <span
+            className="text-xs px-1.5 py-0.5 rounded-full"
+            style={{
+              border: "1px solid var(--color-border-hover)",
+              color: "var(--color-text-muted)",
+            }}
+          >
+            {filenameResults.length}
+          </span>
+          {isCollapsed && (
+            <span className="text-xs ml-auto" style={{ color: "var(--color-text-muted)" }}>
+              클릭하여 펼치기
+            </span>
+          )}
+        </button>
+        {!isCollapsed && (
+          <div className={isCompact ? "space-y-1" : "space-y-2"}>
+            {filenameResults.map((result, index) => (
+              <FilenameResultItem
+                key={`filename-${result.file_path}-${index}`}
+                result={result}
+                query={query}
+                onOpenFile={onOpenFile}
+                onCopyPath={onCopyPath}
+                onOpenFolder={onOpenFolder}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {contentResultCount > 0 && (
+        <>
+          <div className="my-4" style={{ borderTop: "1px solid var(--color-border)" }} />
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-r-lg mb-2"
+            style={{
+              borderLeft: "3px solid var(--color-accent)",
+              backgroundColor: "var(--color-accent-subtle)",
+            }}
+          >
+            <FileSearch className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
+            <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              내용 매치
+            </span>
+            <span
+              className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+              style={{
+                backgroundColor: "var(--color-accent-subtle)",
+                color: "var(--color-accent)",
+              }}
+            >
+              {contentResultCount}
+            </span>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
