@@ -10,6 +10,7 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useUpdater } from "./hooks/useUpdater";
+import { useBookmarks } from "./hooks/useBookmarks";
 import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 
 // Components
@@ -17,6 +18,7 @@ import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./compone
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
+import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
@@ -270,6 +272,13 @@ function App() {
   // OTA 자동 업데이트
   const updater = useUpdater();
 
+  // 미리보기 패널
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
+  const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
+
+  // 북마크
+  const { bookmarks, addBookmark, removeBookmark } = useBookmarks({ showToast });
+
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
 
@@ -456,6 +465,13 @@ function App() {
     }
   }, [filteredResults.length, selectedIndex]);
 
+  // 선택된 결과 변경 시 미리보기 패널 업데이트
+  useEffect(() => {
+    if (selectedIndex >= 0 && selectedIndex < filteredResults.length) {
+      setPreviewFilePath(filteredResults[selectedIndex].file_path);
+    }
+  }, [selectedIndex, filteredResults]);
+
   // 검색 영역 확장 핸들러
   const handleExpand = useCallback(() => {
     expand();
@@ -522,6 +538,12 @@ function App() {
         onSelectSearch={handleSelectSearch}
         onRemoveSearch={removeSearch}
         onClearSearches={clearSearches}
+        bookmarks={bookmarks}
+        onBookmarkSelect={(filePath) => {
+          setPreviewFilePath(filePath);
+          handleOpenFile(filePath);
+        }}
+        onBookmarkRemove={removeBookmark}
       />
 
       {/* 메인 콘텐츠 */}
@@ -624,48 +646,66 @@ function App() {
           </div>
         )}
 
-        {/* Scrollable Content Area — 검색 결과만 포함 (스크롤 점프 원천 차단) */}
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto overflow-x-hidden"
-          style={{ overflowAnchor: "none" }}
-        >
-          {isCollapsed && error && (
-            <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
-          )}
+        {/* Scrollable Content + Preview Split */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* 검색 결과 영역 */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto overflow-x-hidden"
+            style={{ overflowAnchor: "none" }}
+          >
+            {isCollapsed && error && (
+              <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
+            )}
 
-          <main className="px-6 pb-20">
-            <div className="max-w-4xl mx-auto mt-4">
-              <SearchResultList
-                results={filteredResults}
-                filenameResults={filters.excludeFilename ? [] : filenameResults}
-                groupedResults={groupedResults}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                viewDensity={viewDensity}
-                query={query}
-                isLoading={isLoading}
-                selectedIndex={selectedIndex}
+            <main className="px-6 pb-20">
+              <div className={`mx-auto mt-4 ${previewFilePath ? "max-w-3xl" : "max-w-4xl"}`}>
+                <SearchResultList
+                  results={filteredResults}
+                  filenameResults={filters.excludeFilename ? [] : filenameResults}
+                  groupedResults={groupedResults}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  viewDensity={viewDensity}
+                  query={query}
+                  isLoading={isLoading}
+                  selectedIndex={selectedIndex}
+                  onOpenFile={handleOpenFile}
+                  onCopyPath={handleCopyPath}
+                  onOpenFolder={handleOpenFolder}
+                  onExportCSV={handleExportCSV}
+                  onCopyAll={handleCopyAll}
+                  refineKeywords={memoizedRefineKeywords}
+                  resultCount={filteredResults.length}
+                  totalResultCount={results.length}
+                  minConfidence={minConfidence}
+                  searchTime={searchTime}
+                  resultsPerPage={resultsPerPage}
+                  indexedFiles={status?.indexed_files ?? 0}
+                  indexedFolders={status?.watched_folders?.length ?? 0}
+                  recentSearches={recentSearches}
+                  onSelectSearch={handleSelectSearch}
+                  semanticEnabled={semanticEnabled}
+                />
+              </div>
+            </main>
+          </div>
+
+          {/* 미리보기 패널 */}
+          {previewFilePath && (
+            <div className="w-[360px] shrink-0">
+              <PreviewPanel
+                filePath={previewFilePath}
+                highlightQuery={query}
+                onClose={handlePreviewClose}
                 onOpenFile={handleOpenFile}
                 onCopyPath={handleCopyPath}
                 onOpenFolder={handleOpenFolder}
-                onExportCSV={handleExportCSV}
-                onCopyAll={handleCopyAll}
-                refineKeywords={memoizedRefineKeywords}
-                resultCount={filteredResults.length}
-                totalResultCount={results.length}
-                minConfidence={minConfidence}
-                searchTime={searchTime}
-                resultsPerPage={resultsPerPage}
-                indexedFiles={status?.indexed_files ?? 0}
-                indexedFolders={status?.watched_folders?.length ?? 0}
-                recentSearches={recentSearches}
-                onSelectSearch={handleSelectSearch}
-                semanticEnabled={semanticEnabled}
+                onBookmark={addBookmark}
               />
             </div>
-          </main>
+          )}
         </div>
 
         <StatusBar

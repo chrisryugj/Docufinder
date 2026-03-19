@@ -12,6 +12,7 @@ type BadgeVariant =
   | "hybrid"
   | "hwpx"
   | "docx"
+  | "pptx"
   | "xlsx"
   | "pdf"
   | "txt";
@@ -34,6 +35,11 @@ const getVariantStyle = (variant: BadgeVariant): CSSProperties => {
       return {
         backgroundColor: "var(--color-file-docx-bg)",
         color: "var(--color-file-docx)",
+      };
+    case "pptx":
+      return {
+        backgroundColor: "var(--color-file-pptx-bg)",
+        color: "var(--color-file-pptx)",
       };
     case "xlsx":
       return {
@@ -124,6 +130,9 @@ export function getFileTypeBadgeVariant(fileName: string): BadgeVariant {
     case "docx":
     case "doc":
       return "docx";
+    case "pptx":
+    case "ppt":
+      return "pptx";
     case "xlsx":
     case "xls":
       return "xlsx";

@@ -11,6 +11,7 @@ use std::path::Path;
 pub enum FileType {
     Hwpx,
     Docx,
+    Pptx,
     Xlsx,
     Pdf,
     Txt,
@@ -23,6 +24,7 @@ impl FileType {
         match ext.to_lowercase().as_str() {
             "hwpx" | "hwp" => Self::Hwpx,
             "docx" | "doc" => Self::Docx,
+            "pptx" | "ppt" => Self::Pptx,
             "xlsx" | "xls" => Self::Xlsx,
             "pdf" => Self::Pdf,
             "txt" | "md" | "log" => Self::Txt,
@@ -40,6 +42,7 @@ impl FileType {
         match self {
             Self::Hwpx => "hwpx",
             Self::Docx => "docx",
+            Self::Pptx => "pptx",
             Self::Xlsx => "xlsx",
             Self::Pdf => "pdf",
             Self::Txt => "txt",

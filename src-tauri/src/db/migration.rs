@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 6;
+const CURRENT_SCHEMA_VERSION: i32 = 7;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -187,6 +187,29 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         }
         set_schema_version(&conn, 6)?;
         tracing::info!("Schema migrated to v6 (last_synced_at)");
+    }
+
+    // === v7: 북마크 테이블 ===
+    if current_version < 7 {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS bookmarks (
+                id INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                content_preview TEXT NOT NULL DEFAULT '',
+                page_number INTEGER,
+                location_hint TEXT,
+                note TEXT,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_bookmarks_file_path ON bookmarks(file_path)",
+            [],
+        )?;
+        set_schema_version(&conn, 7)?;
+        tracing::info!("Schema migrated to v7 (bookmarks)");
     }
 
     tracing::info!(
