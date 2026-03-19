@@ -7,7 +7,7 @@ use crate::db;
 use crate::indexer::collector::{collect_files, save_file_metadata_only};
 use crate::indexer::pipeline::{
     save_document_to_db_fts_only_no_tx, FtsIndexingProgress, FtsProgressCallback, IndexError,
-    ParseResult, CHANNEL_BUFFER_SIZE, TRANSACTION_BATCH_SIZE,
+    ParseResult, CHANNEL_BUFFER_SIZE, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
 };
 use crate::parsers::parse_file;
 
@@ -275,6 +275,7 @@ pub fn sync_folder_fts(
     let mut indexed = 0;
     let mut failed = 0;
     let mut errors: Vec<String> = Vec::new();
+    let mut suppressed_errors: usize = 0;
     let mut processed = 0;
     let recv_timeout = Duration::from_millis(100);
 
@@ -308,7 +309,11 @@ pub fn sync_folder_fts(
                             Ok(_) => indexed += 1,
                             Err(e) => {
                                 failed += 1;
-                                errors.push(format!("{:?}: {}", path, e));
+                                if errors.len() < MAX_INDEXING_ERRORS {
+                                    errors.push(format!("{:?}: {}", path, e));
+                                } else {
+                                    suppressed_errors += 1;
+                                }
                             }
                         }
                     }
@@ -317,7 +322,11 @@ pub fn sync_folder_fts(
                             tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
                         }
                         failed += 1;
-                        errors.push(format!("{:?}: {}", path, error));
+                        if errors.len() < MAX_INDEXING_ERRORS {
+                            errors.push(format!("{:?}: {}", path, error));
+                        } else {
+                            suppressed_errors += 1;
+                        }
                     }
                 }
 
@@ -339,6 +348,10 @@ pub fn sync_folder_fts(
     let _ = producer_handle.join();
 
     send_progress("completed", total, processed, None, true);
+
+    if suppressed_errors > 0 {
+        errors.push(format!("... 외 {}건 에러 생략", suppressed_errors));
+    }
 
     Ok(SyncResult {
         folder_path: folder_str,

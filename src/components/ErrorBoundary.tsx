@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-[var(--color-text-secondary)] mb-4">
               예기치 않은 오류가 발생했습니다. 문제가 지속되면 앱을 다시 시작해 주세요.
             </p>
-            {this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <details className="text-left mb-4 p-3 bg-[var(--color-bg-tertiary)] rounded text-sm">
                 <summary className="cursor-pointer text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
                   오류 상세 정보

@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -272,6 +272,14 @@ function App() {
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
+
+  // SearchResultList용 메모이제이션 (인라인 함수 → 안정적 참조)
+  const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
+  const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, query), [copyToClipboard, filteredResults, query]);
+  const memoizedRefineKeywords = useMemo(
+    () => refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined,
+    [refineQuery]
+  );
 
   // 에러 통합 (검색 + 인덱싱 + 벡터)
   const error = searchError || indexError || vectorError;
@@ -642,9 +650,9 @@ function App() {
                 onOpenFile={handleOpenFile}
                 onCopyPath={handleCopyPath}
                 onOpenFolder={handleOpenFolder}
-                onExportCSV={() => exportToCSV(filteredResults, query)}
-                onCopyAll={() => copyToClipboard(filteredResults, query)}
-                refineKeywords={refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined}
+                onExportCSV={handleExportCSV}
+                onCopyAll={handleCopyAll}
+                refineKeywords={memoizedRefineKeywords}
                 resultCount={filteredResults.length}
                 totalResultCount={results.length}
                 minConfidence={minConfidence}

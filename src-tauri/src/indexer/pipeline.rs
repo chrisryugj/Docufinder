@@ -29,6 +29,9 @@ pub(crate) const CHANNEL_BUFFER_SIZE: usize = 32;
 /// FTS 배치 트랜잭션 크기 - fsync 오버헤드 감소 (3~5배 성능 향상)
 pub(crate) const TRANSACTION_BATCH_SIZE: usize = 200;
 
+/// 에러 벡터 최대 엔트리 수 (메모리 bloat 방지)
+pub(crate) const MAX_INDEXING_ERRORS: usize = 200;
+
 /// 파싱 결과 (스트리밍 파이프라인용)
 pub(crate) enum ParseResult {
     Success {
@@ -317,6 +320,7 @@ fn index_folder_fts_impl(
     let mut indexed = 0;
     let mut failed = 0;
     let mut errors: Vec<String> = Vec::new();
+    let mut suppressed_errors: usize = 0;
     let mut hwp_files: Vec<String> = Vec::new();
     let mut processed = 0;
     let mut was_cancelled = false;
@@ -360,7 +364,11 @@ fn index_folder_fts_impl(
                                 Ok(_) => indexed += 1,
                                 Err(e) => {
                                     failed += 1;
-                                    errors.push(format!("{:?}: {}", path, e));
+                                    if errors.len() < MAX_INDEXING_ERRORS {
+                                        errors.push(format!("{:?}: {}", path, e));
+                                    } else {
+                                        suppressed_errors += 1;
+                                    }
                                 }
                             }
                         }
@@ -373,7 +381,11 @@ fn index_folder_fts_impl(
                                 hwp_files.push(path.to_string_lossy().to_string());
                             }
                             failed += 1;
-                            errors.push(format!("{:?}: {}", path, error));
+                            if errors.len() < MAX_INDEXING_ERRORS {
+                                errors.push(format!("{:?}: {}", path, error));
+                            } else {
+                                suppressed_errors += 1;
+                            }
                             send_progress("indexing", total, processed, None, false);
                             // throttled
                         }
@@ -410,6 +422,10 @@ fn index_folder_fts_impl(
         "completed"
     };
     send_progress(phase, total, processed, None, true); // force: 완료
+
+    if suppressed_errors > 0 {
+        errors.push(format!("... 외 {}건 에러 생략", suppressed_errors));
+    }
 
     Ok(FolderIndexResult {
         folder_path: folder_str,
@@ -553,6 +569,7 @@ pub fn scan_metadata_only(
 
     let mut count = 0;
     let mut errors: Vec<String> = Vec::new();
+    let mut suppressed_errors: usize = 0;
     let mut collected_paths: Vec<PathBuf> = Vec::new();
 
     // 배치 트랜잭션 (성능 최적화)
@@ -621,7 +638,11 @@ pub fn scan_metadata_only(
         let metadata = match entry.metadata() {
             Ok(m) => m,
             Err(e) => {
-                errors.push(format!("{:?}: {}", path, e));
+                if errors.len() < MAX_INDEXING_ERRORS {
+                    errors.push(format!("{:?}: {}", path, e));
+                } else {
+                    suppressed_errors += 1;
+                }
                 continue;
             }
         };
@@ -640,7 +661,11 @@ pub fn scan_metadata_only(
         if let Err(e) =
             db::insert_file_metadata_only(conn, &path_str, file_name, &file_type, size, modified_at)
         {
-            errors.push(format!("{}: {}", path_str, e));
+            if errors.len() < MAX_INDEXING_ERRORS {
+                errors.push(format!("{}: {}", path_str, e));
+            } else {
+                suppressed_errors += 1;
+            }
             continue;
         }
 
@@ -665,6 +690,10 @@ pub fn scan_metadata_only(
 
     send_progress("completed", count, true);
     tracing::info!("[MetadataScan] {} files found in {:?}", count, folder_path);
+
+    if suppressed_errors > 0 {
+        errors.push(format!("... 외 {}건 에러 생략", suppressed_errors));
+    }
 
     Ok(MetadataScanResult {
         folder_path: folder_str,

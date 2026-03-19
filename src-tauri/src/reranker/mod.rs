@@ -24,8 +24,6 @@ pub enum RerankerError {
     #[error("ONNX Runtime error: {0}")]
     OrtError(String),
 
-    #[error("Lock failed")]
-    LockFailed,
 }
 
 /// Cross-Encoder Reranker
@@ -148,7 +146,11 @@ impl Reranker {
             .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
 
         let scores = {
-            let mut session = self.session.lock().map_err(|_| RerankerError::LockFailed)?;
+            // Poison recovery: ONNX Session은 stateless이므로 이전 panic 후에도 안전하게 복구
+            let mut session = self.session.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("Reranker ONNX session mutex was poisoned, recovering inner value");
+                poisoned.into_inner()
+            });
 
             // 출력 이름 수집 (borrow 충돌 방지)
             let output_names: Vec<String> = session

@@ -76,14 +76,35 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
                 r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
             ];
 
+            // 1) 하드코딩 경로 (가장 흔한 설치 위치)
+            let mut sumatra_exe: Option<String> = None;
             for sumatra_path in &sumatra_paths {
                 if Path::new(sumatra_path).exists() {
-                    Command::new(sumatra_path)
-                        .args(["-page", &page_num.to_string(), &path_str])
-                        .spawn()
-                        .map_err(|e| format!("PDF 열기 실패: {}", e))?;
-                    return Ok(());
+                    sumatra_exe = Some(sumatra_path.to_string());
+                    break;
                 }
+            }
+
+            // 2) PATH 환경변수에서 검색 (비표준 설치 위치 대응)
+            if sumatra_exe.is_none() {
+                if let Ok(output) = Command::new("where").arg("SumatraPDF.exe").output() {
+                    if output.status.success() {
+                        if let Some(path) = String::from_utf8_lossy(&output.stdout).lines().next() {
+                            let path = path.trim();
+                            if !path.is_empty() {
+                                sumatra_exe = Some(path.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(exe) = sumatra_exe {
+                Command::new(&exe)
+                    .args(["-page", &page_num.to_string(), &path_str])
+                    .spawn()
+                    .map_err(|e| format!("PDF 열기 실패: {}", e))?;
+                return Ok(());
             }
 
             // SumatraPDF 없으면 기본 앱으로 열기

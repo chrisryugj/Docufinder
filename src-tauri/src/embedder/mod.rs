@@ -24,8 +24,6 @@ pub enum EmbedderError {
     #[error("Invalid embedding dimension")]
     InvalidDimension,
 
-    #[error("Lock failed")]
-    LockFailed,
 }
 
 impl From<ort::Error> for EmbedderError {
@@ -139,7 +137,11 @@ impl Embedder {
         let attention_mask_value = Value::from_array((shape, attention_mask_vec.clone()))?;
 
         let embeddings = {
-            let mut session = self.session.lock().map_err(|_| EmbedderError::LockFailed)?;
+            // Poison recovery: ONNX Session은 stateless (입력→출력)이므로 이전 panic이 내부 상태를 오염시키지 않음
+            let mut session = self.session.lock().unwrap_or_else(|poisoned| {
+                tracing::warn!("Embedder ONNX session mutex was poisoned, recovering inner value");
+                poisoned.into_inner()
+            });
 
             // 먼저 출력 이름들 수집 (borrow 충돌 방지)
             let output_names: Vec<String> = session

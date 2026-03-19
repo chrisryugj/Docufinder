@@ -23,7 +23,6 @@
   --color-primary-900: #7C2D12;
   --color-primary-950: #431407;
 
-  --shadow-glow: 0 0 20px -5px var(--color-accent-hover);
   --shadow-glass: 0 8px 32px 0 rgba(28, 25, 23, 0.06);
 }
 
@@ -243,7 +242,7 @@
   --shadow-lg: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
   --shadow-xl: 0 16px 40px -8px rgba(0, 0, 0, 0.5);
   --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.04);
-  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(234, 88, 12, 0.2);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(234, 88, 12, 0.2);
   --shadow-inner: inset 0 1px 3px 0 rgba(0, 0, 0, 0.25);
 }
 

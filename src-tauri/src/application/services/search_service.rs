@@ -292,7 +292,7 @@ impl SearchService {
             .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
 
         // 벡터 검색 (folder_scope 후처리 필터로 인한 결과 누락 방지: over-fetch)
-        let vector_fetch_limit = if folder_scope.is_some() { max_results * 3 } else { max_results };
+        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
         let vector_results = vector_index
             .search(&query_embedding, vector_fetch_limit)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
@@ -380,7 +380,7 @@ impl SearchService {
         };
 
         // 2. 벡터 검색 (folder_scope 후처리 필터 대비 over-fetch)
-        let vector_fetch_limit = if folder_scope.is_some() { max_results * 3 } else { max_results };
+        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
         let (vector_results, query_embedding) =
             match (self.embedder.as_ref(), self.vector_index.as_ref()) {
                 (Some(emb), Some(vi)) => match emb.embed(query, true) {
