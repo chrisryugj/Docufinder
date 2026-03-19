@@ -469,6 +469,8 @@ function App() {
   useEffect(() => {
     if (selectedIndex >= 0 && selectedIndex < filteredResults.length) {
       setPreviewFilePath(filteredResults[selectedIndex].file_path);
+    } else if (filteredResults.length === 0) {
+      setPreviewFilePath(null);
     }
   }, [selectedIndex, filteredResults]);
 
@@ -539,9 +541,9 @@ function App() {
         onRemoveSearch={removeSearch}
         onClearSearches={clearSearches}
         bookmarks={bookmarks}
-        onBookmarkSelect={(filePath) => {
+        onBookmarkSelect={(filePath, pageNumber) => {
           setPreviewFilePath(filePath);
-          handleOpenFile(filePath);
+          handleOpenFile(filePath, pageNumber);
         }}
         onBookmarkRemove={removeBookmark}
       />
@@ -687,6 +689,7 @@ function App() {
                   recentSearches={recentSearches}
                   onSelectSearch={handleSelectSearch}
                   semanticEnabled={semanticEnabled}
+                  onSelectResult={setSelectedIndex}
                 />
               </div>
             </main>

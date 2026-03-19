@@ -149,7 +149,7 @@ pub async fn add_bookmark(
             .to_string();
 
         conn.execute(
-            "INSERT OR REPLACE INTO bookmarks (file_path, file_name, content_preview, page_number, location_hint, note, created_at)
+            "INSERT INTO bookmarks (file_path, file_name, content_preview, page_number, location_hint, note, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             rusqlite::params![file_path, file_name, content_preview, page_number, location_hint, note, now],
         )
