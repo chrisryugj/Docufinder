@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // Hooks
-import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch } from "./hooks";
+import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch, useAutoComplete, saveSearchQuery } from "./hooks";
 import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
@@ -20,6 +20,7 @@ import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
+import { StatisticsModal } from "./components/search/StatisticsModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
@@ -39,6 +40,7 @@ function App() {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
   const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
   const [pendingHwpFiles, setPendingHwpFiles] = useState<string[]>([]);
   const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
@@ -121,6 +123,9 @@ function App() {
     removeSearch,
     clearSearches,
   } = useRecentSearches();
+
+  // 자동완성
+  const autoComplete = useAutoComplete({ query });
 
   // 토스트 알림
   const { toasts, showToast, updateToast, dismissToast } = useToast();
@@ -430,6 +435,16 @@ function App() {
     [setQuery]
   );
 
+  // 자동완성 항목 선택
+  const handleSuggestionSelect = useCallback(
+    (text: string) => {
+      setQuery(text);
+      autoComplete.close();
+      searchInputRef.current?.focus();
+    },
+    [setQuery, autoComplete]
+  );
+
   // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
   useEffect(() => {
     if (searchTimerRef.current) {
@@ -441,6 +456,7 @@ function App() {
     if (trimmedQuery.length >= 2 && filteredResults.length > 0) {
       searchTimerRef.current = setTimeout(() => {
         addSearch(trimmedQuery);
+        saveSearchQuery(trimmedQuery); // DB에도 저장 (자동완성용)
         searchTimerRef.current = null;
       }, RECENT_SEARCH_SAVE_DELAY_MS);
     }
@@ -634,6 +650,7 @@ function App() {
               onAddFolder={handleAddFolder}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
+              onOpenStats={() => setStatsOpen(true)}
               onGoHome={() => {
                 setQuery("");
                 setSelectedIndex(-1);
@@ -661,6 +678,12 @@ function App() {
               status={status}
               resultCount={filteredResults.length}
               searchTime={searchTime}
+              suggestions={autoComplete.suggestions}
+              isSuggestionsOpen={autoComplete.isOpen}
+              suggestionsSelectedIndex={autoComplete.selectedIndex}
+              onSuggestionSelect={handleSuggestionSelect}
+              onSuggestionsKeyDown={autoComplete.handleKeyDown}
+              onSuggestionsClose={autoComplete.close}
             />
 
             {/* 벡터 인덱싱 상태 배너 */}
@@ -851,6 +874,26 @@ function App() {
       />
 
       {/* 자동 인덱싱 안내 다이얼로그 */}
+      <StatisticsModal
+        isOpen={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        onFilterByType={(fileType) => {
+          // 파일 유형 맵핑 (hwpx, docx 등 → FileTypeFilter)
+          const typeMap: Record<string, import("./types/search").FileTypeFilter> = {
+            hwpx: "hwpx", hwp: "hwpx",
+            docx: "docx", doc: "docx",
+            pptx: "pptx", ppt: "pptx",
+            xlsx: "xlsx", xls: "xlsx",
+            pdf: "pdf",
+            txt: "txt", md: "txt",
+          };
+          const filterType = typeMap[fileType] || "all";
+          setFilters((prev) => ({ ...prev, fileType: filterType }));
+          if (!query) setQuery("*"); // 빈 쿼리일 때 전체 조회 트리거
+        }}
+        onOpenFile={handleOpenFile}
+      />
+
       <AutoIndexPrompt
         isOpen={showAutoIndexPrompt}
         onClose={() => setShowAutoIndexPrompt(false)}

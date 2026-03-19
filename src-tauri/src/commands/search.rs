@@ -218,3 +218,178 @@ pub async fn classify_document(
 
     service.classify_document(&text).map_err(ApiError::from)
 }
+
+// ==================== 자동완성 (v2.3) ====================
+
+/// 검색어 자동완성 제안
+#[tauri::command]
+pub async fn get_suggestions(
+    query: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<Vec<SuggestionItem>> {
+    let prefix = query.trim().to_lowercase();
+    if prefix.len() < 2 {
+        return Ok(vec![]);
+    }
+
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<Vec<SuggestionItem>> {
+        let conn = crate::db::get_connection(&db_path)?;
+        let mut suggestions = Vec::new();
+
+        // 1) 최근 검색어 히스토리 (우선)
+        if let Ok(history) = crate::db::get_search_query_suggestions(&conn, &prefix, 5) {
+            for (term, freq) in history {
+                suggestions.push(SuggestionItem {
+                    text: term,
+                    source: "history".to_string(),
+                    frequency: freq,
+                });
+            }
+        }
+
+        // 2) fts5vocab 용어 (히스토리에 없는 것만)
+        let history_texts: std::collections::HashSet<String> =
+            suggestions.iter().map(|s| s.text.clone()).collect();
+
+        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10) {
+            for (term, doc_count) in vocab {
+                if !history_texts.contains(&term) && term.len() >= 2 {
+                    suggestions.push(SuggestionItem {
+                        text: term,
+                        source: "vocab".to_string(),
+                        frequency: doc_count,
+                    });
+                }
+                if suggestions.len() >= 10 {
+                    break;
+                }
+            }
+        }
+
+        Ok(suggestions)
+    })
+    .await?
+}
+
+/// 검색어 저장 (검색 실행 시 호출)
+#[tauri::command]
+pub async fn save_search_query(
+    query: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
+    let trimmed = query.trim().to_string();
+    if trimmed.len() < 2 {
+        return Ok(());
+    }
+
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<()> {
+        let conn = crate::db::get_connection(&db_path)?;
+        crate::db::upsert_search_query(&conn, &trimmed)?;
+        Ok(())
+    })
+    .await?
+}
+
+// ==================== 통계 대시보드 (v2.3) ====================
+
+/// 문서 통계 조회
+#[tauri::command]
+pub async fn get_document_statistics(
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<DocumentStatistics> {
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<DocumentStatistics> {
+        let conn = crate::db::get_connection(&db_path)?;
+
+        let total_files = crate::db::get_file_count(&conn)? as i64;
+        let indexed_files = crate::db::get_indexed_file_count(&conn)? as i64;
+        let total_size = crate::db::get_total_size(&conn)?;
+
+        let file_types = crate::db::get_file_type_distribution(&conn)?
+            .into_iter()
+            .map(|(t, c)| StatEntry { label: t, count: c })
+            .collect();
+
+        let years = crate::db::get_year_distribution(&conn)?
+            .into_iter()
+            .map(|(y, c)| StatEntry { label: y, count: c })
+            .collect();
+
+        let folders = crate::db::get_folder_distribution(&conn)?
+            .into_iter()
+            .map(|(f, c)| StatEntry { label: f, count: c })
+            .collect();
+
+        let recent = crate::db::get_recent_files(&conn, 10)?
+            .into_iter()
+            .map(|(path, name, modified_at)| FileEntry { path, name, value: modified_at })
+            .collect();
+
+        let largest = crate::db::get_largest_files(&conn, 10)?
+            .into_iter()
+            .map(|(path, name, size)| FileEntry { path, name, value: size })
+            .collect();
+
+        Ok(DocumentStatistics {
+            total_files,
+            indexed_files,
+            total_size,
+            file_types,
+            years,
+            folders,
+            recent_files: recent,
+            largest_files: largest,
+        })
+    })
+    .await?
+}
+
+/// 자동완성 제안 항목
+#[derive(Debug, serde::Serialize)]
+pub struct SuggestionItem {
+    pub text: String,
+    pub source: String,
+    pub frequency: i64,
+}
+
+/// 통계 항목
+#[derive(Debug, serde::Serialize)]
+pub struct StatEntry {
+    pub label: String,
+    pub count: i64,
+}
+
+/// 파일 항목 (최근/최대)
+#[derive(Debug, serde::Serialize)]
+pub struct FileEntry {
+    pub path: String,
+    pub name: String,
+    pub value: i64,
+}
+
+/// 문서 통계 전체
+#[derive(Debug, serde::Serialize)]
+pub struct DocumentStatistics {
+    pub total_files: i64,
+    pub indexed_files: i64,
+    pub total_size: i64,
+    pub file_types: Vec<StatEntry>,
+    pub years: Vec<StatEntry>,
+    pub folders: Vec<StatEntry>,
+    pub recent_files: Vec<FileEntry>,
+    pub largest_files: Vec<FileEntry>,
+}

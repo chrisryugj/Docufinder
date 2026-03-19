@@ -1,5 +1,5 @@
-import { forwardRef, memo } from "react";
-import type { SearchMode } from "../../types/search";
+import { forwardRef, memo, useCallback } from "react";
+import type { SearchMode, SuggestionItem } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
@@ -15,6 +15,13 @@ interface SearchBarProps {
   searchTime?: number | null;
   onCompositionStart?: () => void;
   onCompositionEnd?: (finalValue: string) => void;
+  /** 자동완성 */
+  suggestions?: SuggestionItem[];
+  isSuggestionsOpen?: boolean;
+  suggestionsSelectedIndex?: number;
+  onSuggestionSelect?: (text: string) => void;
+  onSuggestionsKeyDown?: (e: React.KeyboardEvent) => string | null;
+  onSuggestionsClose?: () => void;
 }
 
 export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
@@ -30,6 +37,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       searchTime: _searchTime,
       onCompositionStart,
       onCompositionEnd,
+      suggestions = [],
+      isSuggestionsOpen = false,
+      suggestionsSelectedIndex = -1,
+      onSuggestionSelect,
+      onSuggestionsKeyDown,
+      onSuggestionsClose,
     },
     ref
   ) => {
@@ -41,8 +54,27 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       forwardedRef: ref,
     });
 
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        // 자동완성 키보드 처리 우선
+        if (onSuggestionsKeyDown) {
+          const selected = onSuggestionsKeyDown(e);
+          if (selected !== null) {
+            onSuggestionSelect?.(selected);
+            return;
+          }
+        }
+      },
+      [onSuggestionsKeyDown, onSuggestionSelect]
+    );
+
+    const handleBlur = useCallback(() => {
+      // 드롭다운 클릭이 blur보다 먼저 처리되도록 지연
+      setTimeout(() => onSuggestionsClose?.(), 150);
+    }, [onSuggestionsClose]);
+
     return (
-      <div className="max-w-4xl mx-auto w-full">
+      <div className="max-w-4xl mx-auto w-full relative">
         <div
           className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
@@ -73,6 +105,8 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             type="text"
             defaultValue={query}
             {...imeHandlers}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
             placeholder="예: 2024년 예산 집행현황, 민원처리 규정, 회의록..."
             className="flex-1 bg-transparent border-none focus:outline-none ml-3"
             style={{
@@ -82,6 +116,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               letterSpacing: "0.01em",
             }}
             aria-label="검색어 입력"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={isSuggestionsOpen}
+            aria-autocomplete="list"
           />
 
           {/* Shortcut Hint */}
@@ -118,6 +156,65 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             status={status}
           />
         </div>
+
+        {/* 자동완성 드롭다운 */}
+        {isSuggestionsOpen && suggestions.length > 0 && (
+          <div
+            className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-lg"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              border: "1px solid var(--color-border)",
+            }}
+            role="listbox"
+          >
+            {suggestions.map((item, index) => (
+              <button
+                key={`${item.source}-${item.text}`}
+                className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors"
+                style={{
+                  backgroundColor:
+                    index === suggestionsSelectedIndex
+                      ? "var(--color-bg-tertiary)"
+                      : "transparent",
+                  color: "var(--color-text-primary)",
+                }}
+                onMouseEnter={() => {/* 선택 인덱스는 키보드로만 제어 */}}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // blur 방지
+                  onSuggestionSelect?.(item.text);
+                }}
+                role="option"
+                aria-selected={index === suggestionsSelectedIndex}
+              >
+                {/* 아이콘: 히스토리 vs vocab */}
+                <span
+                  className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  {item.source === "history" ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  )}
+                </span>
+                <span className="flex-1 truncate text-sm">{item.text}</span>
+                <span
+                  className="text-[10px] tabular-nums flex-shrink-0"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  {item.source === "history"
+                    ? `${item.frequency}회`
+                    : `${item.frequency}건`}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
