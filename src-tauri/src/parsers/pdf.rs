@@ -1,7 +1,7 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -24,13 +24,47 @@ fn calc_timeout_secs(path: &Path) -> u64 {
     (timeout.ceil() as u64).min(PDF_PARSE_TIMEOUT_MAX_SECS)
 }
 
-/// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 10개 = ~80MB 상한)
-/// 8GB RAM 환경에서 메모리 오버헤드 최소화
-const MAX_DETACHED_THREADS: usize = 10;
+/// Detach된 PDF 파싱 스레드 최대 수 (각 ~2-8MB 스택, 20개 = ~160MB 상한)
+const MAX_DETACHED_THREADS: usize = 20;
+
+/// 자동 리셋 간격 (초) — 이 시간 경과 후 카운터가 절반 이상이면 자동 리셋
+const AUTO_RESET_INTERVAL_SECS: u64 = 300; // 5분
 
 /// Detach된 PDF 파싱 스레드 카운터 (리소스 모니터링용)
 /// 이 값이 높으면 hang되는 PDF가 많다는 의미
 static DETACHED_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// 마지막 자동 리셋 시각 (Unix timestamp 초)
+static LAST_AUTO_RESET: AtomicU64 = AtomicU64::new(0);
+
+/// 시간 경과 + 카운터 높으면 자동 리셋 (parse 진입 시 호출)
+fn try_auto_reset() {
+    let current = DETACHED_THREAD_COUNT.load(Ordering::Relaxed);
+    if current < MAX_DETACHED_THREADS / 2 {
+        return; // 절반 미만이면 리셋 불필요
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let last = LAST_AUTO_RESET.load(Ordering::Relaxed);
+
+    if now.saturating_sub(last) >= AUTO_RESET_INTERVAL_SECS {
+        // CAS로 중복 리셋 방지
+        if LAST_AUTO_RESET
+            .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            let prev = DETACHED_THREAD_COUNT.swap(0, Ordering::Relaxed);
+            tracing::warn!(
+                "PDF detached thread counter auto-reset: {} → 0 (after {}s idle)",
+                prev,
+                now.saturating_sub(last)
+            );
+        }
+    }
+}
 
 /// Detached thread 카운터 리셋 (앱 재시작 없이 PDF 파싱 재개)
 ///
@@ -56,6 +90,9 @@ pub fn detached_thread_count() -> usize {
 /// pdf-extract 크레이트 사용, 페이지별 텍스트 추출
 /// catch_unwind + 타임아웃으로 panic/hang 방어
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    // 시간 기반 자동 리셋 (hang 스레드 누적 시 5분 후 자동 복구)
+    try_auto_reset();
+
     // hang 스레드 상한 체크 - 시스템 안정성 보호
     let current_detached = DETACHED_THREAD_COUNT.load(Ordering::Relaxed);
     if current_detached >= MAX_DETACHED_THREADS {

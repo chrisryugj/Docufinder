@@ -482,7 +482,9 @@ impl VectorIndex {
         Ok(vector_results)
     }
 
-    /// 인덱스 저장
+    /// 인덱스 저장 (원자적: tmp 파일에 먼저 기록 후 rename)
+    ///
+    /// 크래시 안전성: 저장 중 앱이 종료되어도 기존 인덱스 파일 손상 없음
     pub fn save(&self) -> Result<(), VectorError> {
         // View 모드에서는 저장 불필요 (이미 디스크 파일 = 최신 상태)
         {
@@ -500,17 +502,22 @@ impl VectorIndex {
             return Ok(());
         }
 
-        // 읽기 락으로 저장: save()는 인덱스 데이터를 변경하지 않으므로
-        // read lock으로 충분하며, 검색(read)과 동시 진행 가능
-        let path_str = self.path.to_string_lossy();
+        // Step 1: tmp 파일에 먼저 저장
+        let tmp_index_path = self.path.with_extension("usearch.tmp");
+        let tmp_map_path = self.path.with_extension("map.tmp");
+        let final_map_path = self.path.with_extension("map");
+
+        let tmp_index_str = tmp_index_path.to_string_lossy();
         self.index
             .read()
             .map_err(|_| VectorError::LockPoisoned)?
-            .save(&path_str)
-            .map_err(|e| VectorError::IndexError(format!("{:?}", e)))?;
+            .save(&tmp_index_str)
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&tmp_index_path);
+                VectorError::IndexError(format!("{:?}", e))
+            })?;
 
-        // 매핑 파일 저장
-        let map_path = self.path.with_extension("map");
+        // 매핑 파일 → tmp
         let next_key = *self
             .next_key
             .read()
@@ -523,11 +530,30 @@ impl VectorIndex {
 
         let json_str = serde_json::to_string(&map_data)
             .map_err(|e| VectorError::IndexError(format!("JSON serialization failed: {}", e)))?;
-        std::fs::write(&map_path, json_str)?;
+        if let Err(e) = std::fs::write(&tmp_map_path, &json_str) {
+            let _ = std::fs::remove_file(&tmp_index_path);
+            let _ = std::fs::remove_file(&tmp_map_path);
+            return Err(e.into());
+        }
+
+        // Step 2: 원자적 rename (NTFS: 동일 볼륨 내 rename은 원자적)
+        if let Err(e) = std::fs::rename(&tmp_index_path, &self.path) {
+            let _ = std::fs::remove_file(&tmp_index_path);
+            let _ = std::fs::remove_file(&tmp_map_path);
+            return Err(VectorError::IndexError(format!(
+                "Atomic rename failed for index: {}",
+                e
+            )));
+        }
+        if let Err(e) = std::fs::rename(&tmp_map_path, &final_map_path) {
+            // 인덱스는 이미 rename 됨 — 매핑만 실패. 다음 로드 시 자동 복구됨.
+            tracing::warn!("Map file rename failed (will recover on next load): {}", e);
+            let _ = std::fs::remove_file(&tmp_map_path);
+        }
 
         // 저장 확인 로그
         if let (Ok(usearch_meta), Ok(map_meta)) =
-            (std::fs::metadata(&*self.path), std::fs::metadata(&map_path))
+            (std::fs::metadata(&*self.path), std::fs::metadata(&final_map_path))
         {
             tracing::debug!(
                 "Vector index saved: {} entries, usearch={}KB, map={}KB",

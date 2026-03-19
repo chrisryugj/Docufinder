@@ -112,27 +112,34 @@ impl VectorWorker {
         let status = self.status.clone();
         let intensity = intensity.unwrap_or(IndexingIntensity::Balanced);
 
-        // 백그라운드 스레드 시작
+        // 백그라운드 스레드 시작 (catch_unwind로 panic 안전성 보장)
         let handle = std::thread::spawn(move || {
             // 스레드 우선순위 설정 (Windows)
             #[cfg(target_os = "windows")]
             set_thread_priority(&intensity);
 
-            let result = run_vector_indexing(
-                &db_path,
-                &embedder,
-                &vector_index,
-                &cancel_flag,
-                &status,
-                progress_callback,
-                &intensity,
-            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_vector_indexing(
+                    &db_path,
+                    &embedder,
+                    &vector_index,
+                    &cancel_flag,
+                    &status,
+                    progress_callback,
+                    &intensity,
+                )
+            }));
 
-            // 완료/에러 상태 업데이트
+            // 완료/에러 상태 업데이트 (panic 포함)
             if let Ok(mut s) = status.write() {
                 s.is_running = false;
-                if let Err(e) = result {
-                    s.error = Some(e);
+                match result {
+                    Ok(Err(e)) => s.error = Some(e),
+                    Err(_) => {
+                        tracing::error!("Vector indexing thread panicked");
+                        s.error = Some("Vector indexing thread panicked".to_string());
+                    }
+                    Ok(Ok(())) => {}
                 }
             }
         });

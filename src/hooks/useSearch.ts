@@ -61,8 +61,7 @@ export function clearSearchCache(): void {
 }
 
 function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean, searchScope: string | null): string {
-  const scopePart = searchScope ? `s:${searchScope}:` : "";
-  return `${mode}:${excludeFilename ? "nf:" : ""}${scopePart}${query.trim().toLowerCase()}`;
+  return JSON.stringify([mode, excludeFilename, searchScope, query.trim().toLowerCase()]);
 }
 
 function getFromCache(key: string): CacheEntry | null {

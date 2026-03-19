@@ -41,6 +41,8 @@ function App() {
   const [pendingHwpFiles, setPendingHwpFiles] = useState<string[]>([]);
   const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
   const autoIndexPromptShownRef = useRef(false);
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   // 테마
   const { setTheme } = useTheme();
@@ -474,8 +476,9 @@ function App() {
     }
     // 시맨틱 검색 켜질 때 + 자동 모드 → 벡터 인덱싱 자동 재개
     if (nowEnabled && nowAutoMode && !isVectorIndexing && (!wasEnabled || !wasAutoMode)) {
-      // 반환값으로 최신 상태 확인 (stale closure 방지)
+      // 반환값으로 최신 상태 확인 (stale closure 방지, unmount guard)
       refreshVectorStatus().then((freshStatus) => {
+        if (!isMountedRef.current) return;
         if ((freshStatus?.pending_chunks ?? 0) > 0) {
           startVectorIndexing();
         }
