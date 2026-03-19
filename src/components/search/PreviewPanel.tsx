@@ -81,8 +81,9 @@ export const PreviewPanel = memo(function PreviewPanel({
     const regex = new RegExp(`(${pattern})`, 'gi');
     const parts = text.split(regex);
 
+    // split(/(pattern)/) → 홀수 인덱스가 매칭된 부분
     return parts.map((part, i) =>
-      regex.test(part) ? (
+      i % 2 === 1 ? (
         <mark
           key={i}
           className="rounded px-0.5"
@@ -204,7 +205,7 @@ export const PreviewPanel = memo(function PreviewPanel({
                       </span>
                     </div>
                   )}
-                  <p className="text-[13px] leading-relaxed text-[var(--color-text-secondary)] whitespace-pre-wrap break-words font-[var(--font-mono)]">
+                  <p className="text-[13px] leading-relaxed text-[var(--color-text-secondary)] whitespace-pre-wrap break-words" style={{ fontFamily: "var(--font-mono)" }}>
                     {highlightText(chunk.content)}
                   </p>
                 </div>

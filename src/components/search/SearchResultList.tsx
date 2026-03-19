@@ -50,6 +50,8 @@ interface SearchResultListProps {
   onSelectSearch?: (query: string) => void;
   /** 시맨틱 검색 활성 여부 */
   semanticEnabled?: boolean;
+  /** 결과 선택 시 콜백 (미리보기 연동) */
+  onSelectResult?: (index: number) => void;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -85,6 +87,7 @@ export const SearchResultList = memo(function SearchResultList({
   recentSearches,
   onSelectSearch,
   semanticEnabled,
+  onSelectResult,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -257,6 +260,7 @@ export const SearchResultList = memo(function SearchResultList({
                       contain: "layout style",
                       ...(index < 10 && { animationDelay: `${index * 30}ms` }),
                     }}
+                    onClick={() => onSelectResult?.(index)}
                   >
                     <SearchResultItem
                       result={result}
