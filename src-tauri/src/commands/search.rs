@@ -227,6 +227,7 @@ pub async fn get_suggestions(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<Vec<SuggestionItem>> {
+    validate_query(&query)?;
     let prefix = query.trim().to_lowercase();
     if prefix.len() < 2 {
         return Ok(vec![]);
@@ -256,7 +257,7 @@ pub async fn get_suggestions(
         let history_texts: std::collections::HashSet<String> =
             suggestions.iter().map(|s| s.text.clone()).collect();
 
-        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10) {
+        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10 + suggestions.len()) {
             for (term, doc_count) in vocab {
                 if !history_texts.contains(&term) && term.len() >= 2 {
                     suggestions.push(SuggestionItem {
@@ -282,6 +283,7 @@ pub async fn save_search_query(
     query: String,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
+    validate_query(&query)?;
     let trimmed = query.trim().to_string();
     if trimmed.len() < 2 {
         return Ok(());

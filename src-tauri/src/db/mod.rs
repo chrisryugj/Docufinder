@@ -814,8 +814,8 @@ pub fn get_vocab_suggestions(
          LIMIT ?3",
     )?;
 
-    // prefix 범위 검색: 'abc' <= term < 'abd'
-    let upper = increment_string(&prefix_lower);
+    // prefix 범위 검색: 'abc' <= term < 'abc\u{10FFFF}'
+    let upper = format!("{}\u{10FFFF}", prefix_lower);
     let rows = stmt.query_map(params![prefix_lower, upper, limit as i64], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
@@ -823,16 +823,7 @@ pub fn get_vocab_suggestions(
     rows.collect()
 }
 
-/// 문자열 마지막 문자를 1 증가 (prefix 범위 검색용)
-fn increment_string(s: &str) -> String {
-    let mut chars: Vec<char> = s.chars().collect();
-    if let Some(last) = chars.last_mut() {
-        *last = char::from_u32(*last as u32 + 1).unwrap_or(*last);
-    }
-    chars.into_iter().collect()
-}
-
-/// 검색어 저장/빈도 증가
+/// 검색어 저장/빈도 증가 (최대 500개 유지)
 pub fn upsert_search_query(conn: &Connection, query: &str) -> Result<()> {
     let now = current_timestamp();
     conn.execute(
@@ -843,6 +834,17 @@ pub fn upsert_search_query(conn: &Connection, query: &str) -> Result<()> {
            last_searched_at = ?2",
         params![query, now],
     )?;
+
+    // 오래된 저빈도 레코드 정리 (확률적: ~5% 호출 시)
+    if now % 20 == 0 {
+        let _ = conn.execute(
+            "DELETE FROM search_queries WHERE id NOT IN (
+                SELECT id FROM search_queries ORDER BY frequency DESC, last_searched_at DESC LIMIT 500
+            )",
+            [],
+        );
+    }
+
     Ok(())
 }
 
@@ -931,10 +933,14 @@ pub fn get_largest_files(conn: &Connection, limit: usize) -> Result<Vec<(String,
     rows.collect()
 }
 
-/// 폴더별 문서 수 (watched_folders 기준)
+/// 폴더별 문서 수 (watched_folders 기준, prepared statement 재사용)
 pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
     let folders = get_watched_folders(conn)?;
     let mut result = Vec::new();
+
+    let mut stmt = conn.prepare(
+        "SELECT COUNT(*) FROM files WHERE path LIKE ?1 ESCAPE '\\' OR path LIKE ?2 ESCAPE '\\'",
+    )?;
 
     for folder in folders {
         let escaped_unix = escape_like_pattern(&folder.replace('\\', "/"));
@@ -942,11 +948,7 @@ pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> 
         let pattern_unix = format!("{}/%", escaped_unix);
         let pattern_win = format!("{}\\\\%", escaped_win);
 
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
-            params![pattern_unix, pattern_win],
-            |row| row.get(0),
-        )?;
+        let count: i64 = stmt.query_row(params![pattern_unix, pattern_win], |row| row.get(0))?;
 
         if count > 0 {
             result.push((folder, count));

@@ -442,7 +442,7 @@ function App() {
       autoComplete.close();
       searchInputRef.current?.focus();
     },
-    [setQuery, autoComplete]
+    [setQuery, autoComplete.close]
   );
 
   // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
@@ -684,6 +684,7 @@ function App() {
               onSuggestionSelect={handleSuggestionSelect}
               onSuggestionsKeyDown={autoComplete.handleKeyDown}
               onSuggestionsClose={autoComplete.close}
+              onSuggestionsSetIndex={autoComplete.setSelectedIndex}
             />
 
             {/* 벡터 인덱싱 상태 배너 */}

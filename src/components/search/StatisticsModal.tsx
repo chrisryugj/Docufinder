@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, memo } from "react";
+import { useEffect, useState, useCallback, useMemo, memo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../ui/Modal";
 import type { DocumentStatistics, StatEntry, FileEntry } from "../../types/search";
@@ -49,32 +49,36 @@ function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClic
 
   const cx = 80, cy = 80, r = 60, strokeWidth = 24;
   const circumference = 2 * Math.PI * r;
-  let offset = 0;
+
+  // 세그먼트 오프셋 사전 계산 (StrictMode double-render 안전)
+  const segments = useMemo(() => {
+    let acc = 0;
+    return data.map((entry) => {
+      const pct = entry.count / total;
+      const dashLen = pct * circumference;
+      const seg = { label: entry.label, dashLen, dashOffset: -acc, color: TYPE_COLORS[entry.label] || DEFAULT_COLOR };
+      acc += dashLen;
+      return seg;
+    });
+  }, [data, total, circumference]);
 
   return (
     <div className="flex items-center gap-4">
       <svg width="160" height="160" viewBox="0 0 160 160" className="shrink-0">
-        {data.map((entry) => {
-          const pct = entry.count / total;
-          const dashLen = pct * circumference;
-          const dashOffset = -offset;
-          offset += dashLen;
-          const color = TYPE_COLORS[entry.label] || DEFAULT_COLOR;
-          return (
+        {segments.map((seg) => (
             <circle
-              key={entry.label}
+              key={seg.label}
               cx={cx} cy={cy} r={r}
               fill="none"
-              stroke={color}
+              stroke={seg.color}
               strokeWidth={strokeWidth}
-              strokeDasharray={`${dashLen} ${circumference - dashLen}`}
-              strokeDashoffset={dashOffset}
+              strokeDasharray={`${seg.dashLen} ${circumference - seg.dashLen}`}
+              strokeDashoffset={seg.dashOffset}
               transform={`rotate(-90 ${cx} ${cy})`}
               className="cursor-pointer hover:opacity-80 transition-opacity"
-              onClick={() => onSegmentClick?.(entry.label)}
+              onClick={() => onSegmentClick?.(seg.label)}
             />
-          );
-        })}
+        ))}
         <text x={cx} y={cy - 6} textAnchor="middle" fill="var(--color-text-primary)" fontSize="18" fontWeight="bold">
           {total.toLocaleString()}
         </text>
