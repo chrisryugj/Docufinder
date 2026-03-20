@@ -728,6 +728,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::settings::verify_admin_code,
             commands::file::open_file,
+            commands::file::open_url,
             commands::file::open_folder,
             commands::file::log_frontend_error,
             commands::file::get_log_dir,
@@ -738,6 +739,7 @@ pub fn run() {
             commands::preview::remove_bookmark,
             commands::preview::update_bookmark_note,
             commands::preview::get_bookmarks,
+            commands::preview::generate_summary,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

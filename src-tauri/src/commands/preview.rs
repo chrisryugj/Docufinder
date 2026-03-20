@@ -1,7 +1,8 @@
-//! 문서 미리보기 + 북마크 커맨드
+//! 문서 미리보기 + 북마크 + 요약 커맨드
 
 use crate::db;
 use crate::error::{ApiError, ApiResult};
+use crate::search::textrank;
 use crate::AppContainer;
 use serde::Serialize;
 use std::sync::RwLock;
@@ -251,6 +252,130 @@ pub async fn get_bookmarks(
             .collect();
 
         Ok(bookmarks)
+    })
+    .await??;
+
+    Ok(result)
+}
+
+// ======================== 요약 ========================
+
+/// 요약 문장 (프론트엔드용)
+#[derive(Debug, Serialize)]
+pub struct SummarySentence {
+    /// 문장 텍스트
+    pub text: String,
+    /// TextRank 스코어
+    pub score: f32,
+    /// 원본 문장 순서 (0-based)
+    pub original_index: usize,
+    /// 해당 문장이 속한 페이지 번호
+    pub page_number: Option<i64>,
+    /// 위치 힌트
+    pub location_hint: Option<String>,
+}
+
+/// 요약 응답
+#[derive(Debug, Serialize)]
+pub struct SummaryResponse {
+    /// 요약 문장 목록 (원문 순서)
+    pub sentences: Vec<SummarySentence>,
+    /// 전체 문장 수
+    pub total_sentences: usize,
+    /// 생성 시간 (ms)
+    pub generation_time_ms: u64,
+}
+
+/// 문서 요약 생성 (TextRank 추출적 요약)
+#[tauri::command]
+pub async fn generate_summary(
+    file_path: String,
+    num_sentences: Option<usize>,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<SummaryResponse> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+
+    let num = num_sentences.unwrap_or(3).min(10);
+
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.to_string_lossy().to_string()
+    };
+
+    let result = tokio::task::spawn_blocking(move || -> ApiResult<SummaryResponse> {
+        let start = std::time::Instant::now();
+        let conn = db::get_connection(std::path::Path::new(&db_path))?;
+
+        // 1. 청크 로드
+        let chunk_ids = db::get_chunk_ids_for_path(&conn, &file_path)
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        if chunk_ids.is_empty() {
+            return Ok(SummaryResponse {
+                sentences: vec![],
+                total_sentences: 0,
+                generation_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+
+        let chunk_infos = db::get_chunks_by_ids(&conn, &chunk_ids)
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        let mut sorted = chunk_infos;
+        sorted.sort_by_key(|c| c.chunk_index);
+
+        // 2. 전체 텍스트 병합 + 청크별 위치 매핑
+        // (문자 오프셋 → 페이지/위치 힌트)
+        let mut full_text = String::new();
+        let mut chunk_ranges: Vec<(usize, usize, Option<i64>, Option<String>)> = Vec::new();
+
+        for chunk in &sorted {
+            let start_offset = full_text.len();
+            full_text.push_str(&chunk.content);
+            full_text.push('\n');
+            let end_offset = full_text.len();
+            chunk_ranges.push((
+                start_offset,
+                end_offset,
+                chunk.page_number,
+                chunk.location_hint.clone(),
+            ));
+        }
+
+        // 3. TextRank 요약
+        let ranked = textrank::summarize(&full_text, num);
+
+        // 4. 각 요약 문장에 페이지/위치 매핑
+        let total_sentences = textrank::count_sentences(&full_text);
+
+        let sentences: Vec<SummarySentence> = ranked
+            .into_iter()
+            .map(|rs| {
+                // 문장 텍스트가 어느 청크에 속하는지 찾기
+                let sentence_pos = full_text.find(&rs.text).unwrap_or(0);
+                let (page_number, location_hint) = chunk_ranges
+                    .iter()
+                    .find(|(start, end, _, _)| sentence_pos >= *start && sentence_pos < *end)
+                    .map(|(_, _, pn, lh)| (*pn, lh.clone()))
+                    .unwrap_or((None, None));
+
+                SummarySentence {
+                    text: rs.text,
+                    score: rs.score,
+                    original_index: rs.original_index,
+                    page_number,
+                    location_hint,
+                }
+            })
+            .collect();
+
+        Ok(SummaryResponse {
+            sentences,
+            total_sentences,
+            generation_time_ms: start.elapsed().as_millis() as u64,
+        })
     })
     .await??;
 
