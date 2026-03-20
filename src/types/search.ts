@@ -145,6 +145,26 @@ export interface SuggestionItem {
 }
 
 // =====================
+// 문서 요약 (v2.4)
+// =====================
+
+/** 요약 문장 */
+export interface SummarySentence {
+  text: string;
+  score: number;
+  original_index: number;
+  page_number: number | null;
+  location_hint: string | null;
+}
+
+/** 요약 응답 */
+export interface SummaryResponse {
+  sentences: SummarySentence[];
+  total_sentences: number;
+  generation_time_ms: number;
+}
+
+// =====================
 // 통계 대시보드 (v2.3)
 // =====================
 

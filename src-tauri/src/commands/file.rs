@@ -139,6 +139,48 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
     Ok(())
 }
 
+/// URL을 기본 브라우저로 열기 (법령 링크 등)
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    // https:// 또는 http:// 만 허용 (보안)
+    if !url.starts_with("https://") && !url.starts_with("http://") {
+        return Err("허용되지 않는 URL 스키마입니다".to_string());
+    }
+
+    // URL 길이 제한 (악용 방지)
+    if url.len() > 2048 {
+        return Err("URL이 너무 깁니다".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // cmd /C start는 URL 내 &를 명령 구분자로 해석할 수 있으므로
+        // rundll32로 직접 URL 프로토콜 핸들러 호출 (cmd 인젝션 방지)
+        Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .spawn()
+            .map_err(|e| format!("URL 열기 실패: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("URL 열기 실패: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("URL 열기 실패: {}", e))?;
+    }
+
+    Ok(())
+}
+
 /// 프론트엔드 에러를 Rust 로그 파일에 기록
 /// 로그 인젝션 방지: 입력 길이 제한 + 개행 문자 이스케이프
 #[tauri::command]
