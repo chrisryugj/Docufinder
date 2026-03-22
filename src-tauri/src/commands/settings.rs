@@ -71,6 +71,9 @@ pub struct Settings {
     /// AI 최대 토큰 수
     #[serde(default = "default_ai_max_tokens")]
     pub ai_max_tokens: u32,
+    /// OCR 기능 활성화 (이미지 파일 텍스트 인식)
+    #[serde(default)]
+    pub ocr_enabled: bool,
 }
 
 fn default_include_subfolders() -> bool {
@@ -167,6 +170,7 @@ impl Default for Settings {
             ai_model: default_ai_model(),
             ai_temperature: default_ai_temperature(),
             ai_max_tokens: default_ai_max_tokens(),
+            ocr_enabled: false,
         }
     }
 }

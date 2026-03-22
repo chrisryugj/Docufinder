@@ -46,4 +46,6 @@ export interface Settings {
   ai_temperature: number;
   /** AI 최대 토큰 수 */
   ai_max_tokens: number;
+  /** OCR 기능 활성화 (이미지 파일 텍스트 인식) */
+  ocr_enabled: boolean;
 }

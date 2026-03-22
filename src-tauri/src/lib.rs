@@ -9,6 +9,7 @@ mod error;
 mod indexer;
 mod infrastructure; // 클린 아키텍처: Infrastructure Layer
 mod model_downloader; // 모델 자동 다운로드
+pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
 pub mod parsers;
 mod reranker; // Cross-Encoder Reranking (Phase 5)
 mod search;

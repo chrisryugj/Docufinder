@@ -1,5 +1,6 @@
 pub mod docx;
 pub mod hwpx;
+pub mod image_ocr;
 pub mod pdf;
 pub mod pptx;
 pub mod txt;

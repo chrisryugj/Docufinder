@@ -4,6 +4,9 @@
 /// 참고: "hwp"는 파서 미지원 (파싱 실패 시 변환 대상으로 수집됨, pipeline.rs 참조)
 pub const SUPPORTED_EXTENSIONS: &[&str] = &["txt", "md", "hwpx", "hwp", "docx", "pptx", "xlsx", "xls", "pdf"];
 
+/// OCR 대상 이미지 확장자 (ocr_enabled 설정 시에만 인덱싱)
+pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "bmp", "tiff", "tif"];
+
 // ============================================
 // 보안 관련 상수
 // ============================================

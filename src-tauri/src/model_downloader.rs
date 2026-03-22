@@ -54,6 +54,19 @@ const RERANKER_TOKENIZER_SHA256: &str =
 const ONNX_RUNTIME_ZIP_SHA256: &str =
     "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
 
+// PaddleOCR ONNX 모델 (Hugging Face: monkt/paddleocr-onnx)
+const OCR_DET_URL: &str =
+    "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/detection/v3/det.onnx";
+const OCR_REC_KO_URL: &str =
+    "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/rec.onnx";
+const OCR_DICT_KO_URL: &str =
+    "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/dict.txt";
+// SHA-256: 최초 다운로드 후 compute_sha256()으로 계산하여 채울 것
+// 현재는 빈 문자열 → 검증 스킵
+const OCR_DET_SHA256: &str = "";
+const OCR_REC_KO_SHA256: &str = "";
+const OCR_DICT_KO_SHA256: &str = "";
+
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
 const READ_TIMEOUT_SECS: u64 = 600; // 10분 (대용량 모델)
@@ -177,6 +190,58 @@ pub fn ensure_reranker_model(models_dir: &Path) -> Result<(bool, bool), String> 
     }
 
     Ok((model_downloaded, tokenizer_downloaded))
+}
+
+/// PaddleOCR 모델 다운로드 (Detection + Korean Recognition + Dictionary)
+pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String> {
+    let ocr_dir = models_dir.join("paddleocr");
+    fs::create_dir_all(&ocr_dir).map_err(|e| format!("OCR 디렉토리 생성 실패: {}", e))?;
+
+    let det_path = ocr_dir.join("det.onnx");
+    let rec_path = ocr_dir.join("rec.onnx");
+    let dict_path = ocr_dir.join("dict.txt");
+
+    let mut det_downloaded = false;
+    let mut rec_downloaded = false;
+    let mut dict_downloaded = false;
+
+    if !det_path.exists() {
+        tracing::info!("OCR Detection 모델 다운로드 중...");
+        download_file_optional_hash(OCR_DET_URL, &det_path, OCR_DET_SHA256)?;
+        det_downloaded = true;
+        tracing::info!("OCR Detection 모델 다운로드 완료");
+    }
+
+    if !rec_path.exists() {
+        tracing::info!("OCR Recognition (한국어) 모델 다운로드 중...");
+        download_file_optional_hash(OCR_REC_KO_URL, &rec_path, OCR_REC_KO_SHA256)?;
+        rec_downloaded = true;
+        tracing::info!("OCR Recognition 모델 다운로드 완료");
+    }
+
+    if !dict_path.exists() {
+        tracing::info!("OCR 한국어 사전 다운로드 중...");
+        download_file_optional_hash(OCR_DICT_KO_URL, &dict_path, OCR_DICT_KO_SHA256)?;
+        dict_downloaded = true;
+        tracing::info!("OCR 한국어 사전 다운로드 완료");
+    }
+
+    Ok((det_downloaded, rec_downloaded, dict_downloaded))
+}
+
+/// SHA-256 해시가 비어있으면 검증 스킵, 있으면 검증
+fn download_file_optional_hash(url: &str, dest: &Path, expected_hash: &str) -> Result<(), String> {
+    if expected_hash.is_empty() {
+        // 해시 미설정 → 직접 다운로드 (검증 스킵)
+        download_file_with_timeout(url, dest)?;
+        // 다운로드 후 해시 출력 (개발용)
+        if let Ok(hash) = compute_sha256(dest) {
+            tracing::info!("Downloaded {} SHA-256: {}", dest.display(), hash);
+        }
+        Ok(())
+    } else {
+        download_file_verified(url, dest, expected_hash)
+    }
 }
 
 /// SHA-256 검증 포함 파일 다운로드

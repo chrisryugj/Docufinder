@@ -7,6 +7,7 @@ use crate::application::services::{FolderService, IndexService, SearchService};
 use crate::commands::settings::{self, Settings, VectorIndexingMode};
 use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager, WatchRuntimeSettings};
+use crate::ocr::OcrEngine;
 use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
 use crate::reranker::Reranker;
 use crate::search::filename_cache::FilenameCache;
@@ -46,6 +47,8 @@ pub struct AppContainer {
     vector_worker: Arc<RwLock<VectorWorker>>,
     tokenizer: OnceCell<Arc<dyn TextTokenizer>>,
     reranker: OnceCell<Arc<Reranker>>,
+    /// OCR 엔진 (PaddleOCR ONNX)
+    ocr_engine: OnceCell<Arc<OcrEngine>>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
 
@@ -101,6 +104,7 @@ impl AppContainer {
             vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
             tokenizer: OnceCell::new(),
             reranker: OnceCell::new(),
+            ocr_engine: OnceCell::new(),
             filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             settings_cache: Arc::new(RwLock::new(cached_settings)),
@@ -374,6 +378,24 @@ impl AppContainer {
             .join("ms-marco-MiniLM-L6-v2")
             .join("model.onnx");
         model_path.exists()
+    }
+
+    /// OCR 엔진 (PaddleOCR ONNX)
+    pub fn get_ocr_engine(&self) -> Result<Arc<OcrEngine>, ApiError> {
+        self.ocr_engine
+            .get_or_try_init(|| {
+                let ocr_dir = self.models_dir.join("paddleocr");
+                OcrEngine::new(&ocr_dir)
+                    .map(Arc::new)
+                    .map_err(|e| ApiError::IndexingFailed(format!("OCR 엔진 초기화 실패: {}", e)))
+            })
+            .cloned()
+    }
+
+    /// OCR 모델 사용 가능 여부
+    pub fn is_ocr_available(&self) -> bool {
+        let ocr_dir = self.models_dir.join("paddleocr");
+        ocr_dir.join("det.onnx").exists() && ocr_dir.join("rec.onnx").exists()
     }
 
     /// 캐시된 설정 조회 (디스크 I/O 없음)

@@ -205,6 +205,15 @@ export function SearchTab({ settings, onChange, onSemanticToggle }: SearchTabPro
           </div>
         )}
       </div>
+      {/* OCR 설정 */}
+      <div>
+        <SettingsToggle
+          label="OCR (이미지 텍스트 인식)"
+          description="JPG, PNG, BMP, TIFF 이미지에서 텍스트 추출 (PaddleOCR, ~15MB 모델)"
+          checked={settings.ocr_enabled ?? false}
+          onChange={(v) => onChange("ocr_enabled", v)}
+        />
+      </div>
     </div>
   );
 }
