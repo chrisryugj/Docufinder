@@ -115,7 +115,7 @@ export const Sidebar = memo(function Sidebar({
             </button>
             {bookmarks.length > 0 && (
               <button
-                onClick={() => onBookmarkSelect?.(bookmarks[0]?.file_path)}
+                onClick={() => onBookmarkSelect?.(bookmarks[0]?.file_path, bookmarks[0]?.page_number)}
                 className="p-2 rounded-md btn-icon-hover"
                 title={`북마크 (${bookmarks.length})`}
                 aria-label="북마크"

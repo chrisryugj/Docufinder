@@ -60,7 +60,8 @@ fn scan_documents_for_expiry(
             "SELECT f.path, f.name, c.content
              FROM files f
              JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
-             ORDER BY f.path",
+             ORDER BY f.path
+             LIMIT 50000",
         )
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 

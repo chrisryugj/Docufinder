@@ -255,7 +255,7 @@ export function DuplicateFinderModal({
                           <Copy className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => onOpenFolder(file.file_path)}
+                          onClick={() => onOpenFolder(file.file_path.replace(/[/\\][^/\\]+$/, ""))}
                           className="p-1 rounded hover:bg-[var(--color-bg-secondary)]"
                           title="폴더 열기"
                         >

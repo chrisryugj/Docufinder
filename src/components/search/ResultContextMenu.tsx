@@ -69,19 +69,6 @@ export function ResultContextMenu({
 }) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
-  // 위치 경계 보정
-  useEffect(() => {
-    if (contextMenu.isOpen && contextMenuRef.current) {
-      const menu = contextMenuRef.current;
-      const rect = menu.getBoundingClientRect();
-      const padding = 8;
-      // 보정은 초기 위치 계산에서 처리됨
-      if (rect.right > window.innerWidth - padding || rect.bottom > window.innerHeight - padding) {
-        // 경계 초과 시 재배치는 useContextMenu에서 처리
-      }
-    }
-  }, [contextMenu.isOpen]);
-
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

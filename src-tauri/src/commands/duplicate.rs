@@ -136,6 +136,10 @@ fn find_exact_duplicates(
             if !path.exists() {
                 continue;
             }
+            // 500MB 초과 파일은 해싱 스킵 (CPU/IO 과부하 방지)
+            if file.3 > 500 * 1024 * 1024 {
+                continue;
+            }
             match compute_file_hash(path) {
                 Ok(hash) => {
                     hash_map.entry(hash).or_default().push(file);

@@ -26,10 +26,9 @@ impl Drop for PooledConnection {
         if let Some(conn) = self.inner.take() {
             // 열린 트랜잭션이 있으면 반환하지 않음 (안전)
             if conn.is_autocommit() {
-                if let Ok(mut pool) = CONN_POOL.lock() {
-                    if pool.1.len() < MAX_POOL_SIZE {
-                        pool.1.push(conn);
-                    }
+                let mut pool = CONN_POOL.lock().unwrap_or_else(|e| e.into_inner());
+                if pool.1.len() < MAX_POOL_SIZE {
+                    pool.1.push(conn);
                 }
             }
             // 풀이 가득 차거나 트랜잭션 중이면 그냥 drop
@@ -60,7 +59,7 @@ impl std::ops::Deref for PooledConnection {
 /// DB 경로가 변경되면 기존 풀의 커넥션은 이전 DB를 가리키므로 제거 필요.
 #[allow(dead_code)] // data_root 설정 기능 구현 시 사용 예정
 pub fn drain_pool() {
-    if let Ok(mut pool) = CONN_POOL.lock() {
+    if let Ok(mut pool) = CONN_POOL.lock().or_else(|e| Ok::<_, ()>(e.into_inner())) {
         let count = pool.1.len();
         pool.0 = None;
         pool.1.clear();
@@ -78,8 +77,8 @@ pub fn drain_pool() {
 pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
     let path_str = db_path.to_string_lossy().to_string();
 
-    // 풀에서 재사용 시도 (PRAGMA 스킵)
-    if let Ok(mut pool) = CONN_POOL.lock() {
+    // 풀에서 재사용 시도 (PRAGMA 스킵, poison 복구 포함)
+    if let Ok(mut pool) = CONN_POOL.lock().or_else(|e| Ok::<_, ()>(e.into_inner())) {
         // 경로 불일치 시 풀 drain
         let path_matches = pool.0.as_ref().is_some_and(|p| *p == path_str);
         if !path_matches {

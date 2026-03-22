@@ -952,8 +952,12 @@ impl SearchService {
             ("통계", &["통계 수치 증감 전년대비 비율 백분율 그래프"]),
         ];
 
-        // 입력 텍스트 임베딩 (첫 512자)
-        let input = if text.len() > 512 { &text[..512] } else { text };
+        // 입력 텍스트 임베딩 (첫 512자 — char 경계 안전)
+        let input = if text.chars().count() > 512 {
+            &text[..text.char_indices().nth(512).map(|(i, _)| i).unwrap_or(text.len())]
+        } else {
+            text
+        };
         let input_emb = embedder
             .embed(input, false)
             .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;

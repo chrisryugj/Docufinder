@@ -83,7 +83,13 @@ impl RagService {
 fn build_context(results: &[SearchResult]) -> String {
     let mut context = String::new();
     for (i, result) in results.iter().take(MAX_CONTEXT_RESULTS).enumerate() {
-        let content: String = result.full_content.chars().take(MAX_SNIPPET_CHARS).collect();
+        // full_content가 비어있으면 content_preview로 폴백
+        let source = if result.full_content.is_empty() {
+            &result.content_preview
+        } else {
+            &result.full_content
+        };
+        let content: String = source.chars().take(MAX_SNIPPET_CHARS).collect();
 
         context.push_str(&format!(
             "### 문서 {} — {}\n{}\n\n",

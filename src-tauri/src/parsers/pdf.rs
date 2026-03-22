@@ -485,7 +485,8 @@ fn decompress_flate(data: &[u8]) -> Option<Vec<u8>> {
     use flate2::read::ZlibDecoder;
     use std::io::Read;
 
-    let mut decoder = ZlibDecoder::new(data);
+    const MAX_DECOMPRESSED_SIZE: u64 = 50 * 1024 * 1024; // 50MB 상한 (디컴프레션 폭탄 방어)
+    let mut decoder = ZlibDecoder::new(data).take(MAX_DECOMPRESSED_SIZE);
     let mut decoded = Vec::new();
     decoder.read_to_end(&mut decoded).ok()?;
     Some(decoded)

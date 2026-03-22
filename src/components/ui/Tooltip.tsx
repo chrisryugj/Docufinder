@@ -1,4 +1,4 @@
-import { useState, useEffect, ReactNode, useRef } from "react";
+import { useState, useEffect, ReactNode, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 
 interface TooltipProps {
@@ -40,6 +40,7 @@ export function Tooltip({
   maxWidth,
   usePortal = false,
 }: TooltipProps) {
+  const tooltipId = useId();
   const [isVisible, setIsVisible] = useState(false);
   const [portalPos, setPortalPos] = useState<{ top: number; left: number } | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,6 +90,7 @@ export function Tooltip({
   const tooltipContent = isVisible && content && (usePortal ? (
     portalPos && createPortal(
       <div
+        id={tooltipId}
         className={`fixed z-[9999] px-2 py-1 text-xs rounded shadow-lg pointer-events-none ${maxWidth ? "" : "whitespace-nowrap"}`}
         style={{
           top: portalPos.top,
@@ -111,6 +113,7 @@ export function Tooltip({
     )
   ) : (
     <div
+      id={tooltipId}
       className={`
         absolute z-50 px-2 py-1
         text-xs rounded shadow-lg
@@ -142,6 +145,7 @@ export function Tooltip({
       onMouseLeave={hideTooltip}
       onFocus={showTooltip}
       onBlur={hideTooltip}
+      aria-describedby={isVisible ? tooltipId : undefined}
     >
       {children}
       {tooltipContent}
