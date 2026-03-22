@@ -37,8 +37,7 @@ export function useFileActions({
       try {
         await invokeWithTimeout("open_file", { path: filePath, page: page ?? null }, IPC_TIMEOUT.FILE_ACTION);
         updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
-      } catch (err) {
-        console.error("Failed to open file:", err);
+      } catch {
         updateToast(toastId, { message: "파일 열기 실패", type: "error" });
       }
     },
@@ -51,8 +50,7 @@ export function useFileActions({
         const cleanPath = path.replace(/^\\\\\?\\/, "");
         await navigator.clipboard.writeText(cleanPath);
         showToast("경로가 복사되었습니다", "success");
-      } catch (err) {
-        console.error("Failed to copy path:", err);
+      } catch {
         showToast("경로 복사 실패", "error");
       }
     },
@@ -65,8 +63,7 @@ export function useFileActions({
         const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
         await invokeWithTimeout("open_folder", { path: cleanPath }, IPC_TIMEOUT.FILE_ACTION);
         showToast("폴더를 열었습니다", "success");
-      } catch (err) {
-        console.error("Failed to open folder:", err);
+      } catch {
         showToast("폴더 열기 실패", "error");
       }
     },
@@ -85,11 +82,6 @@ export function useFileActions({
           "error",
           5000
         );
-        if (import.meta.env.DEV) {
-          results.forEach((r) => {
-            if (r.errors?.length) console.warn("[파싱 실패 목록]", r.errors.slice(0, 20));
-          });
-        }
       } else if (totalIndexed > 0) {
         const folderCount = results.length;
         const msg = folderCount > 1

@@ -15,3 +15,8 @@ export type { Theme, ResolvedTheme } from "./useTheme";
 export { useCollapsibleSearch } from "./useCollapsibleSearch";
 export { useIMEComposition } from "./useIMEComposition";
 export { useAutoComplete, saveSearchQuery } from "./useAutoComplete";
+export { useWindowFocus } from "./useWindowFocus";
+export { useSimilarDocuments } from "./useSimilarDocuments";
+export { useDocumentCategories } from "./useDocumentCategories";
+export { useRecentSearchSaver } from "./useRecentSearchSaver";
+export { useResultSelection } from "./useResultSelection";

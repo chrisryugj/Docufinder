@@ -1,4 +1,4 @@
-import { forwardRef, memo, useCallback } from "react";
+import { forwardRef, memo, useCallback, useRef, useEffect } from "react";
 import type { SearchMode, SearchParadigm, SuggestionItem } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
@@ -84,9 +84,11 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       [isNatural, onSubmitNatural, onSuggestionsKeyDown, onSuggestionSelect]
     );
 
+    const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
     const handleBlur = useCallback(() => {
       // 드롭다운 클릭이 blur보다 먼저 처리되도록 지연
-      setTimeout(() => onSuggestionsClose?.(), 150);
+      blurTimerRef.current = setTimeout(() => { onSuggestionsClose?.(); blurTimerRef.current = null; }, 150);
     }, [onSuggestionsClose]);
 
     return (

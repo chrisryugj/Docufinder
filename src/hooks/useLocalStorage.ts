@@ -13,8 +13,7 @@ export function useLocalStorage<T>(
     try {
       const item = window.localStorage.getItem(key);
       return item ? (JSON.parse(item) as T) : initialValue;
-    } catch (error) {
-      console.error(`Error reading localStorage key "${key}":`, error);
+    } catch {
       return initialValue;
     }
   });
@@ -27,8 +26,7 @@ export function useLocalStorage<T>(
           const valueToStore = value instanceof Function ? value(prev) : value;
           window.localStorage.setItem(key, JSON.stringify(valueToStore));
           return valueToStore;
-        } catch (error) {
-          console.error(`Error setting localStorage key "${key}":`, error);
+        } catch {
           return prev;
         }
       });
@@ -73,8 +71,8 @@ function migrateRecentSearches(): RecentSearch[] {
         return migrated;
       }
     }
-  } catch (e) {
-    console.error("Failed to migrate recent searches:", e);
+  } catch {
+    // 마이그레이션 실패 시 빈 배열 반환
   }
   return [];
 }
@@ -92,8 +90,8 @@ export function useRecentSearches() {
     setSearches(newSearches);
     try {
       window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
-    } catch (e) {
-      console.error("Failed to save recent searches:", e);
+    } catch {
+      // localStorage 저장 실패 무시 (graceful degradation)
     }
   }, []);
 
@@ -112,8 +110,8 @@ export function useRecentSearches() {
         // localStorage 저장
         try {
           window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
-        } catch (e) {
-          console.error("Failed to save recent searches:", e);
+        } catch {
+          // localStorage 저장 실패 무시 (graceful degradation)
         }
 
         return newSearches;
@@ -128,8 +126,8 @@ export function useRecentSearches() {
         const newSearches = prev.filter((s) => s.query !== query);
         try {
           window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(newSearches));
-        } catch (e) {
-          console.error("Failed to save recent searches:", e);
+        } catch {
+          // localStorage 저장 실패 무시 (graceful degradation)
         }
         return newSearches;
       });

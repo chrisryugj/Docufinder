@@ -51,8 +51,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
       const result = await invokeWithTimeout<VectorIndexingStatus>("get_vector_indexing_status", undefined, IPC_TIMEOUT.SETTINGS);
       setStatus(result);
       return result;
-    } catch (err) {
-      console.error("Failed to get vector indexing status:", err);
+    } catch {
       return null;
     }
   }, []);
@@ -105,8 +104,8 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
             setJustCompleted(true);
           }
         });
-      } catch (e) {
-        console.error("Failed to setup vector-indexing-progress listener:", e);
+      } catch {
+        // 리스너 등록 실패 — 폴링으로 대체
       }
     };
 
