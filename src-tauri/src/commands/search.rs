@@ -158,6 +158,36 @@ pub async fn search_hybrid(
         .map_err(ApiError::from)
 }
 
+/// 스마트(자연어) 검색
+/// NL 파서가 키워드/날짜/파일타입/부정어를 자동 추출 후 하이브리드 검색 위임
+#[tauri::command]
+pub async fn search_smart(
+    query: String,
+    folder_scope: Option<String>,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<crate::application::dto::search::SmartSearchResponse> {
+    validate_query(&query)?;
+    if query.trim().is_empty() {
+        return Ok(crate::application::dto::search::SmartSearchResponse {
+            results: vec![],
+            total_count: 0,
+            search_time_ms: 0,
+            parsed_query: crate::search::nl_query::NlQueryParser::parse(""),
+        });
+    }
+
+    let (service, max_results) = {
+        let container = state.read()?;
+        let max_results = container.get_settings().max_results;
+        (container.search_service(), max_results)
+    };
+
+    service
+        .search_smart(&query, max_results, folder_scope.as_deref())
+        .await
+        .map_err(ApiError::from)
+}
+
 /// 유사 문서 검색 (파일 경로 기반)
 #[tauri::command]
 pub async fn find_similar_documents(

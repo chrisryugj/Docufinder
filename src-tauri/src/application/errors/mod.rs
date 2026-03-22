@@ -28,6 +28,8 @@ pub enum AppError {
     VectorIndexEmpty,
     /// 시맨틱 검색 비활성화 (모델 없음)
     SemanticSearchDisabled,
+    /// AI 에러 (Gemini API)
+    AiError(String),
     /// 내부 에러
     Internal(String),
 }
@@ -47,6 +49,7 @@ impl fmt::Display for AppError {
             AppError::SemanticSearchDisabled => {
                 write!(f, "Semantic search is disabled (model not found)")
             }
+            AppError::AiError(e) => write!(f, "AI error: {}", e),
             AppError::Internal(e) => write!(f, "Internal error: {}", e),
         }
     }

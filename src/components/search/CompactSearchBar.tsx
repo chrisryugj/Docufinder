@@ -1,8 +1,8 @@
-import { forwardRef, memo, useMemo } from "react";
+import { forwardRef, memo, useCallback, useMemo } from "react";
 import { Search, HelpCircle, Settings } from "lucide-react";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
-import type { SearchMode } from "../../types/search";
+import type { SearchMode, SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import type {
   SearchFilters as FiltersType,
@@ -40,6 +40,10 @@ interface CompactSearchBarProps {
   totalResultCount: number;
   onCompositionStart?: () => void;
   onCompositionEnd?: (finalValue: string) => void;
+  /** 검색 패러다임 */
+  paradigm?: SearchParadigm;
+  /** 자연어 검색 실행 */
+  onSubmitNatural?: () => void;
 }
 
 export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchBarProps>(
@@ -67,9 +71,12 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       totalResultCount,
       onCompositionStart,
       onCompositionEnd,
+      paradigm = "instant",
+      onSubmitNatural,
     },
     ref
   ) => {
+    const isNatural = paradigm === "natural";
     const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
@@ -77,6 +84,16 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       onCompositionEnd,
       forwardedRef: ref,
     });
+
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (isNatural && e.key === "Enter" && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          onSubmitNatural?.();
+        }
+      },
+      [isNatural, onSubmitNatural]
+    );
 
     // 활성 필터 라벨 생성 (filters 변경 시에만 재계산)
     const activeFilterLabels = useMemo(() => {
@@ -174,7 +191,8 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             type="text"
             defaultValue={query}
             {...imeHandlers}
-            placeholder="예: 예산 집행현황, 민원처리 규정..."
+            onKeyDown={isNatural ? handleKeyDown : undefined}
+            placeholder={isNatural ? "자연어로 검색 후 Enter…" : "예: 예산 집행현황, 민원처리 규정..."}
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}
             aria-label="검색어 입력"
@@ -191,11 +209,18 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             />
           )}
 
-          <SearchModeDropdown
-            searchMode={searchMode}
-            onSearchModeChange={onSearchModeChange}
-            status={status}
-          />
+          {!isNatural && (
+            <SearchModeDropdown
+              searchMode={searchMode}
+              onSearchModeChange={onSearchModeChange}
+              status={status}
+            />
+          )}
+          {isNatural && (
+            <span className="text-xs ml-2 flex-shrink-0" style={{ color: "var(--color-text-muted)" }}>
+              Enter ↵
+            </span>
+          )}
         </div>
 
         {/* 필터 버튼 + 칩 */}

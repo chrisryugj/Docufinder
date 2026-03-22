@@ -1,3 +1,4 @@
+mod ai; // Gemini RAG (v2.6)
 mod application; // 클린 아키텍처: Application Layer
 mod commands;
 mod constants;
@@ -703,6 +704,7 @@ pub fn run() {
             commands::search::search_filename,
             commands::search::search_semantic,
             commands::search::search_hybrid,
+            commands::search::search_smart,
             commands::search::find_similar_documents,
             commands::search::classify_document,
             commands::search::get_suggestions,
@@ -740,6 +742,7 @@ pub fn run() {
             commands::preview::update_bookmark_note,
             commands::preview::get_bookmarks,
             commands::preview::generate_summary,
+            commands::ai::ask_ai,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

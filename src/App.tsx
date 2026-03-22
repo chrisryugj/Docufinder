@@ -8,6 +8,7 @@ import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
+import { useAiSearch } from "./hooks/useAiSearch";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useUpdater } from "./hooks/useUpdater";
 import { useBookmarks } from "./hooks/useBookmarks";
@@ -17,6 +18,9 @@ import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
+import SearchParadigmToggle from "./components/search/SearchParadigmToggle";
+import SmartQueryInfo from "./components/search/SmartQueryInfo";
+import { AiAnswerPanel } from "./components/search/AiAnswerPanel";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
@@ -84,6 +88,10 @@ function App() {
     clearRefine,
     setComposing,
     invalidate: invalidateSearch,
+    paradigm,
+    setParadigm,
+    submitNaturalQuery,
+    parsedQuery,
   } = useSearch({ minConfidence: 0 });
 
   // 스크롤 기반 검색 영역 축소 (query 의존 → useSearch 뒤에 배치)
@@ -151,8 +159,18 @@ function App() {
     semanticEnabled,
     vectorIndexingMode,
     resultsPerPage,
+    aiEnabled,
     applySettings,
   } = useAppSettings({ setSearchMode });
+
+  // AI 검색 (Gemini RAG)
+  const {
+    aiAnalysis,
+    isAiLoading,
+    aiError,
+    requestAiAnalysis,
+    clearAiAnalysis,
+  } = useAiSearch();
 
   // 파일/폴더 액션 (열기, 복사, 추가, 제거)
   const {
@@ -445,6 +463,27 @@ function App() {
     [setQuery, autoComplete.close]
   );
 
+  // 자연어 모드: 검색 완료 시 AI 자동 분석
+  useEffect(() => {
+    if (
+      aiEnabled &&
+      paradigm === "natural" &&
+      parsedQuery &&
+      filteredResults.length > 0 &&
+      !isLoading
+    ) {
+      requestAiAnalysis(query, filteredResults);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedQuery]); // parsedQuery 변경 = 자연어 검색 완료
+
+  // 즉시 모드: AI 수동 트리거
+  const handleAskAi = useCallback(() => {
+    if (query.trim() && filteredResults.length > 0) {
+      requestAiAnalysis(query, filteredResults);
+    }
+  }, [query, filteredResults, requestAiAnalysis]);
+
   // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
   useEffect(() => {
     if (searchTimerRef.current) {
@@ -639,6 +678,8 @@ function App() {
               onRefineQueryChange={setRefineQuery}
               onRefineQueryClear={clearRefine}
               totalResultCount={results.length}
+              paradigm={paradigm}
+              onSubmitNatural={submitNaturalQuery}
             />
           </div>
         )}
@@ -666,6 +707,11 @@ function App() {
         {/* Search Bar + Filters Area — 스크롤 컨테이너 밖 (collapse 시 스크롤 점프 방지) */}
         {!isCollapsed && (
           <div className="px-4 pt-4 pb-2">
+            {/* 검색 패러다임 토글 */}
+            <div className="max-w-4xl mx-auto mb-2 flex justify-end">
+              <SearchParadigmToggle paradigm={paradigm} onChange={setParadigm} />
+            </div>
+
             <SearchBar
               ref={searchInputRef}
               query={query}
@@ -685,6 +731,8 @@ function App() {
               onSuggestionsKeyDown={autoComplete.handleKeyDown}
               onSuggestionsClose={autoComplete.close}
               onSuggestionsSetIndex={autoComplete.setSelectedIndex}
+              paradigm={paradigm}
+              onSubmitNatural={submitNaturalQuery}
             />
 
             {/* 벡터 인덱싱 상태 배너 */}
@@ -694,19 +742,29 @@ function App() {
               onCancel={cancelVectorIndexing}
             />
 
-            {/* 필터 바 */}
+            {/* 필터 바 / 파싱 결과 */}
             {query && (results.length > 0 || filenameResults.length > 0) && (
               <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-                <SearchFilters
-                  filters={filters}
-                  onFiltersChange={setFilters}
-                  showRefineSearch={results.length > 0 || filenameResults.length > 0}
-                  searchMode={searchMode}
-                  refineQuery={refineQuery}
-                  onRefineQueryChange={setRefineQuery}
-                  onRefineQueryClear={clearRefine}
-                  watchedFolders={status?.watched_folders ?? []}
-                />
+                {paradigm === "natural" && parsedQuery ? (
+                  <SmartQueryInfo
+                    parsed={parsedQuery}
+                    onClear={() => {
+                      // 필터 제거: 원본 쿼리로 재검색
+                      submitNaturalQuery();
+                    }}
+                  />
+                ) : (
+                  <SearchFilters
+                    filters={filters}
+                    onFiltersChange={setFilters}
+                    showRefineSearch={results.length > 0 || filenameResults.length > 0}
+                    searchMode={searchMode}
+                    refineQuery={refineQuery}
+                    onRefineQueryChange={setRefineQuery}
+                    onRefineQueryClear={clearRefine}
+                    watchedFolders={status?.watched_folders ?? []}
+                  />
+                )}
               </div>
             )}
 
@@ -759,6 +817,34 @@ function App() {
                       ))}
                     </div>
                   </div>
+                )}
+
+                {/* AI 물어보기 버튼 (즉시 모드, 결과 있을 때, AI 답변 없을 때) */}
+                {aiEnabled && !aiAnalysis && !isAiLoading && !aiError && filteredResults.length > 0 && (
+                  <div className="mb-3 flex justify-end">
+                    <button
+                      onClick={handleAskAi}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-90"
+                      style={{
+                        backgroundColor: "var(--color-accent)",
+                        color: "white",
+                      }}
+                    >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5Z"/></svg>
+                      AI에게 물어보기
+                    </button>
+                  </div>
+                )}
+
+                {/* AI 답변 패널 */}
+                {aiEnabled && (aiAnalysis || isAiLoading || aiError) && (
+                  <AiAnswerPanel
+                    analysis={aiAnalysis}
+                    isLoading={isAiLoading}
+                    error={aiError}
+                    onDismiss={clearAiAnalysis}
+                    onOpenFile={(filePath) => handleOpenFile(filePath, undefined)}
+                  />
                 )}
 
                 <SearchResultList

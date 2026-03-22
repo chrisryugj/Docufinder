@@ -36,4 +36,14 @@ export interface Settings {
   exclude_dirs?: string[];
   /** 증분 인덱싱 시 새 HWP 파일 감지 → 변환 알림 (기본: 비활성) */
   hwp_auto_detect: boolean;
+  /** AI 기능 활성화 */
+  ai_enabled: boolean;
+  /** Gemini API 키 */
+  ai_api_key?: string;
+  /** AI 모델 ID */
+  ai_model: string;
+  /** AI 응답 온도 (0.0-2.0) */
+  ai_temperature: number;
+  /** AI 최대 토큰 수 */
+  ai_max_tokens: number;
 }

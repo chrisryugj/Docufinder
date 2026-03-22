@@ -7,8 +7,10 @@
 
 mod folder_service;
 mod index_service;
+pub mod rag_service;
 mod search_service;
 
 pub use folder_service::FolderService;
 pub use index_service::IndexService;
+pub use rag_service::RagService;
 pub use search_service::SearchService;

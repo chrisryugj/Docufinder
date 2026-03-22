@@ -89,6 +89,11 @@ pub enum ApiError {
     /// 모델을 찾을 수 없음
     #[error("모델을 찾을 수 없습니다: {0}")]
     ModelNotFound(String),
+
+    // ============ AI ============
+    /// AI 처리 실패
+    #[error("AI 처리 실패: {0}")]
+    AiError(String),
 }
 
 /// API 결과 타입 별칭
@@ -136,6 +141,7 @@ impl From<crate::application::errors::AppError> for ApiError {
             AppError::EmbeddingFailed(e) => ApiError::EmbeddingFailed(e),
             AppError::VectorIndexEmpty => ApiError::VectorIndexEmpty,
             AppError::SemanticSearchDisabled => ApiError::SemanticSearchDisabled,
+            AppError::AiError(e) => ApiError::AiError(e),
             AppError::Internal(e) => ApiError::LockFailed(e),
         }
     }

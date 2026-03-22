@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod file;
 pub mod index;
 pub mod preview;

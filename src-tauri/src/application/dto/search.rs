@@ -102,3 +102,38 @@ impl SearchResponse {
         }
     }
 }
+
+/// AI RAG 응답 DTO
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AiAnalysis {
+    /// AI 생성 답변 (마크다운)
+    pub answer: String,
+    /// 참조한 문서 경로 목록
+    pub source_files: Vec<String>,
+    /// 처리 시간 (ms)
+    pub processing_time_ms: u64,
+    /// 사용 모델
+    pub model: String,
+    /// 토큰 사용량
+    pub tokens_used: Option<TokenUsage>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+/// 스마트(자연어) 검색 응답 DTO
+#[derive(Debug, Serialize)]
+pub struct SmartSearchResponse {
+    /// 검색 결과 목록
+    pub results: Vec<SearchResult>,
+    /// 총 결과 수
+    pub total_count: usize,
+    /// 검색 소요 시간 (ms)
+    pub search_time_ms: u64,
+    /// NL 파싱 결과 (프론트엔드에서 칩 UI 표시용)
+    pub parsed_query: crate::search::nl_query::ParsedQuery,
+}

@@ -1,5 +1,5 @@
 import { forwardRef, memo, useCallback } from "react";
-import type { SearchMode, SuggestionItem } from "../../types/search";
+import type { SearchMode, SearchParadigm, SuggestionItem } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
@@ -23,6 +23,10 @@ interface SearchBarProps {
   onSuggestionsKeyDown?: (e: React.KeyboardEvent) => string | null;
   onSuggestionsClose?: () => void;
   onSuggestionsSetIndex?: (index: number) => void;
+  /** 검색 패러다임 */
+  paradigm?: SearchParadigm;
+  /** 자연어 검색 실행 */
+  onSubmitNatural?: () => void;
 }
 
 export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
@@ -45,9 +49,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       onSuggestionsKeyDown,
       onSuggestionsClose,
       onSuggestionsSetIndex,
+      paradigm = "instant",
+      onSubmitNatural,
     },
     ref
   ) => {
+    const isNatural = paradigm === "natural";
     const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
@@ -58,8 +65,15 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLInputElement>) => {
-        // 자동완성 키보드 처리 우선
-        if (onSuggestionsKeyDown) {
+        // 자연어 모드: Enter로 검색 실행
+        if (isNatural && e.key === "Enter" && !e.nativeEvent.isComposing) {
+          e.preventDefault();
+          onSubmitNatural?.();
+          return;
+        }
+
+        // 자동완성 키보드 처리 우선 (즉시 모드만)
+        if (!isNatural && onSuggestionsKeyDown) {
           const selected = onSuggestionsKeyDown(e);
           if (selected !== null) {
             onSuggestionSelect?.(selected);
@@ -67,7 +81,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           }
         }
       },
-      [onSuggestionsKeyDown, onSuggestionSelect]
+      [isNatural, onSubmitNatural, onSuggestionsKeyDown, onSuggestionSelect]
     );
 
     const handleBlur = useCallback(() => {
@@ -109,7 +123,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {...imeHandlers}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
-            placeholder="예: 2024년 예산 집행현황, 민원처리 규정, 회의록..."
+            placeholder={isNatural
+              ? "자연어로 검색 (예: 지난주 예산 한글 문서 찾아줘)"
+              : "예: 2024년 예산 집행현황, 민원처리 규정, 회의록..."
+            }
             className="flex-1 bg-transparent border-none focus:outline-none ml-3"
             style={{
               color: "var(--color-text-primary)",
@@ -157,16 +174,32 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             />
           )}
 
-          {/* Search Mode */}
-          <SearchModeDropdown
-            searchMode={searchMode}
-            onSearchModeChange={onSearchModeChange}
-            status={status}
-          />
+          {/* Enter 힌트 (자연어 모드) */}
+          {isNatural && query && (
+            <kbd
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
+              style={{
+                color: "var(--color-text-muted)",
+                backgroundColor: "var(--color-bg-tertiary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              Enter
+            </kbd>
+          )}
+
+          {/* Search Mode (즉시 모드만) */}
+          {!isNatural && (
+            <SearchModeDropdown
+              searchMode={searchMode}
+              onSearchModeChange={onSearchModeChange}
+              status={status}
+            />
+          )}
         </div>
 
-        {/* 자동완성 드롭다운 */}
-        {isSuggestionsOpen && suggestions.length > 0 && (
+        {/* 자동완성 드롭다운 (즉시 모드만) */}
+        {!isNatural && isSuggestionsOpen && suggestions.length > 0 && (
           <div
             id="suggestion-listbox"
             className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-lg"

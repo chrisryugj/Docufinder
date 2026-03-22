@@ -152,6 +152,29 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
     terms.join(" AND ")
 }
 
+/// ParsedQuery 기반 FTS5 쿼리 생성 (NOT 연산자 지원)
+///
+/// exclude가 비어있으면 기존 sanitize_fts_query와 동일.
+/// 양의 항 없이 NOT만 있으면 빈 문자열 반환 (후처리 필터로 위임).
+pub fn build_fts_query(
+    keywords: &str,
+    exclude: &[String],
+    tokenizer: Option<&dyn TextTokenizer>,
+) -> String {
+    let positive = sanitize_fts_query(keywords, tokenizer);
+
+    if positive.is_empty() || exclude.is_empty() {
+        return positive;
+    }
+
+    let not_terms: Vec<String> = exclude
+        .iter()
+        .map(|t| format!("NOT \"{}\"*", t.replace('"', "\"\"")))
+        .collect();
+
+    format!("{} {}", positive, not_terms.join(" "))
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // FTS 결과 필드 (일부만 현재 소비)
 pub struct FtsResult {

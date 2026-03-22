@@ -4,7 +4,7 @@
 //! 결과를 정규화된 DTO로 반환합니다.
 
 use crate::application::dto::search::{
-    MatchType, SearchMode, SearchQuery, SearchResponse, SearchResult,
+    MatchType, SearchMode, SearchQuery, SearchResponse, SearchResult, SmartSearchResponse,
 };
 use crate::application::errors::{AppError, AppResult};
 use crate::db::{self, ChunkInfo};
@@ -596,6 +596,73 @@ impl SearchService {
             total_count,
             search_time_ms,
             search_mode: "hybrid".to_string(),
+        })
+    }
+
+    // ============================================
+    // Smart (Natural Language) Search
+    // ============================================
+
+    /// 자연어 검색: NL 파서 → 하이브리드 검색 위임 → 후처리 필터
+    pub async fn search_smart(
+        &self,
+        query: &str,
+        max_results: usize,
+        folder_scope: Option<&str>,
+    ) -> AppResult<SmartSearchResponse> {
+        use crate::search::nl_query::NlQueryParser;
+
+        let start = Instant::now();
+        let parsed = NlQueryParser::parse(query);
+
+        if parsed.keywords.trim().is_empty() {
+            return Ok(SmartSearchResponse {
+                results: vec![],
+                total_count: 0,
+                search_time_ms: 0,
+                parsed_query: parsed,
+            });
+        }
+
+        // Over-fetch: 후처리 필터 손실 보상 (× 3)
+        let over_fetch = max_results * 3;
+
+        // 하이브리드 검색 위임 (시맨틱 불가 시 keyword 폴백)
+        let base = if self.embedder.is_some() && self.vector_index.is_some() {
+            self.search_hybrid(&parsed.keywords, over_fetch, folder_scope)
+                .await?
+        } else {
+            self.search_keyword(&parsed.keywords, over_fetch, folder_scope)
+                .await?
+        };
+
+        // 후처리 필터
+        let now = chrono::Utc::now().timestamp();
+        let filtered: Vec<SearchResult> = base
+            .results
+            .into_iter()
+            .filter(|r| smart_apply_date_filter(r, &parsed.date_filter, now))
+            .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+            .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+            .take(max_results)
+            .collect();
+
+        let total_count = filtered.len();
+        let search_time_ms = start.elapsed().as_millis() as u64;
+
+        tracing::debug!(
+            "Smart search '{}': parsed keywords='{}', {} results in {}ms",
+            query,
+            parsed.keywords,
+            total_count,
+            search_time_ms
+        );
+
+        Ok(SmartSearchResponse {
+            results: filtered,
+            total_count,
+            search_time_ms,
+            parsed_query: parsed,
         })
     }
 
@@ -1260,6 +1327,78 @@ fn interpolate_page_from_snippet(
     let interpolated = ps as f64 + ratio * page_span;
 
     Some(interpolated.round() as i64)
+}
+
+// ============================================
+// Smart Search 후처리 필터
+// ============================================
+
+use crate::search::nl_query::DateFilter;
+
+/// 날짜 필터 적용
+fn smart_apply_date_filter(
+    r: &SearchResult,
+    filter: &Option<DateFilter>,
+    now: i64,
+) -> bool {
+    let Some(filter) = filter else { return true };
+    let Some(modified) = r.modified_at else {
+        return false;
+    };
+
+    let (start, end) = match filter {
+        DateFilter::Today => (now - 86400, i64::MAX),
+        DateFilter::ThisWeek => (now - 7 * 86400, i64::MAX),
+        DateFilter::LastWeek => (now - 14 * 86400, now - 7 * 86400),
+        DateFilter::ThisMonth => (now - 30 * 86400, i64::MAX),
+        DateFilter::LastMonth => (now - 60 * 86400, now - 30 * 86400),
+        DateFilter::ThisYear => {
+            use chrono::Datelike;
+            let year = chrono::Utc::now().year();
+            let year_start = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .map(|dt| dt.and_utc().timestamp())
+                .unwrap_or(0);
+            (year_start, i64::MAX)
+        }
+        DateFilter::Year(y) => {
+            let start = chrono::NaiveDate::from_ymd_opt(*y, 1, 1)
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .map(|dt| dt.and_utc().timestamp())
+                .unwrap_or(0);
+            let end = chrono::NaiveDate::from_ymd_opt(*y, 12, 31)
+                .and_then(|d| d.and_hms_opt(23, 59, 59))
+                .map(|dt| dt.and_utc().timestamp())
+                .unwrap_or(i64::MAX);
+            (start, end)
+        }
+        DateFilter::RecentDays(n) => (now - (*n as i64) * 86400, i64::MAX),
+    };
+
+    modified >= start && modified <= end
+}
+
+/// 파일 타입 필터 적용
+fn smart_apply_file_type_filter(r: &SearchResult, ft: &Option<String>) -> bool {
+    let Some(ft) = ft else { return true };
+    r.file_name.to_lowercase().ends_with(&format!(".{}", ft))
+}
+
+/// 제외 키워드 필터 적용
+fn smart_apply_exclude_filter(r: &SearchResult, exclude: &[String]) -> bool {
+    if exclude.is_empty() {
+        return true;
+    }
+    let content = r.content_preview.to_lowercase();
+    let snippet = r
+        .snippet
+        .as_deref()
+        .unwrap_or("")
+        .to_lowercase();
+    !exclude.iter().any(|term| {
+        let lower = term.to_lowercase();
+        content.contains(&lower) || snippet.contains(&lower)
+    })
 }
 
 #[cfg(test)]

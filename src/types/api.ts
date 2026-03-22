@@ -4,6 +4,8 @@ export type TauriCommand =
   | "search_filename"
   | "search_semantic"
   | "search_hybrid"
+  | "search_smart"
+  | "ask_ai"
   | "add_folder"
   | "remove_folder"
   | "get_index_status"
@@ -17,4 +19,5 @@ export const SEARCH_COMMANDS = {
   keyword: "search_keyword",
   semantic: "search_semantic",
   hybrid: "search_hybrid",
+  smart: "search_smart",
 } as const;

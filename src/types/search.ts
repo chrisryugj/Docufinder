@@ -134,6 +134,50 @@ export const DATE_RANGE_OPTIONS: { value: DateRangeFilter; label: string }[] = [
 ];
 
 // =====================
+// 검색 패러다임 (v2.5)
+// =====================
+
+/** 검색 패러다임: 즉시(실시간) vs 자연어(Enter 실행) */
+export type SearchParadigm = "instant" | "natural";
+
+/** NL 파서 결과 (자연어 검색 모드) */
+export interface ParsedQueryInfo {
+  keywords: string;
+  exclude_keywords: string[];
+  date_filter: { type: string; value?: number } | null;
+  file_type: string | null;
+  original_query: string;
+  parse_log: string[];
+}
+
+/** 스마트(자연어) 검색 응답 */
+export interface SmartSearchResponse {
+  results: SearchResult[];
+  total_count: number;
+  search_time_ms: number;
+  parsed_query: ParsedQueryInfo;
+}
+
+// =====================
+// AI RAG (v2.6)
+// =====================
+
+/** AI 분석 응답 */
+export interface AiAnalysis {
+  answer: string;
+  source_files: string[];
+  processing_time_ms: number;
+  model: string;
+  tokens_used: TokenUsage | null;
+}
+
+export interface TokenUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+// =====================
 // 자동완성 (v2.3)
 // =====================
 

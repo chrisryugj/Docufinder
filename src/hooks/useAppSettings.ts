@@ -23,6 +23,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
   const [vectorIndexingMode, setVectorIndexingMode] =
     useState<VectorIndexingMode>("manual");
   const [resultsPerPage, setResultsPerPage] = useState(50);
+  const [aiEnabled, setAiEnabled] = useState(false);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
     const root = document.documentElement;
@@ -61,6 +62,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
         setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
         setResultsPerPage(settings.results_per_page ?? 50);
+        setAiEnabled(settings.ai_enabled ?? false);
         applyHighlightColors(settings);
       } catch (err) {
         console.warn("Failed to load settings:", err);
@@ -77,6 +79,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
       setSemanticEnabled(settings.semantic_search_enabled ?? false);
       setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
       setResultsPerPage(settings.results_per_page ?? 50);
+      setAiEnabled(settings.ai_enabled ?? false);
       applyHighlightColors(settings);
     },
     [setSearchMode, applyHighlightColors]
@@ -90,6 +93,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
     setSemanticEnabled,
     vectorIndexingMode,
     resultsPerPage,
+    aiEnabled,
     applySettings,
   };
 }

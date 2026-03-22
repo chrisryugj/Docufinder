@@ -9,6 +9,9 @@ import type {
   FileTypeFilter,
   GroupedSearchResult,
   ViewMode,
+  SearchParadigm,
+  SmartSearchResponse,
+  ParsedQueryInfo,
 } from "../types/search";
 import { DEFAULT_FILTERS } from "../types/search";
 import { SEARCH_COMMANDS } from "../types/api";
@@ -119,6 +122,13 @@ interface UseSearchReturn {
   setComposing: (v: boolean, finalQuery?: string) => void;
   /** 캐시 무효화 + 재검색 (데이터 변경 시) */
   invalidate: () => void;
+  /** 검색 패러다임 (즉시/자연어) */
+  paradigm: SearchParadigm;
+  setParadigm: (p: SearchParadigm) => void;
+  /** 자연어 검색 실행 (Enter 키) */
+  submitNaturalQuery: () => void;
+  /** NL 파서 결과 (자연어 모드) */
+  parsedQuery: ParsedQueryInfo | null;
 }
 
 /**
@@ -136,6 +146,14 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
+
+  // 검색 패러다임 (즉시/자연어)
+  const [paradigm, setParadigmInternal] = useState<SearchParadigm>(() => {
+    try {
+      return (localStorage.getItem("docufinder_paradigm") as SearchParadigm) || "instant";
+    } catch { return "instant"; }
+  });
+  const [parsedQuery, setParsedQuery] = useState<ParsedQueryInfo | null>(null);
   // IME 조합 중 여부
   const isComposingRef = useRef(false);
   // 검색 요청 ID (이전 검색 결과 무시용)
@@ -293,8 +311,64 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, [query, setQuery]);
 
-  // 디바운스 검색 — 조합 중에는 대기, 완료 후 실행
+  // paradigm 전환 (localStorage 저장 + 상태 초기화)
+  const setParadigm = useCallback((p: SearchParadigm) => {
+    setParadigmInternal(p);
+    try { localStorage.setItem("docufinder_paradigm", p); } catch {}
+    // 전환 시 상태 초기화
+    setQuery("");
+    setParsedQuery(null);
+    startTransition(() => {
+      setResults([]);
+      setFilenameResults([]);
+      setSearchTime(null);
+    });
+    setError(null);
+  }, []);
+
+  // 자연어 검색 실행 (Enter 키)
+  const submitNaturalQuery = useCallback(() => {
+    if (paradigm !== "natural" || !query.trim()) return;
+
+    const currentId = ++searchIdRef.current;
+    setIsLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const response = await invokeWithTimeout<SmartSearchResponse>(
+          "search_smart",
+          { query: query.trim(), folderScope: filters.searchScope },
+          IPC_TIMEOUT.SEARCH
+        );
+        if (searchIdRef.current !== currentId) return;
+
+        setParsedQuery(response.parsed_query);
+        startTransition(() => {
+          setResults(response.results);
+          setFilenameResults([]);
+          setSearchTime(response.search_time_ms);
+          setIsLoading(false);
+        });
+      } catch (err) {
+        if (searchIdRef.current !== currentId) return;
+        const message = err instanceof Error ? err.message : String(err);
+        logToBackend("error", "Smart search failed", message, "useSearch");
+        setError(`검색 실패: ${message}`);
+        startTransition(() => {
+          setResults([]);
+          setFilenameResults([]);
+          setSearchTime(null);
+          setIsLoading(false);
+        });
+      }
+    })();
+  }, [paradigm, query, filters.searchScope]);
+
+  // 디바운스 검색 — 즉시 모드에서만 실행, 자연어 모드에서는 스킵
   useEffect(() => {
+    if (paradigm === "natural") return; // 자연어 모드는 Enter로만 실행
+
     const delay = isComposingRef.current
       ? Math.max(debounceMs, COMPOSITION_IDLE_MS)
       : debounceMs;
@@ -306,7 +380,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch, COMPOSITION_IDLE_MS]);
+  }, [query, searchMode, debounceMs, executeSearch, COMPOSITION_IDLE_MS, paradigm]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {
@@ -480,5 +554,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     isRefineActive: refineQuery.trim().length > 0,
     setComposing,
     invalidate,
+    paradigm,
+    setParadigm,
+    submitNaturalQuery,
+    parsedQuery,
   };
 }

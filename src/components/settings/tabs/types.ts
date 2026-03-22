@@ -59,6 +59,12 @@ export const MAX_FILE_SIZE_OPTIONS = [
   { value: "0", label: "제한 없음" },
 ];
 
+export const AI_MODEL_OPTIONS = [
+  { value: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite (빠름/저렴)" },
+  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (균형)" },
+  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (고품질)" },
+];
+
 export const CONFIDENCE_STEP = 5;
 
 export const HIGHLIGHT_COLOR_PRESETS = [

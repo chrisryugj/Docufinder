@@ -56,6 +56,21 @@ pub struct Settings {
     /// 증분 인덱싱 시 새 HWP 파일 감지 → 변환 알림 (기본: 비활성)
     #[serde(default)]
     pub hwp_auto_detect: bool,
+    /// AI 기능 활성화
+    #[serde(default)]
+    pub ai_enabled: bool,
+    /// Gemini API 키
+    #[serde(default)]
+    pub ai_api_key: Option<String>,
+    /// AI 모델 ID (기본: gemini-3.1-flash-lite-preview)
+    #[serde(default = "default_ai_model")]
+    pub ai_model: String,
+    /// AI 응답 온도 (0.0-2.0)
+    #[serde(default = "default_ai_temperature")]
+    pub ai_temperature: f32,
+    /// AI 최대 토큰 수
+    #[serde(default = "default_ai_max_tokens")]
+    pub ai_max_tokens: u32,
 }
 
 fn default_include_subfolders() -> bool {
@@ -68,6 +83,18 @@ fn default_max_file_size_mb() -> u64 {
 
 fn default_results_per_page() -> usize {
     50
+}
+
+fn default_ai_model() -> String {
+    "gemini-3.1-flash-lite-preview".to_string()
+}
+
+fn default_ai_temperature() -> f32 {
+    0.3
+}
+
+fn default_ai_max_tokens() -> u32 {
+    2048
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -135,6 +162,11 @@ impl Default for Settings {
             data_root: None,
             exclude_dirs: Vec::new(),
             hwp_auto_detect: false,
+            ai_enabled: false,
+            ai_api_key: None,
+            ai_model: default_ai_model(),
+            ai_temperature: default_ai_temperature(),
+            ai_max_tokens: default_ai_max_tokens(),
         }
     }
 }
@@ -200,6 +232,16 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
     if settings.max_file_size_mb > 500 {
         return Err(ApiError::Validation(
             "max_file_size_mb는 최대 500MB입니다".into(),
+        ));
+    }
+    if settings.ai_temperature < 0.0 || settings.ai_temperature > 2.0 {
+        return Err(ApiError::Validation(
+            "ai_temperature는 0.0~2.0 범위여야 합니다".into(),
+        ));
+    }
+    if settings.ai_max_tokens == 0 || settings.ai_max_tokens > 8192 {
+        return Err(ApiError::Validation(
+            "ai_max_tokens는 1~8192 범위여야 합니다".into(),
         ));
     }
     Ok(())
