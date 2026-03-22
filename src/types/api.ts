@@ -11,7 +11,9 @@ export type TauriCommand =
   | "get_index_status"
   | "get_settings"
   | "update_settings"
-  | "open_file";
+  | "open_file"
+  | "export_xlsx"
+  | "package_zip";
 
 /** 검색 모드별 커맨드 매핑 */
 export const SEARCH_COMMANDS = {

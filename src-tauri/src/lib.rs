@@ -743,6 +743,10 @@ pub fn run() {
             commands::preview::get_bookmarks,
             commands::preview::generate_summary,
             commands::ai::ask_ai,
+            commands::export::export_xlsx,
+            commands::export::package_zip,
+            commands::duplicate::find_duplicates,
+            commands::expiry::scan_expiry_dates,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

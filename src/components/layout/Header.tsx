@@ -1,18 +1,20 @@
 import { memo } from "react";
-import { Home, Plus, HelpCircle, Settings, BarChart3 } from "lucide-react";
+import { Home, Plus, HelpCircle, Settings, BarChart3, Files, CalendarClock } from "lucide-react";
 
 interface HeaderProps {
   onAddFolder: () => void;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
   onOpenStats: () => void;
+  onOpenDuplicates: () => void;
+  onOpenExpiry: () => void;
   onGoHome: () => void;
   isIndexing: boolean;
   isSidebarOpen: boolean;
   hasQuery?: boolean;
 }
 
-export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
+export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onOpenExpiry, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
   return (
     <header
       className={`flex items-center justify-between transition-all duration-200 ${isSidebarOpen ? "px-5" : "pl-14 pr-5"}`}
@@ -77,6 +79,24 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
           title="문서 통계"
         >
           <BarChart3 className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+        </button>
+
+        <button
+          onClick={onOpenDuplicates}
+          className="p-1.5 rounded-md transition-colors btn-icon-hover"
+          aria-label="중복 문서 탐지"
+          title="중복 문서 탐지"
+        >
+          <Files className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+        </button>
+
+        <button
+          onClick={onOpenExpiry}
+          className="p-1.5 rounded-md transition-colors btn-icon-hover"
+          aria-label="문서 만료 알림"
+          title="문서 만료 알림"
+        >
+          <CalendarClock className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
         </button>
 
         <button

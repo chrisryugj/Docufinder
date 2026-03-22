@@ -25,6 +25,8 @@ import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { StatisticsModal } from "./components/search/StatisticsModal";
+import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
+import { ExpiryAlertModal } from "./components/search/ExpiryAlertModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
@@ -45,6 +47,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [expiryOpen, setExpiryOpen] = useState(false);
   const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
   const [pendingHwpFiles, setPendingHwpFiles] = useState<string[]>([]);
   const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
@@ -347,10 +351,12 @@ function App() {
   }, [filteredResults, semanticEnabled]); // categories는 의도적으로 제외 (무한 루프 방지)
 
   // 내보내기 (토스트 연동)
-  const { exportToCSV, copyToClipboard } = useExport({ showToast });
+  const { exportToCSV, exportToXLSX, packageToZip, copyToClipboard } = useExport({ showToast });
 
   // SearchResultList용 메모이제이션 (인라인 함수 → 안정적 참조)
   const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
+  const handleExportXLSX = useCallback(() => exportToXLSX(filteredResults, query), [exportToXLSX, filteredResults, query]);
+  const handlePackageZip = useCallback(() => packageToZip(filteredResults), [packageToZip, filteredResults]);
   const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, query), [copyToClipboard, filteredResults, query]);
   const memoizedRefineKeywords = useMemo(
     () => refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined,
@@ -690,6 +696,8 @@ function App() {
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenHelp={() => setHelpOpen(true)}
               onOpenStats={() => setStatsOpen(true)}
+              onOpenDuplicates={() => setDuplicateOpen(true)}
+              onOpenExpiry={() => setExpiryOpen(true)}
               onGoHome={() => {
                 setQuery("");
                 setSelectedIndex(-1);
@@ -859,6 +867,8 @@ function App() {
                   onCopyPath={handleCopyPath}
                   onOpenFolder={handleOpenFolder}
                   onExportCSV={handleExportCSV}
+                  onExportXLSX={handleExportXLSX}
+                  onPackageZip={handlePackageZip}
                   onCopyAll={handleCopyAll}
                   refineKeywords={memoizedRefineKeywords}
                   resultCount={filteredResults.length}
@@ -978,6 +988,21 @@ function App() {
           if (!query) setQuery("*"); // 빈 쿼리일 때 전체 조회 트리거
         }}
         onOpenFile={handleOpenFile}
+      />
+
+      <DuplicateFinderModal
+        isOpen={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        onOpenFile={handleOpenFile}
+        onOpenFolder={handleOpenFolder}
+        showToast={showToast}
+      />
+
+      <ExpiryAlertModal
+        isOpen={expiryOpen}
+        onClose={() => setExpiryOpen(false)}
+        onOpenFile={handleOpenFile}
+        showToast={showToast}
       />
 
       <AutoIndexPrompt
