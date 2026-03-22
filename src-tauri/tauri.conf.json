@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "resources/FilePathCheckerModuleExample.dll": "FilePathCheckerModuleExample.dll",
+      "resources/HwpxConverterSetup.exe": "HwpxConverterSetup.exe",
       "icons/tray-icon.png": "icons/tray-icon.png"
     },
     "windows": {

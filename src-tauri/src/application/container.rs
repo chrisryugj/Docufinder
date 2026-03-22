@@ -132,12 +132,19 @@ impl AppContainer {
 
     /// IndexService 생성 - 공유된 vector_worker 사용
     pub fn index_service(&self) -> IndexService {
+        // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
+        let ocr = if self.get_settings().ocr_enabled {
+            self.get_ocr_engine().ok()
+        } else {
+            None
+        };
         IndexService::new(
             self.db_path.clone(),
             self.get_embedder().ok(),
             self.get_vector_index().ok(),
             self.vector_worker.clone(), // 공유 인스턴스
             self.indexing_cancel_flag.clone(),
+            ocr,
         )
     }
 
@@ -315,6 +322,12 @@ impl AppContainer {
                     .read()
                     .ok()
                     .and_then(|cb| cb.clone());
+                // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
+                let ocr = if self.get_settings().ocr_enabled {
+                    self.get_ocr_engine().ok()
+                } else {
+                    None
+                };
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
                     embedder: self.get_embedder().ok(),
@@ -324,6 +337,7 @@ impl AppContainer {
                     on_incremental_update: callback,
                     on_vector_trigger: vector_trigger,
                     on_hwp_detected: hwp_callback,
+                    ocr_engine: ocr,
                 };
 
                 WatchManager::new(ctx)

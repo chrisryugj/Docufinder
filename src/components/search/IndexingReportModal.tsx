@@ -49,6 +49,7 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
   // 통합 통계
   const totalIndexed = results.reduce((sum, r) => sum + r.indexed_count, 0);
   const totalFailed = results.reduce((sum, r) => sum + r.failed_count, 0);
+  const totalOcrImages = results.reduce((sum, r) => sum + (r.ocr_image_count ?? 0), 0);
   const allErrors = results.flatMap((r) => r.errors);
   const allHwpFiles = results.flatMap((r) => r.hwp_files ?? []);
 
@@ -63,6 +64,13 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
         paths: allHwpFiles,
       });
       setConvertResult(result);
+
+      // 변환기 미설치 → 설치 안내
+      if (result.installer_path) {
+        setConvertError(null);
+        return;
+      }
+
       // 변환 성공한 파일이 있으면 자동 재인덱싱 트리거
       if (result.success_count > 0 && result.converted_paths.length > 0 && onReindex) {
         onReindex(result.converted_paths);
@@ -76,6 +84,15 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
     }
   };
 
+  const handleInstallConverter = async () => {
+    if (!convertResult?.installer_path) return;
+    try {
+      await invoke("open_file", { path: convertResult.installer_path, page: null });
+    } catch {
+      // 실행 실패 시 무시
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="인덱싱 결과" size="lg" closable>
       <div className="space-y-4">
@@ -83,6 +100,9 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
         <div className="flex gap-4">
           <StatCard label="성공" value={totalIndexed} color="var(--color-success, #22c55e)" />
           <StatCard label="실패" value={totalFailed} color="var(--color-error, #ef4444)" />
+          {totalOcrImages > 0 && (
+            <StatCard label="OCR 이미지" value={totalOcrImages} color="#8b5cf6" />
+          )}
           {allHwpFiles.length > 0 && (
             <StatCard label="HWP 파일" value={allHwpFiles.length} color="#f59e0b" />
           )}
@@ -149,7 +169,7 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
         )}
 
         {/* 변환 결과 */}
-        {convertResult && (
+        {convertResult && !convertResult.installer_path && (
           <div
             className="rounded-lg p-3 text-sm"
             style={{
@@ -171,8 +191,31 @@ export function IndexingReportModal({ isOpen, onClose, results, onReindex }: Ind
           </div>
         )}
 
+        {/* 변환기 미설치 안내 */}
+        {convertResult?.installer_path && (
+          <div
+            className="rounded-lg p-3 text-sm"
+            style={{ backgroundColor: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)" }}
+          >
+            <p style={{ color: "var(--color-text-primary)" }}>
+              <strong>HWPX 변환기</strong>가 설치되지 않았습니다.
+            </p>
+            <p className="mt-1 text-xs" style={{ color: "var(--color-text-secondary)" }}>
+              설치 후 다시 변환을 시도해 주세요. 설치가 완료되면 모달을 닫고 다시 폴더를 추가하세요.
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              className="mt-2"
+              onClick={handleInstallConverter}
+            >
+              변환기 설치
+            </Button>
+          </div>
+        )}
+
         {/* 변환 에러 */}
-        {convertError && (
+        {convertError && !convertResult?.installer_path && (
           <div
             className="rounded-lg p-3 text-sm"
             style={{ backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)" }}

@@ -25,6 +25,7 @@ pub struct IndexService {
     vector_index: Option<Arc<VectorIndex>>,
     vector_worker: Arc<RwLock<VectorWorker>>,
     cancel_flag: Arc<AtomicBool>,
+    ocr_engine: Option<Arc<crate::ocr::OcrEngine>>,
 }
 
 impl IndexService {
@@ -35,6 +36,7 @@ impl IndexService {
         vector_index: Option<Arc<VectorIndex>>,
         vector_worker: Arc<RwLock<VectorWorker>>,
         cancel_flag: Arc<AtomicBool>,
+        ocr_engine: Option<Arc<crate::ocr::OcrEngine>>,
     ) -> Self {
         Self {
             db_path,
@@ -42,6 +44,7 @@ impl IndexService {
             vector_index,
             vector_worker,
             cancel_flag,
+            ocr_engine,
         }
     }
 
@@ -64,6 +67,7 @@ impl IndexService {
         let conn = self.get_connection()?;
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
+        let ocr_engine = self.ocr_engine.clone();
 
         // blocking 작업으로 실행
         let result = tokio::task::spawn_blocking(move || {
@@ -76,6 +80,7 @@ impl IndexService {
                 max_file_size_mb,
                 pre_collected_files,
                 &excluded_dirs,
+                ocr_engine,
             )
         })
         .await
@@ -100,6 +105,7 @@ impl IndexService {
         let conn = self.get_connection()?;
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
+        let ocr_engine = self.ocr_engine.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             pipeline::resume_folder_fts(
@@ -110,6 +116,7 @@ impl IndexService {
                 progress_callback,
                 max_file_size_mb,
                 &excluded_dirs,
+                ocr_engine,
             )
         })
         .await
@@ -134,6 +141,7 @@ impl IndexService {
         let conn = self.get_connection()?;
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
+        let ocr_engine = self.ocr_engine.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             pipeline::sync_folder_fts(
@@ -144,6 +152,7 @@ impl IndexService {
                 progress_callback,
                 max_file_size_mb,
                 &excluded_dirs,
+                ocr_engine,
             )
         })
         .await

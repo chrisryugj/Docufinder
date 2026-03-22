@@ -6,6 +6,7 @@ pub mod pptx;
 pub mod txt;
 pub mod xlsx;
 
+use crate::ocr::OcrEngine;
 use std::path::Path;
 use thiserror::Error;
 use zip::ZipArchive;
@@ -56,7 +57,9 @@ pub struct DocumentChunk {
 }
 
 /// 파일 확장자로 파서 선택 후 파싱
-pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
+///
+/// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
+pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
     let extension = path
         .extension()
         .and_then(|e| e.to_str())
@@ -80,6 +83,11 @@ pub fn parse_file(path: &Path) -> Result<ParsedDocument, ParseError> {
                 })
         }
         "pdf" => pdf::parse(path),
+        ext if ocr.is_some()
+            && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) =>
+        {
+            image_ocr::parse(path, ocr.unwrap())
+        }
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }
 }
