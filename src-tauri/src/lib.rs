@@ -139,6 +139,53 @@ fn maybe_download_models(
     });
 }
 
+/// OCR 모델 파일이 없으면 비동기 자동 다운로드 시작
+fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, ocr_enabled: bool) {
+    if !ocr_enabled {
+        return;
+    }
+
+    let ocr_dir = models_dir.join("paddleocr");
+    let det_exists = ocr_dir.join("det.onnx").exists();
+    let rec_exists = ocr_dir.join("rec.onnx").exists();
+    let dict_exists = ocr_dir.join("dict.txt").exists();
+
+    if det_exists && rec_exists && dict_exists {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        tracing::info!("OCR 모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
+        let _ = app_handle.emit("model-download-status", "downloading-ocr");
+
+        match tokio::task::spawn_blocking(move || {
+            model_downloader::ensure_ocr_models(&models_dir)
+        })
+        .await
+        {
+            Ok(Ok((det, rec, dict))) => {
+                if det || rec || dict {
+                    tracing::info!(
+                        "OCR 모델 다운로드 완료: det={}, rec={}, dict={}",
+                        det,
+                        rec,
+                        dict
+                    );
+                }
+                let _ = app_handle.emit("model-download-status", "completed-ocr");
+            }
+            Ok(Err(e)) => {
+                tracing::error!("OCR 모델 다운로드 실패: {}", e);
+                let _ = app_handle.emit("model-download-status", "failed-ocr");
+            }
+            Err(e) => {
+                tracing::error!("OCR 모델 다운로드 태스크 실패: {}", e);
+                let _ = app_handle.emit("model-download-status", "failed-ocr");
+            }
+        }
+    });
+}
+
 /// 기존 감시 폴더들 자동 감시 복원
 fn resume_watchers(container: &AppContainer) {
     if let Ok(conn) = db::get_connection(&container.db_path) {
@@ -478,12 +525,17 @@ pub fn run() {
                 }
             }
 
-            // 모델 자동 다운로드 (시맨틱 활성화 시, 백그라운드)
+            // 모델 자동 다운로드 (백그라운드)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
             maybe_download_models(
                 app.handle().clone(),
                 models_dir.clone(),
                 setup_settings.semantic_search_enabled,
+            );
+            maybe_download_ocr_models(
+                app.handle().clone(),
+                models_dir.clone(),
+                setup_settings.ocr_enabled,
             );
 
             // Initialize database with AppContainer
@@ -511,6 +563,15 @@ pub fn run() {
                     "Reranker: disabled (model not found at {:?})",
                     container.models_dir.join("ms-marco-MiniLM-L6-v2")
                 );
+            }
+
+            // Check OCR availability
+            if container.is_ocr_available() && setup_settings.ocr_enabled {
+                tracing::info!("OCR: enabled (PaddleOCR ONNX)");
+            } else if setup_settings.ocr_enabled {
+                tracing::warn!("OCR: enabled but model not found (downloading...)");
+            } else {
+                tracing::info!("OCR: disabled");
             }
 
             // 증분 인덱싱 완료 시 프론트엔드 알림 콜백 설정

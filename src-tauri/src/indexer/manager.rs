@@ -4,10 +4,11 @@
 //!
 //! 🔴 Critical 버그 수정: 앱 종료 시 worker thread 정상 종료
 
-use crate::constants::SUPPORTED_EXTENSIONS;
+use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
 use crate::embedder::Embedder;
 use crate::indexer::pipeline;
+use crate::ocr::OcrEngine;
 use crate::search::filename_cache::{FilenameCache, FilenameEntry};
 use crate::search::vector::VectorIndex;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -42,6 +43,8 @@ pub struct IndexContext {
     pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
     /// HWP 파일 감지 콜백 (증분 인덱싱 시 새 HWP 파일 발견 알림)
     pub on_hwp_detected: Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>,
+    /// OCR 엔진 (이미지 파일 텍스트 인식)
+    pub ocr_engine: Option<Arc<OcrEngine>>,
 }
 
 #[derive(Debug, Clone)]
@@ -307,9 +310,12 @@ impl WatchManager {
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+            let is_ocr_image = ctx.ocr_engine.is_some()
+                && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+            if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
                 // 파싱 가능: FTS 인덱싱 (벡터는 백그라운드 워커가 처리)
-                match pipeline::index_file_fts_only(&conn, &path) {
+                let ocr_ref = ctx.ocr_engine.as_deref();
+                match pipeline::index_file_fts_only(&conn, &path, ocr_ref) {
                     Ok(result) => {
                         if let Ok(entry) =
                             Self::get_filename_entry_from_db(&conn, &result.file_path)

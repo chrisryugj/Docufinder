@@ -6,8 +6,9 @@
 pub use super::collector::*;
 pub use super::sync::*;
 
-use crate::constants::SUPPORTED_EXTENSIONS;
+use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
+use crate::ocr::OcrEngine;
 use crate::parsers::{parse_file, ParsedDocument};
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
@@ -71,6 +72,7 @@ pub fn index_folder_fts_only(
     max_file_size_mb: u64,
     pre_collected_files: Option<Vec<PathBuf>>,
     excluded_dirs: &[String],
+    ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -82,10 +84,12 @@ pub fn index_folder_fts_only(
         false,
         pre_collected_files,
         excluded_dirs,
+        ocr_engine,
     )
 }
 
 /// 폴더 인덱싱 재개 - 이미 인덱싱된 파일 스킵
+#[allow(clippy::too_many_arguments)]
 pub fn resume_folder_fts(
     conn: &Connection,
     folder_path: &Path,
@@ -94,6 +98,7 @@ pub fn resume_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     excluded_dirs: &[String],
+    ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -105,6 +110,7 @@ pub fn resume_folder_fts(
         true,
         None,
         excluded_dirs,
+        ocr_engine,
     )
 }
 
@@ -119,6 +125,7 @@ fn index_folder_fts_impl(
     skip_indexed: bool,
     pre_collected_files: Option<Vec<PathBuf>>,
     excluded_dirs: &[String],
+    ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -184,13 +191,16 @@ fn index_folder_fts_impl(
     };
 
     // 파싱 가능 파일 / 메타데이터 전용 파일 분리
+    let has_ocr = ocr_engine.is_some();
     let (mut file_paths, metadata_only): (Vec<_>, Vec<_>) = all_files.into_iter().partition(|p| {
         let ext = p
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+        let is_supported = SUPPORTED_EXTENSIONS.contains(&ext.as_str());
+        let is_ocr_image = has_ocr && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+        if !is_supported && !is_ocr_image {
             return false;
         }
         // 파싱 대상만 크기 제한 적용
@@ -257,6 +267,7 @@ fn index_folder_fts_impl(
             vectors_count: 0,
             errors: vec!["Cancelled by user".to_string()],
             hwp_files: vec![],
+            ocr_image_count: 0,
         });
     }
 
@@ -284,6 +295,9 @@ fn index_folder_fts_impl(
             }
         };
 
+        // OCR 엔진 참조 (Arc clone은 move 전에 완료)
+        let ocr_ref = ocr_engine.as_ref();
+
         pool.install(|| {
             let _ = file_paths.par_iter().try_for_each(|path| {
                 if cancel_flag_producer.load(Ordering::Relaxed) {
@@ -291,7 +305,8 @@ fn index_folder_fts_impl(
                 }
 
                 let path_clone = path.clone();
-                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
+                let ocr_deref = ocr_ref.map(|e| e.as_ref());
+                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
                     Ok(Ok(doc)) => ParseResult::Success {
                         path: path.clone(),
                         document: doc,
@@ -322,6 +337,7 @@ fn index_folder_fts_impl(
     let mut errors: Vec<String> = Vec::new();
     let mut suppressed_errors: usize = 0;
     let mut hwp_files: Vec<String> = Vec::new();
+    let mut ocr_image_count: usize = 0;
     let mut processed = 0;
     let mut was_cancelled = false;
     let mut batch_count = 0;
@@ -361,7 +377,14 @@ fn index_folder_fts_impl(
                             send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
                             match save_document_to_db_fts_only_no_tx(conn, &path, document, None) {
-                                Ok(_) => indexed += 1,
+                                Ok(_) => {
+                                    indexed += 1;
+                                    // OCR 이미지 파일 카운트
+                                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                                    if OCR_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+                                        ocr_image_count += 1;
+                                    }
+                                }
                                 Err(e) => {
                                     failed += 1;
                                     if errors.len() < MAX_INDEXING_ERRORS {
@@ -434,6 +457,7 @@ fn index_folder_fts_impl(
         vectors_count: 0, // FTS만이므로 0
         errors,
         hwp_files,
+        ocr_image_count,
     })
 }
 
@@ -706,8 +730,13 @@ pub fn scan_metadata_only(
 // ==================== 단일 파일 FTS 인덱싱 (manager용) ====================
 
 /// 단일 파일 FTS 인덱싱 (벡터 제외) - 변경 감시에서 사용
-pub fn index_file_fts_only(conn: &Connection, path: &Path) -> Result<IndexResult, IndexError> {
-    let document = parse_file(path).map_err(|e| IndexError::ParseError(e.to_string()))?;
+pub fn index_file_fts_only(
+    conn: &Connection,
+    path: &Path,
+    ocr_engine: Option<&OcrEngine>,
+) -> Result<IndexResult, IndexError> {
+    let document =
+        parse_file(path, ocr_engine).map_err(|e| IndexError::ParseError(e.to_string()))?;
     let total_chars = document.content.len();
 
     conn.execute_batch("BEGIN")
@@ -752,6 +781,8 @@ pub struct FolderIndexResult {
     pub errors: Vec<String>,
     /// 변환 대상 HWP 파일 경로 목록
     pub hwp_files: Vec<String>,
+    /// OCR로 인덱싱된 이미지 파일 수
+    pub ocr_image_count: usize,
 }
 
 #[derive(Debug, thiserror::Error)]

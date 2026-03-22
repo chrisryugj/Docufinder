@@ -129,6 +129,7 @@ pub async fn add_folder(
                     .to_string(),
                 errors: vec![],
                 hwp_files: vec![],
+                ocr_image_count: 0,
             });
         }
     }
@@ -264,6 +265,7 @@ pub async fn add_folder(
         message,
         errors: result.errors,
         hwp_files: result.hwp_files,
+        ocr_image_count: result.ocr_image_count,
     })
 }
 
@@ -408,6 +410,7 @@ pub async fn reindex_folder(
         message,
         errors: result.errors,
         hwp_files: result.hwp_files,
+        ocr_image_count: result.ocr_image_count,
     })
 }
 
@@ -547,6 +550,7 @@ pub async fn resume_indexing(
         message,
         errors: sync_result.errors,
         hwp_files: vec![],
+        ocr_image_count: 0, // sync에서는 별도 추적 안 함
     })
 }
 
@@ -675,7 +679,22 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
 // HWP Conversion Commands
 // ============================================
 
-/// HWP → HWPX 변환 (한글 COM 자동화)
+/// HwpxConverter.exe 경로 탐색 (설치된 변환기)
+fn find_hwpx_converter() -> Option<std::path::PathBuf> {
+    let candidates = [
+        r"C:\Program Files (x86)\HNC\HwpxConverter\HwpxConverter.exe",
+        r"C:\Program Files\HNC\HwpxConverter\HwpxConverter.exe",
+    ];
+    for path in &candidates {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
+}
+
+/// HWP → HWPX 변환 (HwpxConverter.exe 사용)
 #[tauri::command]
 pub async fn convert_hwp_to_hwpx(
     paths: Vec<String>,
@@ -683,20 +702,31 @@ pub async fn convert_hwp_to_hwpx(
 ) -> ApiResult<ConvertHwpResult> {
     tracing::info!("Converting {} HWP files to HWPX...", paths.len());
 
-    // FilePathCheckerModuleExample.dll 경로 (번들 리소스)
-    let resource_dir = app
-        .path()
-        .resource_dir()
-        .map_err(|e| ApiError::IndexingFailed(format!("Failed to get resource dir: {}", e)))?;
-    let dll_path = resource_dir.join("FilePathCheckerModuleExample.dll");
+    // HwpxConverter.exe 찾기
+    let converter_exe = match find_hwpx_converter() {
+        Some(exe) => exe,
+        None => {
+            // 미설치 → 번들된 설치 파일 경로 반환
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .map_err(|e| ApiError::IndexingFailed(format!("Failed to get resource dir: {}", e)))?;
+            let installer_path = resource_dir.join("HwpxConverterSetup.exe");
+            let installer_str = if installer_path.exists() {
+                Some(installer_path.to_string_lossy().to_string())
+            } else {
+                None
+            };
+            return Ok(ConvertHwpResult {
+                success_count: 0,
+                failed_count: 0,
+                converted_paths: vec![],
+                errors: vec!["HWPX 변환기가 설치되지 않았습니다.".to_string()],
+                installer_path: installer_str,
+            });
+        }
+    };
 
-    if !dll_path.exists() {
-        return Err(ApiError::IndexingFailed(
-            "FilePathCheckerModuleExample.dll not found in resources".to_string(),
-        ));
-    }
-
-    let dll_path_str = dll_path.to_string_lossy().replace('\\', "\\\\");
     let total = paths.len();
     let mut success_count = 0;
     let mut failed_count = 0;
@@ -720,7 +750,7 @@ pub async fn convert_hwp_to_hwpx(
             failed_count += 1;
             continue;
         }
-        // 확장자 검증 (command injection 방지)
+        // 확장자 검증
         let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
         if ext != "hwp" {
             errors.push(format!("Not a HWP file: {}", hwp_path));
@@ -728,10 +758,14 @@ pub async fn convert_hwp_to_hwpx(
             continue;
         }
 
-        let canonical_str = canonical.to_string_lossy();
         let hwpx_path = canonical.with_extension("hwpx");
-        let hwp_escaped = canonical_str.replace('\'', "''");
-        let hwpx_escaped = hwpx_path.to_string_lossy().replace('\'', "''");
+
+        // 이미 변환된 파일 건너뛰기
+        if hwpx_path.exists() {
+            success_count += 1;
+            converted_paths.push(hwpx_path.to_string_lossy().to_string());
+            continue;
+        }
 
         // 진행률 이벤트
         let _ = app.emit("hwp-convert-progress", serde_json::json!({
@@ -740,48 +774,28 @@ pub async fn convert_hwp_to_hwpx(
             "current_file": hwp_path,
         }));
 
-        let ps_script = format!(
-            r#"$ErrorActionPreference = 'Stop'
-try {{
-    $hwp = New-Object -ComObject HWPFrame.HwpObject
-    $hwp.RegisterModule("FilePathCheckerModuleExample", '{dll}')
-    $hwp.Open('{input}', "HWP", "forceopen:true")
-    $hwp.SaveAs('{output}', "HWPX")
-    $hwp.Clear(1)
-    [System.Runtime.InteropServices.Marshal]::ReleaseComObject($hwp) | Out-Null
-    Write-Output "OK"
-}} catch {{
-    Write-Error $_.Exception.Message
-    exit 1
-}}"#,
-            dll = dll_path_str,
-            input = hwp_escaped,
-            output = hwpx_escaped,
-        );
-
-        // PowerShell -EncodedCommand: Base64(UTF-16LE) 인코딩으로 인젝션 방지
-        let encoded = crate::utils::encode_powershell_command(&ps_script);
-        let result = tokio::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
+        // HwpxConverter.exe 실행 (파일 경로를 인수로 전달)
+        let result = tokio::process::Command::new(&converter_exe)
+            .arg(canonical.as_os_str())
             .output()
             .await;
 
         match result {
-            Ok(output) if output.status.success() => {
+            Ok(output) if hwpx_path.exists() => {
                 success_count += 1;
                 converted_paths.push(hwpx_path.to_string_lossy().to_string());
                 tracing::info!("Converted: {} → .hwpx", hwp_path);
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let err_msg = format!("{}: {}", hwp_path, stderr.trim());
+                let err_msg = format!("{}: 변환 실패 (exit: {:?}, {})", hwp_path, output.status.code(), stderr.trim());
                 tracing::warn!("HWP conversion failed: {}", err_msg);
                 errors.push(err_msg);
                 failed_count += 1;
             }
             Err(e) => {
                 let err_msg = format!("{}: {}", hwp_path, e);
-                tracing::error!("PowerShell execution failed: {}", err_msg);
+                tracing::error!("HwpxConverter execution failed: {}", err_msg);
                 errors.push(err_msg);
                 failed_count += 1;
             }
@@ -806,6 +820,7 @@ try {{
         failed_count,
         converted_paths,
         errors,
+        installer_path: None,
     })
 }
 

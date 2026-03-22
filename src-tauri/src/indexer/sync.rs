@@ -2,13 +2,14 @@
 //!
 //! DB와 파일시스템 간 변경분 감지 및 증분 인덱싱
 
-use crate::constants::SUPPORTED_EXTENSIONS;
+use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
 use crate::indexer::collector::{collect_files, save_file_metadata_only};
 use crate::indexer::pipeline::{
     save_document_to_db_fts_only_no_tx, FtsIndexingProgress, FtsProgressCallback, IndexError,
     ParseResult, CHANNEL_BUFFER_SIZE, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
 };
+use crate::ocr::OcrEngine;
 use crate::parsers::parse_file;
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
@@ -34,6 +35,7 @@ pub struct SyncResult {
 }
 
 /// 폴더 동기화 - 변경분만 인덱싱 (추가/수정/삭제 감지)
+#[allow(clippy::too_many_arguments)]
 pub fn sync_folder_fts(
     conn: &Connection,
     folder_path: &Path,
@@ -42,6 +44,7 @@ pub fn sync_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     excluded_dirs: &[String],
+    ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<SyncResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -112,13 +115,16 @@ pub fn sync_folder_fts(
         .collect();
 
     // 파싱 가능 / 메타데이터 전용 분리
+    let has_ocr = ocr_engine.is_some();
     let (to_index, to_metadata): (Vec<_>, Vec<_>) = to_update.into_iter().partition(|p| {
         let ext = p
             .extension()
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_lowercase();
-        if !SUPPORTED_EXTENSIONS.contains(&ext.as_str()) {
+        let is_supported = SUPPORTED_EXTENSIONS.contains(&ext.as_str());
+        let is_ocr_image = has_ocr && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+        if !is_supported && !is_ocr_image {
             return false;
         }
         if max_file_size_bytes > 0 {
@@ -240,6 +246,8 @@ pub fn sync_folder_fts(
             }
         };
 
+        let ocr_ref = ocr_engine.as_ref();
+
         pool.install(|| {
             let _ = to_index.par_iter().try_for_each(|path| {
                 if cancel_flag_producer.load(Ordering::Relaxed) {
@@ -247,7 +255,8 @@ pub fn sync_folder_fts(
                 }
 
                 let path_clone = path.clone();
-                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone))) {
+                let ocr_deref = ocr_ref.map(|e| e.as_ref());
+                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
                     Ok(Ok(doc)) => ParseResult::Success {
                         path: path.clone(),
                         document: doc,

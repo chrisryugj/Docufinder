@@ -17,6 +17,8 @@ export interface AddFolderResult {
   errors: string[];
   /** 변환 대상 HWP 파일 경로 */
   hwp_files?: string[];
+  /** OCR로 인덱싱된 이미지 파일 수 */
+  ocr_image_count?: number;
 }
 
 /** HWP → HWPX 변환 결과 */
@@ -25,6 +27,8 @@ export interface ConvertHwpResult {
   failed_count: number;
   converted_paths: string[];
   errors: string[];
+  /** 변환기 미설치 시 번들된 설치 파일 경로 */
+  installer_path?: string;
 }
 
 /** 폴더별 인덱싱 통계 */
