@@ -29,7 +29,7 @@ serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # File parsing
-zip = "2"
+zip = "8"
 quick-xml = "0.37"
 calamine = "0.26"  # Excel
 pdf-extract = "0.7"  # PDF
@@ -66,6 +66,9 @@ sha2 = "0.10"
 
 # Base64 (PowerShell EncodedCommand)
 base64 = "0.22"
+
+# Export
+rust_xlsxwriter = "0.94"
 
 # Utilities
 thiserror = "2"
