@@ -64,8 +64,8 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
         setResultsPerPage(settings.results_per_page ?? 50);
         setAiEnabled(settings.ai_enabled ?? false);
         applyHighlightColors(settings);
-      } catch (err) {
-        console.warn("Failed to load settings:", err);
+      } catch {
+        // 설정 로드 실패 시 기본값 유지
       }
     };
     loadSettings();

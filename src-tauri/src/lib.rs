@@ -805,6 +805,7 @@ pub fn run() {
             commands::preview::get_bookmarks,
             commands::preview::generate_summary,
             commands::ai::ask_ai,
+            commands::export::export_csv,
             commands::export::export_xlsx,
             commands::export::package_zip,
             commands::duplicate::find_duplicates,

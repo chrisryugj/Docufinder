@@ -52,8 +52,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
     try {
       const result = await invokeWithTimeout<IndexStatus>("get_index_status", undefined, IPC_TIMEOUT.SETTINGS);
       setStatus(result);
-    } catch (err) {
-      console.error("Failed to get status:", err);
+    } catch {
+      // 상태 조회 실패 시 무시 (다음 폴링에서 재시도)
     }
   }, []);
 
@@ -74,8 +74,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
             setTimeout(() => setProgress(null), 2000);
           }
         });
-      } catch (e) {
-        console.error("Failed to setup indexing-progress listener:", e);
+      } catch {
+        // 리스너 등록 실패 — 진행률 표시 안 됨 (기능 저하)
       }
     };
 
@@ -96,20 +96,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
     const result = await invokeWithTimeout<AddFolderResult>("add_folder", {
       path,
     }, IPC_TIMEOUT.INDEXING);
-
-    if (import.meta.env.DEV) {
-      console.log("Indexing result:", result);
-    }
-
-    if (result.errors && result.errors.length > 0) {
-      console.warn(`Indexing errors (${result.errors.length}):`);
-      result.errors.slice(0, 20).forEach((err, i) => {
-        console.warn(`  ${i + 1}: ${err}`);
-      });
-      if (result.errors.length > 20) {
-        console.warn(`  ... and ${result.errors.length - 20} more errors`);
-      }
-    }
 
     return result;
   }, []);
@@ -153,7 +139,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
           const result = await indexSingleFolder(path);
           results.push(result);
         } catch (err) {
-          console.error(`Failed to index folder: ${path}`, err);
           results.push({
             success: false,
             indexed_count: 0,
@@ -169,9 +154,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       setIsIndexing(false);
       return results;
     } catch (err) {
-      console.error("Failed to add folder:", err);
-      const message = err instanceof Error ? err.message : String(err);
-      setError(`폴더 추가 실패: ${message}`);
+      setError(`폴더 추가 실패: ${err instanceof Error ? err.message : String(err)}`);
       setIsIndexing(false);
       return null;
     }
@@ -202,9 +185,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
 
       return result;
     } catch (err) {
-      console.error("Failed to add folder:", err);
-      const message = err instanceof Error ? err.message : String(err);
-      setError(`폴더 추가 실패: ${message}`);
+      setError(`폴더 추가 실패: ${err instanceof Error ? err.message : String(err)}`);
       setIsIndexing(false);
       return null;
     }
@@ -217,9 +198,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.SETTINGS);
       await refreshStatus();
     } catch (err) {
-      console.error("Failed to remove folder:", err);
-      const message = err instanceof Error ? err.message : String(err);
-      setError(`폴더 제거 실패: ${message}`);
+      setError(`폴더 제거 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [refreshStatus]);
 
@@ -227,8 +206,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const cancelIndexing = useCallback(async (): Promise<void> => {
     try {
       await invokeWithTimeout("cancel_indexing", undefined, IPC_TIMEOUT.SETTINGS);
-    } catch (err) {
-      console.error("Failed to cancel indexing:", err);
+    } catch {
+      // 취소 실패 무시
     }
   }, []);
 
@@ -250,15 +229,14 @@ export function useIndexStatus(): UseIndexStatusReturn {
       for (const drive of drives) {
         try {
           await indexSingleFolder(drive.path);
-        } catch (err) {
-          console.error(`Failed to index drive: ${drive.path}`, err);
+        } catch {
+          // 개별 드라이브 인덱싱 실패 시 다음 드라이브 계속
         }
         await refreshStatus();
       }
 
       setIsIndexing(false);
-    } catch (err) {
-      console.error("Failed to auto-index drives:", err);
+    } catch {
       setIsIndexing(false);
     }
   }, [refreshStatus, indexSingleFolder]);

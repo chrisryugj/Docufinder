@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 // Hooks
-import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch, useAutoComplete, saveSearchQuery } from "./hooks";
+import { useSearch, useIndexStatus, useVectorIndexing, useKeyboardShortcuts, useRecentSearches, useExport, useToast, useTheme, useCollapsibleSearch, useAutoComplete } from "./hooks";
 import { clearSearchCache } from "./hooks/useSearch";
 import { useFirstRun } from "./hooks/useFirstRun";
 import { useFileActions } from "./hooks/useFileActions";
@@ -12,6 +12,11 @@ import { useAiSearch } from "./hooks/useAiSearch";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useUpdater } from "./hooks/useUpdater";
 import { useBookmarks } from "./hooks/useBookmarks";
+import { useWindowFocus } from "./hooks/useWindowFocus";
+import { useSimilarDocuments } from "./hooks/useSimilarDocuments";
+import { useDocumentCategories } from "./hooks/useDocumentCategories";
+import { useRecentSearchSaver } from "./hooks/useRecentSearchSaver";
+import { useResultSelection } from "./hooks/useResultSelection";
 import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 
 // Components
@@ -33,17 +38,12 @@ import { UpdateBanner } from "./components/ui/UpdateBanner";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
 
-/** Debounce/timer constants */
-const FOCUS_DEBOUNCE_MS = 500;
-const RECENT_SEARCH_SAVE_DELAY_MS = 3000;
 const EXPAND_FOCUS_DELAY_MS = 100;
 
 function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const compactSearchInputRef = useRef<HTMLInputElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
@@ -307,50 +307,10 @@ function App() {
   const { bookmarks, addBookmark, removeBookmark } = useBookmarks({ showToast });
 
   // 유사 문서 검색
-  const [similarResults, setSimilarResults] = useState<import("./types/search").SearchResult[]>([]);
-  const [similarSourceFile, setSimilarSourceFile] = useState<string | null>(null);
-  const handleFindSimilar = useCallback(async (filePath: string) => {
-    try {
-      showToast("유사 문서 검색 중...", "info");
-      const response = await invoke<{ results: import("./types/search").SearchResult[] }>("find_similar_documents", { filePath });
-      setSimilarResults(response.results);
-      setSimilarSourceFile(filePath.split(/[/\\]/).pop() || filePath);
-      showToast(`유사 문서 ${response.results.length}건 발견`, "success");
-    } catch {
-      showToast("유사 문서 검색 실패 (시맨틱 검색이 활성화되어 있어야 합니다)", "error");
-    }
-  }, [showToast]);
-  const clearSimilarResults = useCallback(() => {
-    setSimilarResults([]);
-    setSimilarSourceFile(null);
-  }, []);
+  const { similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults } = useSimilarDocuments(showToast);
 
-  // 문서 카테고리 캐시
-  const [categories, setCategories] = useState<Record<string, string>>({});
-  const classifiedPathsRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (!semanticEnabled || filteredResults.length === 0) return;
-    // 새 파일 경로만 분류 요청 (ref로 중복 호출 방지)
-    const newPaths = filteredResults
-      .map(r => r.file_path)
-      .filter((p, i, arr) => arr.indexOf(p) === i && !classifiedPathsRef.current.has(p));
-
-    if (newPaths.length === 0) return;
-
-    // 최대 10개씩 분류 (성능)
-    const batch = newPaths.slice(0, 10);
-    batch.forEach(p => classifiedPathsRef.current.add(p));
-    Promise.all(
-      batch.map(async (filePath) => {
-        try {
-          const cat = await invoke<string>("classify_document", { filePath });
-          setCategories(prev => ({ ...prev, [filePath]: cat }));
-        } catch {
-          classifiedPathsRef.current.delete(filePath); // 실패 시 재시도 허용
-        }
-      })
-    );
-  }, [filteredResults, semanticEnabled]);
+  // 문서 카테고리 자동 분류
+  const categories = useDocumentCategories(filteredResults, semanticEnabled);
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, exportToXLSX, packageToZip, copyToClipboard } = useExport({ showToast });
@@ -373,66 +333,8 @@ function App() {
     clearVectorError();
   }, [clearSearchError, clearIndexError, clearVectorError]);
 
-  // 윈도우 포커스 복귀 시 검색창 포커스 재설정
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    let lastResetTime = 0;
-
-    const resetSearchFocus = () => {
-      if (settingsOpen) return;
-
-      // 디바운스: 500ms 이내 중복 실행 방지 (IPC 이벤트 폭주 대응)
-      const now = Date.now();
-      if (now - lastResetTime < FOCUS_DEBOUNCE_MS) return;
-      lastResetTime = now;
-
-      const input = searchInputRef.current;
-      // DOM에 연결된 요소인지 확인 (unmount된 stale ref 방지)
-      if (!input || !input.isConnected) return;
-
-      const activeElement = document.activeElement;
-      const isEditable =
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
-
-      if (isEditable && activeElement !== input) {
-        return;
-      }
-
-      // 이미 검색창에 포커스 중이면 건너뜀
-      if (activeElement === input) {
-        return;
-      }
-
-      requestAnimationFrame(() => {
-        if (input.isConnected) {
-          input.focus();
-        }
-      });
-    };
-
-    const setup = async () => {
-      const window = getCurrentWindow();
-      try {
-        unlisten = await window.onFocusChanged(({ payload }) => {
-          if (payload) {
-            resetSearchFocus();
-          }
-        });
-      } catch (err) {
-        logToBackend("warn", "Failed to register focus handler", String(err), "App");
-      }
-    };
-
-    setup();
-
-    return () => {
-      if (unlisten) {
-        unlisten();
-      }
-    };
-  }, [settingsOpen]);
+  // 윈도우 포커스 복귀 시 검색창 자동 포커스
+  useWindowFocus(searchInputRef, settingsOpen);
 
   // searchMode 변경 시 keywordOnly 필터 리셋 (함수형 업데이트로 stale closure 방지)
   useEffect(() => {
@@ -490,28 +392,8 @@ function App() {
     }
   }, [query, filteredResults, requestAiAnalysis]);
 
-  // 검색 결과가 있고 3초 유지 시 최근 검색에 저장
-  useEffect(() => {
-    if (searchTimerRef.current) {
-      clearTimeout(searchTimerRef.current);
-      searchTimerRef.current = null;
-    }
-
-    const trimmedQuery = query.trim();
-    if (trimmedQuery.length >= 2 && filteredResults.length > 0) {
-      searchTimerRef.current = setTimeout(() => {
-        addSearch(trimmedQuery);
-        saveSearchQuery(trimmedQuery); // DB에도 저장 (자동완성용)
-        searchTimerRef.current = null;
-      }, RECENT_SEARCH_SAVE_DELAY_MS);
-    }
-
-    return () => {
-      if (searchTimerRef.current) {
-        clearTimeout(searchTimerRef.current);
-      }
-    };
-  }, [query, filteredResults.length, addSearch]);
+  // 검색 결과가 있고 3초 유지 시 최근 검색에 자동 저장
+  useRecentSearchSaver(query, filteredResults.length, addSearch);
 
   // 키보드 단축키
   useKeyboardShortcuts(
@@ -557,25 +439,8 @@ function App() {
     searchInputRef
   );
 
-  // 결과가 변경되면 선택 초기화
-  const prevResultsLength = useRef(filteredResults.length);
-  useEffect(() => {
-    if (prevResultsLength.current !== filteredResults.length) {
-      prevResultsLength.current = filteredResults.length;
-      if (selectedIndex >= filteredResults.length) {
-        setSelectedIndex(filteredResults.length > 0 ? 0 : -1);
-      }
-    }
-  }, [filteredResults.length, selectedIndex]);
-
-  // 선택된 결과 변경 시 미리보기 패널 업데이트
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedIndex < filteredResults.length) {
-      setPreviewFilePath(filteredResults[selectedIndex].file_path);
-    } else if (filteredResults.length === 0) {
-      setPreviewFilePath(null);
-    }
-  }, [selectedIndex, filteredResults]);
+  // 결과 선택 + 미리보기 연동
+  const { selectedIndex, setSelectedIndex } = useResultSelection(filteredResults, setPreviewFilePath);
 
   // 검색 영역 확장 핸들러
   const handleExpand = useCallback(() => {

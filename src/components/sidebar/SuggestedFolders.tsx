@@ -37,7 +37,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
   useEffect(() => {
     invokeWithTimeout<SuggestedFolder[]>("get_suggested_folders", undefined, IPC_TIMEOUT.SETTINGS)
       .then(setFolders)
-      .catch((err) => console.error("Failed to get suggested folders:", err));
+      .catch(() => {});
   }, []);
 
   // 이미 등록된 경로인지 체크 (정규화해서 비교)
@@ -68,8 +68,8 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
     closeContextMenu();
     try {
       await invoke("open_folder", { path });
-    } catch (err) {
-      console.error("Failed to open folder:", err);
+    } catch {
+      // 폴더 열기 실패 무시
     }
   };
 

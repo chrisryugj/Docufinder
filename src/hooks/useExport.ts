@@ -10,7 +10,7 @@ interface UseExportOptions {
 }
 
 interface UseExportReturn {
-  exportToCSV: (results: SearchResult[], query: string) => void;
+  exportToCSV: (results: SearchResult[], query: string) => Promise<void>;
   exportToXLSX: (results: SearchResult[], query: string) => Promise<void>;
   packageToZip: (results: SearchResult[]) => Promise<void>;
   copyToClipboard: (results: SearchResult[], query: string) => Promise<void>;
@@ -27,56 +27,40 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
   const showToast = options?.showToast ?? ((_msg: string) => "");
 
   /**
-   * CSV 내보내기 (다운로드)
+   * CSV 내보내기 (Tauri save dialog → Rust 백엔드 파일 쓰기)
    */
   const exportToCSV = useCallback(
-    (results: SearchResult[], query: string) => {
+    async (results: SearchResult[], query: string) => {
       if (results.length === 0) {
         showToast("내보낼 결과가 없습니다", "error");
         return;
       }
 
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const safeQuery = query.replace(/[^a-zA-Z0-9가-힣]/g, "_").slice(0, 20);
+
+      const outputPath = await save({
+        defaultPath: `Anything_${safeQuery}_${timestamp}.csv`,
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+      });
+
+      if (!outputPath) return;
+
       setIsExporting(true);
-
       try {
-        // CSV 헤더
-        const headers = ["파일명", "경로", "위치", "매칭내용", "점수"];
+        const rows = results.map((r) => ({
+          file_name: r.file_name,
+          file_path: r.file_path,
+          location_hint: r.location_hint || `청크 ${r.chunk_index}`,
+          content_preview: r.content_preview.replace(/\n/g, " "),
+          score: r.score,
+          modified_at: r.modified_at ?? null,
+        }));
 
-        // CSV 행 생성
-        const rows = results.map((r) => [
-          escapeCSV(r.file_name),
-          escapeCSV(r.file_path),
-          escapeCSV(r.location_hint || `청크 ${r.chunk_index}`),
-          escapeCSV(r.content_preview.replace(/\n/g, " ")),
-          r.score.toFixed(2),
-        ]);
-
-        // CSV 문자열 생성 (BOM 포함 - 한글 엑셀 호환)
-        const BOM = "\uFEFF";
-        const csvContent =
-          BOM +
-          [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
-
-        // 다운로드
-        const blob = new Blob([csvContent], {
-          type: "text/csv;charset=utf-8;",
-        });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-
-        const timestamp = new Date().toISOString().slice(0, 10);
-        const safeQuery = query.replace(/[^a-zA-Z0-9가-힣]/g, "_").slice(0, 20);
-        link.download = `Anything_${safeQuery}_${timestamp}.csv`;
-
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-
+        await invoke("export_csv", { rows, query, outputPath });
         showToast(`${results.length}건 CSV 내보내기 완료`, "success");
-      } catch {
-        showToast("CSV 내보내기 실패", "error");
+      } catch (e) {
+        showToast(`CSV 내보내기 실패: ${e}`, "error");
       } finally {
         setIsExporting(false);
       }
@@ -212,17 +196,3 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
   };
 }
 
-/**
- * CSV 이스케이프 (쌍따옴표, 쉼표, 줄바꿈 + 수식 주입 방어)
- */
-function escapeCSV(value: string): string {
-  // 수식 주입 방어: =, +, -, @, \t, \r 시작 시 앞에 ' 추가
-  let v = value;
-  if (/^[=+\-@\t\r]/.test(v)) {
-    v = `'${v}`;
-  }
-  if (v.includes(",") || v.includes('"') || v.includes("\n")) {
-    return `"${v.replace(/"/g, '""')}"`;
-  }
-  return v;
-}
