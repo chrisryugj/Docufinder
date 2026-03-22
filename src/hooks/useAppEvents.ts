@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { clearSearchCache } from "./useSearch";
 import type { ToastType } from "../components/ui/Toast";
 
@@ -31,7 +31,8 @@ export function useAppEvents({
 
   // 증분 인덱싱 완료 이벤트
   useEffect(() => {
-    const unlisten = listen<number>("incremental-index-updated", (event) => {
+    let unlistenFn: UnlistenFn | null = null;
+    listen<number>("incremental-index-updated", (event) => {
       clearSearchCache();
       void refreshStatus();
       void refreshVectorStatus();
@@ -49,15 +50,16 @@ export function useAppEvents({
           );
         }
       }
-    });
+    }).then((fn) => { unlistenFn = fn; });
 
-    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
+    return () => { unlistenFn?.(); };
   }, [query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast]);
 
   // 모델 다운로드 상태 이벤트
   useEffect(() => {
     let toastId: string | null = null;
-    const unlisten = listen<string>("model-download-status", (event) => {
+    let unlistenFn: UnlistenFn | null = null;
+    listen<string>("model-download-status", (event) => {
       switch (event.payload) {
         case "downloading":
           toastId = showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
@@ -73,18 +75,19 @@ export function useAppEvents({
           }
           break;
       }
-    });
+    }).then((fn) => { unlistenFn = fn; });
 
-    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
+    return () => { unlistenFn?.(); };
   }, [showToast, updateToast]);
 
   // HWP 파일 감지 이벤트 (증분 인덱싱 시)
   useEffect(() => {
     if (!onHwpDetected) return;
-    const unlisten = listen<string[]>("hwp-files-detected", (event) => {
+    let unlistenFn: UnlistenFn | null = null;
+    listen<string[]>("hwp-files-detected", (event) => {
       onHwpDetected(event.payload);
-    });
+    }).then((fn) => { unlistenFn = fn; });
 
-    return () => { unlisten.then((fn) => fn()).catch(() => {}); };
+    return () => { unlistenFn?.(); };
   }, [onHwpDetected]);
 }

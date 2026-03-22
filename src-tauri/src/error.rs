@@ -110,8 +110,8 @@ impl From<rusqlite::Error> for ApiError {
 }
 
 impl<T> From<std::sync::PoisonError<T>> for ApiError {
-    fn from(e: std::sync::PoisonError<T>) -> Self {
-        ApiError::LockFailed(e.to_string())
+    fn from(_e: std::sync::PoisonError<T>) -> Self {
+        ApiError::LockFailed("내부 동기화 오류가 발생했습니다".to_string())
     }
 }
 

@@ -12,6 +12,19 @@ pub struct ExportRow {
     pub modified_at: Option<i64>,
 }
 
+/// 출력 경로 기본 검증 (시스템 폴더 차단)
+fn validate_output_path(output_path: &str) -> ApiResult<()> {
+    let path_lower = output_path.to_lowercase().replace('\\', "/");
+    for pattern in crate::constants::BLOCKED_PATH_PATTERNS {
+        if path_lower.contains(&pattern.to_lowercase()) {
+            return Err(ApiError::AccessDenied(
+                "시스템 폴더에는 저장할 수 없습니다".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// 검색 결과를 XLSX로 내보내기
 #[tauri::command]
 pub async fn export_xlsx(
@@ -21,6 +34,7 @@ pub async fn export_xlsx(
 ) -> ApiResult<String> {
     use rust_xlsxwriter::*;
 
+    validate_output_path(&output_path)?;
     tokio::task::spawn_blocking(move || {
         let mut workbook = Workbook::new();
         let sheet = workbook.add_worksheet();
@@ -134,6 +148,7 @@ pub async fn export_xlsx(
 /// 선택된 파일들을 ZIP으로 패키징
 #[tauri::command]
 pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiResult<u32> {
+    validate_output_path(&output_path)?;
     tokio::task::spawn_blocking(move || {
         let out_file = std::fs::File::create(&output_path)
             .map_err(|e| ApiError::IndexingFailed(format!("ZIP 파일 생성 실패: {}", e)))?;
@@ -176,13 +191,21 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
                 }
             };
 
+            // 파일 크기 먼저 확인 (OOM 방지)
+            match std::fs::metadata(path).map(|m| m.len()) {
+                Ok(size) if size > 500 * 1024 * 1024 => {
+                    tracing::warn!("Skipping large file (>500MB, {}bytes): {}", size, path_str);
+                    continue;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to stat file {}: {}", path_str, e);
+                    continue;
+                }
+                _ => {}
+            }
+
             match std::fs::read(path) {
                 Ok(data) => {
-                    // 압축 폭탄 방어: 500MB 초과 파일 스킵
-                    if data.len() > 500 * 1024 * 1024 {
-                        tracing::warn!("Skipping large file (>500MB): {}", path_str);
-                        continue;
-                    }
                     if zip.start_file(&entry_name, options).is_ok() {
                         use std::io::Write;
                         if zip.write_all(&data).is_ok() {

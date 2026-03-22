@@ -150,7 +150,8 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // 검색 패러다임 (즉시/자연어)
   const [paradigm, setParadigmInternal] = useState<SearchParadigm>(() => {
     try {
-      return (localStorage.getItem("docufinder_paradigm") as SearchParadigm) || "instant";
+      const stored = localStorage.getItem("docufinder_paradigm");
+      return stored === "instant" || stored === "natural" ? stored : "instant";
     } catch { return "instant"; }
   });
   const [parsedQuery, setParsedQuery] = useState<ParsedQueryInfo | null>(null);

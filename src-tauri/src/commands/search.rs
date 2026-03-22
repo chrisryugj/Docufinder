@@ -12,7 +12,7 @@ use tauri::State;
 const MAX_QUERY_LEN: usize = 1000;
 
 fn validate_query(query: &str) -> ApiResult<()> {
-    if query.len() > MAX_QUERY_LEN {
+    if query.chars().count() > MAX_QUERY_LEN {
         return Err(ApiError::Validation(format!(
             "검색어가 너무 깁니다 (최대 {}자)",
             MAX_QUERY_LEN

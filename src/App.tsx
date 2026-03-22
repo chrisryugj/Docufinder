@@ -327,28 +327,30 @@ function App() {
 
   // 문서 카테고리 캐시
   const [categories, setCategories] = useState<Record<string, string>>({});
+  const classifiedPathsRef = useRef(new Set<string>());
   useEffect(() => {
     if (!semanticEnabled || filteredResults.length === 0) return;
-    // 새 파일 경로만 분류 요청
+    // 새 파일 경로만 분류 요청 (ref로 중복 호출 방지)
     const newPaths = filteredResults
       .map(r => r.file_path)
-      .filter((p, i, arr) => arr.indexOf(p) === i && !categories[p]);
+      .filter((p, i, arr) => arr.indexOf(p) === i && !classifiedPathsRef.current.has(p));
 
     if (newPaths.length === 0) return;
 
     // 최대 10개씩 분류 (성능)
     const batch = newPaths.slice(0, 10);
+    batch.forEach(p => classifiedPathsRef.current.add(p));
     Promise.all(
       batch.map(async (filePath) => {
         try {
           const cat = await invoke<string>("classify_document", { filePath });
           setCategories(prev => ({ ...prev, [filePath]: cat }));
         } catch {
-          // 분류 실패 시 무시
+          classifiedPathsRef.current.delete(filePath); // 실패 시 재시도 허용
         }
       })
     );
-  }, [filteredResults, semanticEnabled]); // categories는 의도적으로 제외 (무한 루프 방지)
+  }, [filteredResults, semanticEnabled]);
 
   // 내보내기 (토스트 연동)
   const { exportToCSV, exportToXLSX, packageToZip, copyToClipboard } = useExport({ showToast });

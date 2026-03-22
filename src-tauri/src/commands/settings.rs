@@ -259,7 +259,11 @@ pub async fn update_settings(
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     validate_settings(&settings)?;
-    tracing::info!("Updating settings: {:?}", settings);
+    tracing::info!(
+        "Updating settings: mode={:?}, theme={:?}, semantic={}, ocr={}, ai_key={}",
+        settings.search_mode, settings.theme, settings.semantic_search_enabled,
+        settings.ocr_enabled, if settings.ai_api_key.is_some() { "[SET]" } else { "[NONE]" }
+    );
 
     let app_data_dir = {
         let state = state.read()?;
