@@ -3,6 +3,32 @@ use std::process::Command;
 
 use tauri::{AppHandle, Manager};
 
+/// 플랫폼별 기본 앱으로 경로 열기 (공통 헬퍼)
+fn open_with_default(path_str: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    Ok(())
+}
+
 /// 허용된 파일 확장자 (대소문자 무관)
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "hwp", "hwpx", "txt", "md", "rtf", "csv",
@@ -113,28 +139,13 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
         }
 
         // 기본 앱으로 열기
-        Command::new("explorer")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("파일 열기 실패: {}", e))?;
+        open_with_default(&path_str)?;
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     {
-        let _ = page; // unused on macOS
-        Command::new("open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("파일 열기 실패: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = page; // unused on Linux
-        Command::new("xdg-open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("파일 열기 실패: {}", e))?;
+        let _ = page; // unused on non-Windows
+        open_with_default(&path_str)?;
     }
 
     Ok(())
@@ -151,6 +162,11 @@ pub async fn open_url(url: String) -> Result<(), String> {
     // URL 길이 제한 (악용 방지)
     if url.len() > 2048 {
         return Err("URL이 너무 깁니다".to_string());
+    }
+
+    // 제어문자/whitespace 검증 (command injection 방지)
+    if url.chars().any(|c| c.is_control() || c == ' ' || c == '\t') {
+        return Err("URL에 허용되지 않는 문자가 포함되어 있습니다".to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -243,31 +259,7 @@ pub async fn open_log_dir(app_handle: AppHandle) -> Result<(), String> {
     let _ = std::fs::create_dir_all(&logs_dir);
 
     let path_str = logs_dir.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("로그 폴더 열기 실패: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("로그 폴더 열기 실패: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("로그 폴더 열기 실패: {}", e))?;
-    }
-
+    open_with_default(&path_str)?;
     Ok(())
 }
 
@@ -291,30 +283,6 @@ pub async fn open_folder(path: String) -> Result<(), String> {
     }
 
     let path_str = canonical_path.to_string_lossy().to_string();
-
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("explorer")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("폴더 열기 실패: {}", e))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("폴더 열기 실패: {}", e))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open")
-            .arg(&path_str)
-            .spawn()
-            .map_err(|e| format!("폴더 열기 실패: {}", e))?;
-    }
-
+    open_with_default(&path_str)?;
     Ok(())
 }

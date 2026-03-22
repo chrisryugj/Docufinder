@@ -365,14 +365,18 @@ function App() {
     [setQuery]
   );
 
+  // autoComplete.close를 안정적 ref로 보관 (매 렌더 재생성 방지)
+  const autoCompleteCloseRef = useRef(autoComplete.close);
+  autoCompleteCloseRef.current = autoComplete.close;
+
   // 자동완성 항목 선택
   const handleSuggestionSelect = useCallback(
     (text: string) => {
       setQuery(text);
-      autoComplete.close();
+      autoCompleteCloseRef.current();
       searchInputRef.current?.focus();
     },
-    [setQuery, autoComplete.close]
+    [setQuery]
   );
 
   // 자연어 모드: 검색 완료 시 AI 자동 분석 (ref로 stale closure 방지)
@@ -383,7 +387,8 @@ function App() {
     if (ai && p === "natural" && parsedQuery && fr.length > 0 && !loading) {
       req(q, fr);
     }
-  }, [parsedQuery]); // parsedQuery 변경 = 자연어 검색 완료
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- aiAutoRef로 모든 값 참조, parsedQuery만 트리거
+  }, [parsedQuery]);
 
   // 즉시 모드: AI 수동 트리거
   const handleAskAi = useCallback(() => {

@@ -11,9 +11,64 @@ use crate::indexer::pipeline::FtsIndexingProgress;
 use crate::indexer::vector_worker::{VectorIndexingProgress, VectorIndexingStatus};
 use crate::AppContainer;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
+
+/// 인덱싱 명령에서 공통으로 필요한 설정/서비스 번들
+struct IndexingContext {
+    service: crate::application::services::IndexService,
+    include_subfolders: bool,
+    semantic_available: bool,
+    vector_mode: VectorIndexingMode,
+    semantic_enabled: bool,
+    intensity: super::settings::IndexingIntensity,
+    max_file_size_mb: u64,
+    db_path: PathBuf,
+    exclude_dirs: Vec<String>,
+}
+
+/// 단일 lock 스코프에서 인덱싱에 필요한 모든 설정/서비스를 추출
+fn extract_indexing_context(state: &State<'_, RwLock<AppContainer>>) -> ApiResult<IndexingContext> {
+    let container = state.read()?;
+    let settings = container.get_settings();
+    let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    dirs.extend(settings.exclude_dirs.clone());
+    Ok(IndexingContext {
+        service: container.index_service(),
+        include_subfolders: settings.include_subfolders,
+        semantic_available: container.is_semantic_available(),
+        vector_mode: settings.vector_indexing_mode.clone(),
+        semantic_enabled: settings.semantic_search_enabled,
+        intensity: settings.indexing_intensity.clone(),
+        max_file_size_mb: settings.max_file_size_mb,
+        db_path: container.db_path.clone(),
+        exclude_dirs: dirs,
+    })
+}
+
+/// 인덱싱 완료 후 벡터 자동 시작 여부 판단 + 실행
+fn maybe_start_auto_vector(
+    ctx: &IndexingContext,
+    app_handle: AppHandle,
+    was_cancelled: bool,
+    indexed_count: usize,
+    skip_drive_root: bool,
+) {
+    let auto_vector = ctx.semantic_enabled
+        && ctx.semantic_available
+        && ctx.vector_mode == VectorIndexingMode::Auto
+        && !was_cancelled
+        && indexed_count > 0
+        && !skip_drive_root;
+    if auto_vector {
+        let vector_callback = create_vector_progress_callback(app_handle);
+        let _ = ctx.service.start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()));
+    }
+}
 
 /// 프론트엔드 이벤트용 인덱싱 진행률
 #[derive(Debug, Clone, Serialize)]
@@ -83,41 +138,10 @@ pub async fn add_folder(
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
     let path = canonical_path.to_string_lossy().to_string();
 
-    // 설정 및 서비스 준비 (단일 lock 스코프에서 필요한 데이터 전부 추출)
-    let (
-        service,
-        include_subfolders,
-        semantic_available,
-        vector_mode,
-        semantic_enabled,
-        intensity,
-        max_file_size_mb,
-        db_path,
-        exclude_dirs,
-    ) = {
-        let container = state.read()?;
-        let settings = container.get_settings();
-        // DEFAULT_EXCLUDED_DIRS + 사용자 커스텀 제외 목록 합산
-        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        dirs.extend(settings.exclude_dirs.clone());
-        (
-            container.index_service(),
-            settings.include_subfolders,
-            container.is_semantic_available(),
-            settings.vector_indexing_mode.clone(),
-            settings.semantic_search_enabled,
-            settings.indexing_intensity.clone(),
-            settings.max_file_size_mb,
-            container.db_path.clone(),
-            dirs,
-        )
-    };
+    let ctx = extract_indexing_context(&state)?;
 
     // 이미 등록된 폴더면 인덱싱 스킵
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         if crate::db::is_folder_watched(&conn, &path).unwrap_or(false) {
             tracing::info!("Folder already watched, skipping: {}", path);
             return Ok(AddFolderResult {
@@ -135,10 +159,10 @@ pub async fn add_folder(
     }
 
     // 1. 감시 폴더 등록
-    service.add_watched_folder(&path).map_err(ApiError::from)?;
+    ctx.service.add_watched_folder(&path).map_err(ApiError::from)?;
 
-    // 인덱싱 상태를 'indexing'으로 설정 (db_path로 직접 접근, 재잠금 불필요)
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
+    // 인덱싱 상태를 'indexing'으로 설정
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         let _ = crate::db::set_folder_indexing_status(&conn, &path, "indexing");
     }
 
@@ -156,13 +180,13 @@ pub async fn add_folder(
     );
 
     // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
-    let metadata_result = service
+    let metadata_result = ctx.service
         .scan_metadata_only(
             &canonical_path,
-            include_subfolders,
+            ctx.include_subfolders,
             None,
-            max_file_size_mb,
-            exclude_dirs.clone(),
+            ctx.max_file_size_mb,
+            ctx.exclude_dirs.clone(),
         )
         .await;
 
@@ -180,21 +204,20 @@ pub async fn add_folder(
 
     // 4. FTS 인덱싱 (메타 스캔에서 수집한 파일 목록 재사용 → 이중 FS 순회 방지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = match service
+    let result = match ctx.service
         .index_folder_fts(
             &canonical_path,
-            include_subfolders,
+            ctx.include_subfolders,
             Some(progress_callback),
-            max_file_size_mb,
+            ctx.max_file_size_mb,
             pre_collected,
-            exclude_dirs,
+            ctx.exclude_dirs.clone(),
         )
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            // 실패 시 폴더 상태를 "failed"로 복구
-            if let Ok(conn) = crate::db::get_connection(&db_path) {
+            if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path, "failed");
             }
             return Err(ApiError::from(e));
@@ -207,16 +230,11 @@ pub async fn add_folder(
     // 6. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
-    // 취소 여부 먼저 확인 후 상태 결정
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
 
-    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled {
-            "cancelled"
-        } else {
-            "completed"
-        };
+    // 인덱싱 상태 업데이트
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
+        let status = if was_cancelled { "cancelled" } else { "completed" };
         let _ = crate::db::set_folder_indexing_status(&conn, &path, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path);
@@ -230,29 +248,15 @@ pub async fn add_folder(
         normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
     };
     if is_drive_root {
-        tracing::info!(
-            "Drive root detected: skipping auto vector indexing for {}",
-            path
-        );
+        tracing::info!("Drive root detected: skipping auto vector indexing for {}", path);
     }
 
-    // 5. 벡터 인덱싱 (백그라운드) — 자동 모드 + 시맨틱 활성화일 때만 (드라이브 루트 제외)
-    let auto_vector = semantic_enabled
-        && semantic_available
-        && vector_mode == VectorIndexingMode::Auto
-        && !was_cancelled
-        && result.indexed_count > 0
-        && !is_drive_root;
-    if auto_vector {
-        let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
-    }
+    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, is_drive_root);
 
-    // 결과 메시지 생성
     let message = build_result_message(
         &result,
         was_cancelled,
-        semantic_available && semantic_enabled,
+        ctx.semantic_available && ctx.semantic_enabled,
         false,
     );
     log_indexing_errors(&result.errors);
@@ -309,96 +313,53 @@ pub async fn reindex_folder(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (
-        service,
-        include_subfolders,
-        semantic_available,
-        vector_mode,
-        semantic_enabled,
-        intensity,
-        max_file_size_mb,
-        db_path,
-        exclude_dirs,
-    ) = {
-        let container = state.read()?;
-        let settings = container.get_settings();
-        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        dirs.extend(settings.exclude_dirs.clone());
-        (
-            container.index_service(),
-            settings.include_subfolders,
-            container.is_semantic_available(),
-            settings.vector_indexing_mode.clone(),
-            settings.semantic_search_enabled,
-            settings.indexing_intensity.clone(),
-            settings.max_file_size_mb,
-            container.db_path.clone(),
-            dirs,
-        )
-    };
+    let ctx = extract_indexing_context(&state)?;
 
     // 인덱싱 상태를 'indexing'으로 설정
     let path_str = canonical_path.to_string_lossy().to_string();
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "indexing");
     }
 
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = match service
+    let result = match ctx.service
         .reindex_folder(
             &canonical_path,
-            include_subfolders,
+            ctx.include_subfolders,
             Some(progress_callback),
-            max_file_size_mb,
-            exclude_dirs,
+            ctx.max_file_size_mb,
+            ctx.exclude_dirs.clone(),
         )
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            if let Ok(conn) = crate::db::get_connection(&db_path) {
+            if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
             }
             return Err(ApiError::from(e));
         }
     };
 
-    // FilenameCache 갱신
     refresh_filename_cache(&state);
 
-    // 취소 여부 먼저 확인 후 상태 결정
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
 
-    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled {
-            "cancelled"
-        } else {
-            "completed"
-        };
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
+        let status = if was_cancelled { "cancelled" } else { "completed" };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
         }
     }
-    let auto_vector = semantic_enabled
-        && semantic_available
-        && vector_mode == VectorIndexingMode::Auto
-        && !was_cancelled
-        && result.indexed_count > 0;
-    if auto_vector {
-        let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
-    }
+
+    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, false);
 
     let message = build_result_message(
         &result,
         was_cancelled,
-        semantic_available && semantic_enabled,
+        ctx.semantic_available && ctx.semantic_enabled,
         true,
     );
 
@@ -432,36 +393,7 @@ pub async fn resume_indexing(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
-    let (
-        service,
-        include_subfolders,
-        semantic_available,
-        vector_mode,
-        semantic_enabled,
-        intensity,
-        max_file_size_mb,
-        db_path,
-        exclude_dirs,
-    ) = {
-        let container = state.read()?;
-        let settings = container.get_settings();
-        let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        dirs.extend(settings.exclude_dirs.clone());
-        (
-            container.index_service(),
-            settings.include_subfolders,
-            container.is_semantic_available(),
-            settings.vector_indexing_mode.clone(),
-            settings.semantic_search_enabled,
-            settings.indexing_intensity.clone(),
-            settings.max_file_size_mb,
-            container.db_path.clone(),
-            dirs,
-        )
-    };
+    let ctx = extract_indexing_context(&state)?;
 
     // UI에 준비 중 상태 알림
     let path_str = canonical_path.to_string_lossy().to_string();
@@ -479,56 +411,39 @@ pub async fn resume_indexing(
 
     // sync 기반 인덱싱 (추가/수정/삭제 감지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let sync_result = match service
+    let sync_result = match ctx.service
         .sync_folder(
             &canonical_path,
-            include_subfolders,
+            ctx.include_subfolders,
             Some(progress_callback),
-            max_file_size_mb,
-            exclude_dirs,
+            ctx.max_file_size_mb,
+            ctx.exclude_dirs.clone(),
         )
         .await
     {
         Ok(r) => r,
         Err(e) => {
-            if let Ok(conn) = crate::db::get_connection(&db_path) {
+            if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
             }
             return Err(ApiError::from(e));
         }
     };
 
-    // FilenameCache 갱신
     refresh_filename_cache(&state);
-
-    // 파일 감시 시작 (미완료 폴더는 아직 감시 안 했을 수 있음)
     let _ = start_file_watching(&state, &canonical_path);
 
-    // 취소 여부 먼저 확인 후 상태 결정
     let was_cancelled = sync_result.errors.iter().any(|e| e.contains("Cancelled"));
 
-    // 인덱싱 상태 업데이트: 취소 시 "cancelled" 유지 → 자동 재개 대상
-    if let Ok(conn) = crate::db::get_connection(&db_path) {
-        let status = if was_cancelled {
-            "cancelled"
-        } else {
-            "completed"
-        };
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
+        let status = if was_cancelled { "cancelled" } else { "completed" };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
         }
     }
     let indexed_count = sync_result.added + sync_result.modified;
-    let auto_vector = semantic_enabled
-        && semantic_available
-        && vector_mode == VectorIndexingMode::Auto
-        && !was_cancelled
-        && indexed_count > 0;
-    if auto_vector {
-        let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = service.start_vector_indexing(Some(vector_callback), Some(intensity));
-    }
+    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, indexed_count, false);
 
     let message = format!(
         "동기화 완료: +{}개, -{}개, 변경없음 {}개{}",

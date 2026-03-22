@@ -58,7 +58,7 @@ pub async fn export_csv(
 
         for row in &rows {
             let preview = if row.content_preview.len() > 500 {
-                format!("{}...", row.content_preview.chars().take(500).collect::<String>())
+                row.content_preview.chars().take(500).collect::<String>().replace('\n', " ") + "..."
             } else {
                 row.content_preview.replace('\n', " ")
             };
@@ -218,7 +218,19 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
 
         for path_str in &file_paths {
             let path = Path::new(path_str);
-            if !path.exists() || !path.is_file() {
+
+            // 경로 정규화 + 존재/파일 확인 (path traversal, symlink 방지)
+            let canonical = match path.canonicalize() {
+                Ok(p) if p.is_file() => p,
+                _ => continue,
+            };
+
+            // 시스템 폴더 접근 차단
+            let path_lower = canonical.to_string_lossy().to_lowercase();
+            let blocked = crate::constants::BLOCKED_PATH_PATTERNS.iter()
+                .any(|pat| path_lower.contains(&pat.to_lowercase()));
+            if blocked {
+                tracing::warn!("Blocked path in ZIP: {}", path_str);
                 continue;
             }
 

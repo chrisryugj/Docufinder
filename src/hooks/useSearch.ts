@@ -36,6 +36,17 @@ interface CacheEntry {
 const searchCache = new Map<string, CacheEntry>();
 let sweepTimerId: ReturnType<typeof setInterval> | null = null;
 
+// HMR 시 이전 모듈의 sweepTimer 정리 (Vite dev mode)
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    if (sweepTimerId !== null) {
+      clearInterval(sweepTimerId);
+      sweepTimerId = null;
+    }
+    searchCache.clear();
+  });
+}
+
 /** 만료 엔트리 proactive sweep (CACHE_TTL_MS 간격) */
 function ensureSweepTimer(): void {
   if (sweepTimerId !== null) return;
