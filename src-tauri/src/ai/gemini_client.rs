@@ -16,18 +16,13 @@ fn client() -> &'static Client {
     })
 }
 
-/// Gemini API에 generateContent 요청
-pub async fn generate(
-    api_key: &str,
-    model: Option<&str>,
+/// 공통 요청 구성
+fn build_request(
     system_prompt: Option<&str>,
     user_message: &str,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
-) -> Result<GeminiResponse, GeminiClientError> {
-    let model_id = model.unwrap_or(DEFAULT_MODEL);
-    let url = format!("{}/{}:generateContent?key={}", BASE_URL, model_id, api_key);
-
+) -> GeminiRequest {
     let system_instruction = system_prompt.map(|prompt| Content {
         role: Some("user".into()),
         parts: vec![Part {
@@ -35,7 +30,7 @@ pub async fn generate(
         }],
     });
 
-    let request = GeminiRequest {
+    GeminiRequest {
         contents: vec![Content {
             role: Some("user".into()),
             parts: vec![Part {
@@ -48,10 +43,26 @@ pub async fn generate(
             top_p: None,
         }),
         system_instruction,
-    };
+    }
+}
+
+/// Gemini API에 generateContent 요청
+pub async fn generate(
+    api_key: &str,
+    model: Option<&str>,
+    system_prompt: Option<&str>,
+    user_message: &str,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
+) -> Result<GeminiResponse, GeminiClientError> {
+    let model_id = model.unwrap_or(DEFAULT_MODEL);
+    let url = format!("{}/{}:generateContent", BASE_URL, model_id);
+
+    let request = build_request(system_prompt, user_message, temperature, max_tokens);
 
     let response = client()
         .post(&url)
+        .header("x-goog-api-key", api_key)
         .json(&request)
         .send()
         .await
@@ -93,34 +104,15 @@ pub async fn generate_stream(
 ) -> Result<reqwest::Response, GeminiClientError> {
     let model_id = model.unwrap_or(DEFAULT_MODEL);
     let url = format!(
-        "{}/{}:streamGenerateContent?alt=sse&key={}",
-        BASE_URL, model_id, api_key
+        "{}/{}:streamGenerateContent?alt=sse",
+        BASE_URL, model_id
     );
 
-    let system_instruction = system_prompt.map(|prompt| Content {
-        role: Some("user".into()),
-        parts: vec![Part {
-            text: prompt.into(),
-        }],
-    });
-
-    let request = GeminiRequest {
-        contents: vec![Content {
-            role: Some("user".into()),
-            parts: vec![Part {
-                text: user_message.into(),
-            }],
-        }],
-        generation_config: Some(GenerationConfig {
-            temperature,
-            max_output_tokens: max_tokens,
-            top_p: None,
-        }),
-        system_instruction,
-    };
+    let request = build_request(system_prompt, user_message, temperature, max_tokens);
 
     let response = client()
         .post(&url)
+        .header("x-goog-api-key", api_key)
         .json(&request)
         .send()
         .await

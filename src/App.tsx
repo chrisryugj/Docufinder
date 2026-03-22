@@ -334,14 +334,16 @@ function App() {
 
     // 최대 10개씩 분류 (성능)
     const batch = newPaths.slice(0, 10);
-    batch.forEach(async (filePath) => {
-      try {
-        const cat = await invoke<string>("classify_document", { filePath });
-        setCategories(prev => ({ ...prev, [filePath]: cat }));
-      } catch {
-        // 분류 실패 시 무시
-      }
-    });
+    Promise.all(
+      batch.map(async (filePath) => {
+        try {
+          const cat = await invoke<string>("classify_document", { filePath });
+          setCategories(prev => ({ ...prev, [filePath]: cat }));
+        } catch {
+          // 분류 실패 시 무시
+        }
+      })
+    );
   }, [filteredResults, semanticEnabled]); // categories는 의도적으로 제외 (무한 루프 방지)
 
   // 내보내기 (토스트 연동)
@@ -463,18 +465,14 @@ function App() {
     [setQuery, autoComplete.close]
   );
 
-  // 자연어 모드: 검색 완료 시 AI 자동 분석
+  // 자연어 모드: 검색 완료 시 AI 자동 분석 (ref로 stale closure 방지)
+  const aiAutoRef = useRef({ aiEnabled, paradigm, query, filteredResults, isLoading, requestAiAnalysis });
+  aiAutoRef.current = { aiEnabled, paradigm, query, filteredResults, isLoading, requestAiAnalysis };
   useEffect(() => {
-    if (
-      aiEnabled &&
-      paradigm === "natural" &&
-      parsedQuery &&
-      filteredResults.length > 0 &&
-      !isLoading
-    ) {
-      requestAiAnalysis(query, filteredResults);
+    const { aiEnabled: ai, paradigm: p, query: q, filteredResults: fr, isLoading: loading, requestAiAnalysis: req } = aiAutoRef.current;
+    if (ai && p === "natural" && parsedQuery && fr.length > 0 && !loading) {
+      req(q, fr);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsedQuery]); // parsedQuery 변경 = 자연어 검색 완료
 
   // 즉시 모드: AI 수동 트리거

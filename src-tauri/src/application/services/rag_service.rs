@@ -83,14 +83,7 @@ impl RagService {
 fn build_context(results: &[SearchResult]) -> String {
     let mut context = String::new();
     for (i, result) in results.iter().take(MAX_CONTEXT_RESULTS).enumerate() {
-        let content = if result.full_content.len() > MAX_SNIPPET_CHARS {
-            &result.full_content[..result.full_content.char_indices()
-                .nth(MAX_SNIPPET_CHARS)
-                .map(|(idx, _)| idx)
-                .unwrap_or(result.full_content.len())]
-        } else {
-            &result.full_content
-        };
+        let content: String = result.full_content.chars().take(MAX_SNIPPET_CHARS).collect();
 
         context.push_str(&format!(
             "### 문서 {} — {}\n{}\n\n",

@@ -260,11 +260,7 @@ impl NlQueryParser {
                         // 앞의 조사("에") 제거
                         let mut start = pos;
                         if start > 0 && remaining[..start].ends_with('에') {
-                            start -= 'ì'.len_utf8(); // 'ì' is not right
-                            // "에" is 3 bytes in UTF-8
-                            if start >= 3 && remaining[start - 3..start + 3].contains("에") {
-                                // skip complex logic, just remove the pattern itself
-                            }
+                            start -= '에'.len_utf8();
                         }
 
                         let mut result = String::new();
@@ -473,10 +469,10 @@ impl NlQueryParser {
                 if let Some(pos) = lower.find(&pat_lower) {
                     // 단어 경계 확인
                     let before_ok =
-                        pos == 0 || remaining.as_bytes().get(pos - 1) == Some(&b' ');
+                        pos == 0 || remaining[..pos].ends_with(' ');
                     let after_pos = pos + pat.len();
                     let after_ok = after_pos >= remaining.len()
-                        || remaining.as_bytes().get(after_pos) == Some(&b' ')
+                        || remaining[after_pos..].starts_with(' ')
                         || remaining[after_pos..].starts_with("만")
                         || remaining[after_pos..].starts_with("으로")
                         || remaining[after_pos..].starts_with("에서");

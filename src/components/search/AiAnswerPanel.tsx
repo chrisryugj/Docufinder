@@ -152,24 +152,53 @@ export const AiAnswerPanel = memo(function AiAnswerPanel({
   );
 });
 
+/** HTML 특수문자 이스케이핑 (XSS 방지) */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /** 간단한 마크다운 → HTML 변환 (의존성 없이) */
 function renderSimpleMarkdown(md: string): string {
-  return md
-    // 코드 블록
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-[var(--color-bg-primary)] rounded p-2 text-xs overflow-x-auto my-2"><code>$2</code></pre>')
-    // 인라인 코드
-    .replace(/`([^`]+)`/g, '<code class="bg-[var(--color-bg-primary)] px-1 py-0.5 rounded text-xs">$1</code>')
-    // 볼드
+  // 1) 코드 블록을 플레이스홀더로 보호 (이스케이핑 전)
+  const codeBlocks: string[] = [];
+  let safe = md.replace(/```(\w*)\n([\s\S]*?)```/g, (_, _lang, code) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      `<pre class="bg-[var(--color-bg-primary)] rounded p-2 text-xs overflow-x-auto my-2"><code>${escapeHtml(code)}</code></pre>`
+    );
+    return `\x00CB${idx}\x00`;
+  });
+
+  const inlineCodes: string[] = [];
+  safe = safe.replace(/`([^`]+)`/g, (_, code) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push(
+      `<code class="bg-[var(--color-bg-primary)] px-1 py-0.5 rounded text-xs">${escapeHtml(code)}</code>`
+    );
+    return `\x00IC${idx}\x00`;
+  });
+
+  // 2) 나머지 텍스트 이스케이핑
+  safe = escapeHtml(safe);
+
+  // 3) 마크다운 패턴 변환
+  safe = safe
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // 이탤릭
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // 헤딩
     .replace(/^### (.+)$/gm, '<h4 class="font-semibold mt-3 mb-1">$1</h4>')
     .replace(/^## (.+)$/gm, '<h3 class="font-semibold text-base mt-3 mb-1">$1</h3>')
-    // 리스트
     .replace(/^- (.+)$/gm, '<li class="ml-4 list-disc">$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 list-decimal">$2</li>')
-    // 줄바꿈
-    .replace(/\n\n/g, '<br/><br/>')
-    .replace(/\n/g, '<br/>');
+    .replace(/\n\n/g, "<br/><br/>")
+    .replace(/\n/g, "<br/>");
+
+  // 4) 플레이스홀더 복원
+  safe = safe.replace(/\x00CB(\d+)\x00/g, (_, idx) => codeBlocks[Number(idx)]);
+  safe = safe.replace(/\x00IC(\d+)\x00/g, (_, idx) => inlineCodes[Number(idx)]);
+
+  return safe;
 }
