@@ -876,6 +876,7 @@ function App() {
                   onSelectResult={setSelectedIndex}
                   onFindSimilar={semanticEnabled ? handleFindSimilar : undefined}
                   categories={categories}
+                  paradigm={paradigm}
                 />
               </div>
             </main>

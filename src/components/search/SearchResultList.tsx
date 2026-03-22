@@ -56,6 +56,8 @@ interface SearchResultListProps {
   onFindSimilar?: (filePath: string) => void;
   /** 파일별 카테고리 맵 */
   categories?: Record<string, string>;
+  /** 검색 패러다임 (즉시/자연어) */
+  paradigm?: "instant" | "natural";
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -94,6 +96,7 @@ export const SearchResultList = memo(function SearchResultList({
   onSelectResult,
   onFindSimilar,
   categories,
+  paradigm = "instant",
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -296,6 +299,34 @@ export const SearchResultList = memo(function SearchResultList({
             </>
           )
         )}
+      </div>
+    );
+  }
+
+  // 자연어 모드: 아직 Enter 안 눌렀을 때 (결과 없고 로딩도 아닌 상태)
+  if (paradigm === "natural" && query.trim() && !isLoading && results.length === 0) {
+    return (
+      <div className="text-center py-20">
+        <div
+          className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+          style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        >
+          <FileSearch
+            className="w-10 h-10 opacity-60"
+            style={{ color: "var(--color-text-muted)" }}
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+        </div>
+        <h3
+          className="text-lg font-semibold mb-2"
+          style={{ color: "var(--color-text-primary)" }}
+        >
+          Enter를 눌러 검색하세요
+        </h3>
+        <p style={{ color: "var(--color-text-muted)" }}>
+          자연어로 질문을 완성한 후 Enter 키를 누르면 검색합니다
+        </p>
       </div>
     );
   }

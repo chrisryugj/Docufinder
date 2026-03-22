@@ -37,7 +37,7 @@ export function useAiSearch(): UseAiSearchReturn {
           "ask_ai",
           {
             query,
-            searchResults: results.slice(0, 5),
+            search_results: results.slice(0, 5),
           },
           AI_TIMEOUT
         );

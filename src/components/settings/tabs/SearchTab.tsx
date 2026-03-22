@@ -193,12 +193,12 @@ export function SearchTab({ settings, onChange, onSemanticToggle }: SearchTabPro
                   min={0}
                   max={2}
                   step={0.1}
-                  value={settings.ai_temperature ?? 0.3}
+                  value={settings.ai_temperature ?? 0.2}
                   onChange={(e) => onChange("ai_temperature", Number(e.target.value))}
                   className="flex-1 accent-[var(--color-accent)]"
                 />
                 <div className="min-w-[32px] text-sm font-semibold text-right" style={{ color: "var(--color-text-primary)" }}>
-                  {(settings.ai_temperature ?? 0.3).toFixed(1)}
+                  {(settings.ai_temperature ?? 0.2).toFixed(1)}
                 </div>
               </div>
             </div>

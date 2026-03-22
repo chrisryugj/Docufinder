@@ -90,7 +90,7 @@ fn default_ai_model() -> String {
 }
 
 fn default_ai_temperature() -> f32 {
-    0.3
+    0.2
 }
 
 fn default_ai_max_tokens() -> u32 {
