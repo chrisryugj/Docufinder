@@ -65,15 +65,12 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     [closable, handleClose]
   );
 
+  // Effect 1: 포커스 + body scroll 관리 (open/close 전환 시에만)
   useEffect(() => {
     if (isOpen) {
-      // 현재 포커스된 요소 저장
       previousActiveElement.current = document.activeElement as HTMLElement;
-
-      document.addEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "hidden";
 
-      // 모달 열릴 때 첫 번째 포커스 가능 요소로 포커스
       requestAnimationFrame(() => {
         const focusableElements = modalRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
         focusableElements?.[0]?.focus();
@@ -81,14 +78,21 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     }
 
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-
-      // 모달 닫힐 때 이전 포커스 복원 (DOM에서 제거된 요소 방어)
-      if (previousActiveElement.current?.isConnected) {
-        previousActiveElement.current.focus();
+      // isOpen이 true→false로 바뀔 때만 복원 (cleanup은 이전 isOpen 값을 캡처)
+      if (isOpen) {
+        document.body.style.overflow = "";
+        if (previousActiveElement.current?.isConnected) {
+          previousActiveElement.current.focus();
+        }
       }
     };
+  }, [isOpen]);
+
+  // Effect 2: keydown 리스너 (handleKeyDown 변경 시 리스너만 교체, 포커스 영향 없음)
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
   // 배경 클릭으로 닫기 (closable일 때만)
