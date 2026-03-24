@@ -303,6 +303,30 @@ function App() {
   // 미리보기 패널
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
+  const [previewWidth, setPreviewWidth] = useState(360);
+  const isResizingRef = useRef(false);
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = previewWidth;
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const delta = startX - ev.clientX;
+      setPreviewWidth(Math.max(280, Math.min(700, startWidth + delta)));
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [previewWidth]);
 
   // 북마크
   const { bookmarks, addBookmark, removeBookmark } = useBookmarks({ showToast });
@@ -767,17 +791,28 @@ function App() {
 
           {/* 미리보기 패널 */}
           {previewFilePath && (
-            <div className="w-[360px] shrink-0">
-              <PreviewPanel
-                filePath={previewFilePath}
-                highlightQuery={query}
-                onClose={handlePreviewClose}
-                onOpenFile={handleOpenFile}
-                onCopyPath={handleCopyPath}
-                onOpenFolder={handleOpenFolder}
-                onBookmark={addBookmark}
-              />
-            </div>
+            <>
+              {/* 리사이즈 핸들 */}
+              <div
+                onMouseDown={handleResizeStart}
+                className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-accent)] transition-colors group relative"
+                style={{ backgroundColor: "var(--color-border)" }}
+                title="드래그하여 너비 조절"
+              >
+                <div className="absolute inset-y-0 -left-1 -right-1" />
+              </div>
+              <div className="shrink-0" style={{ width: previewWidth }}>
+                <PreviewPanel
+                  filePath={previewFilePath}
+                  highlightQuery={query}
+                  onClose={handlePreviewClose}
+                  onOpenFile={handleOpenFile}
+                  onCopyPath={handleCopyPath}
+                  onOpenFolder={handleOpenFolder}
+                  onBookmark={addBookmark}
+                />
+              </div>
+            </>
           )}
         </div>
 

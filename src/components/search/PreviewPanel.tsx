@@ -132,7 +132,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       const parts = text.split(new RegExp(`(${searchRegex.source})`, 'gi'));
       return parts.map((part, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded px-0.5" style={{ backgroundColor: "var(--color-highlight-bg)", color: "var(--color-highlight-text)" }}>{part}</mark>
+          <mark key={i} className="hl-search">{part}</mark>
         ) : part
       );
     }
@@ -146,7 +146,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       const parts = str.split(new RegExp(`(${searchRegex.source})`, 'gi'));
       return parts.map((part, i) =>
         i % 2 === 1 ? (
-          <mark key={`${keyBase}-h${i}`} className="rounded px-0.5" style={{ backgroundColor: "var(--color-highlight-bg)", color: "var(--color-highlight-text)" }}>{part}</mark>
+          <mark key={`${keyBase}-h${i}`} className="hl-search">{part}</mark>
         ) : (
           <span key={`${keyBase}-t${i}`}>{part}</span>
         )
@@ -209,10 +209,10 @@ export const PreviewPanel = memo(function PreviewPanel({
       </div>
 
       {/* 액션 바 */}
-      <div className="flex items-center gap-1 px-3 py-1.5 border-b text-xs" style={{ borderColor: "var(--color-border)" }}>
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b text-xs overflow-x-auto" style={{ borderColor: "var(--color-border)" }}>
         <button
           onClick={() => onOpenFile?.(filePath)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
           title="파일 열기"
         >
           <ExternalLink size={12} />
@@ -220,7 +220,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         </button>
         <button
           onClick={() => onCopyPath?.(filePath)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
           title="경로 복사"
         >
           <Copy size={12} />
@@ -228,7 +228,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         </button>
         <button
           onClick={() => onOpenFolder?.(dirPath)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
           title="폴더 열기"
         >
           <FolderOpen size={12} />
@@ -237,7 +237,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         {onBookmark && (
           <button
             onClick={() => onBookmark(filePath, preview?.chunks?.[0]?.content?.slice(0, 200) || "", null, null)}
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors"
+            className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
             title="북마크 추가"
           >
             <Bookmark size={12} />
@@ -249,7 +249,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           <button
             onClick={handleGenerateSummary}
             disabled={summaryLoading}
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
             title="AI 요약 생성 (TextRank)"
           >
             {summaryLoading ? (
@@ -262,7 +262,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         )}
 
         {preview && (
-          <span className="ml-auto text-[var(--color-text-muted)]">
+          <span className="ml-auto text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">
             {preview.chunks.length}개 청크 · {preview.total_chars.toLocaleString()}자
           </span>
         )}
@@ -338,7 +338,15 @@ export const PreviewPanel = memo(function PreviewPanel({
                       </span>
                     </div>
                   )}
-                  <p className="text-[13px] leading-relaxed text-[var(--color-text-secondary)] whitespace-pre-wrap break-words" style={{ fontFamily: "var(--font-mono)" }}>
+                  <p
+                    className="whitespace-pre-wrap break-words text-[var(--color-text-secondary)]"
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "var(--text-sm)",
+                      lineHeight: "1.7",
+                      letterSpacing: "0.3px",
+                    }}
+                  >
                     {highlightText(chunk.content)}
                   </p>
                 </div>

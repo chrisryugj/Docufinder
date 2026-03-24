@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { AlertTriangle, Calendar, Clock, Loader2 } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, FolderOpen, Loader2 } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
@@ -43,12 +43,24 @@ export function ExpiryAlertModal({
   const [result, setResult] = useState<ExpiryResponse | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [filter, setFilter] = useState<"all" | "expired" | "urgent" | "warning">("all");
+  const [folders, setFolders] = useState<{ path: string }[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string>("");
+
+  useEffect(() => {
+    if (isOpen) {
+      invoke<{ path: string }[]>("get_folders_with_info")
+        .then(setFolders)
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   const handleScan = useCallback(async () => {
     setIsScanning(true);
     setResult(null);
     try {
-      const res = await invoke<ExpiryResponse>("scan_expiry_dates");
+      const res = await invoke<ExpiryResponse>("scan_expiry_dates", {
+        folderPath: selectedFolder || null,
+      });
       setResult(res);
       if (res.documents.length === 0) {
         showToast("만료 관련 날짜가 있는 문서가 없습니다", "info");
@@ -59,12 +71,13 @@ export function ExpiryAlertModal({
           "success"
         );
       }
-    } catch (e) {
-      showToast(`만료 스캔 실패: ${e}`, "error");
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+      showToast(`만료 스캔 실패: ${msg}`, "error");
     } finally {
       setIsScanning(false);
     }
-  }, [showToast]);
+  }, [showToast, selectedFolder]);
 
   const filtered = result
     ? filter === "all"
@@ -99,6 +112,28 @@ export function ExpiryAlertModal({
             <p className="text-xs mb-4" style={{ color: "var(--color-text-muted)" }}>
               키워드: 만료, 유효기간, 까지, 종료, 기한, 계약기간 등
             </p>
+            {folders.length > 0 && (
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <FolderOpen className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+                <select
+                  value={selectedFolder}
+                  onChange={(e) => setSelectedFolder(e.target.value)}
+                  className="px-3 py-1.5 text-sm rounded-lg border"
+                  style={{
+                    backgroundColor: "var(--color-bg-secondary)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                >
+                  <option value="">전체 폴더</option>
+                  {folders.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.path.replace(/\\/g, "/").split("/").slice(-2).join("/")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button
               onClick={handleScan}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white"

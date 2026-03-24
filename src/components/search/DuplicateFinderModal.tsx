@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Copy, FileText, Loader2, Search } from "lucide-react";
+import { Copy, FileText, FolderOpen, Loader2, Search } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
@@ -44,12 +44,24 @@ export function DuplicateFinderModal({
   const [result, setResult] = useState<DuplicateResponse | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [tab, setTab] = useState<"exact" | "similar">("exact");
+  const [folders, setFolders] = useState<{ path: string }[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string>("");
+
+  useEffect(() => {
+    if (isOpen) {
+      invoke<{ path: string }[]>("get_folders_with_info")
+        .then(setFolders)
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   const handleScan = useCallback(async () => {
     setIsScanning(true);
     setResult(null);
     try {
-      const res = await invoke<DuplicateResponse>("find_duplicates");
+      const res = await invoke<DuplicateResponse>("find_duplicates", {
+        folderPath: selectedFolder || null,
+      });
       setResult(res);
       const total = res.exact_groups.length + res.similar_groups.length;
       if (total === 0) {
@@ -57,12 +69,13 @@ export function DuplicateFinderModal({
       } else {
         showToast(`${total}개 중복 그룹 발견 (${res.scan_time_ms}ms)`, "success");
       }
-    } catch (e) {
-      showToast(`중복 탐지 실패: ${e}`, "error");
+    } catch (e: unknown) {
+      const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+      showToast(`중복 탐지 실패: ${msg}`, "error");
     } finally {
       setIsScanning(false);
     }
-  }, [showToast]);
+  }, [showToast, selectedFolder]);
 
   const groups = result
     ? tab === "exact"
@@ -101,6 +114,28 @@ export function DuplicateFinderModal({
             <p className="text-sm mb-4" style={{ color: "var(--color-text-secondary)" }}>
               인덱싱된 문서에서 정확한 중복과 유사한 내용의 문서를 찾습니다
             </p>
+            {folders.length > 0 && (
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <FolderOpen className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+                <select
+                  value={selectedFolder}
+                  onChange={(e) => setSelectedFolder(e.target.value)}
+                  className="px-3 py-1.5 text-sm rounded-lg border"
+                  style={{
+                    backgroundColor: "var(--color-bg-secondary)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                >
+                  <option value="">전체 폴더</option>
+                  {folders.map((f) => (
+                    <option key={f.path} value={f.path}>
+                      {f.path.replace(/\\/g, "/").split("/").slice(-2).join("/")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <button
               onClick={handleScan}
               className="px-4 py-2 rounded-lg text-sm font-medium text-white"
