@@ -329,7 +329,7 @@ function App() {
   }, [previewWidth]);
 
   // 북마크
-  const { bookmarks, addBookmark, removeBookmark } = useBookmarks({ showToast });
+  const { bookmarks, addBookmark, removeBookmark, isBookmarked } = useBookmarks({ showToast });
 
   // 유사 문서 검색
   const { similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults } = useSimilarDocuments(showToast);
@@ -810,6 +810,7 @@ function App() {
                   onCopyPath={handleCopyPath}
                   onOpenFolder={handleOpenFolder}
                   onBookmark={addBookmark}
+                  isBookmarked={isBookmarked(previewFilePath)}
                 />
               </div>
             </>

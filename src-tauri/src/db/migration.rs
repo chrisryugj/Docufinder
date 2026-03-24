@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 8;
+const CURRENT_SCHEMA_VERSION: i32 = 9;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -237,6 +237,25 @@ pub fn init_database(db_path: &Path) -> Result<()> {
 
         set_schema_version(&conn, 8)?;
         tracing::info!("Schema migrated to v8 (autocomplete: fts5vocab + search_queries)");
+    }
+
+    // === v9: 북마크 중복 방지 (file_path UNIQUE) ===
+    if current_version < 9 {
+        // 기존 중복 북마크 정리 (가장 최근 것만 유지)
+        conn.execute(
+            "DELETE FROM bookmarks WHERE id NOT IN (
+                SELECT MAX(id) FROM bookmarks GROUP BY file_path
+            )",
+            [],
+        )?;
+        // 기존 일반 인덱스 제거 후 UNIQUE 인덱스 생성
+        conn.execute("DROP INDEX IF EXISTS idx_bookmarks_file_path", [])?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmarks_file_path ON bookmarks(file_path)",
+            [],
+        )?;
+        set_schema_version(&conn, 9)?;
+        tracing::info!("Schema migrated to v9 (bookmark unique constraint)");
     }
 
     tracing::info!(
