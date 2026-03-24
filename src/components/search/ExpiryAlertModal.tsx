@@ -48,6 +48,9 @@ export function ExpiryAlertModal({
 
   useEffect(() => {
     if (isOpen) {
+      setResult(null);
+      setSelectedFolder("");
+      setFilter("all");
       invoke<{ path: string }[]>("get_folders_with_info")
         .then(setFolders)
         .catch(() => {});

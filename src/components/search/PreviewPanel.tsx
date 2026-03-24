@@ -29,6 +29,7 @@ interface PreviewPanelProps {
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   onBookmark?: (filePath: string, contentPreview: string, pageNumber?: number | null, locationHint?: string | null) => void;
+  isBookmarked?: boolean;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
@@ -39,6 +40,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   onCopyPath,
   onOpenFolder,
   onBookmark,
+  isBookmarked,
 }: PreviewPanelProps) {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +59,10 @@ export const PreviewPanel = memo(function PreviewPanel({
       setSummary(null);
       return;
     }
+
+    // 파일 변경 시 진행 중인 요약 요청 무효화
+    summaryRequestId.current++;
+    setSummary(null);
 
     let cancelled = false;
     setLoading(true);
@@ -237,10 +243,14 @@ export const PreviewPanel = memo(function PreviewPanel({
         {onBookmark && (
           <button
             onClick={() => onBookmark(filePath, preview?.chunks?.[0]?.content?.slice(0, 200) || "", null, null)}
-            className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
-            title="북마크 추가"
+            className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${
+              isBookmarked
+                ? "text-[var(--color-accent)] bg-[var(--color-accent-bg)]"
+                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+            }`}
+            title={isBookmarked ? "북마크 해제" : "북마크 추가"}
           >
-            <Bookmark size={12} />
+            <Bookmark size={12} fill={isBookmarked ? "currentColor" : "none"} />
             북마크
           </button>
         )}

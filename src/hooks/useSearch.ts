@@ -170,11 +170,11 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [parsedQuery, setParsedQuery] = useState<ParsedQueryInfo | null>(null);
   // 자연어 모드에서 검색 실행 여부 (결과 0건과 미실행 구분용)
   const [nlSubmitted, setNlSubmitted] = useState(false);
-  // 쿼리 변경 시 nlSubmitted 리셋하는 래퍼
+  // 쿼리 변경 시 nlSubmitted 리셋하는 래퍼 (안정적 참조)
   const setQuery = useCallback((q: string) => {
     setQueryInternal(q);
-    if (nlSubmitted) setNlSubmitted(false);
-  }, [nlSubmitted]);
+    setNlSubmitted(false);
+  }, []);
   // IME 조합 중 여부
   const isComposingRef = useRef(false);
   // 검색 요청 ID (이전 검색 결과 무시용)

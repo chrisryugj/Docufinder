@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export interface BookmarkInfo {
@@ -18,6 +18,9 @@ interface UseBookmarksOptions {
 
 export function useBookmarks({ showToast }: UseBookmarksOptions = {}) {
   const [bookmarks, setBookmarks] = useState<BookmarkInfo[]>([]);
+  const bookmarksRef = useRef(bookmarks);
+  bookmarksRef.current = bookmarks;
+  const pendingRef = useRef<Set<string>>(new Set());
 
   const loadBookmarks = useCallback(async () => {
     try {
@@ -39,7 +42,18 @@ export function useBookmarks({ showToast }: UseBookmarksOptions = {}) {
     locationHint?: string | null,
     note?: string | null,
   ) => {
+    // 중복 클릭 방지
+    if (pendingRef.current.has(filePath)) return;
+    pendingRef.current.add(filePath);
     try {
+      // ref로 최신 상태 참조 (stale closure 방지)
+      const existing = bookmarksRef.current.find(b => b.file_path === filePath);
+      if (existing) {
+        await invoke("remove_bookmark", { id: existing.id });
+        setBookmarks(prev => prev.filter(b => b.id !== existing.id));
+        showToast?.("북마크가 해제되었습니다", "success");
+        return;
+      }
       await invoke<number>("add_bookmark", {
         filePath,
         contentPreview,
@@ -49,8 +63,10 @@ export function useBookmarks({ showToast }: UseBookmarksOptions = {}) {
       });
       await loadBookmarks();
       showToast?.("북마크가 추가되었습니다", "success");
-    } catch (e) {
-      showToast?.("북마크 추가 실패", "error");
+    } catch {
+      showToast?.("북마크 처리 실패", "error");
+    } finally {
+      pendingRef.current.delete(filePath);
     }
   }, [loadBookmarks, showToast]);
 

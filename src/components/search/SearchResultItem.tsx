@@ -103,7 +103,7 @@ export const SearchResultItem = memo(function SearchResultItem({
       if (onCopyPath) {
         onCopyPath(result.file_path);
       } else {
-        navigator.clipboard.writeText(result.file_path);
+        navigator.clipboard.writeText(result.file_path).catch(() => {});
       }
     },
     [result.file_path, onCopyPath]

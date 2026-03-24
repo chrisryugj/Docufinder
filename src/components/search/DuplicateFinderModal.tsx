@@ -49,6 +49,9 @@ export function DuplicateFinderModal({
 
   useEffect(() => {
     if (isOpen) {
+      setResult(null);
+      setSelectedFolder("");
+      setTab("exact");
       invoke<{ path: string }[]>("get_folders_with_info")
         .then(setFolders)
         .catch(() => {});
@@ -95,8 +98,12 @@ export function DuplicateFinderModal({
   };
 
   const copyPath = async (path: string) => {
-    await navigator.clipboard.writeText(path);
-    showToast("경로가 복사되었습니다", "info");
+    try {
+      await navigator.clipboard.writeText(path);
+      showToast("경로가 복사되었습니다", "info");
+    } catch {
+      showToast("클립보드 복사 실패", "error");
+    }
   };
 
   return (

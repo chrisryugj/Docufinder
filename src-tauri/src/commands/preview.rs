@@ -151,12 +151,25 @@ pub async fn add_bookmark(
 
         conn.execute(
             "INSERT INTO bookmarks (file_path, file_name, content_preview, page_number, location_hint, note, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(file_path) DO UPDATE SET
+                content_preview = excluded.content_preview,
+                page_number = excluded.page_number,
+                location_hint = excluded.location_hint,
+                note = COALESCE(bookmarks.note, excluded.note),
+                created_at = excluded.created_at",
             rusqlite::params![file_path, file_name, content_preview, page_number, location_hint, note, now],
         )
         .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
-        let id = conn.last_insert_rowid();
+        // UPSERT 후 정확한 ID 조회 (ON CONFLICT UPDATE 시 last_insert_rowid 부정확)
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM bookmarks WHERE file_path = ?",
+                rusqlite::params![file_path],
+                |row| row.get(0),
+            )
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
         Ok(id)
     })
     .await??;
