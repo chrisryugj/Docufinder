@@ -36,6 +36,7 @@ pub struct DuplicateResponse {
 #[tauri::command]
 pub async fn find_duplicates(
     state: State<'_, RwLock<AppContainer>>,
+    folder_path: Option<String>,
 ) -> ApiResult<DuplicateResponse> {
     let start = std::time::Instant::now();
 
@@ -50,10 +51,13 @@ pub async fn find_duplicates(
         )
     };
 
+    let folder_filter = folder_path.clone();
+
     // 1) 정확 중복: 같은 size 파일 그룹 → SHA-256 해시 비교
     let exact_groups = tokio::task::spawn_blocking({
         let db_path = db_path.clone();
-        move || find_exact_duplicates(&db_path)
+        let filter = folder_filter.clone();
+        move || find_exact_duplicates(&db_path, filter.as_deref())
     })
     .await
     .map_err(|e| ApiError::IndexingFailed(e.to_string()))??;
@@ -62,7 +66,8 @@ pub async fn find_duplicates(
     let similar_groups = if let (Some(emb), Some(vi)) = (embedder, vector_index) {
         tokio::task::spawn_blocking({
             let db_path = db_path.clone();
-            move || find_similar_duplicates(&db_path, &emb, &vi)
+            let filter = folder_filter.clone();
+            move || find_similar_duplicates(&db_path, &emb, &vi, filter.as_deref())
         })
         .await
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))??
@@ -73,8 +78,15 @@ pub async fn find_duplicates(
     let total_files = {
         let conn = db::get_connection(&db_path)
             .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &folder_path {
+            Some(fp) => (
+                "SELECT COUNT(*) FROM files WHERE path LIKE ?",
+                vec![Box::new(format!("{}%", fp.replace('\\', "/")))],
+            ),
+            None => ("SELECT COUNT(*) FROM files", vec![]),
+        };
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+            .query_row(sql, rusqlite::params_from_iter(params.iter()), |row| row.get(0))
             .unwrap_or(0);
         count as usize
     };
@@ -90,22 +102,38 @@ pub async fn find_duplicates(
 /// 정확 중복: 같은 size 파일 그룹 → SHA-256 해시 비교
 fn find_exact_duplicates(
     db_path: &std::path::Path,
+    folder_path: Option<&str>,
 ) -> ApiResult<Vec<DuplicateGroup>> {
     let conn =
         db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     // size가 같은 파일 그룹 조회 (최소 2개 이상, 0바이트 제외)
-    let mut stmt = conn
-        .prepare(
+    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
+        Some(fp) => {
+            let like = format!("{}%", fp.replace('\\', "/"));
+            (
+                "SELECT path, name, file_type, size, modified_at FROM files
+                 WHERE size > 0 AND path LIKE ?
+                 AND size IN (SELECT size FROM files WHERE size > 0 AND path LIKE ? GROUP BY size HAVING COUNT(*) >= 2)
+                 ORDER BY size DESC, path".to_string(),
+                vec![Box::new(like.clone()) as Box<dyn rusqlite::types::ToSql>, Box::new(like)],
+            )
+        }
+        None => (
             "SELECT path, name, file_type, size, modified_at FROM files
              WHERE size > 0
              AND size IN (SELECT size FROM files WHERE size > 0 GROUP BY size HAVING COUNT(*) >= 2)
-             ORDER BY size DESC, path",
-        )
+             ORDER BY size DESC, path".to_string(),
+            vec![],
+        ),
+    };
+
+    let mut stmt = conn
+        .prepare(&sql)
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     let files: Vec<(String, String, String, i64, Option<i64>)> = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -178,24 +206,41 @@ fn find_similar_duplicates(
     db_path: &std::path::Path,
     embedder: &std::sync::Arc<crate::embedder::Embedder>,
     vector_index: &std::sync::Arc<crate::search::vector::VectorIndex>,
+    folder_path: Option<&str>,
 ) -> ApiResult<Vec<DuplicateGroup>> {
     let conn =
         db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     // 벡터 인덱싱된 파일들의 대표 청크 (chunk_index=0) 조회
-    let mut stmt = conn
-        .prepare(
+    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
+        Some(fp) => {
+            let like = format!("{}%", fp.replace('\\', "/"));
+            (
+                "SELECT f.path, f.name, f.file_type, f.size, f.modified_at, c.id, c.content
+                 FROM files f
+                 JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
+                 WHERE f.vector_indexed_at IS NOT NULL AND f.path LIKE ?
+                 ORDER BY f.path".to_string(),
+                vec![Box::new(like) as Box<dyn rusqlite::types::ToSql>],
+            )
+        }
+        None => (
             "SELECT f.path, f.name, f.file_type, f.size, f.modified_at, c.id, c.content
              FROM files f
              JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
              WHERE f.vector_indexed_at IS NOT NULL
-             ORDER BY f.path",
-        )
+             ORDER BY f.path".to_string(),
+            vec![],
+        ),
+    };
+
+    let mut stmt = conn
+        .prepare(&sql)
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     type DocEntry = (String, String, String, i64, Option<i64>, i64, String);
     let docs: Vec<DocEntry> = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,

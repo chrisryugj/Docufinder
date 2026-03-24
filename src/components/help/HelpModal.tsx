@@ -6,7 +6,7 @@ interface HelpModalProps {
   onClose: () => void;
 }
 
-type HelpSection = "start" | "search" | "filters" | "shortcuts" | "tips";
+type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
 
 export function HelpModal({ isOpen, onClose }: HelpModalProps) {
   const [activeSection, setActiveSection] = useState<HelpSection>("start");
@@ -15,6 +15,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
     { id: "start", label: "시작하기" },
     { id: "search", label: "검색 모드" },
     { id: "filters", label: "필터/보기" },
+    { id: "advanced", label: "고급 기능" },
     { id: "shortcuts", label: "단축키" },
     { id: "tips", label: "활용 팁" },
   ];
@@ -50,6 +51,7 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
           {activeSection === "start" && <div role="tabpanel" id="help-panel-start" aria-labelledby="help-tab-start"><StartSection /></div>}
           {activeSection === "search" && <div role="tabpanel" id="help-panel-search" aria-labelledby="help-tab-search"><SearchSection /></div>}
           {activeSection === "filters" && <div role="tabpanel" id="help-panel-filters" aria-labelledby="help-tab-filters"><FiltersSection /></div>}
+          {activeSection === "advanced" && <div role="tabpanel" id="help-panel-advanced" aria-labelledby="help-tab-advanced"><AdvancedSection /></div>}
           {activeSection === "shortcuts" && <div role="tabpanel" id="help-panel-shortcuts" aria-labelledby="help-tab-shortcuts"><ShortcutsSection /></div>}
           {activeSection === "tips" && <div role="tabpanel" id="help-panel-tips" aria-labelledby="help-tab-tips"><TipsSection /></div>}
         </div>
@@ -272,6 +274,67 @@ function ShortcutsSection() {
   );
 }
 
+function AdvancedSection() {
+  return (
+    <div>
+      <SectionTitle>고급 기능</SectionTitle>
+      <Paragraph>
+        헤더 우측 아이콘 버튼들로 고급 기능에 접근할 수 있어요.
+      </Paragraph>
+
+      <SubTitle>중복 문서 탐지</SubTitle>
+      <FeatureBox
+        title="정확 중복"
+        description="SHA-256 해시로 파일 내용이 완전히 동일한 문서를 찾아요. 이름이 달라도 내용이 같으면 탐지됩니다."
+      />
+      <FeatureBox
+        title="유사 중복"
+        description="AI 벡터 분석으로 내용이 비슷한 문서를 찾아요 (90% 이상 유사도). 시맨틱 검색이 활성화되어 있어야 해요."
+      />
+
+      <SubTitle>만료 문서 스캔</SubTitle>
+      <Paragraph>
+        문서 내 '만료', '유효기간', '계약기간', '기한' 등의 키워드 주변 날짜를 자동 추출해요.
+        만료됨 / 7일 이내 / 30일 이내 / 여유 4단계로 분류하여 긴급도를 한눈에 볼 수 있어요.
+      </Paragraph>
+
+      <SubTitle>문서 요약</SubTitle>
+      <Paragraph>
+        검색 결과를 클릭하면 미리보기 패널에서 '요약' 버튼으로 문서 핵심 내용을 자동 추출해요.
+        TextRank 알고리즘 기반으로 오프라인에서 동작하며, 외부 API가 필요 없어요.
+      </Paragraph>
+
+      <SubTitle>북마크</SubTitle>
+      <Paragraph>
+        미리보기 패널에서 중요한 문서를 북마크하고 메모를 남길 수 있어요.
+        사이드바의 북마크 탭에서 저장한 문서를 바로 열 수 있어요.
+      </Paragraph>
+
+      <SubTitle>문서 통계</SubTitle>
+      <Paragraph>
+        헤더의 차트 아이콘을 클릭하면 인덱싱된 문서의 파일 형식별 분포,
+        폴더별 문서 수, 총 용량 등 통계를 확인할 수 있어요.
+      </Paragraph>
+
+      <SubTitle>법령 참조 링크</SubTitle>
+      <Paragraph>
+        문서 미리보기에서 '민법 제750조', '근로기준법 제54조' 같은 법령 표현을
+        자동 감지하여 law.go.kr 링크로 변환해줘요. 클릭하면 바로 법령 원문을 볼 수 있어요.
+      </Paragraph>
+
+      <SubTitle>유사 문서 찾기</SubTitle>
+      <Paragraph>
+        검색 결과를 우클릭 → '유사 문서 찾기'로 선택한 문서와 비슷한 내용의
+        다른 문서를 벡터 유사도 기반으로 찾아줘요.
+      </Paragraph>
+
+      <InfoBox>
+        중복 탐지와 만료 스캔은 인덱싱된 문서를 대상으로 분석해요. 먼저 폴더를 추가하고 인덱싱을 완료해주세요!
+      </InfoBox>
+    </div>
+  );
+}
+
 function TipsSection() {
   return (
     <div>
@@ -296,7 +359,7 @@ function TipsSection() {
         />
         <FeatureBox
           title="결과 내보내기"
-          description="검색 결과 상단 메뉴에서 CSV로 내보내거나 클립보드에 복사할 수 있어요. 보고서 작성에 유용!"
+          description="검색 결과 상단 메뉴에서 CSV, XLSX(엑셀)로 내보내거나 클립보드에 복사할 수 있어요. ZIP 패키지로 원본 파일을 묶을 수도 있어요."
         />
         <FeatureBox
           title="우클릭 메뉴"

@@ -26,6 +26,7 @@ pub struct ExpiryResponse {
 #[tauri::command]
 pub async fn scan_expiry_dates(
     state: State<'_, RwLock<AppContainer>>,
+    folder_path: Option<String>,
 ) -> ApiResult<ExpiryResponse> {
     let start = std::time::Instant::now();
 
@@ -37,7 +38,7 @@ pub async fn scan_expiry_dates(
     };
 
     let (documents, total) = tokio::task::spawn_blocking(move || {
-        scan_documents_for_expiry(&db_path)
+        scan_documents_for_expiry(&db_path, folder_path.as_deref())
     })
     .await
     .map_err(|e| ApiError::IndexingFailed(e.to_string()))??;
@@ -51,22 +52,40 @@ pub async fn scan_expiry_dates(
 
 fn scan_documents_for_expiry(
     db_path: &std::path::Path,
+    folder_path: Option<&str>,
 ) -> ApiResult<(Vec<ExpiryDocument>, usize)> {
     let conn =
         db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
-    let mut stmt = conn
-        .prepare(
+    let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
+        Some(fp) => {
+            let like = format!("{}%", fp.replace('\\', "/"));
+            (
+                "SELECT f.path, f.name, c.content
+                 FROM files f
+                 JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
+                 WHERE f.path LIKE ?
+                 ORDER BY f.path
+                 LIMIT 50000".to_string(),
+                vec![Box::new(like) as Box<dyn rusqlite::types::ToSql>],
+            )
+        }
+        None => (
             "SELECT f.path, f.name, c.content
              FROM files f
              JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
              ORDER BY f.path
-             LIMIT 50000",
-        )
+             LIMIT 50000".to_string(),
+            vec![],
+        ),
+    };
+
+    let mut stmt = conn
+        .prepare(&sql)
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     let docs: Vec<(String, String, String)> = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params_from_iter(params.iter()), |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
