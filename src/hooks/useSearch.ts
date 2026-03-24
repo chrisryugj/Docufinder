@@ -140,6 +140,8 @@ interface UseSearchReturn {
   submitNaturalQuery: () => void;
   /** NL 파서 결과 (자연어 모드) */
   parsedQuery: ParsedQueryInfo | null;
+  /** 자연어 검색 실행 여부 (결과 0건 vs 미실행 구분) */
+  nlSubmitted: boolean;
 }
 
 /**
@@ -150,7 +152,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // minConfidence는 외부에서 변경될 수 있으므로 직접 참조
   const minConfidence = options.minConfidence ?? 0;
 
-  const [query, setQuery] = useState("");
+  const [query, setQueryInternal] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [filenameResults, setFilenameResults] = useState<SearchResult[]>([]);
   const [searchTime, setSearchTime] = useState<number | null>(null);
@@ -166,6 +168,13 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     } catch { return "instant"; }
   });
   const [parsedQuery, setParsedQuery] = useState<ParsedQueryInfo | null>(null);
+  // 자연어 모드에서 검색 실행 여부 (결과 0건과 미실행 구분용)
+  const [nlSubmitted, setNlSubmitted] = useState(false);
+  // 쿼리 변경 시 nlSubmitted 리셋하는 래퍼
+  const setQuery = useCallback((q: string) => {
+    setQueryInternal(q);
+    if (nlSubmitted) setNlSubmitted(false);
+  }, [nlSubmitted]);
   // IME 조합 중 여부
   const isComposingRef = useRef(false);
   // 검색 요청 ID (이전 검색 결과 무시용)
@@ -330,6 +339,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     // 전환 시 상태 초기화
     setQuery("");
     setParsedQuery(null);
+    setNlSubmitted(false);
     startTransition(() => {
       setResults([]);
       setFilenameResults([]);
@@ -345,6 +355,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     const currentId = ++searchIdRef.current;
     setIsLoading(true);
     setError(null);
+    setNlSubmitted(true);
 
     (async () => {
       try {
@@ -570,5 +581,6 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     setParadigm,
     submitNaturalQuery,
     parsedQuery,
+    nlSubmitted,
   };
 }

@@ -63,12 +63,12 @@ pub async fn export_csv(
                 row.content_preview.replace('\n', " ")
             };
             lines.push(format!(
-                "{},{},{},{},{}",
+                "{},{},{},{},{:.2}",
                 escape_csv(&row.file_name),
                 escape_csv(&row.file_path),
                 escape_csv(&row.location_hint),
                 escape_csv(&preview),
-                format!("{:.2}", row.score),
+                row.score,
             ));
         }
 
@@ -116,16 +116,16 @@ pub async fn export_xlsx(
 
         // 메타 정보
         sheet
-            .write_string(0, 0, &format!("검색어: \"{}\"", query))
+            .write_string(0, 0, format!("검색어: \"{}\"", query))
             .ok();
         sheet
-            .write_string(0, 2, &format!("결과: {}건", rows.len()))
+            .write_string(0, 2, format!("결과: {}건", rows.len()))
             .ok();
         sheet
             .write_string(
                 0,
                 4,
-                &format!(
+                format!(
                     "내보내기: {}",
                     chrono::Local::now().format("%Y-%m-%d %H:%M")
                 ),

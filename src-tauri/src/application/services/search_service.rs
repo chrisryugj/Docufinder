@@ -603,6 +603,67 @@ impl SearchService {
     // Smart (Natural Language) Search
     // ============================================
 
+    /// 필터 전용 검색: 키워드 없이 날짜/파일타입 필터만으로 최근 문서 조회
+    async fn browse_recent_files(
+        &self,
+        max_results: usize,
+        folder_scope: Option<&str>,
+    ) -> AppResult<SearchResponse> {
+        let conn = self.get_connection()?;
+
+        let scope_clause = folder_scope
+            .map(|s| {
+                let escaped = s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+                format!(" AND f.path LIKE '{}%' ESCAPE '\\\\'", escaped)
+            })
+            .unwrap_or_default();
+
+        let sql = format!(
+            "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
+             FROM files f
+             WHERE f.modified_at IS NOT NULL {}
+             ORDER BY f.modified_at DESC
+             LIMIT ?1",
+            scope_clause
+        );
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+
+        let results: Vec<SearchResult> = stmt
+            .query_map(rusqlite::params![max_results as i64], |row| {
+                Ok(SearchResult {
+                    file_path: row.get(0)?,
+                    file_name: row.get(1)?,
+                    chunk_index: 0,
+                    content_preview: String::new(),
+                    full_content: String::new(),
+                    score: 1.0,
+                    confidence: 50,
+                    match_type: MatchType::Keyword,
+                    highlight_ranges: vec![],
+                    page_number: None,
+                    start_offset: 0,
+                    location_hint: None,
+                    snippet: None,
+                    modified_at: row.get(4)?,
+                    has_hwp_pair: false,
+                })
+            })
+            .map_err(|e| AppError::SearchFailed(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let total_count = results.len();
+        Ok(SearchResponse {
+            results,
+            total_count,
+            search_time_ms: 0,
+            search_mode: "browse".to_string(),
+        })
+    }
+
     /// 자연어 검색: NL 파서 → 하이브리드 검색 위임 → 후처리 필터
     pub async fn search_smart(
         &self,
@@ -615,7 +676,11 @@ impl SearchService {
         let start = Instant::now();
         let parsed = NlQueryParser::parse(query);
 
-        if parsed.keywords.trim().is_empty() {
+        let has_filters = parsed.date_filter.is_some()
+            || parsed.file_type.is_some()
+            || !parsed.exclude_keywords.is_empty();
+
+        if parsed.keywords.trim().is_empty() && !has_filters {
             return Ok(SmartSearchResponse {
                 results: vec![],
                 total_count: 0,
@@ -624,11 +689,14 @@ impl SearchService {
             });
         }
 
-        // Over-fetch: 후처리 필터 손실 보상 (× 3)
-        let over_fetch = max_results * 3;
+        // 키워드 없이 필터만 있는 경우: 최근 수정 파일 기반 검색
+        // 키워드 있는 경우: 하이브리드 검색 후 필터 적용
+        let over_fetch = if has_filters { max_results * 10 } else { max_results * 3 };
 
-        // 하이브리드 검색 위임 (시맨틱 불가 시 keyword 폴백)
-        let base = if self.embedder.is_some() && self.vector_index.is_some() {
+        let base = if parsed.keywords.trim().is_empty() {
+            // 필터만 있는 경우: 최근 파일 목록에서 필터링
+            self.browse_recent_files(over_fetch, folder_scope).await?
+        } else if self.embedder.is_some() && self.vector_index.is_some() {
             self.search_hybrid(&parsed.keywords, over_fetch, folder_scope)
                 .await?
         } else {
@@ -1343,43 +1411,110 @@ use crate::search::nl_query::DateFilter;
 fn smart_apply_date_filter(
     r: &SearchResult,
     filter: &Option<DateFilter>,
-    now: i64,
+    _now: i64,
 ) -> bool {
+    use chrono::{Datelike, Duration, FixedOffset};
+
     let Some(filter) = filter else { return true };
     let Some(modified) = r.modified_at else {
         return false;
     };
 
+    // KST (UTC+9) 기준으로 날짜 계산 — 사용자 체감 시간과 일치
+    let kst = FixedOffset::east_opt(9 * 3600).unwrap();
+    let today = chrono::Utc::now().with_timezone(&kst).date_naive();
+
     let (start, end) = match filter {
-        DateFilter::Today => (now - 86400, i64::MAX),
-        DateFilter::ThisWeek => (now - 7 * 86400, i64::MAX),
-        DateFilter::LastWeek => (now - 14 * 86400, now - 7 * 86400),
-        DateFilter::ThisMonth => (now - 30 * 86400, i64::MAX),
-        DateFilter::LastMonth => (now - 60 * 86400, now - 30 * 86400),
+        DateFilter::Today => {
+            let s = today.and_hms_opt(0, 0, 0).unwrap();
+            (kst_to_utc(&kst, s), i64::MAX)
+        }
+        DateFilter::ThisWeek => {
+            // 이번 주 월요일 00:00 ~ now
+            let days_since_mon = today.weekday().num_days_from_monday();
+            let monday = today - Duration::days(days_since_mon as i64);
+            let s = monday.and_hms_opt(0, 0, 0).unwrap();
+            (kst_to_utc(&kst, s), i64::MAX)
+        }
+        DateFilter::LastWeek => {
+            // 직전 주 월요일 00:00 ~ 일요일 23:59:59
+            let days_since_mon = today.weekday().num_days_from_monday();
+            let this_monday = today - Duration::days(days_since_mon as i64);
+            let last_monday = this_monday - Duration::days(7);
+            let last_sunday = this_monday - Duration::days(1);
+            let s = last_monday.and_hms_opt(0, 0, 0).unwrap();
+            let e = last_sunday.and_hms_opt(23, 59, 59).unwrap();
+            (kst_to_utc(&kst, s), kst_to_utc(&kst, e))
+        }
+        DateFilter::ThisMonth => {
+            let first = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
+            let s = first.and_hms_opt(0, 0, 0).unwrap();
+            (kst_to_utc(&kst, s), i64::MAX)
+        }
+        DateFilter::LastMonth => {
+            // 직전 달 1일 ~ 말일
+            let first_this = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
+            let last_day_prev = first_this - Duration::days(1);
+            let first_prev = chrono::NaiveDate::from_ymd_opt(last_day_prev.year(), last_day_prev.month(), 1).unwrap();
+            let s = first_prev.and_hms_opt(0, 0, 0).unwrap();
+            let e = last_day_prev.and_hms_opt(23, 59, 59).unwrap();
+            (kst_to_utc(&kst, s), kst_to_utc(&kst, e))
+        }
         DateFilter::ThisYear => {
-            use chrono::Datelike;
-            let year = chrono::Utc::now().year();
-            let year_start = chrono::NaiveDate::from_ymd_opt(year, 1, 1)
-                .and_then(|d| d.and_hms_opt(0, 0, 0))
-                .map(|dt| dt.and_utc().timestamp())
-                .unwrap_or(0);
-            (year_start, i64::MAX)
+            let year_start = chrono::NaiveDate::from_ymd_opt(today.year(), 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap();
+            (kst_to_utc(&kst, year_start), i64::MAX)
         }
         DateFilter::Year(y) => {
-            let start = chrono::NaiveDate::from_ymd_opt(*y, 1, 1)
+            let s = chrono::NaiveDate::from_ymd_opt(*y, 1, 1)
                 .and_then(|d| d.and_hms_opt(0, 0, 0))
-                .map(|dt| dt.and_utc().timestamp())
+                .map(|dt| kst_to_utc(&kst, dt))
                 .unwrap_or(0);
-            let end = chrono::NaiveDate::from_ymd_opt(*y, 12, 31)
+            let e = chrono::NaiveDate::from_ymd_opt(*y, 12, 31)
                 .and_then(|d| d.and_hms_opt(23, 59, 59))
-                .map(|dt| dt.and_utc().timestamp())
+                .map(|dt| kst_to_utc(&kst, dt))
                 .unwrap_or(i64::MAX);
-            (start, end)
+            (s, e)
         }
-        DateFilter::RecentDays(n) => (now - (*n as i64) * 86400, i64::MAX),
+        DateFilter::Month(m) => {
+            // 올해의 해당 월 (1일 ~ 말일)
+            let year = today.year();
+            let first = chrono::NaiveDate::from_ymd_opt(year, *m, 1);
+            let last = if *m == 12 {
+                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+                    .map(|d| d - Duration::days(1))
+            } else {
+                chrono::NaiveDate::from_ymd_opt(year, *m + 1, 1)
+                    .map(|d| d - Duration::days(1))
+            };
+            match (first, last) {
+                (Some(f), Some(l)) => {
+                    let s = f.and_hms_opt(0, 0, 0).unwrap();
+                    let e = l.and_hms_opt(23, 59, 59).unwrap();
+                    (kst_to_utc(&kst, s), kst_to_utc(&kst, e))
+                }
+                _ => (0, i64::MAX),
+            }
+        }
+        DateFilter::RecentDays(n) => {
+            let past = today - Duration::days(*n as i64);
+            let s = past.and_hms_opt(0, 0, 0).unwrap();
+            (kst_to_utc(&kst, s), i64::MAX)
+        }
     };
 
     modified >= start && modified <= end
+}
+
+/// NaiveDateTime(KST 해석) → UTC Unix timestamp
+fn kst_to_utc(kst: &chrono::FixedOffset, dt: chrono::NaiveDateTime) -> i64 {
+    use chrono::TimeZone;
+    kst.from_local_datetime(&dt)
+        .single()
+        .map(|t: chrono::DateTime<chrono::FixedOffset>| t.timestamp())
+        .unwrap_or(0)
 }
 
 /// 파일 타입 필터 적용

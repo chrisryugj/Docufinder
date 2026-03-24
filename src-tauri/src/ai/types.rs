@@ -47,6 +47,7 @@ pub struct GeminiResponse {
 #[serde(rename_all = "camelCase")]
 pub struct Candidate {
     pub content: Content,
+    #[allow(dead_code)]
     pub finish_reason: Option<String>,
 }
 
@@ -62,10 +63,12 @@ pub struct UsageMetadata {
 pub struct GeminiError {
     pub code: Option<u16>,
     pub message: Option<String>,
+    #[allow(dead_code)]
     pub status: Option<String>,
 }
 
 /// 스트리밍 응답 청크 (SSE)
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamChunk {

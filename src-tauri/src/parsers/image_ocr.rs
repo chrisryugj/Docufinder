@@ -1,6 +1,6 @@
 //! 이미지 파일 OCR 파서 (JPG, PNG, BMP, TIFF)
 
-use super::{chunk_text, DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
+use super::{chunk_text, DocumentMetadata, ParseError, ParsedDocument};
 use crate::ocr::OcrEngine;
 use std::path::Path;
 

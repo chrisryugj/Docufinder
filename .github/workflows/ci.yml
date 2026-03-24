@@ -57,12 +57,15 @@ jobs:
           name: frontend-dist
           path: dist/
 
-      # 모델 파일은 .gitignore이므로 CI에서 placeholder 생성 (Tauri 빌드 스크립트 glob 매칭용)
-      - name: Create model placeholder for Tauri build script
+      # .gitignore 파일들의 CI placeholder 생성 (Tauri 빌드 스크립트용)
+      - name: Create placeholders for Tauri build script
         working-directory: src-tauri
         run: |
           New-Item -ItemType Directory -Force -Path models/kosimcse-roberta-multitask
           New-Item -ItemType File -Force -Path models/kosimcse-roberta-multitask/.gitkeep
+          New-Item -ItemType Directory -Force -Path resources
+          New-Item -ItemType File -Force -Path resources/HwpxConverterSetup.exe
+          New-Item -ItemType File -Force -Path icons/tray-icon.png -ErrorAction SilentlyContinue
 
       - name: Cargo fmt
         working-directory: src-tauri

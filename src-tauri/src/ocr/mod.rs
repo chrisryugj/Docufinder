@@ -69,7 +69,7 @@ impl OcrEngine {
 
         // ort 세션 생성 (embedder/mod.rs 패턴)
         let num_threads = std::thread::available_parallelism()
-            .map(|n| n.get().min(4).max(2))
+            .map(|n| n.get().clamp(2, 4))
             .unwrap_or(2);
 
         let det_session = Session::builder()

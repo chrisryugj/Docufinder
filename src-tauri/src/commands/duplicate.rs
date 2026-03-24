@@ -119,17 +119,16 @@ fn find_exact_duplicates(
         .collect();
 
     // size별 그룹핑
-    let mut size_groups: HashMap<i64, Vec<(String, String, String, i64, Option<i64>)>> =
-        HashMap::new();
+    type FileEntry = (String, String, String, i64, Option<i64>);
+    let mut size_groups: HashMap<i64, Vec<FileEntry>> = HashMap::new();
     for f in files {
         size_groups.entry(f.3).or_default().push(f);
     }
 
     // 각 size 그룹 내에서 SHA-256 해시 비교
     let mut result = Vec::new();
-    for (_size, group) in &size_groups {
-        let mut hash_map: HashMap<String, Vec<&(String, String, String, i64, Option<i64>)>> =
-            HashMap::new();
+    for group in size_groups.values() {
+        let mut hash_map: HashMap<String, Vec<&FileEntry>> = HashMap::new();
 
         for file in group {
             let path = std::path::Path::new(&file.0);
@@ -194,7 +193,8 @@ fn find_similar_duplicates(
         )
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
-    let docs: Vec<(String, String, String, i64, Option<i64>, i64, String)> = stmt
+    type DocEntry = (String, String, String, i64, Option<i64>, i64, String);
+    let docs: Vec<DocEntry> = stmt
         .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,

@@ -125,7 +125,7 @@ fn extract_expiry_date(content: &str, today: NaiveDate) -> Option<ExtractedExpir
                 let days_remaining = (date - today).num_days();
 
                 // 범위 필터: 3년 전 ~ 5년 후
-                if days_remaining >= -365 * 3 && days_remaining <= 365 * 5 {
+                if (-365 * 3..=365 * 5).contains(&days_remaining) {
                     // 주변 텍스트 추출 (±50 chars)
                     let ctx_start = i.saturating_sub(50);
                     let ctx_end = (end_pos + 50).min(len);

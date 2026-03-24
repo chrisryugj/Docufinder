@@ -107,7 +107,7 @@ mod pdf_tests {
             return;
         }
 
-        let result = docufinder_lib::parsers::pdf::parse(path);
+        let result = docufinder_lib::parsers::pdf::parse(path, None);
         assert!(result.is_ok(), "PDF parsing failed: {:?}", result.err());
 
         let doc = result.unwrap();

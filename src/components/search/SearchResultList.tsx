@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
 import { List, LayoutGrid, ClipboardCopy, FileDown, FileSpreadsheet, Archive, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
-import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch } from "../../types/search";
+import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch, ParsedQueryInfo } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
@@ -60,6 +60,10 @@ interface SearchResultListProps {
   categories?: Record<string, string>;
   /** 검색 패러다임 (즉시/자연어) */
   paradigm?: "instant" | "natural";
+  /** 자연어 검색 실행 여부 (결과 0건 vs 미실행 구분) */
+  nlSubmitted?: boolean;
+  /** NL 파서 결과 (자연어 모드 결과 없음 시 표시) */
+  parsedQuery?: ParsedQueryInfo | null;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -101,6 +105,8 @@ export const SearchResultList = memo(function SearchResultList({
   onFindSimilar,
   categories,
   paradigm = "instant",
+  nlSubmitted = false,
+  parsedQuery,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -310,7 +316,7 @@ export const SearchResultList = memo(function SearchResultList({
   }
 
   // 자연어 모드: 아직 Enter 안 눌렀을 때 (결과 없고 로딩도 아닌 상태)
-  if (paradigm === "natural" && query.trim() && !isLoading && results.length === 0) {
+  if (paradigm === "natural" && query.trim() && !isLoading && results.length === 0 && !nlSubmitted) {
     return (
       <div className="text-center py-20">
         <div
@@ -340,6 +346,10 @@ export const SearchResultList = memo(function SearchResultList({
   // 검색어가 있지만 결과 없음 - 맥락 있는 피드백
   if (query.trim() && !isLoading) {
     const truncatedQuery = query.length > 30 ? query.slice(0, 30) + "..." : query;
+
+    // 자연어 모드: 파싱 결과 표시로 왜 결과가 없는지 힌트 제공
+    const hasNlFilters = parsedQuery && (parsedQuery.date_filter || parsedQuery.file_type || parsedQuery.exclude_keywords.length > 0);
+
     return (
       <div className="text-center py-16">
         <div
@@ -362,9 +372,34 @@ export const SearchResultList = memo(function SearchResultList({
         <p className="mb-6" style={{ color: "var(--color-text-muted)" }}>
           "<span style={{ color: "var(--color-accent)" }}>{truncatedQuery}</span>"에 대한 결과가 없습니다
         </p>
+
+        {/* 자연어 모드: 파싱 결과 칩 표시 */}
+        {paradigm === "natural" && parsedQuery && parsedQuery.parse_log.length > 0 && (
+          <div className="mb-6">
+            <p className="text-xs mb-2" style={{ color: "var(--color-text-muted)" }}>분석된 검색 조건:</p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {parsedQuery.parse_log.map((log, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium"
+                  style={{ backgroundColor: "var(--color-accent-light, rgba(234,88,12,0.1))", color: "var(--color-accent)", border: "1px solid var(--color-accent-border, rgba(234,88,12,0.2))" }}
+                >
+                  {log}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
           <p>다음을 시도해보세요:</p>
           <div className="flex flex-wrap justify-center gap-2 mt-3">
+            {hasNlFilters && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
+                <Filter className="w-3.5 h-3.5" />
+                날짜/파일타입 조건 없이 검색
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
               <PenLine className="w-3.5 h-3.5" />
               다른 검색어 입력
@@ -372,10 +407,6 @@ export const SearchResultList = memo(function SearchResultList({
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
               <ArrowLeftRight className="w-3.5 h-3.5" />
               검색 모드 변경
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <Filter className="w-3.5 h-3.5" />
-              필터 조건 완화
             </span>
           </div>
         </div>

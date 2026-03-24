@@ -33,6 +33,8 @@ pub enum DateFilter {
     LastMonth,
     ThisYear,
     Year(i32),
+    /// 올해 N월 (1~12)
+    Month(u32),
     RecentDays(u32),
 }
 
@@ -70,9 +72,13 @@ impl NlQueryParser {
         // 4. 파일타입 추출
         let file_type = Self::extract_file_type(&mut remaining, &mut parse_log);
 
-        // 5. 잔여 토큰 정리 → keywords
+        // 5. 잔여 필러 단어 제거 + 토큰 정리 → keywords
+        let filler_words = [
+            "중에서", "중에", "좀",
+        ];
         let keywords = remaining
             .split_whitespace()
+            .filter(|w| !filler_words.contains(w))
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -95,6 +101,8 @@ impl NlQueryParser {
         let patterns = [
             "찾아줘",
             "찾아봐",
+            "찾아 줘",
+            "찾아 봐",
             "검색해줘",
             "검색해 줘",
             "검색해봐",
@@ -103,6 +111,8 @@ impl NlQueryParser {
             "보여 줘",
             "알려줘",
             "알려 줘",
+            "좀 줘",
+            "줘",
         ];
 
         let trimmed = query.trim();
@@ -112,8 +122,8 @@ impl NlQueryParser {
             }
         }
 
-        // 물음표로 끝나는 패턴: "있어?", "있나?"
-        let q_patterns = ["있어?", "있어", "있나?", "있나"];
+        // 물음표로 끝나는 패턴: "있어?", "있나?", "있을까?"
+        let q_patterns = ["있을까?", "있을까", "있어?", "있어", "있나?", "있나", "어디있어?", "어디있어"];
         for pat in &q_patterns {
             if let Some(prefix) = trimmed.strip_suffix(pat) {
                 return prefix.trim().to_string();
@@ -264,7 +274,7 @@ impl NlQueryParser {
                         }
 
                         let mut result = String::new();
-                        result.push_str(remaining[..pos].trim_end());
+                        result.push_str(remaining[..start].trim_end());
                         if !result.is_empty() && end < remaining.len() {
                             result.push(' ');
                         }
@@ -283,6 +293,11 @@ impl NlQueryParser {
 
         // "YYYY년" 패턴
         if let Some(filter) = Self::extract_year_pattern(remaining, parse_log) {
+            return Some(filter);
+        }
+
+        // "N월" 패턴 (올해의 해당 월)
+        if let Some(filter) = Self::extract_month_pattern(remaining, parse_log) {
             return Some(filter);
         }
 
@@ -305,13 +320,13 @@ impl NlQueryParser {
                 if let Ok(year) = year_str.parse::<i32>() {
                     let actual_year = if year >= 100 {
                         year
-                    } else if year >= 0 && year <= 99 {
+                    } else if (0..=99).contains(&year) {
                         2000 + year
                     } else {
                         continue;
                     };
 
-                    if actual_year >= 1990 && actual_year <= 2100 {
+                    if (1990..=2100).contains(&actual_year) {
                         let mut new_words: Vec<String> = Vec::new();
                         for (j, w) in words.iter().enumerate() {
                             if j != i {
@@ -321,6 +336,32 @@ impl NlQueryParser {
                         *remaining = new_words.join(" ");
                         parse_log.push(format!("날짜: {}년", actual_year));
                         return Some(DateFilter::Year(actual_year));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// "N월" 패턴 (올해의 해당 월)
+    fn extract_month_pattern(
+        remaining: &mut String,
+        parse_log: &mut Vec<String>,
+    ) -> Option<DateFilter> {
+        let words: Vec<String> = remaining.split_whitespace().map(String::from).collect();
+        for (i, word) in words.iter().enumerate() {
+            if let Some(month_str) = word.strip_suffix('월') {
+                if let Ok(month) = month_str.parse::<u32>() {
+                    if (1..=12).contains(&month) {
+                        let mut new_words: Vec<String> = Vec::new();
+                        for (j, w) in words.iter().enumerate() {
+                            if j != i {
+                                new_words.push(w.clone());
+                            }
+                        }
+                        *remaining = new_words.join(" ");
+                        parse_log.push(format!("날짜: {}월", month));
+                        return Some(DateFilter::Month(month));
                     }
                 }
             }
@@ -462,7 +503,7 @@ impl NlQueryParser {
         // 긴 패턴부터 매칭 (정확도 우선)
         for ftp in &ft_patterns {
             let mut sorted_patterns = ftp.patterns.clone();
-            sorted_patterns.sort_by(|a, b| b.len().cmp(&a.len()));
+            sorted_patterns.sort_by_key(|b| std::cmp::Reverse(b.len()));
 
             for pat in &sorted_patterns {
                 let pat_lower = pat.to_lowercase();
@@ -475,13 +516,15 @@ impl NlQueryParser {
                         || remaining[after_pos..].starts_with(' ')
                         || remaining[after_pos..].starts_with("만")
                         || remaining[after_pos..].starts_with("으로")
+                        || remaining[after_pos..].starts_with("로")
                         || remaining[after_pos..].starts_with("에서");
 
                     if before_ok && after_ok {
                         // 패턴 + 뒤의 조사 제거
                         let mut end = after_pos;
                         let rest = &remaining[end..];
-                        for postfix in &["만", "으로", "에서"] {
+                        // 긴 패턴부터 매칭 ("으로 된" > "으로" > "로 된" > "로")
+                        for postfix in &["으로 된", "으로", "로 된", "로", "만", "에서"] {
                             if rest.starts_with(postfix) {
                                 end += postfix.len();
                                 break;
@@ -655,11 +698,11 @@ mod tests {
     }
 
     #[test]
-    fn test_date_ambiguous_passes_through() {
-        // "3월", "하반기" 등 모호한 건 키워드로 보존
+    fn test_date_month_number() {
+        // "3월" → 올해 3월 필터
         let result = NlQueryParser::parse("3월 보고서");
-        assert!(result.date_filter.is_none());
-        assert_eq!(result.keywords, "3월 보고서");
+        assert_eq!(result.date_filter, Some(DateFilter::Month(3)));
+        assert_eq!(result.keywords, "보고서");
     }
 
     // === 파일타입 추출 ===
@@ -803,5 +846,59 @@ mod tests {
         let input = "지난주 예산 찾아줘";
         let result = NlQueryParser::parse(input);
         assert_eq!(result.original_query, input);
+    }
+
+    // === UX 개선 테스트 ===
+
+    #[test]
+    fn test_filetype_with_ro_postposition() {
+        // "한글로 된 예산서" → 파일타입 hwpx, 키워드 "예산서"
+        let result = NlQueryParser::parse("한글로 된 예산서");
+        assert_eq!(result.file_type, Some("hwpx".to_string()));
+        assert_eq!(result.keywords, "예산서");
+    }
+
+    #[test]
+    fn test_filetype_pdf_ro() {
+        let result = NlQueryParser::parse("pdf로 된 계약서");
+        assert_eq!(result.file_type, Some("pdf".to_string()));
+        assert_eq!(result.keywords, "계약서");
+    }
+
+    #[test]
+    fn test_filler_removal() {
+        // "엑셀 파일 중에서 예산" → 파일타입 xlsx, 키워드 "예산" (중에서 제거)
+        let result = NlQueryParser::parse("엑셀 파일 중에서 예산");
+        assert_eq!(result.file_type, Some("xlsx".to_string()));
+        assert_eq!(result.keywords, "예산");
+    }
+
+    #[test]
+    fn test_intent_question_mark() {
+        let result = NlQueryParser::parse("예산 보고서 있을까?");
+        assert_eq!(result.keywords, "예산 보고서");
+    }
+
+    #[test]
+    fn test_month_filter() {
+        let result = NlQueryParser::parse("11월 결산 보고서");
+        assert_eq!(result.date_filter, Some(DateFilter::Month(11)));
+        assert_eq!(result.keywords, "결산 보고서");
+    }
+
+    #[test]
+    fn test_compound_word_not_parsed() {
+        // "결재문서"에서 "문서"가 파일타입으로 잡히면 안 됨
+        let result = NlQueryParser::parse("결재문서");
+        assert!(result.file_type.is_none());
+        assert_eq!(result.keywords, "결재문서");
+    }
+
+    #[test]
+    fn test_budget_bill_not_negated() {
+        // "예산안"에서 "안"이 부정어로 잡히면 안 됨
+        let result = NlQueryParser::parse("예산안");
+        assert!(result.exclude_keywords.is_empty());
+        assert_eq!(result.keywords, "예산안");
     }
 }

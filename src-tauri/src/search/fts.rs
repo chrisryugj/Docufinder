@@ -156,6 +156,7 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
 ///
 /// exclude가 비어있으면 기존 sanitize_fts_query와 동일.
 /// 양의 항 없이 NOT만 있으면 빈 문자열 반환 (후처리 필터로 위임).
+#[allow(dead_code)]
 pub fn build_fts_query(
     keywords: &str,
     exclude: &[String],

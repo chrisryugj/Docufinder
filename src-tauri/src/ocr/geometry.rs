@@ -1,6 +1,6 @@
 //! 기하 유틸리티: 윤곽선 검출, 최소 회전 사각형, crop & warp
 
-use image::{DynamicImage, RgbImage, Rgb};
+use image::{DynamicImage, RgbImage};
 
 /// 바운딩 박스 (4점 좌표, 시계방향: 좌상→우상→우하→좌하)
 #[derive(Debug, Clone)]
@@ -171,7 +171,7 @@ fn rotate_90_ccw(img: &RgbImage) -> RgbImage {
 }
 
 /// 바운딩 박스를 y좌표 → x좌표 순으로 정렬 (읽기 순서)
-pub fn sort_boxes_reading_order(boxes: &mut Vec<Quad>) {
+pub fn sort_boxes_reading_order(boxes: &mut [Quad]) {
     // y 좌표 기준 그룹핑 (같은 줄 판정: y 차이 < 높이의 50%)
     boxes.sort_by(|a, b| {
         let ay = a.points[0].1;

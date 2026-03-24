@@ -96,6 +96,7 @@ function App() {
     setParadigm,
     submitNaturalQuery,
     parsedQuery,
+    nlSubmitted,
   } = useSearch({ minConfidence: 0 });
 
   // 스크롤 기반 검색 영역 축소 (query 의존 → useSearch 뒤에 배치)
@@ -757,6 +758,8 @@ function App() {
                   onFindSimilar={semanticEnabled ? handleFindSimilar : undefined}
                   categories={categories}
                   paradigm={paradigm}
+                  nlSubmitted={nlSubmitted}
+                  parsedQuery={parsedQuery}
                 />
               </div>
             </main>

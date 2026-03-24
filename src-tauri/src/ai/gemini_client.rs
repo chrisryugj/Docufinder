@@ -94,6 +94,7 @@ pub async fn generate(
 }
 
 /// 스트리밍 generateContent (SSE)
+#[allow(dead_code)]
 pub async fn generate_stream(
     api_key: &str,
     model: Option<&str>,
