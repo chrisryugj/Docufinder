@@ -332,6 +332,32 @@ pub async fn update_settings(
         }
     }
 
+    // OCR 활성화 시 모델이 없으면 백그라운드 다운로드 시작
+    if settings.ocr_enabled {
+        let models_dir = app_data_dir.join("models");
+        let ocr_dir = models_dir.join("paddleocr");
+        let det_exists = ocr_dir.join("det.onnx").exists();
+        let rec_exists = ocr_dir.join("rec.onnx").exists();
+        if !det_exists || !rec_exists {
+            let download_app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = download_app.emit("model-download-status", "downloading-ocr");
+                match tokio::task::spawn_blocking(move || {
+                    model_downloader::ensure_ocr_models(&models_dir)
+                })
+                .await
+                {
+                    Ok(Ok(_)) => {
+                        let _ = download_app.emit("model-download-status", "completed-ocr");
+                    }
+                    _ => {
+                        let _ = download_app.emit("model-download-status", "failed-ocr");
+                    }
+                }
+            });
+        }
+    }
+
     Ok(())
 }
 
