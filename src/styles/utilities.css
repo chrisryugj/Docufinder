@@ -242,3 +242,33 @@
 .hover-bg-subtle:hover {
   background-color: var(--color-bg-subtle);
 }
+
+/* ============================================
+   Accessibility: 키보드 포커스 링
+   마우스 사용자는 보이지 않고, 키보드 사용자에게만 표시
+   ============================================ */
+
+/* 모든 버튼 — 키보드 포커스 시 accent 링 */
+button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* 입력 필드 포커스 — 컨테이너 ring이 처리하므로 outline 제거 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+/* [tabindex] 커스텀 요소 */
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* 마우스 클릭 시 outline 제거 (브라우저 기본 동작 보완) */
+button:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) {
+  outline: none;
+}

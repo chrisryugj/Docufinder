@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useId, type ReactNode } from "react";
+import { useEffect, useRef, useCallback, useId, useState, type ReactNode } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -31,6 +31,32 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
   const titleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
+
+  // Exit 애니메이션: isOpen false → 130ms 후 언마운트
+  const [shouldRender, setShouldRender] = useState(isOpen);
+  const [isExiting, setIsExiting] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      setIsExiting(false);
+      setShouldRender(true);
+    } else if (shouldRender) {
+      setIsExiting(true);
+      exitTimerRef.current = setTimeout(() => {
+        setShouldRender(false);
+        setIsExiting(false);
+        exitTimerRef.current = null;
+      }, 130);
+    }
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 포커스 트랩: Tab 키가 모달 내부에서만 순환
   const handleKeyDown = useCallback(
@@ -102,11 +128,11 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     }
   };
 
-  if (!isOpen) return null;
+  if (!shouldRender) return null;
 
   return (
     <div
-      className="fixed inset-0 flex items-start justify-center z-50 pt-[10vh]"
+      className={`fixed inset-0 flex items-start justify-center z-50 pt-[10vh] ${isExiting ? "animate-backdrop-exit" : "animate-backdrop-enter"}`}
       style={{ backgroundColor: "var(--color-backdrop)" }}
       onClick={handleBackdropClick}
       role="dialog"
@@ -115,7 +141,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     >
       <div
         ref={modalRef}
-        className={`w-full ${sizeClasses[size]} mx-4 animate-modal-enter rounded-lg max-h-[80vh] flex flex-col`}
+        className={`w-full ${sizeClasses[size]} mx-4 ${isExiting ? "animate-modal-exit" : "animate-modal-enter"} rounded-lg max-h-[80vh] flex flex-col`}
         style={{
           backgroundColor: "var(--color-bg-secondary)",
           boxShadow: "var(--shadow-xl)",
