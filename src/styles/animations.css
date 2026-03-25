@@ -18,6 +18,39 @@
   animation: modal-enter 0.2s var(--ease-out-expo);
 }
 
+@keyframes modal-exit {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+}
+
+.animate-modal-exit {
+  animation: modal-exit 0.13s ease-in forwards; /* 진입(0.2s)의 65% */
+}
+
+@keyframes backdrop-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes backdrop-exit {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.animate-backdrop-enter {
+  animation: backdrop-enter 0.2s var(--ease-out-expo) forwards;
+}
+
+.animate-backdrop-exit {
+  animation: backdrop-exit 0.13s ease-in forwards;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

@@ -86,12 +86,33 @@ export const WelcomeHero = memo(function WelcomeHero({
           )}
         </div>
       ) : (
-        <p
-          className="text-sm mb-8 stagger-item clr-muted"
+        <div
+          className="flex flex-col items-center gap-3 mb-8 stagger-item"
           style={{ animationDelay: "280ms" }}
         >
-          사이드바에서 폴더를 추가하여 시작하세요
-        </p>
+          {/* CTA 박스 */}
+          <div
+            className="flex items-center gap-3 px-5 py-3 rounded-xl text-sm"
+            style={{
+              backgroundColor: "var(--color-accent-subtle)",
+              border: "1px solid var(--color-accent-glow)",
+            }}
+          >
+            {/* 화살표 아이콘 — 왼쪽 사이드바 방향 유도 */}
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ color: "var(--color-accent)", flexShrink: 0 }}
+            >
+              <path d="M19 12H5M12 5l-7 7 7 7" />
+            </svg>
+            <span style={{ color: "var(--color-accent)" }} className="font-medium">
+              왼쪽 사이드바에서{" "}
+              <span className="font-bold">폴더 추가</span>로 시작하세요
+            </span>
+          </div>
+          <p className="text-xs clr-muted">HWPX, DOCX, XLSX, PDF, TXT 파일을 자동으로 인덱싱합니다</p>
+        </div>
       )}
 
       {/* Recent Searches */}

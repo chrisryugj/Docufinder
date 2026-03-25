@@ -107,8 +107,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
-            border: "1px solid var(--color-border)",
-            boxShadow: "var(--shadow-sm)",
+            border: `1px solid ${isNatural ? "var(--color-accent)" : "var(--color-border)"}`,
+            boxShadow: isNatural
+              ? "var(--shadow-sm), 0 0 0 3px var(--color-accent-subtle)"
+              : "var(--shadow-sm)",
           }}
         >
           {/* Search Icon */}
