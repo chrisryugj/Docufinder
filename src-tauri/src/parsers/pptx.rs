@@ -27,8 +27,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive =
-        ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
+    let mut archive = ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
 
     // 압축 폭탄 방어
     super::validate_zip_archive(&mut archive)?;

@@ -310,8 +310,8 @@ impl WatchManager {
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            let is_ocr_image = ctx.ocr_engine.is_some()
-                && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+            let is_ocr_image =
+                ctx.ocr_engine.is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
             if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
                 // 파싱 가능: FTS 인덱싱 (벡터는 백그라운드 워커가 처리)
                 let ocr_ref = ctx.ocr_engine.as_deref();

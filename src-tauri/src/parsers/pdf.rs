@@ -276,11 +276,7 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
 // ============================================================================
 
 /// 스캔 페이지에서 이미지 추출 + OCR
-fn ocr_scanned_pages(
-    path: &Path,
-    page_texts: &[String],
-    ocr: &OcrEngine,
-) -> Vec<Option<String>> {
+fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec<Option<String>> {
     let doc = match lopdf::Document::load(path) {
         Ok(d) => d,
         Err(e) => {
@@ -372,10 +368,7 @@ fn extract_page_image(
             let dict = &stream.dict;
 
             // Image XObject만 처리
-            let subtype = dict
-                .get(b"Subtype")
-                .ok()
-                .and_then(|s| resolve_name(doc, s));
+            let subtype = dict.get(b"Subtype").ok().and_then(|s| resolve_name(doc, s));
             if subtype.as_deref() != Some("Image") {
                 continue;
             }
@@ -405,7 +398,11 @@ fn extract_page_image(
         if img.width() > MAX_OCR_IMAGE_WIDTH {
             let ratio = MAX_OCR_IMAGE_WIDTH as f64 / img.width() as f64;
             let new_height = (img.height() as f64 * ratio) as u32;
-            img.resize(MAX_OCR_IMAGE_WIDTH, new_height, image::imageops::FilterType::Lanczos3)
+            img.resize(
+                MAX_OCR_IMAGE_WIDTH,
+                new_height,
+                image::imageops::FilterType::Lanczos3,
+            )
         } else {
             img
         }
@@ -505,10 +502,7 @@ fn get_dict_value<'a>(
     let obj = dict.get(key).ok()?;
     match obj {
         lopdf::Object::Dictionary(d) => Some(d),
-        lopdf::Object::Reference(id) => doc
-            .get_object(*id)
-            .ok()
-            .and_then(|o| o.as_dict().ok()),
+        lopdf::Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| o.as_dict().ok()),
         _ => None,
     }
 }
@@ -532,39 +526,29 @@ fn resolve_stream<'a>(
 fn resolve_name(doc: &lopdf::Document, obj: &lopdf::Object) -> Option<String> {
     match obj {
         lopdf::Object::Name(n) => String::from_utf8(n.clone()).ok(),
-        lopdf::Object::Reference(id) => doc
-            .get_object(*id)
-            .ok()
-            .and_then(|o| {
-                if let lopdf::Object::Name(n) = o {
-                    String::from_utf8(n.clone()).ok()
-                } else {
-                    None
-                }
-            }),
+        lopdf::Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| {
+            if let lopdf::Object::Name(n) = o {
+                String::from_utf8(n.clone()).ok()
+            } else {
+                None
+            }
+        }),
         _ => None,
     }
 }
 
 /// 딕셔너리에서 정수 값 가져오기 (간접 참조 포함)
-fn resolve_integer(
-    doc: &lopdf::Document,
-    dict: &lopdf::Dictionary,
-    key: &[u8],
-) -> Option<i64> {
+fn resolve_integer(doc: &lopdf::Document, dict: &lopdf::Dictionary, key: &[u8]) -> Option<i64> {
     let obj = dict.get(key).ok()?;
     match obj {
         lopdf::Object::Integer(i) => Some(*i),
-        lopdf::Object::Reference(id) => doc
-            .get_object(*id)
-            .ok()
-            .and_then(|o| {
-                if let lopdf::Object::Integer(i) = o {
-                    Some(*i)
-                } else {
-                    None
-                }
-            }),
+        lopdf::Object::Reference(id) => doc.get_object(*id).ok().and_then(|o| {
+            if let lopdf::Object::Integer(i) = o {
+                Some(*i)
+            } else {
+                None
+            }
+        }),
         _ => None,
     }
 }

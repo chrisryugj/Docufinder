@@ -256,20 +256,21 @@ pub fn sync_folder_fts(
 
                 let path_clone = path.clone();
                 let ocr_deref = ocr_ref.map(|e| e.as_ref());
-                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
-                    Ok(Ok(doc)) => ParseResult::Success {
-                        path: path.clone(),
-                        document: doc,
-                    },
-                    Ok(Err(e)) => ParseResult::Failure {
-                        path: path.clone(),
-                        error: e.to_string(),
-                    },
-                    Err(_) => ParseResult::Failure {
-                        path: path.clone(),
-                        error: "Parser panicked".to_string(),
-                    },
-                };
+                let result =
+                    match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
+                        Ok(Ok(doc)) => ParseResult::Success {
+                            path: path.clone(),
+                            document: doc,
+                        },
+                        Ok(Err(e)) => ParseResult::Failure {
+                            path: path.clone(),
+                            error: e.to_string(),
+                        },
+                        Err(_) => ParseResult::Failure {
+                            path: path.clone(),
+                            error: "Parser panicked".to_string(),
+                        },
+                    };
 
                 if throttle_ms > 0 {
                     std::thread::sleep(std::time::Duration::from_millis(throttle_ms));

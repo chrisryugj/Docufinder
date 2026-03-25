@@ -83,9 +83,7 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
                 })
         }
         "pdf" => pdf::parse(path, ocr),
-        ext if ocr.is_some()
-            && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) =>
-        {
+        ext if ocr.is_some() && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
             image_ocr::parse(path, ocr.unwrap())
         }
         _ => Err(ParseError::UnsupportedFileType(extension)),

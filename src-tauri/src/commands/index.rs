@@ -66,7 +66,9 @@ fn maybe_start_auto_vector(
         && !skip_drive_root;
     if auto_vector {
         let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = ctx.service.start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()));
+        let _ = ctx
+            .service
+            .start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()));
     }
 }
 
@@ -159,7 +161,9 @@ pub async fn add_folder(
     }
 
     // 1. 감시 폴더 등록
-    ctx.service.add_watched_folder(&path).map_err(ApiError::from)?;
+    ctx.service
+        .add_watched_folder(&path)
+        .map_err(ApiError::from)?;
 
     // 인덱싱 상태를 'indexing'으로 설정
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
@@ -180,7 +184,8 @@ pub async fn add_folder(
     );
 
     // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
-    let metadata_result = ctx.service
+    let metadata_result = ctx
+        .service
         .scan_metadata_only(
             &canonical_path,
             ctx.include_subfolders,
@@ -204,7 +209,8 @@ pub async fn add_folder(
 
     // 4. FTS 인덱싱 (메타 스캔에서 수집한 파일 목록 재사용 → 이중 FS 순회 방지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = match ctx.service
+    let result = match ctx
+        .service
         .index_folder_fts(
             &canonical_path,
             ctx.include_subfolders,
@@ -234,7 +240,11 @@ pub async fn add_folder(
 
     // 인덱싱 상태 업데이트
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path);
@@ -248,10 +258,19 @@ pub async fn add_folder(
         normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
     };
     if is_drive_root {
-        tracing::info!("Drive root detected: skipping auto vector indexing for {}", path);
+        tracing::info!(
+            "Drive root detected: skipping auto vector indexing for {}",
+            path
+        );
     }
 
-    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, is_drive_root);
+    maybe_start_auto_vector(
+        &ctx,
+        app_handle,
+        was_cancelled,
+        result.indexed_count,
+        is_drive_root,
+    );
 
     let message = build_result_message(
         &result,
@@ -323,7 +342,8 @@ pub async fn reindex_folder(
 
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let result = match ctx.service
+    let result = match ctx
+        .service
         .reindex_folder(
             &canonical_path,
             ctx.include_subfolders,
@@ -347,7 +367,11 @@ pub async fn reindex_folder(
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
 
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
@@ -411,7 +435,8 @@ pub async fn resume_indexing(
 
     // sync 기반 인덱싱 (추가/수정/삭제 감지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let sync_result = match ctx.service
+    let sync_result = match ctx
+        .service
         .sync_folder(
             &canonical_path,
             ctx.include_subfolders,
@@ -436,7 +461,11 @@ pub async fn resume_indexing(
     let was_cancelled = sync_result.errors.iter().any(|e| e.contains("Cancelled"));
 
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
-        let status = if was_cancelled { "cancelled" } else { "completed" };
+        let status = if was_cancelled {
+            "cancelled"
+        } else {
+            "completed"
+        };
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, status);
         if !was_cancelled {
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
@@ -622,10 +651,9 @@ pub async fn convert_hwp_to_hwpx(
         Some(exe) => exe,
         None => {
             // 미설치 → 번들된 설치 파일 경로 반환
-            let resource_dir = app
-                .path()
-                .resource_dir()
-                .map_err(|e| ApiError::IndexingFailed(format!("Failed to get resource dir: {}", e)))?;
+            let resource_dir = app.path().resource_dir().map_err(|e| {
+                ApiError::IndexingFailed(format!("Failed to get resource dir: {}", e))
+            })?;
             let installer_path = resource_dir.join("HwpxConverterSetup.exe");
             let installer_str = if installer_path.exists() {
                 Some(installer_path.to_string_lossy().to_string())
@@ -666,7 +694,11 @@ pub async fn convert_hwp_to_hwpx(
             continue;
         }
         // 확장자 검증
-        let ext = canonical.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        let ext = canonical
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if ext != "hwp" {
             errors.push(format!("Not a HWP file: {}", hwp_path));
             failed_count += 1;
@@ -683,11 +715,14 @@ pub async fn convert_hwp_to_hwpx(
         }
 
         // 진행률 이벤트
-        let _ = app.emit("hwp-convert-progress", serde_json::json!({
-            "total": total,
-            "current": i + 1,
-            "current_file": hwp_path,
-        }));
+        let _ = app.emit(
+            "hwp-convert-progress",
+            serde_json::json!({
+                "total": total,
+                "current": i + 1,
+                "current_file": hwp_path,
+            }),
+        );
 
         // HwpxConverter.exe 실행 (파일 경로를 인수로 전달)
         let result = tokio::process::Command::new(&converter_exe)
@@ -703,7 +738,12 @@ pub async fn convert_hwp_to_hwpx(
             }
             Ok(output) => {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let err_msg = format!("{}: 변환 실패 (exit: {:?}, {})", hwp_path, output.status.code(), stderr.trim());
+                let err_msg = format!(
+                    "{}: 변환 실패 (exit: {:?}, {})",
+                    hwp_path,
+                    output.status.code(),
+                    stderr.trim()
+                );
                 tracing::warn!("HWP conversion failed: {}", err_msg);
                 errors.push(err_msg);
                 failed_count += 1;
@@ -718,11 +758,14 @@ pub async fn convert_hwp_to_hwpx(
     }
 
     // 완료 이벤트
-    let _ = app.emit("hwp-convert-progress", serde_json::json!({
-        "total": total,
-        "current": total,
-        "done": true,
-    }));
+    let _ = app.emit(
+        "hwp-convert-progress",
+        serde_json::json!({
+            "total": total,
+            "current": total,
+            "done": true,
+        }),
+    );
 
     tracing::info!(
         "HWP conversion complete: {} success, {} failed",
@@ -768,7 +811,10 @@ pub async fn get_all_folder_stats(
         let container = state.read()?;
         container.folder_service()
     };
-    let stats = service.get_all_folder_stats().await.map_err(ApiError::from)?;
+    let stats = service
+        .get_all_folder_stats()
+        .await
+        .map_err(ApiError::from)?;
     Ok(stats.into_iter().collect())
 }
 

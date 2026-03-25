@@ -78,9 +78,9 @@ impl WatchedFolder {
         // 다중 컴포넌트 시퀀스 매칭: ["appdata", "local", "temp"] 연속 존재 확인
         for seq in BLOCKED_SEQUENCES {
             if seq.len() <= components.len()
-                && components.windows(seq.len()).any(|window| {
-                    window.iter().zip(seq.iter()).all(|(c, s)| c == s)
-                })
+                && components
+                    .windows(seq.len())
+                    .any(|window| window.iter().zip(seq.iter()).all(|(c, s)| c == s))
             {
                 return Err(DomainError::ForbiddenPath {
                     path: path.to_string_lossy().to_string(),
@@ -190,9 +190,7 @@ mod tests {
     #[test]
     fn test_blocked_paths_no_false_positives() {
         // "windows"가 폴더명 일부에 포함되지만 독립 컴포넌트가 아닌 경우 → 허용
-        assert!(
-            WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\my-windows-backup"), 0).is_ok()
-        );
+        assert!(WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\my-windows-backup"), 0).is_ok());
 
         // "target"이 폴더명 일부에 포함 → 허용
         assert!(WatchedFolder::new(PathBuf::from("D:\\target-market\\docs"), 0).is_ok());

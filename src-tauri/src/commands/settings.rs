@@ -204,7 +204,9 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     // 범위 클램핑 (수동 편집된 비정상 값 방어)
     settings.max_results = settings.max_results.clamp(1, 500);
     settings.chunk_size = settings.chunk_size.clamp(256, 4096);
-    settings.chunk_overlap = settings.chunk_overlap.min(settings.chunk_size.saturating_sub(1));
+    settings.chunk_overlap = settings
+        .chunk_overlap
+        .min(settings.chunk_size.saturating_sub(1));
     settings.results_per_page = settings.results_per_page.clamp(1, 200);
     settings.max_file_size_mb = settings.max_file_size_mb.min(500);
 
@@ -261,8 +263,15 @@ pub async fn update_settings(
     validate_settings(&settings)?;
     tracing::info!(
         "Updating settings: mode={:?}, theme={:?}, semantic={}, ocr={}, ai_key={}",
-        settings.search_mode, settings.theme, settings.semantic_search_enabled,
-        settings.ocr_enabled, if settings.ai_api_key.is_some() { "[SET]" } else { "[NONE]" }
+        settings.search_mode,
+        settings.theme,
+        settings.semantic_search_enabled,
+        settings.ocr_enabled,
+        if settings.ai_api_key.is_some() {
+            "[SET]"
+        } else {
+            "[NONE]"
+        }
     );
 
     let app_data_dir = {

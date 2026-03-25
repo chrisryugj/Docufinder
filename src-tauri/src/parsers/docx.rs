@@ -241,4 +241,3 @@ fn chunk_pages(pages: &[PageText], chunk_size: usize, overlap: usize) -> Vec<Doc
 
     chunks
 }
-

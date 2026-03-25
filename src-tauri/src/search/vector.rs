@@ -552,9 +552,10 @@ impl VectorIndex {
         }
 
         // 저장 확인 로그
-        if let (Ok(usearch_meta), Ok(map_meta)) =
-            (std::fs::metadata(&*self.path), std::fs::metadata(&final_map_path))
-        {
+        if let (Ok(usearch_meta), Ok(map_meta)) = (
+            std::fs::metadata(&*self.path),
+            std::fs::metadata(&final_map_path),
+        ) {
             tracing::debug!(
                 "Vector index saved: {} entries, usearch={}KB, map={}KB",
                 map_len,

@@ -123,7 +123,11 @@ pub fn compute_box_score(
         }
     }
 
-    if count > 0 { sum / count as f32 } else { 0.0 }
+    if count > 0 {
+        sum / count as f32
+    } else {
+        0.0
+    }
 }
 
 /// Quad 영역을 원본 이미지에서 crop하여 수평 직사각형으로 변환
@@ -182,7 +186,10 @@ pub fn sort_boxes_reading_order(boxes: &mut [Quad]) {
 
         if (ay - by).abs() < threshold {
             // 같은 줄 → x 순
-            a.points[0].0.partial_cmp(&b.points[0].0).unwrap_or(std::cmp::Ordering::Equal)
+            a.points[0]
+                .0
+                .partial_cmp(&b.points[0].0)
+                .unwrap_or(std::cmp::Ordering::Equal)
         } else {
             // 다른 줄 → y 순
             ay.partial_cmp(&by).unwrap_or(std::cmp::Ordering::Equal)

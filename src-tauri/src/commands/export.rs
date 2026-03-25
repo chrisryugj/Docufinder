@@ -28,8 +28,12 @@ fn validate_output_path(output_path: &str) -> ApiResult<()> {
 /// CSV 이스케이프 (수식 주입 방어 포함)
 fn escape_csv(value: &str) -> String {
     let mut v = value.to_string();
-    if v.starts_with('=') || v.starts_with('+') || v.starts_with('-') || v.starts_with('@')
-        || v.starts_with('\t') || v.starts_with('\r')
+    if v.starts_with('=')
+        || v.starts_with('+')
+        || v.starts_with('-')
+        || v.starts_with('@')
+        || v.starts_with('\t')
+        || v.starts_with('\r')
     {
         v = format!("'{}", v);
     }
@@ -58,7 +62,12 @@ pub async fn export_csv(
 
         for row in &rows {
             let preview = if row.content_preview.len() > 500 {
-                row.content_preview.chars().take(500).collect::<String>().replace('\n', " ") + "..."
+                row.content_preview
+                    .chars()
+                    .take(500)
+                    .collect::<String>()
+                    .replace('\n', " ")
+                    + "..."
             } else {
                 row.content_preview.replace('\n', " ")
             };
@@ -154,7 +163,10 @@ pub async fn export_xlsx(
                 .ok();
             // 내용: 500자 제한
             let preview = if row.content_preview.len() > 500 {
-                format!("{}...", &row.content_preview.chars().take(500).collect::<String>())
+                format!(
+                    "{}...",
+                    &row.content_preview.chars().take(500).collect::<String>()
+                )
             } else {
                 row.content_preview.clone()
             };
@@ -214,7 +226,8 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
             .compression_method(zip::CompressionMethod::Deflated);
 
         let mut count = 0u32;
-        let mut seen_names: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        let mut seen_names: std::collections::HashMap<String, u32> =
+            std::collections::HashMap::new();
 
         for path_str in &file_paths {
             let path = Path::new(path_str);
@@ -227,7 +240,8 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
 
             // 시스템 폴더 접근 차단
             let path_lower = canonical.to_string_lossy().to_lowercase();
-            let blocked = crate::constants::BLOCKED_PATH_PATTERNS.iter()
+            let blocked = crate::constants::BLOCKED_PATH_PATTERNS
+                .iter()
                 .any(|pat| path_lower.contains(&pat.to_lowercase()));
             if blocked {
                 tracing::warn!("Blocked path in ZIP: {}", path_str);
@@ -300,7 +314,10 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
 fn date_to_excel_serial(dt: chrono::DateTime<chrono::Local>) -> f64 {
     use chrono::{Datelike, Timelike};
     // Excel epoch: 1899-12-30
-    let days = dt.num_days_from_ce() - chrono::NaiveDate::from_ymd_opt(1899, 12, 30).unwrap().num_days_from_ce();
+    let days = dt.num_days_from_ce()
+        - chrono::NaiveDate::from_ymd_opt(1899, 12, 30)
+            .unwrap()
+            .num_days_from_ce();
     let time_fraction =
         (dt.hour() as f64 * 3600.0 + dt.minute() as f64 * 60.0 + dt.second() as f64) / 86400.0;
     days as f64 + time_fraction

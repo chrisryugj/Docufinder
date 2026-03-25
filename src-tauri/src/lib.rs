@@ -89,12 +89,19 @@ fn maybe_download_models(
     models_dir: PathBuf,
     semantic_enabled: bool,
 ) {
-    let e5_model_int8 = models_dir.join("kosimcse-roberta-multitask").join("model_int8.onnx");
-    let e5_model = models_dir.join("kosimcse-roberta-multitask").join("model.onnx");
-    let e5_model_data = models_dir.join("kosimcse-roberta-multitask").join("model.onnx.data");
+    let e5_model_int8 = models_dir
+        .join("kosimcse-roberta-multitask")
+        .join("model_int8.onnx");
+    let e5_model = models_dir
+        .join("kosimcse-roberta-multitask")
+        .join("model.onnx");
+    let e5_model_data = models_dir
+        .join("kosimcse-roberta-multitask")
+        .join("model.onnx.data");
     let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
-    let embedder_available = e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+    let embedder_available =
+        e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
     if !semantic_enabled || (embedder_available && reranker_model.exists()) {
         return;
     }
@@ -103,9 +110,9 @@ fn maybe_download_models(
         tracing::info!("모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
         let _ = app_handle.emit("model-download-status", "downloading");
 
-        match tokio::task::spawn_blocking(move || {
-            model_downloader::ensure_models(&models_dir)
-        }).await {
+        match tokio::task::spawn_blocking(move || model_downloader::ensure_models(&models_dir))
+            .await
+        {
             Ok(Ok(result)) => {
                 let any_downloaded = result.onnx_runtime_downloaded
                     || result.model_downloaded
@@ -158,10 +165,8 @@ fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, 
         tracing::info!("OCR 모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
         let _ = app_handle.emit("model-download-status", "downloading-ocr");
 
-        match tokio::task::spawn_blocking(move || {
-            model_downloader::ensure_ocr_models(&models_dir)
-        })
-        .await
+        match tokio::task::spawn_blocking(move || model_downloader::ensure_ocr_models(&models_dir))
+            .await
         {
             Ok(Ok((det, rec, dict))) => {
                 if det || rec || dict {
@@ -236,20 +241,36 @@ fn validate_vector_index(container: &AppContainer) {
 
 /// 미완료 벡터 인덱싱 자동 재개
 fn auto_resume_vector_indexing(app: &tauri::App) {
-    let Some(container_state) = app.try_state::<RwLock<AppContainer>>() else { return };
-    let Ok(container) = container_state.read() else { return };
+    let Some(container_state) = app.try_state::<RwLock<AppContainer>>() else {
+        return;
+    };
+    let Ok(container) = container_state.read() else {
+        return;
+    };
 
     let startup_settings = container.get_settings();
     let should_auto_resume = container.is_semantic_available()
         && startup_settings.semantic_search_enabled
-        && startup_settings.vector_indexing_mode == crate::commands::settings::VectorIndexingMode::Auto;
-    if !should_auto_resume { return; }
+        && startup_settings.vector_indexing_mode
+            == crate::commands::settings::VectorIndexingMode::Auto;
+    if !should_auto_resume {
+        return;
+    }
 
-    let Ok(conn) = db::get_connection(&container.db_path) else { return };
-    let Ok(stats) = db::get_vector_indexing_stats(&conn) else { return };
-    if stats.pending_chunks == 0 { return; }
+    let Ok(conn) = db::get_connection(&container.db_path) else {
+        return;
+    };
+    let Ok(stats) = db::get_vector_indexing_stats(&conn) else {
+        return;
+    };
+    if stats.pending_chunks == 0 {
+        return;
+    }
 
-    tracing::info!("Found {} pending vector chunks. Starting background indexing.", stats.pending_chunks);
+    tracing::info!(
+        "Found {} pending vector chunks. Starting background indexing.",
+        stats.pending_chunks
+    );
     let embedder = container.get_embedder();
     let vector_index = container.get_vector_index();
     let vector_worker = container.get_vector_worker();
@@ -295,12 +316,19 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
             const SYNC_SKIP_SECS: i64 = 300;
-            let completed: Vec<String> = folder_infos.into_iter()
+            let completed: Vec<String> = folder_infos
+                .into_iter()
                 .filter(|f| {
-                    if f.indexing_status != "completed" { return false; }
+                    if f.indexing_status != "completed" {
+                        return false;
+                    }
                     match f.last_synced_at {
                         Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
-                            tracing::debug!("[Startup Sync] Skipping {} (synced {}s ago)", f.path, now - ts);
+                            tracing::debug!(
+                                "[Startup Sync] Skipping {} (synced {}s ago)",
+                                f.path,
+                                now - ts
+                            );
                             false
                         }
                         _ => true,
@@ -309,7 +337,9 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                 .map(|f| f.path)
                 .collect();
 
-            if completed.is_empty() { return; }
+            if completed.is_empty() {
+                return;
+            }
 
             let settings = container.get_settings();
             let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
@@ -327,38 +357,56 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
             )
         };
 
-        tracing::info!("[Startup Sync] Checking {} completed folders for offline changes...", folders_to_sync.len());
+        tracing::info!(
+            "[Startup Sync] Checking {} completed folders for offline changes...",
+            folders_to_sync.len()
+        );
 
         let mut total_added = 0usize;
         let mut total_deleted = 0usize;
 
         for folder in &folders_to_sync {
             let path = std::path::Path::new(folder);
-            if !path.exists() { continue; }
+            if !path.exists() {
+                continue;
+            }
 
             let ah = app_handle.clone();
-            let progress_cb: Box<dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync> =
-                Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
-                    #[derive(serde::Serialize)]
-                    struct ProgressEvent {
-                        phase: String,
-                        total_files: usize,
-                        processed_files: usize,
-                        current_file: Option<String>,
-                        folder_path: String,
-                        error: Option<String>,
-                    }
-                    let _ = ah.emit("indexing-progress", &ProgressEvent {
+            let progress_cb: Box<
+                dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync,
+            > = Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
+                #[derive(serde::Serialize)]
+                struct ProgressEvent {
+                    phase: String,
+                    total_files: usize,
+                    processed_files: usize,
+                    current_file: Option<String>,
+                    folder_path: String,
+                    error: Option<String>,
+                }
+                let _ = ah.emit(
+                    "indexing-progress",
+                    &ProgressEvent {
                         phase: p.phase,
                         total_files: p.total_files,
                         processed_files: p.processed_files,
                         current_file: p.current_file,
                         folder_path: p.folder_path,
                         error: None,
-                    });
-                });
+                    },
+                );
+            });
 
-            match service.sync_folder(path, include_subfolders, Some(progress_cb), max_file_size_mb, exclude_dirs.clone()).await {
+            match service
+                .sync_folder(
+                    path,
+                    include_subfolders,
+                    Some(progress_cb),
+                    max_file_size_mb,
+                    exclude_dirs.clone(),
+                )
+                .await
+            {
                 Ok(result) => {
                     total_added += result.added;
                     total_deleted += result.deleted;
@@ -368,7 +416,10 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                     if result.added > 0 || result.deleted > 0 {
                         tracing::info!(
                             "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
-                            folder, result.added, result.deleted, result.unchanged
+                            folder,
+                            result.added,
+                            result.deleted,
+                            result.unchanged
                         );
                     }
                 }
@@ -384,7 +435,11 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                     let _ = c.load_filename_cache();
                 }
             }
-            tracing::info!("[Startup Sync] Complete: {} added, {} deleted", total_added, total_deleted);
+            tracing::info!(
+                "[Startup Sync] Complete: {} added, {} deleted",
+                total_added,
+                total_deleted
+            );
         } else {
             tracing::info!("[Startup Sync] No offline changes detected");
         }
@@ -487,7 +542,10 @@ pub fn run() {
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .plugin(
             tauri_plugin_window_state::Builder::new()
                 // VISIBLE 복원 제외: start_minimized 설정을 무시하고 창을 띄우는 문제 방지
@@ -518,7 +576,9 @@ pub fn run() {
             // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
             // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
             {
-                let dll_path = models_dir.join("kosimcse-roberta-multitask").join("onnxruntime.dll");
+                let dll_path = models_dir
+                    .join("kosimcse-roberta-multitask")
+                    .join("onnxruntime.dll");
                 if dll_path.exists() {
                     unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
                     tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
@@ -601,11 +661,15 @@ pub fn run() {
                     for letter in ['C', 'D', 'E'] {
                         let path = format!("{}:\\", letter);
                         if std::path::Path::new(&path).exists() {
-                            let _ = crate::utils::disk_info::detect_disk_type(std::path::Path::new(&path));
+                            let _ = crate::utils::disk_info::detect_disk_type(
+                                std::path::Path::new(&path),
+                            );
                         }
                     }
                     tracing::debug!("Disk type pre-detection completed");
-                }).await.ok();
+                })
+                .await
+                .ok();
             });
 
             // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색)
@@ -645,7 +709,9 @@ pub fn run() {
 
             // 트레이 전용 아이콘 로드 (anything-l.png), 실패 시 기본 아이콘 fallback
             let tray_icon = {
-                let tray_icon_path = app.path().resource_dir()
+                let tray_icon_path = app
+                    .path()
+                    .resource_dir()
                     .ok()
                     .map(|d| d.join("icons").join("tray-icon.png"))
                     .unwrap_or_default();
@@ -656,13 +722,22 @@ pub fn run() {
                             img
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to load tray icon: {e}, falling back to default");
-                            app.default_window_icon().cloned().unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
+                            tracing::warn!(
+                                "Failed to load tray icon: {e}, falling back to default"
+                            );
+                            app.default_window_icon()
+                                .cloned()
+                                .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
                         }
                     }
                 } else {
-                    tracing::debug!("Tray icon file not found at {:?}, using default", tray_icon_path);
-                    app.default_window_icon().cloned().unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
+                    tracing::debug!(
+                        "Tray icon file not found at {:?}, using default",
+                        tray_icon_path
+                    );
+                    app.default_window_icon()
+                        .cloned()
+                        .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
                 }
             };
             let _tray = TrayIconBuilder::new()
@@ -670,24 +745,22 @@ pub fn run() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .tooltip("Anything")
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
-                        "quit" => {
-                            if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                                if let Ok(container) = container.read() {
-                                    cleanup_vector_resources(&container);
-                                }
-                            }
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "quit" => {
+                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(container) = container.read() {
+                                cleanup_vector_resources(&container);
+                            }
+                        }
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -726,7 +799,11 @@ pub fn run() {
         })
         .on_page_load(move |webview, payload| {
             let event = payload.event();
-            tracing::info!("[PERF] on_page_load: url={}, event={:?}", payload.url(), event);
+            tracing::info!(
+                "[PERF] on_page_load: url={}, event={:?}",
+                payload.url(),
+                event
+            );
 
             if let Some(window) = webview.app_handle().get_webview_window("main") {
                 if show_on_load_flag.load(Ordering::Relaxed) {

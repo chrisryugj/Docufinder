@@ -961,11 +961,9 @@ pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> 
 
 /// 총 문서 크기 (바이트)
 pub fn get_total_size(conn: &Connection) -> Result<i64> {
-    conn.query_row(
-        "SELECT COALESCE(SUM(size), 0) FROM files",
-        [],
-        |row| row.get(0),
-    )
+    conn.query_row("SELECT COALESCE(SUM(size), 0) FROM files", [], |row| {
+        row.get(0)
+    })
 }
 
 /// 모든 파일의 vector_indexed_at을 NULL로 리셋

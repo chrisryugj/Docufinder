@@ -58,13 +58,22 @@ impl OcrEngine {
         let dict_path = models_dir.join("dict.txt");
 
         if !det_path.exists() {
-            return Err(OcrError::ModelLoad(format!("Detection model not found: {:?}", det_path)));
+            return Err(OcrError::ModelLoad(format!(
+                "Detection model not found: {:?}",
+                det_path
+            )));
         }
         if !rec_path.exists() {
-            return Err(OcrError::ModelLoad(format!("Recognition model not found: {:?}", rec_path)));
+            return Err(OcrError::ModelLoad(format!(
+                "Recognition model not found: {:?}",
+                rec_path
+            )));
         }
         if !dict_path.exists() {
-            return Err(OcrError::ModelLoad(format!("Dictionary not found: {:?}", dict_path)));
+            return Err(OcrError::ModelLoad(format!(
+                "Dictionary not found: {:?}",
+                dict_path
+            )));
         }
 
         // ort 세션 생성 (embedder/mod.rs 패턴)
@@ -140,11 +149,8 @@ impl OcrEngine {
             .collect();
 
         // 3. Recognition: 각 crop에서 텍스트 인식
-        let rec_results = recognition::recognize_batch(
-            &self.rec_session,
-            &crops,
-            &self.dictionary,
-        )?;
+        let rec_results =
+            recognition::recognize_batch(&self.rec_session, &crops, &self.dictionary)?;
 
         // 4. 결과 조합
         let regions: Vec<OcrRegion> = rec_results
