@@ -3,17 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 import type { SearchResult } from "../types/search";
 
 /**
- * 문서 카테고리 자동 분류 (시맨틱 검색 활성 시)
+ * 문서 카테고리 자동 분류 (키워드 패턴 매칭 — 시맨틱 검색 불필요)
  */
 export function useDocumentCategories(
   filteredResults: SearchResult[],
-  semanticEnabled: boolean
+  _semanticEnabled?: boolean
 ): Record<string, string> {
   const [categories, setCategories] = useState<Record<string, string>>({});
   const classifiedPathsRef = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!semanticEnabled || filteredResults.length === 0) return;
+    if (filteredResults.length === 0) return;
 
     const newPaths = filteredResults
       .map(r => r.file_path)
@@ -33,7 +33,7 @@ export function useDocumentCategories(
         }
       })
     );
-  }, [filteredResults, semanticEnabled]);
+  }, [filteredResults]);
 
   return categories;
 }

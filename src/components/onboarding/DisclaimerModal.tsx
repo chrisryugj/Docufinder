@@ -40,6 +40,7 @@ export function DisclaimerModal({ isOpen, onAccept, onExit }: DisclaimerModalPro
             backgroundColor: "var(--color-bg-primary)",
             border: "1px solid var(--color-border)",
             color: "var(--color-text-secondary)",
+            wordBreak: "keep-all" as const,
           }}
         >
           <section>

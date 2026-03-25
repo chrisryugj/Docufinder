@@ -8,6 +8,7 @@ import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { WelcomeHero } from "./WelcomeHero";
 import { cleanPath } from "../../utils/cleanPath";
+import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
@@ -731,6 +732,15 @@ function FilenameResultItem({
           {cleanPath(result.file_path)}
         </div>
       </div>
+      {result.modified_at && (
+        <span
+          className="text-[10px] flex-shrink-0 tabular-nums"
+          style={{ color: "var(--color-text-muted)" }}
+          title={new Date(result.modified_at * 1000).toLocaleString("ko-KR")}
+        >
+          {formatRelativeTime(result.modified_at * 1000)}
+        </span>
+      )}
       {result.has_hwp_pair && (
         <span
           className="text-[10px] px-1.5 py-0.5 rounded font-medium"

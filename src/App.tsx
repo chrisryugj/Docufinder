@@ -680,7 +680,7 @@ function App() {
           {/* 검색 결과 영역 */}
           <div
             ref={scrollContainerRef}
-            onScroll={handleScroll}
+            onScroll={(e) => { handleScroll(e); autoComplete.close(); }}
             className="flex-1 overflow-y-auto overflow-x-hidden"
             style={{ overflowAnchor: "none" }}
           >

@@ -78,7 +78,7 @@ function SubTitle({ children }: { children: React.ReactNode }) {
 
 function Paragraph({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+    <p className="text-sm mb-3 leading-relaxed" style={{ color: "var(--color-text-secondary)", wordBreak: "keep-all" }}>
       {children}
     </p>
   );
@@ -88,7 +88,7 @@ function StepList({ steps }: { steps: string[] }) {
   return (
     <ol className="list-decimal list-inside space-y-2 mb-4">
       {steps.map((step, i) => (
-        <li key={i} className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+        <li key={i} className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)", wordBreak: "keep-all" }}>
           {step}
         </li>
       ))}
@@ -105,7 +105,7 @@ function FeatureBox({ title, description }: { title: string; description: string
       <div className="font-semibold text-sm mb-1" style={{ color: "var(--color-text-primary)" }}>
         {title}
       </div>
-      <div className="text-sm leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+      <div className="text-sm leading-relaxed" style={{ color: "var(--color-text-muted)", wordBreak: "keep-all" }}>
         {description}
       </div>
     </div>
@@ -137,6 +137,7 @@ function InfoBox({ children }: { children: React.ReactNode }) {
       style={{
         backgroundColor: "var(--color-accent-bg)",
         color: "var(--color-accent)",
+        wordBreak: "keep-all" as const,
       }}
     >
       {children}
@@ -151,8 +152,7 @@ function StartSection() {
     <div>
       <SectionTitle>Anything에 오신 것을 환영합니다!</SectionTitle>
       <Paragraph>
-        Anything은 PC에 저장된 문서를 빠르게 찾아주는 검색 앱이에요.
-        한글(HWPX), 워드(DOCX), 엑셀(XLSX), PDF, TXT 파일을 모두 검색할 수 있어요.
+        Anything은 PC에 저장된 문서를 빠르게 찾아주는 검색 앱이에요. 한글(HWPX), 워드(DOCX), 파워포인트(PPTX), 엑셀(XLSX), PDF, TXT 파일은 물론 이미지(OCR)까지 검색할 수 있어요.
       </Paragraph>
 
       <SubTitle>처음 사용하신다면</SubTitle>
@@ -204,10 +204,19 @@ function SearchSection() {
         description="파일 이름으로만 검색해요. 내용은 보지 않고, 파일명에 검색어가 포함된 파일을 즉시 찾아요."
       />
 
+      <SubTitle>자연어 검색</SubTitle>
+      <Paragraph>
+        검색바 상단의 패러다임 토글에서 '자연어' 모드로 전환하면 일상 언어로 검색할 수 있어요. "지난주 예산 관련 한글 문서 찾아줘"처럼 입력하고 Enter를 누르면, 검색어·파일 형식·날짜 범위를 자동으로 분석해서 결과를 보여줘요.
+      </Paragraph>
+
+      <SubTitle>검색어 자동완성</SubTitle>
+      <Paragraph>
+        검색창에 2글자 이상 입력하면 이전 검색 기록과 문서 내 어휘를 기반으로 검색어를 제안해요. 화살표 키로 선택하거나 클릭하면 바로 적용돼요.
+      </Paragraph>
+
       <SubTitle>결과내검색</SubTitle>
       <Paragraph>
-        검색 결과가 너무 많을 때, 필터 영역의 '결과내검색' 입력창에
-        추가 키워드를 입력하면 현재 결과에서 더 좁혀서 찾을 수 있어요.
+        검색 결과가 너무 많을 때, 필터 영역의 '결과내검색' 입력창에 추가 키워드를 입력하면 현재 결과에서 더 좁혀서 찾을 수 있어요.
       </Paragraph>
     </div>
   );
@@ -223,7 +232,7 @@ function FiltersSection() {
 
       <SubTitle>파일 형식 필터</SubTitle>
       <Paragraph>
-        HWPX, DOCX, XLSX, PDF, TXT 중 원하는 형식만 선택해서 볼 수 있어요.
+        HWPX, DOCX, PPTX, XLSX, PDF, TXT 중 원하는 형식만 선택해서 볼 수 있어요.
       </Paragraph>
 
       <SubTitle>검색 범위</SubTitle>
@@ -324,8 +333,22 @@ function AdvancedSection() {
 
       <SubTitle>유사 문서 찾기</SubTitle>
       <Paragraph>
-        검색 결과를 우클릭 → '유사 문서 찾기'로 선택한 문서와 비슷한 내용의
-        다른 문서를 벡터 유사도 기반으로 찾아줘요.
+        검색 결과를 우클릭 → '유사 문서 찾기'로 선택한 문서와 비슷한 내용의 다른 문서를 벡터 유사도 기반으로 찾아줘요.
+      </Paragraph>
+
+      <SubTitle>OCR (이미지 텍스트 인식)</SubTitle>
+      <Paragraph>
+        PNG, JPG, BMP, TIFF 등 이미지 파일과 스캔된 PDF의 텍스트를 자동으로 인식해요. PaddleOCR 기반으로 오프라인에서 동작하며, 인덱싱 시 자동 처리됩니다.
+      </Paragraph>
+
+      <SubTitle>자동 문서 분류</SubTitle>
+      <Paragraph>
+        인덱싱된 문서를 내용 기반으로 자동 분류해요. 검색 결과에서 문서 유형 태그를 확인할 수 있어요.
+      </Paragraph>
+
+      <SubTitle>결과 내보내기</SubTitle>
+      <Paragraph>
+        검색 결과 상단 메뉴에서 CSV, XLSX(엑셀)로 내보내거나 클립보드에 복사할 수 있어요. ZIP 패키지로 원본 파일을 묶어서 내보내는 것도 가능해요.
       </Paragraph>
 
       <InfoBox>

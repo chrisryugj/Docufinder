@@ -125,7 +125,7 @@ export function OnboardingModal({ isOpen, onComplete, onSkip }: OnboardingModalP
           </h3>
           <p
             className="text-sm leading-relaxed max-w-sm whitespace-pre-line"
-            style={{ color: "var(--color-text-secondary)" }}
+            style={{ color: "var(--color-text-secondary)", wordBreak: "keep-all" }}
           >
             {step.description}
           </p>

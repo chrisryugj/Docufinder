@@ -1002,57 +1002,50 @@ impl SearchService {
     // 문서 자동 분류
     // ============================================
 
-    /// 문서 첫 청크 기반 카테고리 분류 (임베딩 유사도)
+    /// 문서 첫 청크 기반 카테고리 분류 (키워드 패턴 매칭)
+    ///
+    /// 임베딩 유사도 대신 키워드 패턴으로 분류 — 빠르고 정확하며
+    /// 시맨틱 검색이 꺼져 있어도 동작함.
     pub fn classify_document(&self, text: &str) -> AppResult<String> {
-        let embedder = self
-            .embedder
-            .as_ref()
-            .ok_or(AppError::SemanticSearchDisabled)?;
+        Ok(Self::classify_by_keyword(text))
+    }
 
-        // 앵커 텍스트 (카테고리별 대표 문구)
-        let categories: &[(&str, &[&str])] = &[
-            ("공문", &["수신 시행 발신 관인 결재", "공문 시행문 공공기관 행정"]),
-            ("보고서", &["보고서 결과 분석 현황 요약 목차 서론 결론"]),
-            ("회의록", &["회의록 참석자 안건 결정사항 회의 일시 장소"]),
-            ("기안문", &["기안 기안자 검토 결재 협조 시행일자"]),
-            ("계획서", &["계획서 사업계획 추진계획 일정 목표 전략 예산"]),
-            ("법령", &["제1조 제2조 시행령 시행규칙 법률 규정 조례"]),
-            ("통계", &["통계 수치 증감 전년대비 비율 백분율 그래프"]),
+    /// 키워드 패턴 매칭 기반 문서 분류 (순수 함수)
+    pub fn classify_by_keyword(text: &str) -> String {
+        // "제N조" 패턴 카운트 (법령 핵심 지표)
+        let article_count = count_article_pattern(text);
+
+        // 각 카테고리별 (키워드 목록, 필요 점수)
+        let rules: &[(&str, &[&str], usize)] = &[
+            ("법령", &["시행령", "시행규칙", "조례", "법률 제", "별표", "동법", "같은 법"], 2),
+            ("공문", &["수신 :", "수신:", "발신 :", "발신:", "관인생략", "시행 20", "경유 :"], 2),
+            ("기안문", &["기안자", "기안일자", "검토자", "결재일자", "협조자"], 2),
+            ("회의록", &["회의록", "참석자", "안건", "결정사항", "회의일시", "회의 장소"], 2),
+            ("보고서", &["보고서", "서론", "결론", "목차", "Ⅰ.", "Ⅱ.", "요약"], 2),
+            ("계획서", &["사업계획", "추진계획", "추진일정", "세부계획", "실행계획"], 2),
+            ("통계", &["전년대비", "전년동기", "증감률", "증감", "백분율"], 2),
         ];
 
-        // 입력 텍스트 임베딩 (첫 512자 — char 경계 안전)
-        let input = if text.chars().count() > 512 {
-            &text[..text.char_indices().nth(512).map(|(i, _)| i).unwrap_or(text.len())]
-        } else {
-            text
-        };
-        let input_emb = embedder
-            .embed(input, false)
-            .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
+        for (category, keywords, threshold) in rules {
+            let mut score: usize = 0;
 
-        let mut best_category = "기타".to_string();
-        let mut best_score: f32 = 0.0;
+            // 법령은 "제N조" 패턴에 가중치
+            if *category == "법령" {
+                score += article_count.min(5);
+            }
 
-        for (category, anchors) in categories {
-            for anchor in *anchors {
-                let anchor_emb = embedder
-                    .embed(anchor, false)
-                    .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
-
-                let sim = sentence::cosine_similarity(&input_emb, &anchor_emb);
-                if sim > best_score {
-                    best_score = sim;
-                    best_category = category.to_string();
+            for kw in *keywords {
+                if text.contains(kw) {
+                    score += 1;
                 }
+            }
+
+            if score >= *threshold {
+                return category.to_string();
             }
         }
 
-        // 임계값 이하면 "기타"
-        if best_score < 0.35 {
-            best_category = "기타".to_string();
-        }
-
-        Ok(best_category)
+        "기타".to_string()
     }
 
     // ============================================
@@ -1517,6 +1510,43 @@ fn kst_to_utc(kst: &chrono::FixedOffset, dt: chrono::NaiveDateTime) -> i64 {
         .unwrap_or(0)
 }
 
+/// "제N조" 패턴 카운트 (법령 분류용)
+fn count_article_pattern(text: &str) -> usize {
+    let mut count = 0;
+    let chars: Vec<char> = text.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+    while i < len {
+        // "제" + 숫자 + "조" 패턴 찾기
+        if chars[i] == '제' {
+            let mut j = i + 1;
+            // 공백 스킵
+            while j < len && chars[j].is_whitespace() {
+                j += 1;
+            }
+            // 숫자 확인
+            let num_start = j;
+            while j < len && chars[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j > num_start {
+                // 공백 스킵
+                while j < len && chars[j].is_whitespace() {
+                    j += 1;
+                }
+                // "조" 확인
+                if j < len && chars[j] == '조' {
+                    count += 1;
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    count
+}
+
 /// 파일 타입 필터 적용
 fn smart_apply_file_type_filter(r: &SearchResult, ft: &Option<String>) -> bool {
     let Some(ft) = ft else { return true };
@@ -1542,7 +1572,7 @@ fn smart_apply_exclude_filter(r: &SearchResult, exclude: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::apply_reranked_top_results;
+    use super::*;
 
     #[test]
     fn rerank_keeps_vector_only_results_in_their_original_tail_order() {
@@ -1558,5 +1588,119 @@ mod tests {
         let reranked = apply_reranked_top_results(top_results, &[1, 3], &[1]);
 
         assert_eq!(reranked, vec!["fts-d", "fts-b", "vector-a", "vector-c"]);
+    }
+
+    // ==================== 문서 분류 테스트 ====================
+
+    /// 테스트 시나리오 정의
+    struct ClassifyTestCase {
+        name: &'static str,
+        text: &'static str,
+        expected: &'static str,
+    }
+
+    fn test_scenarios() -> Vec<ClassifyTestCase> {
+        vec![
+            // --- 법령 (진짜) ---
+            ClassifyTestCase {
+                name: "민법 조문",
+                text: "제750조(불법행위의 내용) 고의 또는 과실로 인한 위법행위로 타인에게 손해를 가한 자는 그 손해를 배상할 책임이 있다. 제751조(재산 이외의 손해의 배상) 타인의 신체, 자유 또는 명예를 해하거나 기타 정신상고통을 가한 자는 재산 이외의 손해에 대하여도 배상할 책임이 있다.",
+                expected: "법령",
+            },
+            ClassifyTestCase {
+                name: "근로기준법 시행령",
+                text: "근로기준법 시행령 제1조(목적) 이 영은 「근로기준법」에서 위임된 사항과 그 시행에 필요한 사항을 규정함을 목적으로 한다. 제2조(통상임금) 법과 이 영에서 통상임금이란 근로자에게 정기적이고 일률적으로 소정근로 또는 총근로에 대하여 지급하기로 정한 시간급 금액을 말한다.",
+                expected: "법령",
+            },
+            ClassifyTestCase {
+                name: "광진구 조례",
+                text: "서울특별시 광진구 공유재산 관리 조례 제1조(목적) 이 조례는 공유재산 및 물품 관리법에서 위임된 사항과 그 시행에 필요한 사항을 규정함을 목적으로 한다. 제2조(적용범위) 이 조례는 광진구가 소유하는 모든 공유재산에 적용한다.",
+                expected: "법령",
+            },
+            // --- 법령 아닌데 오분류 위험 ---
+            ClassifyTestCase {
+                name: "고용산재보험료 엑셀 (오분류 케이스)",
+                text: "58.00 청소과 김하늘 기간제근로자 청소과, 깨끗한도시만들기를위한청소행정서비스증대, 안정적생활폐기물처리로깨끗하고행복한도시실현, 쓰레기무단투기지역관리및예방, 인건비, 기간제근로자등보수 22150.00 20920.00 23260.00 59.00 청소과 남명호 기간제근로자 청소과 인건비 177200.00",
+                expected: "기타",
+            },
+            ClassifyTestCase {
+                name: "예산 집행현황 표",
+                text: "2024년 상반기 예산 집행현황 부서 예산액 집행액 집행률 총무과 500,000 450,000 90.0% 재정과 800,000 720,000 90.0% 민원과 300,000 250,000 83.3% 합계 1,600,000 1,420,000 88.8%",
+                expected: "기타",
+            },
+            ClassifyTestCase {
+                name: "급여명세서",
+                text: "2025년 3월 급여명세서 성명: 홍길동 부서: 총무과 기본급 3,200,000 직급보조비 200,000 가족수당 100,000 시간외근무수당 350,000 소득세 -180,000 국민연금 -144,000 건강보험 -115,200 실수령액 3,410,800",
+                expected: "기타",
+            },
+            // --- 공문 ---
+            ClassifyTestCase {
+                name: "행정 공문",
+                text: "수신 : 각 과장 (경유) 시행 2024-0301-001 제목: 2024년 상반기 업무보고 계획 안내 관인생략 1. 관련: 기획예산과-1234(2024.02.15.) 2. 위 호와 관련하여 2024년 상반기 업무보고 일정을 다음과 같이 안내합니다.",
+                expected: "공문",
+            },
+            // --- 회의록 ---
+            ClassifyTestCase {
+                name: "부서 회의록",
+                text: "회의록 회의일시: 2024년 3월 15일 14:00 회의 장소: 3층 대회의실 참석자: 과장 김철수, 팀장 이영희, 주무관 박민수 안건1: 상반기 사업계획 검토 결정사항: 3월 말까지 세부 일정 확정",
+                expected: "회의록",
+            },
+            // --- 보고서 ---
+            ClassifyTestCase {
+                name: "업무 보고서",
+                text: "2024년 1분기 민원처리 현황 보고서 Ⅰ. 서론 본 보고서는 2024년 1분기 민원처리 현황을 분석하고 개선방안을 제시하기 위해 작성되었습니다. Ⅱ. 현황 분석 총 민원접수 건수: 1,234건 Ⅲ. 결론 민원처리 기간 단축을 위한 업무 프로세스 개선이 필요합니다.",
+                expected: "보고서",
+            },
+            // --- 계획서 ---
+            ClassifyTestCase {
+                name: "사업 계획서",
+                text: "2024년 구정 주요 사업계획 추진계획 1. 추진배경 주민 생활편의 증진 및 지역경제 활성화를 위한 세부계획 수립 2. 추진일정 3월: 실행계획 확정 4월~6월: 1단계 시행 3. 소요예산 총 5억원",
+                expected: "계획서",
+            },
+            // --- 기안문 ---
+            ClassifyTestCase {
+                name: "기안 문서",
+                text: "기안일자: 2024.03.15 기안자: 주무관 박민수 검토자: 팀장 이영희 협조자: 회계팀장 결재일자: 2024.03.16 제목: 사무용품 구매 요청의 건",
+                expected: "기안문",
+            },
+            // --- 통계 ---
+            ClassifyTestCase {
+                name: "인구 통계",
+                text: "2024년 광진구 인구통계 현황 전년대비 0.3% 감소 증감률 추이 2022년: +0.1% 2023년: -0.2% 2024년: -0.3% 전년동기 대비 세대수 증감 1인가구 비율 42.3%",
+                expected: "통계",
+            },
+        ]
+    }
+
+    #[test]
+    fn classify_by_keyword_test_scenarios() {
+        let scenarios = test_scenarios();
+        let mut pass = 0;
+        let mut fail = 0;
+
+        println!("\n===== 키워드 패턴 매칭 분류 테스트 =====");
+        for tc in &scenarios {
+            let result = SearchService::classify_by_keyword(tc.text);
+            let ok = result == tc.expected;
+            if ok { pass += 1; } else { fail += 1; }
+            println!(
+                "  {} {}: 예상={}, 결과={} {}",
+                if ok { "✅" } else { "❌" },
+                tc.name,
+                tc.expected,
+                result,
+                if !ok { "<-- MISMATCH" } else { "" }
+            );
+        }
+        println!("  합계: {pass}/{} 통과 (실패 {fail})", pass + fail);
+        assert_eq!(fail, 0, "키워드 분류 실패 {fail}건");
+    }
+
+    #[test]
+    fn count_article_pattern_works() {
+        assert_eq!(count_article_pattern("제1조 제2조 제10조"), 3);
+        assert_eq!(count_article_pattern("제 750 조 내용"), 1);
+        assert_eq!(count_article_pattern("제출 기한 제한"), 0);
+        assert_eq!(count_article_pattern("보험료 22150.00"), 0);
     }
 }
