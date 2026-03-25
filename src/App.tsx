@@ -23,7 +23,6 @@ import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
-import SearchParadigmToggle from "./components/search/SearchParadigmToggle";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
 import { AiAnswerPanel } from "./components/search/AiAnswerPanel";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
@@ -580,6 +579,7 @@ function App() {
               onRefineQueryClear={clearRefine}
               totalResultCount={results.length}
               paradigm={paradigm}
+              onParadigmChange={setParadigm}
               onSubmitNatural={submitNaturalQuery}
             />
           </div>
@@ -610,11 +610,6 @@ function App() {
         {/* Search Bar + Filters Area — 스크롤 컨테이너 밖 (collapse 시 스크롤 점프 방지) */}
         {!isCollapsed && (
           <div className="px-4 pt-4 pb-2">
-            {/* 검색 패러다임 토글 */}
-            <div className="max-w-4xl mx-auto mb-2 flex justify-end">
-              <SearchParadigmToggle paradigm={paradigm} onChange={setParadigm} />
-            </div>
-
             <SearchBar
               ref={searchInputRef}
               query={query}
@@ -635,6 +630,7 @@ function App() {
               onSuggestionsClose={autoComplete.close}
               onSuggestionsSetIndex={autoComplete.setSelectedIndex}
               paradigm={paradigm}
+              onParadigmChange={setParadigm}
               onSubmitNatural={submitNaturalQuery}
             />
 

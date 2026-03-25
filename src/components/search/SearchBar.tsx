@@ -3,6 +3,7 @@ import type { SearchMode, SearchParadigm, SuggestionItem } from "../../types/sea
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
+import SearchParadigmToggle from "./SearchParadigmToggle";
 
 interface SearchBarProps {
   query: string;
@@ -25,6 +26,7 @@ interface SearchBarProps {
   onSuggestionsSetIndex?: (index: number) => void;
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
+  onParadigmChange?: (p: SearchParadigm) => void;
   /** 자연어 검색 실행 */
   onSubmitNatural?: () => void;
 }
@@ -50,6 +52,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       onSuggestionsClose,
       onSuggestionsSetIndex,
       paradigm = "instant",
+      onParadigmChange,
       onSubmitNatural,
     },
     ref
@@ -93,6 +96,13 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
 
     return (
       <div className="max-w-4xl mx-auto w-full relative">
+        {/* Paradigm Toggle (탭 헤더) */}
+        {onParadigmChange && (
+          <div className="mb-1">
+            <SearchParadigmToggle paradigm={paradigm} onChange={onParadigmChange} />
+          </div>
+        )}
+
         <div
           className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
@@ -126,13 +136,13 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
             placeholder={isNatural
-              ? "자연어로 검색 (예: 지난주 예산 한글 문서 찾아줘)"
-              : "예: 2024년 예산 집행현황, 민원처리 규정, 회의록..."
+              ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만"
+              : "예산 집행현황, 계약서, 인사발령"
             }
             className="flex-1 bg-transparent border-none focus:outline-none ml-3"
             style={{
               color: "var(--color-text-primary)",
-              fontSize: "var(--text-md)",
+              fontSize: "var(--text-sm)",
               fontWeight: 500,
               letterSpacing: "0.01em",
             }}

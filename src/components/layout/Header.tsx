@@ -1,5 +1,5 @@
-import { memo } from "react";
-import { Home, Plus, HelpCircle, Settings, BarChart3, Files, CalendarClock } from "lucide-react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { Home, Plus, HelpCircle, Settings, BarChart3, Files, CalendarClock, MoreHorizontal } from "lucide-react";
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -15,6 +15,31 @@ interface HeaderProps {
 }
 
 export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onOpenExpiry, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  // 외부 클릭 닫기
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      if (menuBtnRef.current?.contains(e.target as Node)) return;
+      closeMenu();
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen, closeMenu]);
+
+  const menuItems = [
+    { icon: BarChart3, label: "문서 통계", onClick: onOpenStats },
+    { icon: Files, label: "중복 문서 탐지", onClick: onOpenDuplicates },
+    { icon: CalendarClock, label: "문서 만료 알림", onClick: onOpenExpiry },
+    { icon: HelpCircle, label: "도움말", onClick: onOpenHelp },
+  ];
+
   return (
     <header
       className={`flex items-center justify-between transition-all duration-200 ${isSidebarOpen ? "px-5" : "pl-14 pr-5"}`}
@@ -39,7 +64,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         )}
       </button>
 
-      {/* Right: Action buttons — minimal, icon-only */}
+      {/* Right: Action buttons — 폴더추가 + 오버플로우 + 설정 */}
       <div className="flex items-center gap-0.5">
         <button
           onClick={onAddFolder}
@@ -72,40 +97,43 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
           )}
         </button>
 
-        <button
-          onClick={onOpenStats}
-          className="p-1.5 rounded-md transition-colors btn-icon-hover"
-          aria-label="문서 통계"
-          title="문서 통계"
-        >
-          <BarChart3 className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
-        </button>
+        {/* 오버플로우 메뉴 */}
+        <div className="relative">
+          <button
+            ref={menuBtnRef}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="p-1.5 rounded-md transition-colors btn-icon-hover"
+            aria-label="더보기"
+            title="더보기"
+          >
+            <MoreHorizontal className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
+          </button>
 
-        <button
-          onClick={onOpenDuplicates}
-          className="p-1.5 rounded-md transition-colors btn-icon-hover"
-          aria-label="중복 문서 탐지"
-          title="중복 문서 탐지"
-        >
-          <Files className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
-        </button>
-
-        <button
-          onClick={onOpenExpiry}
-          className="p-1.5 rounded-md transition-colors btn-icon-hover"
-          aria-label="문서 만료 알림"
-          title="문서 만료 알림"
-        >
-          <CalendarClock className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
-        </button>
-
-        <button
-          onClick={onOpenHelp}
-          className="p-1.5 rounded-md transition-colors btn-icon-hover"
-          aria-label="도움말"
-        >
-          <HelpCircle className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
-        </button>
+          {menuOpen && (
+            <div
+              ref={menuRef}
+              className="absolute right-0 top-full mt-1 py-1 rounded-lg z-50"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border)",
+                boxShadow: "var(--shadow-lg)",
+                minWidth: "160px",
+              }}
+            >
+              {menuItems.map((item) => (
+                <button
+                  key={item.label}
+                  onClick={() => { item.onClick(); closeMenu(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-[var(--color-bg-tertiary)]"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  <item.icon className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-text-muted)" }} />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <button
           onClick={onOpenSettings}

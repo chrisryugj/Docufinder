@@ -27,7 +27,7 @@ export const WelcomeHero = memo(function WelcomeHero({
   const hasIndex = indexedFiles > 0;
 
   return (
-    <div className="flex flex-col items-center justify-center py-24 select-none">
+    <div className="flex flex-col items-center justify-center py-14 select-none">
       {/* App Icon + Title */}
       <div className="flex items-center gap-3 mb-4 stagger-item" style={{ animationDelay: "50ms" }}>
         <img src="/anything.png" alt="" className="w-10 h-10 object-contain dark:hidden" />
@@ -42,14 +42,15 @@ export const WelcomeHero = memo(function WelcomeHero({
 
       {/* Tagline */}
       <p
-        className="text-lg mb-8 stagger-item clr-muted"
-        style={{ letterSpacing: "0.01em", animationDelay: "120ms" }}
+        className="text-lg mb-5 stagger-item"
+        style={{ letterSpacing: "0.01em", animationDelay: "120ms", color: "var(--color-text-muted)" }}
       >
-        흩어진 문서, 한 번에 찾으세요.
+        AI, Everything,{" "}
+        <span className="font-semibold" style={{ color: "var(--color-accent)" }}>Anything.</span>
       </p>
 
       {/* Supported File Types — pill badges */}
-      <div className="flex items-center gap-2 mb-8 stagger-item" style={{ animationDelay: "200ms" }}>
+      <div className="flex items-center gap-2 mb-6 stagger-item" style={{ animationDelay: "200ms" }}>
         {FILE_TYPES.map((ft) => (
           <span
             key={ft.label}
@@ -65,18 +66,11 @@ export const WelcomeHero = memo(function WelcomeHero({
         ))}
       </div>
 
-      {/* Decorative divider */}
-      <div className="flex items-center gap-3 mb-12 stagger-item" style={{ animationDelay: "280ms" }}>
-        <div className="w-8 h-px bg-tertiary" />
-        <div className="w-1.5 h-1.5 rounded-full opacity-50" style={{ backgroundColor: "var(--color-accent)" }} />
-        <div className="w-8 h-px bg-tertiary" />
-      </div>
-
       {/* Index Status */}
       {hasIndex ? (
         <div
           className="flex items-center gap-4 text-sm mb-8 stagger-item clr-muted"
-          style={{ animationDelay: "350ms" }}
+          style={{ animationDelay: "280ms" }}
         >
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--color-success)" }} />
@@ -94,7 +88,7 @@ export const WelcomeHero = memo(function WelcomeHero({
       ) : (
         <p
           className="text-sm mb-8 stagger-item clr-muted"
-          style={{ animationDelay: "350ms" }}
+          style={{ animationDelay: "280ms" }}
         >
           사이드바에서 폴더를 추가하여 시작하세요
         </p>
@@ -104,7 +98,7 @@ export const WelcomeHero = memo(function WelcomeHero({
       {recentSearches.length > 0 && (
         <div
           className="flex flex-col items-center gap-3 stagger-item"
-          style={{ animationDelay: "450ms" }}
+          style={{ animationDelay: "350ms" }}
         >
           <span className="text-xs font-semibold uppercase tracking-widest clr-muted">
             최근 검색
@@ -126,7 +120,7 @@ export const WelcomeHero = memo(function WelcomeHero({
       {/* Keyboard Hint */}
       <div
         className="mt-10 flex items-center gap-2 text-sm stagger-item clr-muted"
-        style={{ animationDelay: "550ms" }}
+        style={{ animationDelay: "420ms" }}
       >
         <kbd className="inline-flex items-center px-2 py-1 rounded text-xs text-display font-semibold bg-tertiary border border-default clr-muted">
           Ctrl+K

@@ -1460,6 +1460,18 @@ fn smart_apply_date_filter(
                 .unwrap();
             (kst_to_utc(&kst, year_start), i64::MAX)
         }
+        DateFilter::LastYear => {
+            let last_year = today.year() - 1;
+            let s = chrono::NaiveDate::from_ymd_opt(last_year, 1, 1)
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .map(|dt| kst_to_utc(&kst, dt))
+                .unwrap_or(0);
+            let e = chrono::NaiveDate::from_ymd_opt(last_year, 12, 31)
+                .and_then(|d| d.and_hms_opt(23, 59, 59))
+                .map(|dt| kst_to_utc(&kst, dt))
+                .unwrap_or(i64::MAX);
+            (s, e)
+        }
         DateFilter::Year(y) => {
             let s = chrono::NaiveDate::from_ymd_opt(*y, 1, 1)
                 .and_then(|d| d.and_hms_opt(0, 0, 0))

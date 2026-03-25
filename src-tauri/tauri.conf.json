@@ -46,7 +46,9 @@
       "timestampUrl": "https://timestamp.digicert.com",
       "wix": {
         "language": "ko-KR",
-        "template": "wix/main.wxs"
+        "template": "wix/main.wxs",
+        "bannerPath": "wix/banner.bmp",
+        "dialogImagePath": "wix/dialog.bmp"
       }
     },
     "createUpdaterArtifacts": "v1Compatible"

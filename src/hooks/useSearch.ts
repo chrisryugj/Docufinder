@@ -180,14 +180,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // 검색 요청 ID (이전 검색 결과 무시용)
   const searchIdRef = useRef(0);
   const [filters, setFiltersInternal] = useState<SearchFilters>(() => {
-    // localStorage에서 excludeFilename 복원
+    // localStorage에서 영속 필터 복원 (sortBy, excludeFilename)
+    let restored = { ...DEFAULT_FILTERS };
     try {
-      const saved = localStorage.getItem("docufinder_exclude_filename");
-      if (saved !== null) {
-        return { ...DEFAULT_FILTERS, excludeFilename: JSON.parse(saved) };
-      }
+      const savedSort = localStorage.getItem("docufinder_sort_by");
+      if (savedSort) restored.sortBy = savedSort as SearchFilters["sortBy"];
+      const savedExclude = localStorage.getItem("docufinder_exclude_filename");
+      if (savedExclude !== null) restored.excludeFilename = JSON.parse(savedExclude);
     } catch {}
-    return DEFAULT_FILTERS;
+    return restored;
   });
   const [viewMode, setViewMode] = useState<ViewMode>("flat");
   const [refineQuery, setRefineQuery] = useState("");
@@ -202,17 +203,21 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const clearError = useCallback(() => setError(null), []);
   const clearRefine = useCallback(() => { setRefineQuery(""); setDebouncedRefineQuery(""); }, []);
 
-  // excludeFilename 변경 시 localStorage 저장
-  const prevExcludeFilename = useRef(filters.excludeFilename);
+  // 영속 필터 변경 시 localStorage 저장 (sortBy, excludeFilename)
+  const prevPersisted = useRef({ sortBy: filters.sortBy, excludeFilename: filters.excludeFilename });
   const setFilters = useCallback((newFiltersOrUpdater: SearchFilters | ((prev: SearchFilters) => SearchFilters)) => {
     setFiltersInternal((prev) => {
       const newFilters = typeof newFiltersOrUpdater === "function" ? newFiltersOrUpdater(prev) : newFiltersOrUpdater;
-      if (newFilters.excludeFilename !== prevExcludeFilename.current) {
-        prevExcludeFilename.current = newFilters.excludeFilename;
-        try {
+      try {
+        if (newFilters.sortBy !== prevPersisted.current.sortBy) {
+          prevPersisted.current.sortBy = newFilters.sortBy;
+          localStorage.setItem("docufinder_sort_by", newFilters.sortBy);
+        }
+        if (newFilters.excludeFilename !== prevPersisted.current.excludeFilename) {
+          prevPersisted.current.excludeFilename = newFilters.excludeFilename;
           localStorage.setItem("docufinder_exclude_filename", JSON.stringify(newFilters.excludeFilename));
-        } catch {}
-      }
+        }
+      } catch {}
       return newFilters;
     });
   }, []);

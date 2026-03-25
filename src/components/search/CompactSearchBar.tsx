@@ -9,6 +9,7 @@ import type {
   ViewMode,
 } from "../../types/search";
 import { FilterDropdown, FilterChip } from "../ui/FilterDropdown";
+import SearchParadigmToggle from "./SearchParadigmToggle";
 import {
   SORT_OPTIONS,
   FILE_TYPE_OPTIONS,
@@ -42,6 +43,7 @@ interface CompactSearchBarProps {
   onCompositionEnd?: (finalValue: string) => void;
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
+  onParadigmChange?: (p: SearchParadigm) => void;
   /** 자연어 검색 실행 */
   onSubmitNatural?: () => void;
 }
@@ -72,6 +74,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       onCompositionStart,
       onCompositionEnd,
       paradigm = "instant",
+      onParadigmChange,
       onSubmitNatural,
     },
     ref
@@ -177,6 +180,11 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
           <img src="/anything-l.png" alt="Anything" className="w-6 h-6 object-contain hidden dark:block" />
         </button>
 
+        {/* 패러다임 토글 */}
+        {onParadigmChange && (
+          <SearchParadigmToggle paradigm={paradigm} onChange={onParadigmChange} />
+        )}
+
         {/* 검색 입력 */}
         <div
           className="flex items-center flex-1 min-w-0 px-3 py-1.5 rounded-lg focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
@@ -192,7 +200,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             defaultValue={query}
             {...imeHandlers}
             onKeyDown={isNatural ? handleKeyDown : undefined}
-            placeholder={isNatural ? "자연어로 검색 후 Enter…" : "예: 예산 집행현황, 민원처리 규정..."}
+            placeholder={isNatural ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만" : "예산 집행현황, 계약서, 인사발령"}
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}
             aria-label="검색어 입력"

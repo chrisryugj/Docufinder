@@ -32,6 +32,7 @@ pub enum DateFilter {
     ThisMonth,
     LastMonth,
     ThisYear,
+    LastYear,
     Year(i32),
     /// 올해 N월 (1~12)
     Month(u32),
@@ -242,6 +243,11 @@ impl NlQueryParser {
                 filter: DateFilter::ThisYear,
                 label: "올해",
             },
+            DatePattern {
+                patterns: &["작년", "작년도", "지난해", "전년", "전년도"],
+                filter: DateFilter::LastYear,
+                label: "작년",
+            },
         ];
 
         // 고정 패턴 매칭 (긴 패턴부터)
@@ -438,7 +444,7 @@ impl NlQueryParser {
 
         let ft_patterns = vec![
             FileTypePattern {
-                patterns: vec!["한글 문서", "한글문서", "한글 파일", "한글파일", "hwpx", "hwp", "한글"],
+                patterns: vec!["한글 문서", "한글문서", "한글 파일", "한글파일", "한글로 된", "hwpx", "hwp"],
                 file_type: "hwpx",
                 label: "한글(hwpx)",
             },
@@ -669,6 +675,21 @@ mod tests {
     }
 
     #[test]
+    fn test_date_last_year() {
+        let result = NlQueryParser::parse("작년 집행");
+        assert_eq!(result.date_filter, Some(DateFilter::LastYear));
+        assert_eq!(result.keywords, "집행");
+    }
+
+    #[test]
+    fn test_date_last_year_variants() {
+        for query in &["지난해 예산", "전년 실적", "전년도 결산", "작년도 보고서"] {
+            let result = NlQueryParser::parse(query);
+            assert_eq!(result.date_filter, Some(DateFilter::LastYear), "failed: {}", query);
+        }
+    }
+
+    #[test]
     fn test_date_year_4digit() {
         let result = NlQueryParser::parse("2024년 예산");
         assert_eq!(result.date_filter, Some(DateFilter::Year(2024)));
@@ -892,6 +913,26 @@ mod tests {
         let result = NlQueryParser::parse("결재문서");
         assert!(result.file_type.is_none());
         assert_eq!(result.keywords, "결재문서");
+    }
+
+    // === 플레이스홀더 예시 검증 ===
+
+    #[test]
+    fn test_placeholder_natural_1() {
+        // "작년 예산 한글 문서"
+        let result = NlQueryParser::parse("작년 예산 한글 문서");
+        assert_eq!(result.date_filter, Some(DateFilter::LastYear));
+        assert_eq!(result.file_type, Some("hwpx".to_string()));
+        assert_eq!(result.keywords, "예산");
+    }
+
+    #[test]
+    fn test_placeholder_natural_2() {
+        // "최근 30일 계약서 PDF만"
+        let result = NlQueryParser::parse("최근 30일 계약서 PDF만");
+        assert_eq!(result.date_filter, Some(DateFilter::RecentDays(30)));
+        assert_eq!(result.file_type, Some("pdf".to_string()));
+        assert_eq!(result.keywords, "계약서");
     }
 
     #[test]
