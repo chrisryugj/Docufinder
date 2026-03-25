@@ -104,10 +104,7 @@ pub async fn generate_stream(
     max_tokens: Option<u32>,
 ) -> Result<reqwest::Response, GeminiClientError> {
     let model_id = model.unwrap_or(DEFAULT_MODEL);
-    let url = format!(
-        "{}/{}:streamGenerateContent?alt=sse",
-        BASE_URL, model_id
-    );
+    let url = format!("{}/{}:streamGenerateContent?alt=sse", BASE_URL, model_id);
 
     let request = build_request(system_prompt, user_message, temperature, max_tokens);
 

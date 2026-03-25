@@ -179,10 +179,7 @@ pub async fn add_bookmark(
 
 /// 북마크 삭제
 #[tauri::command]
-pub async fn remove_bookmark(
-    id: i64,
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<()> {
+pub async fn remove_bookmark(id: i64, state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     let db_path = {
         let container = state.read()?;
         container.db_path.to_string_lossy().to_string()
@@ -227,9 +224,7 @@ pub async fn update_bookmark_note(
 
 /// 모든 북마크 조회
 #[tauri::command]
-pub async fn get_bookmarks(
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<Vec<BookmarkInfo>> {
+pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Vec<BookmarkInfo>> {
     let db_path = {
         let container = state.read()?;
         container.db_path.to_string_lossy().to_string()

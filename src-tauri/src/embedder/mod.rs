@@ -23,7 +23,6 @@ pub enum EmbedderError {
 
     #[error("Invalid embedding dimension")]
     InvalidDimension,
-
 }
 
 impl From<ort::Error> for EmbedderError {
@@ -150,11 +149,10 @@ impl Embedder {
                 .map(|o| o.name().to_string())
                 .collect();
 
-            let outputs = session
-                .run(ort::inputs![
-                    "input_ids" => input_ids_value,
-                    "attention_mask" => attention_mask_value,
-                ])?;
+            let outputs = session.run(ort::inputs![
+                "input_ids" => input_ids_value,
+                "attention_mask" => attention_mask_value,
+            ])?;
 
             // 출력에서 임베딩 추출 (모델에 따라 출력 이름이 다를 수 있음)
             let output = outputs

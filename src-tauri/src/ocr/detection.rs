@@ -28,7 +28,8 @@ pub fn preprocess(image: &DynamicImage) -> (Vec<f32>, u32, u32, f32, f32) {
     let new_w = ((orig_w as f32 * ratio / 32.0).ceil() * 32.0).max(32.0) as u32;
     let new_h = ((orig_h as f32 * ratio / 32.0).ceil() * 32.0).max(32.0) as u32;
 
-    let resized = image::imageops::resize(&rgb, new_w, new_h, image::imageops::FilterType::Lanczos3);
+    let resized =
+        image::imageops::resize(&rgb, new_w, new_h, image::imageops::FilterType::Lanczos3);
 
     // Normalize: (x/255 - 0.5) / 0.5 → [-1, 1] 범위
     // HWC → CHW
@@ -40,9 +41,9 @@ pub fn preprocess(image: &DynamicImage) -> (Vec<f32>, u32, u32, f32, f32) {
             let pixel = resized.get_pixel(x as u32, y as u32);
             let idx = y * new_w as usize + x;
             // RGB 채널 (PaddleOCR는 BGR이지만, 정규화 mean/std가 동일하므로 RGB도 OK)
-            tensor[idx] = (pixel[0] as f32 / 255.0 - 0.5) / 0.5;                  // R → C0
-            tensor[pixels + idx] = (pixel[1] as f32 / 255.0 - 0.5) / 0.5;          // G → C1
-            tensor[2 * pixels + idx] = (pixel[2] as f32 / 255.0 - 0.5) / 0.5;      // B → C2
+            tensor[idx] = (pixel[0] as f32 / 255.0 - 0.5) / 0.5; // R → C0
+            tensor[pixels + idx] = (pixel[1] as f32 / 255.0 - 0.5) / 0.5; // G → C1
+            tensor[2 * pixels + idx] = (pixel[2] as f32 / 255.0 - 0.5) / 0.5; // B → C2
         }
     }
 
@@ -67,7 +68,8 @@ pub fn detect(
 
     let prob_map = {
         let mut sess = session.lock().unwrap_or_else(|p| p.into_inner());
-        let outputs = sess.run(ort::inputs!["x" => input])
+        let outputs = sess
+            .run(ort::inputs!["x" => input])
             .map_err(|e| super::OcrError::Inference(e.to_string()))?;
 
         let output_names: Vec<String> = outputs.keys().map(|k| k.to_string()).collect();

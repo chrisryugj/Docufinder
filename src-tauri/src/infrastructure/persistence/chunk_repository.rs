@@ -39,7 +39,6 @@ impl SqliteChunkRepository {
 
         f(&conn).map_err(|e| DomainError::repository(format!("Query failed: {}", e)))
     }
-
 }
 
 #[async_trait]

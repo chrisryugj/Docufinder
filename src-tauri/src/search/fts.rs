@@ -55,7 +55,10 @@ fn search_internal(
     let (scope_clause, scope_pattern) = match folder_scope {
         Some(scope) if !scope.is_empty() => {
             let escaped = crate::db::escape_like_pattern(&scope.to_lowercase());
-            ("AND LOWER(f.path) LIKE ? ESCAPE '\\'", Some(format!("{}%", escaped)))
+            (
+                "AND LOWER(f.path) LIKE ? ESCAPE '\\'",
+                Some(format!("{}%", escaped)),
+            )
         }
         _ => ("", None),
     };
@@ -107,10 +110,8 @@ fn search_internal(
 
     let results: Vec<FtsResult> = if let Some(ref pattern) = scope_pattern {
         let limit_i64 = limit as i64;
-        stmt.query_map(
-            rusqlite::params![safe_query, pattern, limit_i64],
-            map_row,
-        )?.collect::<Result<Vec<_>, _>>()?
+        stmt.query_map(rusqlite::params![safe_query, pattern, limit_i64], map_row)?
+            .collect::<Result<Vec<_>, _>>()?
     } else {
         stmt.query_map(params![safe_query, limit as i64], map_row)?
             .collect::<Result<Vec<_>, _>>()?

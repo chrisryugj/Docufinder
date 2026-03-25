@@ -61,7 +61,6 @@ impl SqliteFileRepository {
             _ => FileType::Unknown,
         }
     }
-
 }
 
 #[async_trait]

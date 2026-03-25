@@ -24,13 +24,13 @@ pub async fn get_suggested_folders() -> ApiResult<Vec<SuggestedFolder>> {
         ("문서", dirs::document_dir(), "Documents"),
         ("다운로드", dirs::download_dir(), "Downloads"),
     ];
-    let userprofile = std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from);
+    let userprofile = std::env::var("USERPROFILE")
+        .ok()
+        .map(std::path::PathBuf::from);
 
     for (label, dir_path, fallback_name) in known_folders {
         // dirs 크레이트 결과 → USERPROFILE 폴백 순서
-        let resolved = dir_path.or_else(|| {
-            userprofile.as_ref().map(|up| up.join(fallback_name))
-        });
+        let resolved = dir_path.or_else(|| userprofile.as_ref().map(|up| up.join(fallback_name)));
         if let Some(p) = resolved {
             if p.exists() {
                 suggestions.push(SuggestedFolder {

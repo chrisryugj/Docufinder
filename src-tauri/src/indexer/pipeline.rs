@@ -306,20 +306,21 @@ fn index_folder_fts_impl(
 
                 let path_clone = path.clone();
                 let ocr_deref = ocr_ref.map(|e| e.as_ref());
-                let result = match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
-                    Ok(Ok(doc)) => ParseResult::Success {
-                        path: path.clone(),
-                        document: doc,
-                    },
-                    Ok(Err(e)) => ParseResult::Failure {
-                        path: path.clone(),
-                        error: e.to_string(),
-                    },
-                    Err(_) => ParseResult::Failure {
-                        path: path.clone(),
-                        error: "Parser panicked".to_string(),
-                    },
-                };
+                let result =
+                    match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
+                        Ok(Ok(doc)) => ParseResult::Success {
+                            path: path.clone(),
+                            document: doc,
+                        },
+                        Ok(Err(e)) => ParseResult::Failure {
+                            path: path.clone(),
+                            error: e.to_string(),
+                        },
+                        Err(_) => ParseResult::Failure {
+                            path: path.clone(),
+                            error: "Parser panicked".to_string(),
+                        },
+                    };
 
                 // HDD throttle: I/O 부하 감소
                 if throttle_ms > 0 {
@@ -380,7 +381,11 @@ fn index_folder_fts_impl(
                                 Ok(_) => {
                                     indexed += 1;
                                     // OCR 이미지 파일 카운트
-                                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                                    let ext = path
+                                        .extension()
+                                        .and_then(|e| e.to_str())
+                                        .unwrap_or("")
+                                        .to_lowercase();
                                     if OCR_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
                                         ocr_image_count += 1;
                                     }
@@ -400,7 +405,12 @@ fn index_folder_fts_impl(
                                 tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
                             }
                             // .hwp 파일은 변환 대상으로 수집
-                            if path.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("hwp")).unwrap_or(false) {
+                            if path
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|e| e.eq_ignore_ascii_case("hwp"))
+                                .unwrap_or(false)
+                            {
                                 hwp_files.push(path.to_string_lossy().to_string());
                             }
                             failed += 1;

@@ -25,9 +25,7 @@ const SEMANTIC_ENRICH_MAX_RESULTS: usize = 5;
 fn matches_folder_scope(file_path: &str, folder_scope: Option<&str>) -> bool {
     match folder_scope {
         Some(scope) if !scope.is_empty() => {
-            file_path
-                .to_lowercase()
-                .starts_with(&scope.to_lowercase())
+            file_path.to_lowercase().starts_with(&scope.to_lowercase())
         }
         _ => true,
     }
@@ -71,10 +69,22 @@ impl SearchService {
         }
 
         match query.mode {
-            SearchMode::Keyword => self.search_keyword(&query.query, query.max_results, None).await,
-            SearchMode::Semantic => self.search_semantic(&query.query, query.max_results, None).await,
-            SearchMode::Hybrid => self.search_hybrid(&query.query, query.max_results, None).await,
-            SearchMode::Filename => self.search_filename(&query.query, query.max_results, None).await,
+            SearchMode::Keyword => {
+                self.search_keyword(&query.query, query.max_results, None)
+                    .await
+            }
+            SearchMode::Semantic => {
+                self.search_semantic(&query.query, query.max_results, None)
+                    .await
+            }
+            SearchMode::Hybrid => {
+                self.search_hybrid(&query.query, query.max_results, None)
+                    .await
+            }
+            SearchMode::Filename => {
+                self.search_filename(&query.query, query.max_results, None)
+                    .await
+            }
         }
     }
 
@@ -92,8 +102,10 @@ impl SearchService {
         // FTS5 검색 실행 (한국어 형태소 분석 포함)
         let use_tokenizer = self.tokenizer.is_some();
         let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
-                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            Some(tok) => {
+                fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?
+            }
             None => fts::search(&conn, query, max_results, folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
@@ -292,7 +304,11 @@ impl SearchService {
             .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
 
         // 벡터 검색 (folder_scope 후처리 필터로 인한 결과 누락 방지: over-fetch)
-        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
+        let vector_fetch_limit = if folder_scope.is_some() {
+            max_results * 5
+        } else {
+            max_results
+        };
         let vector_results = vector_index
             .search(&query_embedding, vector_fetch_limit)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
@@ -315,22 +331,22 @@ impl SearchService {
                         return None;
                     }
                     Some(SearchResult {
-                    file_path: chunk.file_path.clone(),
-                    file_name: chunk.file_name.clone(),
-                    chunk_index: chunk.chunk_index,
-                    content_preview: truncate_preview(&chunk.content, 200),
-                    full_content: String::new(), // ⚡ 성능 최적화
-                    score: vr.score as f64,
-                    confidence: normalize_vector_confidence(vr.score as f64),
-                    match_type: MatchType::Semantic,
-                    highlight_ranges: vec![],
-                    page_number: chunk.page_number,
-                    start_offset: chunk.start_offset,
-                    location_hint: chunk.location_hint.clone(),
-                    snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
-                    modified_at: chunk.modified_at,
-                    has_hwp_pair: false,
-                })
+                        file_path: chunk.file_path.clone(),
+                        file_name: chunk.file_name.clone(),
+                        chunk_index: chunk.chunk_index,
+                        content_preview: truncate_preview(&chunk.content, 200),
+                        full_content: String::new(), // ⚡ 성능 최적화
+                        score: vr.score as f64,
+                        confidence: normalize_vector_confidence(vr.score as f64),
+                        match_type: MatchType::Semantic,
+                        highlight_ranges: vec![],
+                        page_number: chunk.page_number,
+                        start_offset: chunk.start_offset,
+                        location_hint: chunk.location_hint.clone(),
+                        snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
+                        modified_at: chunk.modified_at,
+                        has_hwp_pair: false,
+                    })
                 })
             })
             .collect();
@@ -373,14 +389,20 @@ impl SearchService {
 
         // 1. FTS5 검색 (한국어 형태소 분석 포함)
         let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
-                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            Some(tok) => {
+                fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?
+            }
             None => fts::search(&conn, query, max_results, folder_scope)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
         // 2. 벡터 검색 (folder_scope 후처리 필터 대비 over-fetch)
-        let vector_fetch_limit = if folder_scope.is_some() { max_results * 5 } else { max_results };
+        let vector_fetch_limit = if folder_scope.is_some() {
+            max_results * 5
+        } else {
+            max_results
+        };
         let (vector_results, query_embedding) =
             match (self.embedder.as_ref(), self.vector_index.as_ref()) {
                 (Some(emb), Some(vi)) => match emb.embed(query, true) {
@@ -414,15 +436,16 @@ impl SearchService {
             .filter(|r| !fts_map.contains_key(&r.chunk_id))
             .map(|r| r.chunk_id)
             .collect();
-        let pre_rerank_vector_chunks: HashMap<i64, ChunkInfo> = if !pre_rerank_vector_only_ids.is_empty() {
-            db::get_chunks_by_ids(&conn, &pre_rerank_vector_only_ids)
-                .map_err(|e| AppError::SearchFailed(e.to_string()))?
-                .into_iter()
-                .map(|c| (c.chunk_id, c))
-                .collect()
-        } else {
-            HashMap::new()
-        };
+        let pre_rerank_vector_chunks: HashMap<i64, ChunkInfo> =
+            if !pre_rerank_vector_only_ids.is_empty() {
+                db::get_chunks_by_ids(&conn, &pre_rerank_vector_only_ids)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?
+                    .into_iter()
+                    .map(|c| (c.chunk_id, c))
+                    .collect()
+            } else {
+                HashMap::new()
+            };
 
         // 6. Cross-Encoder Reranking (상위 40개 — 재현율 향상, MiniLM-L6 ~1ms/후보)
         const RERANK_TOP_K: usize = 40;
@@ -565,7 +588,7 @@ impl SearchService {
                             location_hint: chunk.location_hint.clone(),
                             snippet: None,
                             modified_at: chunk.modified_at,
-                    has_hwp_pair: false,
+                            has_hwp_pair: false,
                         })
                     })
                 }
@@ -613,7 +636,10 @@ impl SearchService {
 
         let scope_clause = folder_scope
             .map(|s| {
-                let escaped = s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+                let escaped = s
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
                 format!(" AND f.path LIKE '{}%' ESCAPE '\\\\'", escaped)
             })
             .unwrap_or_default();
@@ -691,7 +717,11 @@ impl SearchService {
 
         // 키워드 없이 필터만 있는 경우: 최근 수정 파일 기반 검색
         // 키워드 있는 경우: 하이브리드 검색 후 필터 적용
-        let over_fetch = if has_filters { max_results * 10 } else { max_results * 3 };
+        let over_fetch = if has_filters {
+            max_results * 10
+        } else {
+            max_results * 3
+        };
 
         let base = if parsed.keywords.trim().is_empty() {
             // 필터만 있는 경우: 최근 파일 목록에서 필터링
@@ -977,7 +1007,11 @@ impl SearchService {
         }
 
         let mut results: Vec<SearchResult> = file_best.into_values().map(|(_, r)| r).collect();
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(max_results);
 
         let total_count = results.len();
@@ -1017,13 +1051,64 @@ impl SearchService {
 
         // 각 카테고리별 (키워드 목록, 필요 점수)
         let rules: &[(&str, &[&str], usize)] = &[
-            ("법령", &["시행령", "시행규칙", "조례", "법률 제", "별표", "동법", "같은 법"], 2),
-            ("공문", &["수신 :", "수신:", "발신 :", "발신:", "관인생략", "시행 20", "경유 :"], 2),
-            ("기안문", &["기안자", "기안일자", "검토자", "결재일자", "협조자"], 2),
-            ("회의록", &["회의록", "참석자", "안건", "결정사항", "회의일시", "회의 장소"], 2),
-            ("보고서", &["보고서", "서론", "결론", "목차", "Ⅰ.", "Ⅱ.", "요약"], 2),
-            ("계획서", &["사업계획", "추진계획", "추진일정", "세부계획", "실행계획"], 2),
-            ("통계", &["전년대비", "전년동기", "증감률", "증감", "백분율"], 2),
+            (
+                "법령",
+                &[
+                    "시행령",
+                    "시행규칙",
+                    "조례",
+                    "법률 제",
+                    "별표",
+                    "동법",
+                    "같은 법",
+                ],
+                2,
+            ),
+            (
+                "공문",
+                &[
+                    "수신 :",
+                    "수신:",
+                    "발신 :",
+                    "발신:",
+                    "관인생략",
+                    "시행 20",
+                    "경유 :",
+                ],
+                2,
+            ),
+            (
+                "기안문",
+                &["기안자", "기안일자", "검토자", "결재일자", "협조자"],
+                2,
+            ),
+            (
+                "회의록",
+                &[
+                    "회의록",
+                    "참석자",
+                    "안건",
+                    "결정사항",
+                    "회의일시",
+                    "회의 장소",
+                ],
+                2,
+            ),
+            (
+                "보고서",
+                &["보고서", "서론", "결론", "목차", "Ⅰ.", "Ⅱ.", "요약"],
+                2,
+            ),
+            (
+                "계획서",
+                &["사업계획", "추진계획", "추진일정", "세부계획", "실행계획"],
+                2,
+            ),
+            (
+                "통계",
+                &["전년대비", "전년동기", "증감률", "증감", "백분율"],
+                2,
+            ),
         ];
 
         for (category, keywords, threshold) in rules {
@@ -1113,10 +1198,19 @@ impl SearchService {
             .collect();
 
         for r in &mut results {
-            if r.file_name.rsplit('.').next().map(|e| e.eq_ignore_ascii_case("hwpx")).unwrap_or(false) {
+            if r.file_name
+                .rsplit('.')
+                .next()
+                .map(|e| e.eq_ignore_ascii_case("hwpx"))
+                .unwrap_or(false)
+            {
                 let p = Path::new(&r.file_path);
                 if let (Some(dir), Some(stem)) = (p.parent(), p.file_stem()) {
-                    let key = format!("{}|{}", dir.to_string_lossy().to_lowercase(), stem.to_string_lossy().to_lowercase());
+                    let key = format!(
+                        "{}|{}",
+                        dir.to_string_lossy().to_lowercase(),
+                        stem.to_string_lossy().to_lowercase()
+                    );
                     if hwp_stems.contains(&key) {
                         r.has_hwp_pair = true;
                     }
@@ -1132,7 +1226,11 @@ impl SearchService {
             }
             let p = Path::new(&r.file_path);
             if let (Some(dir), Some(stem)) = (p.parent(), p.file_stem()) {
-                let key = format!("{}|{}", dir.to_string_lossy().to_lowercase(), stem.to_string_lossy().to_lowercase());
+                let key = format!(
+                    "{}|{}",
+                    dir.to_string_lossy().to_lowercase(),
+                    stem.to_string_lossy().to_lowercase()
+                );
                 !hwpx_stems.contains(&key)
             } else {
                 true
@@ -1401,11 +1499,7 @@ fn interpolate_page_from_snippet(
 use crate::search::nl_query::DateFilter;
 
 /// 날짜 필터 적용
-fn smart_apply_date_filter(
-    r: &SearchResult,
-    filter: &Option<DateFilter>,
-    _now: i64,
-) -> bool {
+fn smart_apply_date_filter(r: &SearchResult, filter: &Option<DateFilter>, _now: i64) -> bool {
     use chrono::{Datelike, Duration, FixedOffset};
 
     let Some(filter) = filter else { return true };
@@ -1446,9 +1540,12 @@ fn smart_apply_date_filter(
         }
         DateFilter::LastMonth => {
             // 직전 달 1일 ~ 말일
-            let first_this = chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
+            let first_this =
+                chrono::NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap();
             let last_day_prev = first_this - Duration::days(1);
-            let first_prev = chrono::NaiveDate::from_ymd_opt(last_day_prev.year(), last_day_prev.month(), 1).unwrap();
+            let first_prev =
+                chrono::NaiveDate::from_ymd_opt(last_day_prev.year(), last_day_prev.month(), 1)
+                    .unwrap();
             let s = first_prev.and_hms_opt(0, 0, 0).unwrap();
             let e = last_day_prev.and_hms_opt(23, 59, 59).unwrap();
             (kst_to_utc(&kst, s), kst_to_utc(&kst, e))
@@ -1488,11 +1585,9 @@ fn smart_apply_date_filter(
             let year = today.year();
             let first = chrono::NaiveDate::from_ymd_opt(year, *m, 1);
             let last = if *m == 12 {
-                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-                    .map(|d| d - Duration::days(1))
+                chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1).map(|d| d - Duration::days(1))
             } else {
-                chrono::NaiveDate::from_ymd_opt(year, *m + 1, 1)
-                    .map(|d| d - Duration::days(1))
+                chrono::NaiveDate::from_ymd_opt(year, *m + 1, 1).map(|d| d - Duration::days(1))
             };
             match (first, last) {
                 (Some(f), Some(l)) => {
@@ -1571,11 +1666,7 @@ fn smart_apply_exclude_filter(r: &SearchResult, exclude: &[String]) -> bool {
         return true;
     }
     let content = r.content_preview.to_lowercase();
-    let snippet = r
-        .snippet
-        .as_deref()
-        .unwrap_or("")
-        .to_lowercase();
+    let snippet = r.snippet.as_deref().unwrap_or("").to_lowercase();
     !exclude.iter().any(|term| {
         let lower = term.to_lowercase();
         content.contains(&lower) || snippet.contains(&lower)
@@ -1694,7 +1785,11 @@ mod tests {
         for tc in &scenarios {
             let result = SearchService::classify_by_keyword(tc.text);
             let ok = result == tc.expected;
-            if ok { pass += 1; } else { fail += 1; }
+            if ok {
+                pass += 1;
+            } else {
+                fail += 1;
+            }
             println!(
                 "  {} {}: 예상={}, 결과={} {}",
                 if ok { "✅" } else { "❌" },

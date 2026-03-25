@@ -54,8 +54,8 @@ fn recognize_single_batch(
         .map(|c| c.width() as f32 / c.height().max(1) as f32)
         .fold(0.0f32, f32::max);
 
-    let target_w = ((REC_HEIGHT as f32 * max_wh_ratio).ceil() as u32)
-        .clamp(REC_HEIGHT, REC_MAX_WIDTH);
+    let target_w =
+        ((REC_HEIGHT as f32 * max_wh_ratio).ceil() as u32).clamp(REC_HEIGHT, REC_MAX_WIDTH);
 
     // 전처리: resize + normalize + pad
     let pixels_per_image = 3 * REC_HEIGHT as usize * target_w as usize;
@@ -85,7 +85,8 @@ fn recognize_single_batch(
 
     let (seq_len, num_classes, flat_data) = {
         let mut sess = session.lock().unwrap_or_else(|p| p.into_inner());
-        let outputs = sess.run(ort::inputs!["x" => input])
+        let outputs = sess
+            .run(ort::inputs!["x" => input])
             .map_err(|e| super::OcrError::Inference(e.to_string()))?;
 
         let output_names: Vec<String> = outputs.keys().map(|k| k.to_string()).collect();
@@ -100,7 +101,8 @@ fn recognize_single_batch(
 
         if out_shape.len() != 3 {
             return Err(super::OcrError::Inference(format!(
-                "Unexpected recognition output dims: {}", out_shape.len()
+                "Unexpected recognition output dims: {}",
+                out_shape.len()
             )));
         }
         let sl = out_shape.get(1).map(|&d| d as usize).unwrap_or(0);
@@ -180,5 +182,10 @@ fn resize_rec(crop: &RgbImage, max_width: u32) -> RgbImage {
     let target_w = (REC_HEIGHT as f32 * ratio).ceil() as u32;
     let target_w = target_w.clamp(1, max_width);
 
-    image::imageops::resize(crop, target_w, REC_HEIGHT, image::imageops::FilterType::Lanczos3)
+    image::imageops::resize(
+        crop,
+        target_w,
+        REC_HEIGHT,
+        image::imageops::FilterType::Lanczos3,
+    )
 }

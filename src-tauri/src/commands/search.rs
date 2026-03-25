@@ -222,7 +222,10 @@ pub async fn classify_document(
 
     let (service, db_path) = {
         let container = state.read()?;
-        (container.search_service(), container.db_path.to_string_lossy().to_string())
+        (
+            container.search_service(),
+            container.db_path.to_string_lossy().to_string(),
+        )
     };
 
     // 파일의 첫 번째 청크 텍스트 가져오기
@@ -238,7 +241,10 @@ pub async fn classify_document(
         let chunks = crate::db::get_chunks_by_ids(&conn, &[chunk_ids[0]])
             .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
-        Ok(chunks.first().map(|c| c.content.clone()).unwrap_or_default())
+        Ok(chunks
+            .first()
+            .map(|c| c.content.clone())
+            .unwrap_or_default())
     })
     .await??;
 
@@ -287,7 +293,8 @@ pub async fn get_suggestions(
         let history_texts: std::collections::HashSet<String> =
             suggestions.iter().map(|s| s.text.clone()).collect();
 
-        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10 + suggestions.len()) {
+        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10 + suggestions.len())
+        {
             for (term, doc_count) in vocab {
                 if !history_texts.contains(&term) && term.len() >= 2 {
                     suggestions.push(SuggestionItem {
@@ -368,12 +375,20 @@ pub async fn get_document_statistics(
 
         let recent = crate::db::get_recent_files(&conn, 10)?
             .into_iter()
-            .map(|(path, name, modified_at)| FileEntry { path, name, value: modified_at })
+            .map(|(path, name, modified_at)| FileEntry {
+                path,
+                name,
+                value: modified_at,
+            })
             .collect();
 
         let largest = crate::db::get_largest_files(&conn, 10)?
             .into_iter()
-            .map(|(path, name, size)| FileEntry { path, name, value: size })
+            .map(|(path, name, size)| FileEntry {
+                path,
+                name,
+                value: size,
+            })
             .collect();
 
         Ok(DocumentStatistics {

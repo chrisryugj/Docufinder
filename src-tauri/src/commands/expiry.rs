@@ -1,9 +1,9 @@
+use crate::application::container::AppContainer;
 use crate::{db, ApiError, ApiResult};
-use chrono::{NaiveDate, Local};
+use chrono::{Local, NaiveDate};
 use serde::Serialize;
 use std::sync::RwLock;
 use tauri::State;
-use crate::application::container::AppContainer;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ExpiryDocument {
@@ -54,8 +54,7 @@ fn scan_documents_for_expiry(
     db_path: &std::path::Path,
     folder_path: Option<&str>,
 ) -> ApiResult<(Vec<ExpiryDocument>, usize)> {
-    let conn =
-        db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+    let conn = db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
         Some(fp) => {
@@ -66,7 +65,8 @@ fn scan_documents_for_expiry(
                  JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
                  WHERE f.path LIKE ?
                  ORDER BY f.path
-                 LIMIT 50000".to_string(),
+                 LIMIT 50000"
+                    .to_string(),
                 vec![Box::new(like) as Box<dyn rusqlite::types::ToSql>],
             )
         }
@@ -75,7 +75,8 @@ fn scan_documents_for_expiry(
              FROM files f
              JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
              ORDER BY f.path
-             LIMIT 50000".to_string(),
+             LIMIT 50000"
+                .to_string(),
             vec![],
         ),
     };
@@ -124,8 +125,16 @@ struct ExtractedExpiry {
 }
 
 const EXPIRY_KEYWORDS: &[&str] = &[
-    "만료", "유효기간", "까지", "종료", "기한", "시한",
-    "계약기간", "유효", "만기", "폐기",
+    "만료",
+    "유효기간",
+    "까지",
+    "종료",
+    "기한",
+    "시한",
+    "계약기간",
+    "유효",
+    "만기",
+    "폐기",
 ];
 
 /// 문서 내용에서 만료 관련 날짜 추출 (regex 없이 직접 파싱)
@@ -227,8 +236,8 @@ fn try_parse_date(chars: &[char], pos: usize) -> Option<(NaiveDate, usize)> {
 
 #[derive(PartialEq)]
 enum SepType {
-    Korean,  // 년, 월
-    Punct,   // . - /
+    Korean, // 년, 월
+    Punct,  // . - /
 }
 
 fn parse_separator(chars: &[char], pos: usize) -> Option<(SepType, usize)> {
@@ -263,7 +272,12 @@ fn parse_separator(chars: &[char], pos: usize) -> Option<(SepType, usize)> {
     }
 }
 
-fn parse_number(chars: &[char], pos: usize, min_digits: usize, max_digits: usize) -> Option<(u32, usize)> {
+fn parse_number(
+    chars: &[char],
+    pos: usize,
+    min_digits: usize,
+    max_digits: usize,
+) -> Option<(u32, usize)> {
     // 공백 스킵
     let mut cur = pos;
     while cur < chars.len() && chars[cur] == ' ' {

@@ -76,15 +76,13 @@ impl FilenameCache {
 
     /// DB에서 캐시 로드
     pub fn load_from_db(&self, conn: &Connection) -> Result<usize, rusqlite::Error> {
-        let mut stmt = conn.prepare(
-            &format!(
-                "SELECT id, path, name, file_type, COALESCE(size, 0), COALESCE(modified_at, 0)
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id, path, name, file_type, COALESCE(size, 0), COALESCE(modified_at, 0)
                  FROM files
                  ORDER BY name
                  LIMIT {}",
-                MAX_CACHE_ENTRIES + 1 // +1로 truncation 여부 감지 (불필요한 전체 DB 로드 방지)
-            ),
-        )?;
+            MAX_CACHE_ENTRIES + 1 // +1로 truncation 여부 감지 (불필요한 전체 DB 로드 방지)
+        ))?;
 
         let rows = stmt.query_map([], |row| {
             let name: String = row.get(2)?;
@@ -137,7 +135,12 @@ impl FilenameCache {
     }
 
     /// 파일명 검색 (폴더 범위 필터 지원)
-    pub fn search_with_scope(&self, query: &str, limit: usize, folder_scope: Option<&str>) -> Vec<FilenameEntry> {
+    pub fn search_with_scope(
+        &self,
+        query: &str,
+        limit: usize,
+        folder_scope: Option<&str>,
+    ) -> Vec<FilenameEntry> {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             return vec![];

@@ -76,8 +76,8 @@ pub async fn find_duplicates(
     };
 
     let total_files = {
-        let conn = db::get_connection(&db_path)
-            .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let conn =
+            db::get_connection(&db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
         let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &folder_path {
             Some(fp) => (
                 "SELECT COUNT(*) FROM files WHERE path LIKE ?",
@@ -86,7 +86,9 @@ pub async fn find_duplicates(
             None => ("SELECT COUNT(*) FROM files", vec![]),
         };
         let count: i64 = conn
-            .query_row(sql, rusqlite::params_from_iter(params.iter()), |row| row.get(0))
+            .query_row(sql, rusqlite::params_from_iter(params.iter()), |row| {
+                row.get(0)
+            })
             .unwrap_or(0);
         count as usize
     };
@@ -104,8 +106,7 @@ fn find_exact_duplicates(
     db_path: &std::path::Path,
     folder_path: Option<&str>,
 ) -> ApiResult<Vec<DuplicateGroup>> {
-    let conn =
-        db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+    let conn = db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     // size가 같은 파일 그룹 조회 (최소 2개 이상, 0바이트 제외)
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
@@ -123,7 +124,8 @@ fn find_exact_duplicates(
             "SELECT path, name, file_type, size, modified_at FROM files
              WHERE size > 0
              AND size IN (SELECT size FROM files WHERE size > 0 GROUP BY size HAVING COUNT(*) >= 2)
-             ORDER BY size DESC, path".to_string(),
+             ORDER BY size DESC, path"
+                .to_string(),
             vec![],
         ),
     };
@@ -208,8 +210,7 @@ fn find_similar_duplicates(
     vector_index: &std::sync::Arc<crate::search::vector::VectorIndex>,
     folder_path: Option<&str>,
 ) -> ApiResult<Vec<DuplicateGroup>> {
-    let conn =
-        db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+    let conn = db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     // 벡터 인덱싱된 파일들의 대표 청크 (chunk_index=0) 조회
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
@@ -220,7 +221,8 @@ fn find_similar_duplicates(
                  FROM files f
                  JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
                  WHERE f.vector_indexed_at IS NOT NULL AND f.path LIKE ?
-                 ORDER BY f.path".to_string(),
+                 ORDER BY f.path"
+                    .to_string(),
                 vec![Box::new(like) as Box<dyn rusqlite::types::ToSql>],
             )
         }
@@ -229,7 +231,8 @@ fn find_similar_duplicates(
              FROM files f
              JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
              WHERE f.vector_indexed_at IS NOT NULL
-             ORDER BY f.path".to_string(),
+             ORDER BY f.path"
+                .to_string(),
             vec![],
         ),
     };
@@ -338,7 +341,11 @@ fn find_similar_duplicates(
     }
 
     // 유사도 내림차순 정렬
-    groups.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+    groups.sort_by(|a, b| {
+        b.similarity
+            .partial_cmp(&a.similarity)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(groups)
 }

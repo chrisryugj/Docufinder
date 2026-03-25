@@ -23,7 +23,6 @@ pub enum RerankerError {
 
     #[error("ONNX Runtime error: {0}")]
     OrtError(String),
-
 }
 
 /// Cross-Encoder Reranker

@@ -74,9 +74,7 @@ impl NlQueryParser {
         let file_type = Self::extract_file_type(&mut remaining, &mut parse_log);
 
         // 5. 잔여 필러 단어 제거 + 토큰 정리 → keywords
-        let filler_words = [
-            "중에서", "중에", "좀",
-        ];
+        let filler_words = ["중에서", "중에", "좀"];
         let keywords = remaining
             .split_whitespace()
             .filter(|w| !filler_words.contains(w))
@@ -124,7 +122,16 @@ impl NlQueryParser {
         }
 
         // 물음표로 끝나는 패턴: "있어?", "있나?", "있을까?"
-        let q_patterns = ["있을까?", "있을까", "있어?", "있어", "있나?", "있나", "어디있어?", "어디있어"];
+        let q_patterns = [
+            "있을까?",
+            "있을까",
+            "있어?",
+            "있어",
+            "있나?",
+            "있나",
+            "어디있어?",
+            "어디있어",
+        ];
         for pat in &q_patterns {
             if let Some(prefix) = trimmed.strip_suffix(pat) {
                 return prefix.trim().to_string();
@@ -155,10 +162,7 @@ impl NlQueryParser {
                         // remaining에서 "부동산 아닌" 제거
                         let pattern = format!("{} {}", words[i - 1], words[i]);
                         *remaining = remaining.replace(&pattern, " ");
-                        *remaining = remaining
-                            .split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ");
+                        *remaining = remaining.split_whitespace().collect::<Vec<_>>().join(" ");
                         found = true;
                         break;
                     } else if words[i].ends_with(suffix) && words[i].len() > suffix.len() {
@@ -168,10 +172,7 @@ impl NlQueryParser {
                             excluded.push(target.clone());
                             parse_log.push(format!("제외: {}", target));
                             *remaining = remaining.replace(&words[i], " ");
-                            *remaining = remaining
-                                .split_whitespace()
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                            *remaining = remaining.split_whitespace().collect::<Vec<_>>().join(" ");
                             found = true;
                             break;
                         }
@@ -285,10 +286,7 @@ impl NlQueryParser {
                             result.push(' ');
                         }
                         result.push_str(remaining[end..].trim_start());
-                        *remaining = result
-                            .split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ");
+                        *remaining = result.split_whitespace().collect::<Vec<_>>().join(" ");
 
                         parse_log.push(format!("날짜: {}", dp.label));
                         return Some(dp.filter.clone());
@@ -388,27 +386,23 @@ impl NlQueryParser {
             if let Some(start_pos) = text.find(prefix) {
                 let after = &text[start_pos + prefix.len()..];
                 // 숫자 추출
-                let num_str: String = after
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect();
+                let num_str: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
                 if !num_str.is_empty() {
                     if let Ok(days) = num_str.parse::<u32>() {
                         if days > 0 && days <= 365 {
                             // "일" 접미사 확인
                             let after_num = &after[num_str.len()..];
-                            let end_offset = if after_num.starts_with(" 일")
-                                || after_num.starts_with("일")
-                            {
-                                let skip = if after_num.starts_with(" 일") {
-                                    " 일".len()
+                            let end_offset =
+                                if after_num.starts_with(" 일") || after_num.starts_with("일") {
+                                    let skip = if after_num.starts_with(" 일") {
+                                        " 일".len()
+                                    } else {
+                                        "일".len()
+                                    };
+                                    start_pos + prefix.len() + num_str.len() + skip
                                 } else {
-                                    "일".len()
+                                    start_pos + prefix.len() + num_str.len()
                                 };
-                                start_pos + prefix.len() + num_str.len() + skip
-                            } else {
-                                start_pos + prefix.len() + num_str.len()
-                            };
 
                             let mut result = String::new();
                             result.push_str(text[..start_pos].trim_end());
@@ -416,10 +410,7 @@ impl NlQueryParser {
                                 result.push(' ');
                             }
                             result.push_str(text[end_offset..].trim_start());
-                            *remaining = result
-                                .split_whitespace()
-                                .collect::<Vec<_>>()
-                                .join(" ");
+                            *remaining = result.split_whitespace().collect::<Vec<_>>().join(" ");
 
                             parse_log.push(format!("날짜: 최근 {}일", days));
                             return Some(DateFilter::RecentDays(days));
@@ -432,10 +423,7 @@ impl NlQueryParser {
     }
 
     /// 파일타입 추출
-    fn extract_file_type(
-        remaining: &mut String,
-        parse_log: &mut Vec<String>,
-    ) -> Option<String> {
+    fn extract_file_type(remaining: &mut String, parse_log: &mut Vec<String>) -> Option<String> {
         struct FileTypePattern {
             patterns: Vec<&'static str>,
             file_type: &'static str,
@@ -444,7 +432,15 @@ impl NlQueryParser {
 
         let ft_patterns = vec![
             FileTypePattern {
-                patterns: vec!["한글 문서", "한글문서", "한글 파일", "한글파일", "한글로 된", "hwpx", "hwp"],
+                patterns: vec![
+                    "한글 문서",
+                    "한글문서",
+                    "한글 파일",
+                    "한글파일",
+                    "한글로 된",
+                    "hwpx",
+                    "hwp",
+                ],
                 file_type: "hwpx",
                 label: "한글(hwpx)",
             },
@@ -477,7 +473,14 @@ impl NlQueryParser {
                 label: "엑셀(xlsx)",
             },
             FileTypePattern {
-                patterns: vec!["pdf 문서", "pdf문서", "pdf 파일", "pdf파일", "피디에프", "pdf"],
+                patterns: vec![
+                    "pdf 문서",
+                    "pdf문서",
+                    "pdf 파일",
+                    "pdf파일",
+                    "피디에프",
+                    "pdf",
+                ],
                 file_type: "pdf",
                 label: "PDF",
             },
@@ -493,12 +496,7 @@ impl NlQueryParser {
                 label: "텍스트(txt)",
             },
             FileTypePattern {
-                patterns: vec![
-                    "파워포인트",
-                    "피피티",
-                    "pptx",
-                    "ppt",
-                ],
+                patterns: vec!["파워포인트", "피피티", "pptx", "ppt"],
                 file_type: "pptx",
                 label: "파워포인트(pptx)",
             },
@@ -515,8 +513,7 @@ impl NlQueryParser {
                 let pat_lower = pat.to_lowercase();
                 if let Some(pos) = lower.find(&pat_lower) {
                     // 단어 경계 확인
-                    let before_ok =
-                        pos == 0 || remaining[..pos].ends_with(' ');
+                    let before_ok = pos == 0 || remaining[..pos].ends_with(' ');
                     let after_pos = pos + pat.len();
                     let after_ok = after_pos >= remaining.len()
                         || remaining[after_pos..].starts_with(' ')
@@ -530,7 +527,8 @@ impl NlQueryParser {
                         let mut end = after_pos;
                         let rest = &remaining[end..];
                         // 긴 패턴부터 매칭 ("으로 된" > "으로" > "로 된" > "로")
-                        for postfix in &["으로 된", "으로", "로 된", "로", "만", "에서"] {
+                        for postfix in &["으로 된", "으로", "로 된", "로", "만", "에서"]
+                        {
                             if rest.starts_with(postfix) {
                                 end += postfix.len();
                                 break;
@@ -543,10 +541,7 @@ impl NlQueryParser {
                             result.push(' ');
                         }
                         result.push_str(remaining[end..].trim_start());
-                        *remaining = result
-                            .split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ");
+                        *remaining = result.split_whitespace().collect::<Vec<_>>().join(" ");
 
                         parse_log.push(format!("파일: {}", ftp.label));
                         return Some(ftp.file_type.to_string());
@@ -683,9 +678,15 @@ mod tests {
 
     #[test]
     fn test_date_last_year_variants() {
-        for query in &["지난해 예산", "전년 실적", "전년도 결산", "작년도 보고서"] {
+        for query in &["지난해 예산", "전년 실적", "전년도 결산", "작년도 보고서"]
+        {
             let result = NlQueryParser::parse(query);
-            assert_eq!(result.date_filter, Some(DateFilter::LastYear), "failed: {}", query);
+            assert_eq!(
+                result.date_filter,
+                Some(DateFilter::LastYear),
+                "failed: {}",
+                query
+            );
         }
     }
 
@@ -806,8 +807,7 @@ mod tests {
 
     #[test]
     fn test_complex_all_features() {
-        let result =
-            NlQueryParser::parse("지난주 예산 한글 문서 부동산 빼고 찾아줘");
+        let result = NlQueryParser::parse("지난주 예산 한글 문서 부동산 빼고 찾아줘");
         assert_eq!(result.date_filter, Some(DateFilter::LastWeek));
         assert_eq!(result.file_type, Some("hwpx".to_string()));
         assert_eq!(result.exclude_keywords, vec!["부동산"]);
@@ -833,8 +833,7 @@ mod tests {
 
     #[test]
     fn test_parse_log_content() {
-        let result =
-            NlQueryParser::parse("지난주 예산 한글 문서 부동산 빼고 찾아줘");
+        let result = NlQueryParser::parse("지난주 예산 한글 문서 부동산 빼고 찾아줘");
         // parse_log에 검색어, 날짜, 파일, 제외 포함
         assert!(result.parse_log.iter().any(|l| l.contains("검색어")));
         assert!(result.parse_log.iter().any(|l| l.contains("날짜")));
