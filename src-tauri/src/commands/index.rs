@@ -1309,6 +1309,17 @@ fn spawn_startup_sync_async(app_handle: AppHandle) {
         };
 
         for folder in folders_to_sync {
+            // 각 폴더 재인덱싱 전 watcher 일시 중지
+            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(c) = cs.read() {
+                    if let Ok(wm) = c.get_watch_manager() {
+                        if let Ok(mut wm) = wm.write() {
+                            wm.pause();
+                        }
+                    }
+                }
+            }
+
             if let Err(e) = service
                 .reindex_folder(
                     Path::new(&folder),
@@ -1320,6 +1331,27 @@ fn spawn_startup_sync_async(app_handle: AppHandle) {
                 .await
             {
                 tracing::warn!("[Startup Sync] Reindex failed for {}: {}", folder, e);
+            }
+
+            // 재인덱싱 완료 후 watcher 복구
+            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(c) = cs.read() {
+                    if let Ok(conn) = crate::db::get_connection(&c.db_path) {
+                        let remaining_folders = crate::db::get_watched_folders(&conn)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|f| std::path::Path::new(f).exists())
+                            .collect::<Vec<_>>();
+
+                        if let Ok(wm) = c.get_watch_manager() {
+                            if let Ok(mut wm) = wm.write() {
+                                if !remaining_folders.is_empty() {
+                                    wm.resume_with_folders(&remaining_folders);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     });
