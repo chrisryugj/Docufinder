@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { exit } from "@tauri-apps/plugin-process";
 
 const STORAGE_KEYS = {
@@ -32,10 +33,17 @@ export function useFirstRun() {
     setIsInitialized(true);
   }, []);
 
-  const acceptDisclaimer = useCallback(() => {
+  const acceptDisclaimer = useCallback(async () => {
     localStorage.setItem(STORAGE_KEYS.DISCLAIMER_ACCEPTED, "true");
     localStorage.setItem(STORAGE_KEYS.DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION);
     setShowDisclaimer(false);
+
+    // 앱 초기화: 벡터 인덱싱 재개 + Startup Sync 시작
+    try {
+      await invoke("initialize_app");
+    } catch (e) {
+      console.error("Failed to initialize app:", e);
+    }
 
     const onboardingCompleted = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
     if (!onboardingCompleted) {
