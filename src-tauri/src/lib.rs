@@ -243,9 +243,9 @@ fn validate_vector_index(container: &AppContainer) {
     }
 }
 
-/// 미완료 벡터 인덱싱 자동 재개
-fn auto_resume_vector_indexing(app: &tauri::App) {
-    let Some(container_state) = app.try_state::<RwLock<AppContainer>>() else {
+/// 미완료 벡터 인덱싱 자동 재개 (백그라운드 blocking 스레드에서 호출)
+fn auto_resume_vector_indexing(app_handle: tauri::AppHandle) {
+    let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() else {
         return;
     };
     let Ok(container) = container_state.read() else {
@@ -285,7 +285,7 @@ fn auto_resume_vector_indexing(app: &tauri::App) {
             // 벡터 시작 전 watcher 일시 중지 (DB 동시 접근 방지)
             pause_watchers(&container);
 
-            let app_handle = app.handle().clone();
+            let app_handle = app_handle.clone();
             let started = worker.start(
                 db_path,
                 emb,
@@ -739,6 +739,20 @@ pub fn run() {
 
             // Store app container
             app.manage(RwLock::new(container));
+
+            // 미완료 벡터 인덱싱 자동 재개 (2초 후 백그라운드 — 모델 로드가 blocking이므로 spawn)
+            {
+                let ah = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    tokio::task::spawn_blocking(move || auto_resume_vector_indexing(ah))
+                        .await
+                        .ok();
+                });
+            }
+
+            // 앱 시작 시 오프라인 변경 감지 + 동기화 (1초 후 백그라운드)
+            spawn_startup_sync(app.handle().clone());
 
             // 개발 모드에서 DevTools 열기 (DEVTOOLS=1 환경변수로 제어)
             #[cfg(debug_assertions)]

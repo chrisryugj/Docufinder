@@ -96,10 +96,9 @@ fn guess_disk_type_by_letter(drive_letter: char) -> DiskType {
 
 /// 경로의 디스크 유형 감지
 ///
-/// 1. 캐시에서 조회
-/// 2. 미스 시 WMI로 정확한 MediaType 조회 시도
-/// 3. 실패 시 드라이브 문자로 추정
-/// 4. 결과를 캐시에 저장
+/// 1. 캐시에서 조회 (히트 시 즉시 반환)
+/// 2. 캐시 미스 시 fallback 즉시 반환 + 백그라운드 WMI 업데이트
+///    → DB 연결 등 startup 경로에서 PowerShell hang 방지
 pub fn detect_disk_type(path: &Path) -> DiskType {
     let drive_letter = match get_drive_letter(path) {
         Some(c) => c.to_ascii_uppercase(),
@@ -115,23 +114,22 @@ pub fn detect_disk_type(path: &Path) -> DiskType {
         }
     }
 
-    // WMI 조회 시도
-    let disk_type = if let Some(wmi_type) = query_disk_type_wmi(drive_letter) {
-        tracing::debug!("Disk type for {}: {:?} (WMI)", drive_letter, wmi_type);
-        wmi_type
-    } else {
-        // fallback: 드라이브 문자로 추정
-        let guessed = guess_disk_type_by_letter(drive_letter);
-        tracing::debug!("Disk type for {}: {:?} (guessed)", drive_letter, guessed);
-        guessed
-    };
+    // 캐시 미스 → fallback 즉시 반환 (WMI는 백그라운드에서 캐시 업데이트)
+    let guessed = guess_disk_type_by_letter(drive_letter);
+    tracing::debug!("Disk type for {}: {:?} (guessed, WMI pending)", drive_letter, guessed);
 
-    // 캐시에 저장
-    if let Ok(mut map) = cache.lock() {
-        map.insert(drive_letter, disk_type);
-    }
+    // 백그라운드에서 WMI 조회 후 캐시 갱신 (다음 호출부터 정확한 값 사용)
+    std::thread::spawn(move || {
+        if let Some(wmi_type) = query_disk_type_wmi(drive_letter) {
+            let cache = DISK_TYPE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+            if let Ok(mut map) = cache.lock() {
+                map.insert(drive_letter, wmi_type);
+                tracing::debug!("Disk type for {}: {:?} (WMI updated)", drive_letter, wmi_type);
+            }
+        }
+    });
 
-    disk_type
+    guessed
 }
 
 /// 디스크 유형에 따른 권장 설정
