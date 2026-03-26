@@ -1150,7 +1150,7 @@ pub async fn initialize_app(
     tracing::info!("Initializing app after disclaimer acceptance");
 
     // 미완료 벡터 인덱싱 자동 재개
-    {
+    let has_pending_chunks = {
         let container = state.read()?;
         let startup_settings = container.get_settings();
         let should_auto_resume = container.is_semantic_available()
@@ -1165,73 +1165,80 @@ pub async fn initialize_app(
                 return Ok(());
             };
 
-            if stats.pending_chunks > 0 {
-                tracing::info!(
-                    "Found {} pending vector chunks. Starting background indexing.",
-                    stats.pending_chunks
-                );
+            stats.pending_chunks > 0
+        } else {
+            false
+        }
+    };
 
-                // 벡터 시작 전 watcher 일시 중지 + 감시 폴더 캡처 (DB 동시 접근 방지)
-                let watched_folders = if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-                    crate::db::get_watched_folders(&conn).unwrap_or_default()
-                } else {
-                    vec![]
-                };
+    if has_pending_chunks {
+        let container = state.read()?;
+        tracing::info!("Found pending vector chunks. Starting background indexing.");
 
-                if let Ok(wm) = container.get_watch_manager() {
-                    if let Ok(mut wm) = wm.write() {
-                        wm.pause();
-                    }
-                }
+        // 벡터 시작 전 watcher 일시 중지 + 감시 폴더 캡처 (DB 동시 접근 방지)
+        let watched_folders = if let Ok(conn) = crate::db::get_connection(&container.db_path) {
+            crate::db::get_watched_folders(&conn).unwrap_or_default()
+        } else {
+            vec![]
+        };
 
-                let embedder = container.get_embedder();
-                let vector_index = container.get_vector_index();
-                let vector_worker = container.get_vector_worker();
-                let db_path = container.db_path.clone();
+        if let Ok(wm) = container.get_watch_manager() {
+            if let Ok(mut wm) = wm.write() {
+                wm.pause();
+            }
+        }
 
-                if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
-                    if let Ok(mut worker) = vector_worker.write() {
-                        let app_handle_clone = app_handle.clone();
-                        let watched_folders_clone = watched_folders.clone();
-                        let started = worker.start(
-                            db_path,
-                            emb,
-                            vi,
-                            Some(Arc::new(move |progress| {
-                                let _ =
-                                    app_handle_clone.emit("vector-indexing-progress", &progress);
-                                // 벡터 인덱싱 완료 시 watcher 재개
-                                if progress.is_complete {
-                                    if let Some(cs) = app_handle_clone.try_state::<RwLock<AppContainer>>() {
-                                        if let Ok(c) = cs.read() {
-                                            if let Ok(wm) = c.get_watch_manager() {
-                                                if let Ok(mut wm) = wm.write() {
-                                                    wm.resume_with_folders(&watched_folders_clone);
-                                                }
-                                            }
+        let embedder = container.get_embedder();
+        let vector_index = container.get_vector_index();
+        let vector_worker = container.get_vector_worker();
+        let db_path = container.db_path.clone();
+        let startup_settings = container.get_settings();
+
+        if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
+            if let Ok(mut worker) = vector_worker.write() {
+                let app_handle_clone = app_handle.clone();
+                let watched_folders_clone = watched_folders.clone();
+                let started = worker.start(
+                    db_path,
+                    emb,
+                    vi,
+                    Some(Arc::new(move |progress| {
+                        let _ =
+                            app_handle_clone.emit("vector-indexing-progress", &progress);
+                        // 벡터 인덱싱 완료 시 watcher 재개 + startup sync 시작
+                        if progress.is_complete {
+                            if let Some(cs) = app_handle_clone.try_state::<RwLock<AppContainer>>() {
+                                if let Ok(c) = cs.read() {
+                                    if let Ok(wm) = c.get_watch_manager() {
+                                        if let Ok(mut wm) = wm.write() {
+                                            wm.resume_with_folders(&watched_folders_clone);
                                         }
                                     }
                                 }
-                            })),
-                            Some(startup_settings.indexing_intensity.clone()),
-                        );
-                        if started.is_err() {
-                            // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
-                            tracing::warn!("Failed to start vector indexing worker");
-                            if let Ok(wm) = container.get_watch_manager() {
-                                if let Ok(mut wm) = wm.write() {
-                                    wm.resume_with_folders(&watched_folders);
-                                }
                             }
+                            // 벡터 완료 후 startup sync 시작
+                            spawn_startup_sync_async(app_handle_clone.clone());
+                        }
+                    })),
+                    Some(startup_settings.indexing_intensity.clone()),
+                );
+                if started.is_err() {
+                    // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
+                    tracing::warn!("Failed to start vector indexing worker");
+                    if let Ok(wm) = container.get_watch_manager() {
+                        if let Ok(mut wm) = wm.write() {
+                            wm.resume_with_folders(&watched_folders);
                         }
                     }
+                    // 벡터 실패 시에도 startup sync는 진행
+                    spawn_startup_sync_async(app_handle.clone());
                 }
             }
         }
+    } else {
+        // 벡터 인덱싱이 필요 없으면 바로 startup sync 시작
+        spawn_startup_sync_async(app_handle);
     }
-
-    // 완료된 폴더 자동 동기화 시작
-    spawn_startup_sync_async(app_handle);
 
     Ok(())
 }
