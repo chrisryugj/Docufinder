@@ -147,6 +147,13 @@
   --text-2xl: 1.953rem;   /* 31px — 페이지 타이틀 */
   --text-hero: 2.75rem;   /* 44px — 히어로 */
 
+  /* Micro-typography & Fluid Space */
+  --space-fluid-screen: clamp(2rem, 5vw, 4rem);
+  --tracking-hero: -0.04em;
+  --tracking-body: 0.01em;
+  --glass-blur: blur(16px);
+  --bg-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
   /* Easing Curves */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-sine: cubic-bezier(0.37, 0, 0.63, 1);

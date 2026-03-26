@@ -36,6 +36,14 @@ export function useAutoComplete({
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const requestIdRef = useRef(0);
 
+  // 스크롤 시 자동 닫기 (window 레벨 캡처 — 결과 영역 외 스크롤 포함)
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = () => setIsOpen(false);
+    window.addEventListener("scroll", handleScroll, { passive: true, capture: true });
+    return () => window.removeEventListener("scroll", handleScroll, { capture: true });
+  }, [isOpen]);
+
   // 쿼리 변경 시 제안 조회
   useEffect(() => {
     if (!enabled || query.trim().length < minChars) {

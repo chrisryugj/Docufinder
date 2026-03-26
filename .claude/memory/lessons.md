@@ -15,3 +15,10 @@
 | React 모달 state | 모달 닫았다 재오픈 시 이전 state 잔류 | props 변경과 내부 state가 독립적 | key prop 변경 사용 또는 `useEffect([props])` → state 초기화 |
 | React 훅 타입 정의 | updateToast 파라미터를 `type: string`으로 정의 → ToastType union 필요 | 공유 훅의 콜백 타입은 호출처 타입과 정확히 일치해야 함 | 훅 작성 시 호출처의 실제 타입 grep → import하여 재사용 |
 | 리팩토링 후 import 정리 | 공통 함수 추출 후 기존 파일에 unused import 잔존 | 코드 이동 직후 원본 파일 import 정리 필수 | 함수 추출 → cargo check → warnings 전부 정리 → 다음 단계 |
+| 미리보기 패널 연동 | 마우스 클릭으로 결과 선택 시 미리보기 안 열림 (키보드만 동작) | 새 UI 패널은 반드시 마우스+키보드 양쪽 트리거 확인 | 결과 선택 = onSelectResult prop + selectedIndex 연동 필수 |
+| JS regex.test() + g 플래그 | `regex.test()` with `g` flag → lastIndex 변경으로 교대 매칭 실패 | split(/(pattern)/)의 홀수 인덱스가 매칭 부분 | regex.test() 대신 인덱스 기반 판단 (`i % 2 === 1`) |
+| AppContainer 필드 접근 | `container.db_path()` 메서드 호출 → 실제로는 `pub db_path: PathBuf` 필드 | 서비스 접근 패턴 확인: 메서드 vs 필드 | `container.db_path.to_string_lossy()` 사용 |
+| get_connection 시그니처 | `db::get_connection(&str)` 호출 → 실제로는 `&Path` 인자 | DB 함수 시그니처 반드시 확인 | `std::path::Path::new(&db_path)` 래핑 필요 |
+| Rust borrow in loop | `Vec<&str>`로 split 결과 빌려서 같은 루프에서 `*remaining =` 재할당 → borrow 에러 | loop 내에서 원본 수정 필요하면 `Vec<String>`으로 소유해야 함 | remaining을 수정하는 루프에서는 반드시 `split().map(String::from).collect()` 사용 |
+| chrono NaiveDate API | `date_naive().with_month(1)` → Datelike trait 미 import + and_hms_opt 체인 타입 추론 실패 | chrono의 NaiveDate 메서드는 trait import + 명확한 체인 필요 | `use chrono::Datelike;` + `NaiveDate::from_ymd_opt()` → `and_hms_opt()` → `and_utc()` 순서 |
+| 계획 품질 피드백 | 첫 계획이 너무 표면적 → "대충 쓴 거 같다" 피드백 | 계획 작성 시 비판적 검토 섹션 포함, 설계 결정 근거+대안+리스크 명시 필수 | "왜 이 방식인가" + "다른 방식은 왜 안 되나" + "FTS5 NOT 제약 같은 기술적 한계" 반드시 포함 |

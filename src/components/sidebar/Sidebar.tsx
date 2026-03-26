@@ -241,17 +241,19 @@ export const Sidebar = memo(function Sidebar({
 
             {/* Footer */}
             <div
-              className="px-3 py-3 shrink-0"
+              className="px-3 py-1.5 shrink-0 flex flex-col justify-center"
               style={{
+                height: "45px",
                 borderTop: "1px solid var(--color-sidebar-border)",
+                overflow: "hidden",
               }}
             >
               <div
-                className="text-center text-xs space-y-0.5"
+                className="text-center text-[11px] leading-tight"
                 style={{ color: "var(--color-sidebar-muted)" }}
               >
                 <p>&copy; 2025&ndash;{new Date().getFullYear()} Chris Ryu</p>
-                <p>AI.Do · 서울특별시 광진구청</p>
+                <p className="text-[10px]">AI.Do · 서울특별시 광진구청</p>
               </div>
             </div>
           </>

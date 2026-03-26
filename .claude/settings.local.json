@@ -4,7 +4,9 @@
       "Skill(memory-end)",
       "Skill(memory-end:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Edit(.claude/memory/**)",
+      "Write(.claude/memory/**)"
     ]
   },
   "outputStyle": "chris-v3"
