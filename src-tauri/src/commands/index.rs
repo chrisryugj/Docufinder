@@ -1139,3 +1139,148 @@ fn log_indexing_errors(errors: &[String]) {
         }
     }
 }
+
+/// 앱 초기화: 벡터 인덱싱 재개 + Startup Sync 시작
+/// (면책 동의 후 프론트엔드에서 호출)
+#[tauri::command]
+pub async fn initialize_app(
+    app_handle: AppHandle,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
+    tracing::info!("Initializing app after disclaimer acceptance");
+
+    // 미완료 벡터 인덱싱 자동 재개
+    {
+        let container = state.read()?;
+        let startup_settings = container.get_settings();
+        let should_auto_resume = container.is_semantic_available()
+            && startup_settings.semantic_search_enabled
+            && startup_settings.vector_indexing_mode == VectorIndexingMode::Auto;
+
+        if should_auto_resume {
+            let Ok(conn) = crate::db::get_connection(&container.db_path) else {
+                return Ok(());
+            };
+            let Ok(stats) = crate::db::get_vector_indexing_stats(&conn) else {
+                return Ok(());
+            };
+
+            if stats.pending_chunks > 0 {
+                tracing::info!(
+                    "Found {} pending vector chunks. Starting background indexing.",
+                    stats.pending_chunks
+                );
+                let embedder = container.get_embedder();
+                let vector_index = container.get_vector_index();
+                let vector_worker = container.get_vector_worker();
+                let db_path = container.db_path.clone();
+
+                if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
+                    if let Ok(mut worker) = vector_worker.write() {
+                        let app_handle_clone = app_handle.clone();
+                        let started = worker.start(
+                            db_path,
+                            emb,
+                            vi,
+                            Some(Arc::new(move |progress| {
+                                let _ =
+                                    app_handle_clone.emit("vector-indexing-progress", &progress);
+                            })),
+                            Some(startup_settings.indexing_intensity.clone()),
+                        );
+                        if started.is_err() {
+                            tracing::warn!("Failed to start vector indexing worker");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 완료된 폴더 자동 동기화 시작
+    spawn_startup_sync_async(app_handle);
+
+    Ok(())
+}
+
+/// 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
+fn spawn_startup_sync_async(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        let (folders_to_sync, service, include_subfolders, max_file_size_mb, exclude_dirs) = {
+            let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
+                Some(c) => c,
+                None => return,
+            };
+            let container = match container_state.read() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let conn = match crate::db::get_connection(&container.db_path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let folder_infos = crate::db::get_watched_folders_with_info(&conn).unwrap_or_default();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            const SYNC_SKIP_SECS: i64 = 300;
+            let completed: Vec<String> = folder_infos
+                .into_iter()
+                .filter(|f| {
+                    if f.indexing_status != "completed" {
+                        return false;
+                    }
+                    match f.last_synced_at {
+                        Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
+                            tracing::debug!(
+                                "[Startup Sync] Skipping {} (synced {}s ago)",
+                                f.path,
+                                now - ts
+                            );
+                            false
+                        }
+                        _ => true,
+                    }
+                })
+                .map(|f| f.path)
+                .collect();
+
+            if completed.is_empty() {
+                return;
+            }
+
+            (
+                completed,
+                container.index_service(),
+                container.get_settings().include_subfolders,
+                container.get_settings().max_file_size_mb,
+                {
+                    let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
+                        .iter()
+                        .map(|s| s.to_string())
+                        .collect();
+                    dirs.extend(container.get_settings().exclude_dirs.clone());
+                    dirs
+                },
+            )
+        };
+
+        for folder in folders_to_sync {
+            if let Err(e) = service
+                .reindex_folder(
+                    Path::new(&folder),
+                    include_subfolders,
+                    None,
+                    max_file_size_mb,
+                    exclude_dirs.clone(),
+                )
+                .await
+            {
+                tracing::warn!("[Startup Sync] Reindex failed for {}: {}", folder, e);
+            }
+        }
+    });
+}

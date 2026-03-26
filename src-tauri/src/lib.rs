@@ -502,6 +502,11 @@ pub fn run() {
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown".to_string());
 
+        // pdf-extract 라이브러리의 알려진 패닉은 catch_unwind로 처리됨 → crash.log 오염 방지
+        if location.contains("pdf-extract") {
+            return;
+        }
+
         let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
             s.to_string()
         } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
@@ -735,12 +740,6 @@ pub fn run() {
             // Store app container
             app.manage(RwLock::new(container));
 
-            // 미완료 벡터 인덱싱 자동 재개
-            auto_resume_vector_indexing(app);
-
-            // 완료된 폴더 자동 동기화 (오프라인 변경 감지)
-            spawn_startup_sync(app.handle().clone());
-
             // 개발 모드에서 DevTools 열기 (DEVTOOLS=1 환경변수로 제어)
             #[cfg(debug_assertions)]
             if std::env::var("DEVTOOLS").unwrap_or_default() == "1" {
@@ -912,6 +911,7 @@ pub fn run() {
             commands::index::get_db_debug_info,
             commands::index::clear_all_data,
             commands::index::convert_hwp_to_hwpx,
+            commands::index::initialize_app,
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::settings::verify_admin_code,
