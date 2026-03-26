@@ -6,7 +6,7 @@
 use crate::application::services::{FolderService, IndexService, SearchService};
 use crate::commands::settings::{self, Settings, VectorIndexingMode};
 use crate::embedder::Embedder;
-use crate::indexer::manager::{IndexContext, WatchManager, WatchRuntimeSettings};
+use crate::indexer::manager::{IndexContext, WatchManager, WatchPauseHandle, WatchRuntimeSettings};
 use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
 use crate::ocr::OcrEngine;
 use crate::reranker::Reranker;
@@ -281,11 +281,14 @@ impl AppContainer {
                         hwp_auto_detect: settings.hwp_auto_detect,
                     }
                 });
+                let watch_pause_handle = WatchPauseHandle::new();
                 // 벡터 워커 트리거 콜백: watcher 증분 인덱싱 후 pending 벡터 자동 백필
                 let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = {
                     let vw = self.vector_worker.clone();
                     let db = self.db_path.clone();
                     let settings_cache = self.settings_cache.clone();
+                    let watch_pause_handle = watch_pause_handle.clone();
+                    let vector_progress_callback = self.vector_progress_callback.clone();
                     let emb = self.get_embedder().ok();
                     let vi = self.get_vector_index().ok();
                     match (emb, vi) {
@@ -303,14 +306,26 @@ impl AppContainer {
                             // 단일 write lock 스코프 (TOCTOU 방지)
                             if let Ok(mut worker) = vw.write() {
                                 if !worker.is_running() {
-                                    let _ = worker.start(
+                                    let progress_callback = vector_progress_callback
+                                        .read()
+                                        .ok()
+                                        .and_then(|cb| cb.clone());
+                                    watch_pause_handle.pause_processing();
+                                    if let Err(e) = worker.start(
                                         db.clone(),
                                         embedder.clone(),
                                         vector_index.clone(),
-                                        None,
+                                        progress_callback,
                                         Some(settings.indexing_intensity.clone()),
-                                    );
-                                    tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
+                                    ) {
+                                        watch_pause_handle.resume_processing();
+                                        tracing::warn!(
+                                            "[WatchManager] Failed to trigger vector worker after incremental update: {}",
+                                            e
+                                        );
+                                    } else {
+                                        tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
+                                    }
                                 }
                             }
                         })),
@@ -340,7 +355,7 @@ impl AppContainer {
                     ocr_engine: ocr,
                 };
 
-                WatchManager::new(ctx)
+                WatchManager::new(ctx, watch_pause_handle.shared_flag())
                     .map(|wm| Arc::new(RwLock::new(wm)))
                     .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
             })

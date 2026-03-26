@@ -19,6 +19,11 @@ pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "bmp", "tiff",
 pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     // Windows 시스템
     "windows",
+    "$windows.~bt",
+    "$windows.~ws",
+    "$winreagent",
+    "$getcurrent",
+    "$sysreset",
     "program files",
     "program files (x86)",
     "programdata",

@@ -50,6 +50,20 @@ fn extract_indexing_context(state: &State<'_, RwLock<AppContainer>>) -> ApiResul
     })
 }
 
+fn should_auto_vector(
+    ctx: &IndexingContext,
+    was_cancelled: bool,
+    indexed_count: usize,
+    skip_drive_root: bool,
+) -> bool {
+    ctx.semantic_enabled
+        && ctx.semantic_available
+        && ctx.vector_mode == VectorIndexingMode::Auto
+        && !was_cancelled
+        && indexed_count > 0
+        && !skip_drive_root
+}
+
 /// 인덱싱 완료 후 벡터 자동 시작 여부 판단 + 실행
 fn maybe_start_auto_vector(
     ctx: &IndexingContext,
@@ -58,55 +72,54 @@ fn maybe_start_auto_vector(
     indexed_count: usize,
     skip_drive_root: bool,
     state: Option<&State<'_, RwLock<AppContainer>>>,
-) {
-    let auto_vector = ctx.semantic_enabled
-        && ctx.semantic_available
-        && ctx.vector_mode == VectorIndexingMode::Auto
-        && !was_cancelled
-        && indexed_count > 0
-        && !skip_drive_root;
-    if auto_vector {
-        // 벡터 인덱싱 중 파일 감시 일시 중지 (DB 동시 접근 방지)
-        if let Some(s) = state {
-            pause_watching(s);
-        }
+) -> bool {
+    if !should_auto_vector(ctx, was_cancelled, indexed_count, skip_drive_root) {
+        return false;
+    }
 
-        let vector_callback = create_vector_progress_callback(app_handle);
-        let _ = ctx
-            .service
-            .start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()));
+    // 이미 paused 상태가 아니면 여기서 먼저 멈춘다.
+    if let Some(s) = state {
+        pause_watching(s);
+    }
+
+    let vector_callback = create_vector_progress_callback(app_handle, true);
+    match ctx
+        .service
+        .start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()))
+    {
+        Ok(true) => true,
+        Ok(false) | Err(_) => {
+            if let Some(s) = state {
+                resume_watching(s, &ctx.db_path);
+            }
+            false
+        }
     }
 }
 
-/// 파일 감시 일시 중지 (벡터 인덱싱 중 동시 접근 방지)
+/// 파일 감시 일시 중지 (인덱싱 중 DB 동시 접근 방지)
 fn pause_watching(state: &State<'_, RwLock<AppContainer>>) {
     if let Ok(container) = state.read() {
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
-                let folders = wm.watched_folders();
-                wm.unwatch_all();
-                tracing::info!("File watching paused ({} folders)", folders.len());
+                wm.pause();
             }
         }
     }
 }
 
-/// 파일 감시 재개 (향후 벡터 인덱싱 완료 콜백에서 호출)
-#[allow(dead_code)]
-fn resume_watching(
-    state: &State<'_, RwLock<AppContainer>>,
-    db_path: &std::path::PathBuf,
-) {
+/// 파일 감시 재개 (DB의 watched_folders 목록으로 전체 재등록)
+fn resume_watching(state: &State<'_, RwLock<AppContainer>>, db_path: &std::path::PathBuf) {
     if let Ok(container) = state.read() {
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
                 if let Ok(conn) = crate::db::get_connection(db_path) {
                     if let Ok(folders) = crate::db::get_watched_folders(&conn) {
-                        let folder_count = folders.len();
-                        for folder in folders {
-                            let _ = wm.watch(std::path::Path::new(&folder));
-                        }
-                        tracing::info!("File watching resumed ({} folders)", folder_count);
+                        let existing_folders: Vec<String> = folders
+                            .into_iter()
+                            .filter(|folder| Path::new(folder).exists())
+                            .collect();
+                        wm.resume_with_folders(&existing_folders);
                     }
                 }
             }
@@ -149,10 +162,19 @@ fn create_fts_progress_callback(
 
 fn create_vector_progress_callback(
     app_handle: AppHandle,
+    resume_on_complete: bool,
 ) -> Arc<dyn Fn(VectorIndexingProgress) + Send + Sync> {
     Arc::new(move |progress: VectorIndexingProgress| {
         if let Err(e) = app_handle.emit("vector-indexing-progress", &progress) {
             tracing::warn!("Failed to emit vector progress: {}", e);
+        }
+        // 벡터 완료 시 파일 감시 재개 (auto 모드에서 pause_watching 호출된 경우)
+        if progress.is_complete && resume_on_complete {
+            let state = app_handle.state::<RwLock<AppContainer>>();
+            let db_path = state.read().ok().map(|c| c.db_path.clone());
+            if let Some(db_path) = db_path {
+                resume_watching(&state, &db_path);
+            }
         }
     })
 }
@@ -225,7 +247,10 @@ pub async fn add_folder(
         },
     );
 
-    // 2. 메타데이터 스캔 (파일명 검색 즉시 가능)
+    // 2. 기존 감시 일시 중지 (FTS 배치 트랜잭션 중 DB 동시 접근 방지)
+    pause_watching(&state);
+
+    // 3. 메타데이터 스캔 (파일명 검색 즉시 가능)
     let metadata_result = ctx
         .service
         .scan_metadata_only(
@@ -268,14 +293,12 @@ pub async fn add_folder(
             if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path, "failed");
             }
+            resume_watching(&state, &ctx.db_path); // pause 해제 후 에러 반환
             return Err(ApiError::from(e));
         }
     };
 
-    // 5. 파일 감시 시작
-    start_file_watching(&state, &canonical_path)?;
-
-    // 6. FilenameCache 최종 갱신 (FTS 인덱싱 후)
+    // 5. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
     let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
@@ -306,7 +329,7 @@ pub async fn add_folder(
         );
     }
 
-    maybe_start_auto_vector(
+    let auto_vector_started = maybe_start_auto_vector(
         &ctx,
         app_handle,
         was_cancelled,
@@ -314,6 +337,10 @@ pub async fn add_folder(
         is_drive_root,
         Some(&state),
     );
+    if !auto_vector_started {
+        // 수동 벡터 모드이거나 자동 시작 대상이 아니면 여기서 watcher 재개
+        resume_watching(&state, &ctx.db_path);
+    }
 
     let message = build_result_message(
         &result,
@@ -383,6 +410,9 @@ pub async fn reindex_folder(
         let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "indexing");
     }
 
+    // 재인덱싱 전 감시 일시 중지 (FTS 배치 트랜잭션 중 DB 동시 접근 방지)
+    pause_watching(&state);
+
     // IndexService로 재인덱싱 위임
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match ctx
@@ -401,6 +431,7 @@ pub async fn reindex_folder(
             if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
             }
+            resume_watching(&state, &ctx.db_path); // pause 해제 후 에러 반환
             return Err(ApiError::from(e));
         }
     };
@@ -421,7 +452,17 @@ pub async fn reindex_folder(
         }
     }
 
-    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, false, Some(&state));
+    let auto_vector_started = maybe_start_auto_vector(
+        &ctx,
+        app_handle,
+        was_cancelled,
+        result.indexed_count,
+        false,
+        Some(&state),
+    );
+    if !auto_vector_started {
+        resume_watching(&state, &ctx.db_path);
+    }
 
     let message = build_result_message(
         &result,
@@ -476,6 +517,9 @@ pub async fn resume_indexing(
         },
     );
 
+    // sync도 배치 DB 쓰기가 길어 watcher와 충돌하므로 동일하게 pause
+    pause_watching(&state);
+
     // sync 기반 인덱싱 (추가/수정/삭제 감지)
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let sync_result = match ctx
@@ -494,12 +538,12 @@ pub async fn resume_indexing(
             if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
             }
+            resume_watching(&state, &ctx.db_path);
             return Err(ApiError::from(e));
         }
     };
 
     refresh_filename_cache(&state);
-    let _ = start_file_watching(&state, &canonical_path);
 
     let was_cancelled = sync_result.errors.iter().any(|e| e.contains("Cancelled"));
 
@@ -515,7 +559,17 @@ pub async fn resume_indexing(
         }
     }
     let indexed_count = sync_result.added + sync_result.modified;
-    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, indexed_count, false, Some(&state));
+    let auto_vector_started = maybe_start_auto_vector(
+        &ctx,
+        app_handle,
+        was_cancelled,
+        indexed_count,
+        false,
+        Some(&state),
+    );
+    if !auto_vector_started {
+        resume_watching(&state, &ctx.db_path);
+    }
 
     let message = format!(
         "동기화 완료: +{}개, -{}개, 변경없음 {}개{}",
@@ -582,13 +636,14 @@ pub async fn start_vector_indexing(
 ) -> ApiResult<()> {
     tracing::info!("Manual vector indexing requested");
 
-    let (service, semantic_enabled, intensity) = {
+    let (service, semantic_enabled, intensity, db_path) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
             container.index_service(),
             settings.semantic_search_enabled,
             settings.indexing_intensity.clone(),
+            container.db_path.clone(),
         )
     };
 
@@ -596,10 +651,28 @@ pub async fn start_vector_indexing(
         return Err(ApiError::SemanticSearchDisabled);
     }
 
-    let vector_callback = create_vector_progress_callback(app_handle);
-    service
-        .start_vector_indexing(Some(vector_callback), Some(intensity))
-        .map_err(ApiError::from)
+    if service
+        .get_vector_status()
+        .map_err(ApiError::from)?
+        .is_running
+    {
+        return Ok(());
+    }
+
+    pause_watching(&state);
+
+    let vector_callback = create_vector_progress_callback(app_handle, true);
+    match service.start_vector_indexing(Some(vector_callback), Some(intensity)) {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            resume_watching(&state, &db_path);
+            Ok(())
+        }
+        Err(e) => {
+            resume_watching(&state, &db_path);
+            Err(ApiError::from(e))
+        }
+    }
 }
 
 // ============================================
@@ -643,8 +716,8 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
         let container = state.read()?;
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
-                wm.unwatch_all();
-                tracing::info!("All watchers stopped");
+                wm.pause();
+                tracing::info!("All watchers paused and stopped");
             }
         }
     }
@@ -998,18 +1071,6 @@ pub async fn get_db_debug_info(
 // ============================================
 // Private Helpers
 // ============================================
-
-fn start_file_watching(state: &State<'_, RwLock<AppContainer>>, path: &Path) -> ApiResult<()> {
-    let container = state.read()?;
-    if let Ok(wm) = container.get_watch_manager() {
-        if let Ok(mut wm) = wm.write() {
-            if let Err(e) = wm.watch(path) {
-                tracing::warn!("Failed to start watching {}: {}", path.display(), e);
-            }
-        }
-    }
-    Ok(())
-}
 
 fn stop_file_watching(state: &State<'_, RwLock<AppContainer>>, path: &Path) -> ApiResult<()> {
     let container = state.read()?;

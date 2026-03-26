@@ -7,6 +7,7 @@
 use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
 use crate::embedder::Embedder;
+use crate::indexer::exclusions::is_excluded_dir;
 use crate::indexer::pipeline;
 use crate::ocr::OcrEngine;
 use crate::search::filename_cache::{FilenameCache, FilenameEntry};
@@ -15,9 +16,36 @@ use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watche
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
+
+#[derive(Clone)]
+pub struct WatchPauseHandle {
+    paused: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl WatchPauseHandle {
+    pub fn new() -> Self {
+        Self {
+            paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        }
+    }
+
+    pub fn shared_flag(&self) -> Arc<std::sync::atomic::AtomicBool> {
+        self.paused.clone()
+    }
+
+    pub fn pause_processing(&self) {
+        self.paused
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn resume_processing(&self) {
+        self.paused
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 /// 파일 감시 + 인덱싱 매니저
 pub struct WatchManager {
@@ -26,6 +54,11 @@ pub struct WatchManager {
     watched_folders: HashSet<PathBuf>,
     /// 🔴 Critical 버그 수정: worker thread handle 저장
     worker_thread: Option<JoinHandle<()>>,
+    /// 일시 중지 플래그 (인덱싱 중 DB 동시 접근 방지)
+    /// true이면 debounce 후 pending_files 처리를 건너뜀
+    paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// pause()가 반환될 때 watcher DB 작업이 완전히 끝났음을 보장하는 게이트
+    processing_lock: Arc<Mutex<()>>,
 }
 
 /// 인덱싱에 필요한 컨텍스트
@@ -58,9 +91,16 @@ pub type WatchRuntimeSettingsProvider = Arc<dyn Fn() -> WatchRuntimeSettings + S
 
 impl WatchManager {
     /// 새 WatchManager 생성 및 백그라운드 스레드 시작
-    pub fn new(ctx: IndexContext) -> Result<Self, notify::Error> {
+    pub fn new(
+        ctx: IndexContext,
+        paused: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<Self, notify::Error> {
         let (event_tx, event_rx) = mpsc::channel::<Event>();
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
+
+        let paused_for_loop = paused.clone();
+        let processing_lock = Arc::new(Mutex::new(()));
+        let processing_lock_for_loop = processing_lock.clone();
 
         // 파일 변경 이벤트를 채널로 전송
         let watcher = RecommendedWatcher::new(
@@ -74,7 +114,13 @@ impl WatchManager {
 
         // 백그라운드 이벤트 처리 스레드 (handle 저장)
         let worker_thread = thread::spawn(move || {
-            Self::event_loop(event_rx, stop_rx, ctx);
+            Self::event_loop(
+                event_rx,
+                stop_rx,
+                ctx,
+                paused_for_loop,
+                processing_lock_for_loop,
+            );
         });
 
         Ok(Self {
@@ -82,11 +128,17 @@ impl WatchManager {
             stop_tx,
             watched_folders: HashSet::new(),
             worker_thread: Some(worker_thread),
+            paused,
+            processing_lock,
         })
     }
 
     /// 폴더 감시 시작
     pub fn watch(&mut self, path: &Path) -> Result<(), notify::Error> {
+        if self.watched_folders.contains(path) {
+            tracing::debug!("Already watching: {:?}", path);
+            return Ok(());
+        }
         self.watcher.watch(path, RecursiveMode::Recursive)?;
         self.watched_folders.insert(path.to_path_buf());
         tracing::info!("Started watching: {:?}", path);
@@ -115,6 +167,37 @@ impl WatchManager {
         tracing::info!("All watchers stopped");
     }
 
+    /// 파일 감시 일시 중지 (인덱싱 중 DB 동시 접근 방지)
+    ///
+    /// 1. paused=true → worker_thread가 debounce 후 pending_files를 버림
+    /// 2. unwatch_all() → 새 이벤트 수신 차단
+    pub fn pause(&mut self) {
+        self.paused
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.unwatch_all();
+        drop(
+            self.processing_lock
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
+        tracing::info!("File watching paused");
+    }
+
+    /// 파일 감시 재개 (폴더 목록으로 재등록)
+    ///
+    /// watch() 등록 완료 후 paused=false 설정하여
+    /// 이벤트가 처리 준비된 후에만 활성화
+    pub fn resume_with_folders(&mut self, folders: &[String]) {
+        for folder in folders {
+            if let Err(e) = self.watch(Path::new(folder)) {
+                tracing::warn!("Failed to resume watching {:?}: {}", folder, e);
+            }
+        }
+        self.paused
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        tracing::info!("File watching resumed ({} folders)", folders.len());
+    }
+
     /// 🔴 Critical 버그 수정: 명시적 종료 메서드
     ///
     /// stop 신호 전송 후 worker thread가 종료될 때까지 대기
@@ -136,7 +219,13 @@ impl WatchManager {
     }
 
     /// 이벤트 처리 루프
-    fn event_loop(event_rx: Receiver<Event>, stop_rx: Receiver<()>, ctx: IndexContext) {
+    fn event_loop(
+        event_rx: Receiver<Event>,
+        stop_rx: Receiver<()>,
+        ctx: IndexContext,
+        paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        processing_lock: Arc<Mutex<()>>,
+    ) {
         // 디바운스를 위한 대기 중인 파일들
         let mut pending_files: HashSet<PathBuf> = HashSet::new();
         let mut last_event_time = std::time::Instant::now();
@@ -163,7 +252,18 @@ impl WatchManager {
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // 디바운스 시간이 지났고 대기 중인 파일이 있으면 처리
                     if !pending_files.is_empty() && last_event_time.elapsed() >= debounce_duration {
-                        Self::process_pending_files(&mut pending_files, &ctx);
+                        let _guard = processing_lock.lock().unwrap_or_else(|e| e.into_inner());
+                        if paused.load(std::sync::atomic::Ordering::Relaxed) {
+                            // 일시 중지 상태: pending_files 버림 (인덱싱 완료 후 resume 시 재감지됨)
+                            let count = pending_files.len();
+                            pending_files.clear();
+                            tracing::debug!(
+                                "File watching paused: discarded {} pending changes",
+                                count
+                            );
+                        } else {
+                            Self::process_pending_files(&mut pending_files, &ctx);
+                        }
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -189,13 +289,9 @@ impl WatchManager {
 
             // 제외 디렉토리 하위 파일 스킵
             if !excluded_dirs.is_empty() {
-                let is_excluded = path.ancestors().any(|ancestor| {
-                    ancestor
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|name| excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)))
-                        .unwrap_or(false)
-                });
+                let is_excluded = path
+                    .ancestors()
+                    .any(|ancestor| is_excluded_dir(ancestor, excluded_dirs));
                 if is_excluded {
                     continue;
                 }

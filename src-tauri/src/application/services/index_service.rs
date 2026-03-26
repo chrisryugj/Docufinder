@@ -202,7 +202,7 @@ impl IndexService {
         &self,
         progress_callback: Option<VectorProgressCallback>,
         intensity: Option<crate::commands::settings::IndexingIntensity>,
-    ) -> AppResult<()> {
+    ) -> AppResult<bool> {
         let embedder = self
             .embedder
             .as_ref()
@@ -217,19 +217,21 @@ impl IndexService {
             .write()
             .map_err(|e| AppError::Internal(format!("VectorWorker lock failed: {}", e)))?;
 
-        if !worker.is_running() {
-            worker
-                .start(
-                    self.db_path.clone(),
-                    embedder.clone(),
-                    vector_index.clone(),
-                    progress_callback,
-                    intensity,
-                )
-                .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+        if worker.is_running() {
+            return Ok(false);
         }
 
-        Ok(())
+        worker
+            .start(
+                self.db_path.clone(),
+                embedder.clone(),
+                vector_index.clone(),
+                progress_callback,
+                intensity,
+            )
+            .map_err(|e| AppError::IndexingFailed(e.to_string()))?;
+
+        Ok(true)
     }
 
     /// 인덱싱 취소

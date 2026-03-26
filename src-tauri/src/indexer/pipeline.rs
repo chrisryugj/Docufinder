@@ -8,6 +8,7 @@ pub use super::sync::*;
 
 use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
+use crate::indexer::exclusions::is_excluded_dir;
 use crate::ocr::OcrEngine;
 use crate::parsers::{parse_file, ParsedDocument};
 
@@ -645,7 +646,7 @@ pub fn scan_metadata_only(
                     return false;
                 }
                 // 제외 디렉토리 목록 체크
-                if excluded_dirs.iter().any(|ex| name.eq_ignore_ascii_case(ex)) {
+                if is_excluded_dir(e.path(), excluded_dirs) {
                     return false;
                 }
             }

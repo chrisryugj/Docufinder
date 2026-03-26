@@ -192,22 +192,26 @@ fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, 
 }
 
 /// 기존 감시 폴더들 자동 감시 복원
+fn pause_watchers(container: &AppContainer) {
+    if let Ok(wm) = container.get_watch_manager() {
+        if let Ok(mut wm) = wm.write() {
+            wm.pause();
+        }
+    }
+}
+
+/// 기존 감시 폴더들 자동 감시 복원
 fn resume_watchers(container: &AppContainer) {
     if let Ok(conn) = db::get_connection(&container.db_path) {
         if let Ok(folders) = db::get_watched_folders(&conn) {
-            if !folders.is_empty() {
+            let existing_folders: Vec<String> = folders
+                .into_iter()
+                .filter(|folder| std::path::Path::new(folder).exists())
+                .collect();
+            if !existing_folders.is_empty() {
                 if let Ok(wm) = container.get_watch_manager() {
                     if let Ok(mut wm) = wm.write() {
-                        for folder in folders {
-                            let path = std::path::Path::new(&folder);
-                            if path.exists() {
-                                if let Err(e) = wm.watch(path) {
-                                    tracing::warn!("Failed to watch {}: {}", folder, e);
-                                } else {
-                                    tracing::info!("Resumed watching: {}", folder);
-                                }
-                            }
-                        }
+                        wm.resume_with_folders(&existing_folders);
                     }
                 }
             }
@@ -278,16 +282,30 @@ fn auto_resume_vector_indexing(app: &tauri::App) {
 
     if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
         if let Ok(mut worker) = vector_worker.write() {
+            // 벡터 시작 전 watcher 일시 중지 (DB 동시 접근 방지)
+            pause_watchers(&container);
+
             let app_handle = app.handle().clone();
-            let _ = worker.start(
+            let started = worker.start(
                 db_path,
                 emb,
                 vi,
                 Some(Arc::new(move |progress| {
                     let _ = app_handle.emit("vector-indexing-progress", &progress);
+                    if progress.is_complete {
+                        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(c) = cs.read() {
+                                resume_watchers(&c);
+                            }
+                        }
+                    }
                 })),
                 Some(startup_settings.indexing_intensity.clone()),
             );
+            if started.is_err() {
+                // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
+                resume_watchers(&container);
+            }
         }
     }
 }
@@ -371,6 +389,12 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                 continue;
             }
 
+            if let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(container) = container_state.read() {
+                    pause_watchers(&container);
+                }
+            }
+
             let ah = app_handle.clone();
             let progress_cb: Box<
                 dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync,
@@ -425,6 +449,12 @@ fn spawn_startup_sync(app_handle: tauri::AppHandle) {
                 }
                 Err(e) => {
                     tracing::warn!("[Startup Sync] Failed to sync {}: {}", folder, e);
+                }
+            }
+
+            if let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(container) = container_state.read() {
+                    resume_watchers(&container);
                 }
             }
         }
@@ -649,6 +679,23 @@ pub fn run() {
                 container.set_hwp_detected_callback(Arc::new(move |paths| {
                     tracing::info!("[WatchManager] HWP files detected: {} files", paths.len());
                     let _ = app_handle.emit("hwp-files-detected", paths);
+                }));
+            }
+
+            // watcher가 자동 트리거한 벡터 인덱싱도 완료 시 watcher를 정상 재개해야 한다.
+            {
+                let app_handle = app.handle().clone();
+                container.set_vector_progress_callback(Arc::new(move |progress| {
+                    let _ = app_handle.emit("vector-indexing-progress", &progress);
+                    if progress.is_complete {
+                        if let Some(container_state) =
+                            app_handle.try_state::<RwLock<AppContainer>>()
+                        {
+                            if let Ok(container) = container_state.read() {
+                                resume_watchers(&container);
+                            }
+                        }
+                    }
                 }));
             }
 

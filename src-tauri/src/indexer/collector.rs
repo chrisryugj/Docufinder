@@ -4,6 +4,7 @@
 //! 파일 메타데이터만 DB에 저장하는 기능 제공
 
 use crate::db;
+use crate::indexer::exclusions::is_excluded_dir;
 use crate::indexer::pipeline::IndexError;
 
 use rusqlite::Connection;
@@ -115,10 +116,7 @@ fn collect_files_recursive(
             }
 
             // 제외 디렉토리 목록에 포함된 폴더 스킵
-            if excluded_dirs
-                .iter()
-                .any(|ex| dir_name.eq_ignore_ascii_case(ex))
-            {
+            if is_excluded_dir(&path, excluded_dirs) {
                 tracing::debug!("Skipping excluded dir: {:?}", path);
                 continue;
             }
