@@ -21,6 +21,7 @@ import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
+import { FloatingErrorBanner } from "./components/layout/FloatingErrorBanner";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
@@ -393,6 +394,14 @@ function App() {
   const autoCompleteCloseRef = useRef(autoComplete.close);
   autoCompleteCloseRef.current = autoComplete.close;
 
+  // 결과 등장 후 800ms 뒤 추천어 자동 닫기
+  useEffect(() => {
+    if (!autoComplete.isOpen) return;
+    if (results.length === 0 && filenameResults.length === 0) return;
+    const timer = setTimeout(() => autoCompleteCloseRef.current(), 800);
+    return () => clearTimeout(timer);
+  }, [results, filenameResults, autoComplete.isOpen]);
+
   // 자동완성 항목 선택
   const handleSuggestionSelect = useCallback(
     (text: string) => {
@@ -519,6 +528,13 @@ function App() {
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* Noise texture overlay */}
       <div className="noise-overlay" aria-hidden="true" />
+
+      {/* Floating Alerts (API Key warnings, etc) */}
+      <FloatingErrorBanner 
+        message={aiError?.toLowerCase().includes("api") ? aiError : null} 
+        isError={true} 
+        onDismiss={clearAiAnalysis} 
+      />
 
       {/* OTA 업데이트 배너 */}
       <UpdateBanner updater={updater} />
@@ -684,8 +700,8 @@ function App() {
               <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
             )}
 
-            <main className="px-6 pb-20">
-              <div className={`mx-auto mt-4 ${previewFilePath ? "max-w-3xl" : "max-w-4xl"}`}>
+            <main className="px-5 sm:px-8 pb-20 h-full">
+              <div className={`mx-auto mt-4 h-full ${query.trim() ? (previewFilePath ? "max-w-3xl" : "max-w-4xl") : "w-full max-w-[1400px]"}`}>
                 {/* 유사 문서 결과 배너 */}
                 {similarResults.length > 0 && (
                   <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>
@@ -736,11 +752,11 @@ function App() {
                 )}
 
                 {/* AI 답변 패널 */}
-                {aiEnabled && (aiAnalysis || isAiLoading || aiError) && (
+                {aiEnabled && (aiAnalysis || isAiLoading || (aiError && !aiError.toLowerCase().includes("api"))) && (
                   <AiAnswerPanel
                     analysis={aiAnalysis}
                     isLoading={isAiLoading}
-                    error={aiError}
+                    error={aiError && !aiError.toLowerCase().includes("api") ? aiError : null}
                     onDismiss={clearAiAnalysis}
                     onOpenFile={(filePath) => handleOpenFile(filePath, undefined)}
                   />
@@ -774,6 +790,7 @@ function App() {
                   recentSearches={recentSearches}
                   onSelectSearch={handleSelectSearch}
                   semanticEnabled={semanticEnabled}
+                  onAddFolder={handleAddFolder}
                   onSelectResult={setSelectedIndex}
                   onFindSimilar={semanticEnabled ? handleFindSimilar : undefined}
                   categories={categories}

@@ -57,6 +57,7 @@ fn maybe_start_auto_vector(
     was_cancelled: bool,
     indexed_count: usize,
     skip_drive_root: bool,
+    state: Option<&State<'_, RwLock<AppContainer>>>,
 ) {
     let auto_vector = ctx.semantic_enabled
         && ctx.semantic_available
@@ -65,10 +66,51 @@ fn maybe_start_auto_vector(
         && indexed_count > 0
         && !skip_drive_root;
     if auto_vector {
+        // 벡터 인덱싱 중 파일 감시 일시 중지 (DB 동시 접근 방지)
+        if let Some(s) = state {
+            pause_watching(s);
+        }
+
         let vector_callback = create_vector_progress_callback(app_handle);
         let _ = ctx
             .service
             .start_vector_indexing(Some(vector_callback), Some(ctx.intensity.clone()));
+    }
+}
+
+/// 파일 감시 일시 중지 (벡터 인덱싱 중 동시 접근 방지)
+fn pause_watching(state: &State<'_, RwLock<AppContainer>>) {
+    if let Ok(container) = state.read() {
+        if let Ok(wm) = container.get_watch_manager() {
+            if let Ok(mut wm) = wm.write() {
+                let folders = wm.watched_folders();
+                wm.unwatch_all();
+                tracing::info!("File watching paused ({} folders)", folders.len());
+            }
+        }
+    }
+}
+
+/// 파일 감시 재개 (향후 벡터 인덱싱 완료 콜백에서 호출)
+#[allow(dead_code)]
+fn resume_watching(
+    state: &State<'_, RwLock<AppContainer>>,
+    db_path: &std::path::PathBuf,
+) {
+    if let Ok(container) = state.read() {
+        if let Ok(wm) = container.get_watch_manager() {
+            if let Ok(mut wm) = wm.write() {
+                if let Ok(conn) = crate::db::get_connection(db_path) {
+                    if let Ok(folders) = crate::db::get_watched_folders(&conn) {
+                        let folder_count = folders.len();
+                        for folder in folders {
+                            let _ = wm.watch(std::path::Path::new(&folder));
+                        }
+                        tracing::info!("File watching resumed ({} folders)", folder_count);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -270,6 +312,7 @@ pub async fn add_folder(
         was_cancelled,
         result.indexed_count,
         is_drive_root,
+        Some(&state),
     );
 
     let message = build_result_message(
@@ -378,7 +421,7 @@ pub async fn reindex_folder(
         }
     }
 
-    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, false);
+    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, result.indexed_count, false, Some(&state));
 
     let message = build_result_message(
         &result,
@@ -472,7 +515,7 @@ pub async fn resume_indexing(
         }
     }
     let indexed_count = sync_result.added + sync_result.modified;
-    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, indexed_count, false);
+    maybe_start_auto_vector(&ctx, app_handle, was_cancelled, indexed_count, false, Some(&state));
 
     let message = format!(
         "동기화 완료: +{}개, -{}개, 변경없음 {}개{}",
@@ -595,7 +638,7 @@ pub async fn cancel_vector_indexing(state: State<'_, RwLock<AppContainer>>) -> A
 pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Clearing all data...");
 
-    // 파일 감시 모두 중지
+    // 1. 파일 감시 모두 중지
     {
         let container = state.read()?;
         if let Ok(wm) = container.get_watch_manager() {
@@ -606,7 +649,26 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
         }
     }
 
-    // 단일 lock 스코프에서 service와 filename_cache 추출 (worker.join()이 동기적 대기를 보장)
+    // 2. 인덱싱 취소 + 벡터 인덱싱 취소 + 워커 정지 대기
+    {
+        let container = state.read()?;
+        let service = container.index_service();
+
+        // FTS 인덱싱 취소
+        service.cancel_indexing();
+        tracing::info!("FTS indexing cancelled");
+
+        // 벡터 인덱싱 취소 (clear_all에서도 하지만, 사전에 신호 보내기)
+        if container.get_vector_index().is_ok() {
+            let _ = service.cancel_vector_indexing();
+            tracing::info!("Vector indexing cancelled");
+        }
+    }
+
+    // 잠시 대기 (워커들이 정지될 시간 확보) - 최대 2초
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    // 3. 모든 데이터 클리어
     let (service, filename_cache) = {
         let container = state.read()?;
         (container.index_service(), container.get_filename_cache())

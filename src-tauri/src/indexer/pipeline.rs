@@ -220,13 +220,27 @@ fn index_folder_fts_impl(
     });
 
     // 메타데이터 전용 파일 배치 저장 (파일명 검색용, 콘텐츠 파싱 없음)
-    if !metadata_only.is_empty() {
+    // 필터: 문서 확장자만 저장 (DLL, INI, 압축파일 등은 제외)
+    let metadata_docs: Vec<_> = metadata_only
+        .iter()
+        .filter(|p| {
+            let ext = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            // hwp, md, txt 등 문서류만 허용
+            matches!(ext.as_str(), "txt" | "md" | "hwp" | "pdf")
+        })
+        .collect();
+
+    if !metadata_docs.is_empty() {
         tracing::info!(
-            "[FTS] Storing metadata for {} non-parseable files",
-            metadata_only.len()
+            "[FTS] Storing metadata for {} document files",
+            metadata_docs.len()
         );
         let _ = conn.execute_batch("BEGIN");
-        for (i, path) in metadata_only.iter().enumerate() {
+        for (i, path) in metadata_docs.iter().enumerate() {
             if cancel_flag.load(Ordering::Relaxed) {
                 break;
             }

@@ -81,7 +81,7 @@ fn default_include_subfolders() -> bool {
 }
 
 fn default_max_file_size_mb() -> u64 {
-    200
+    400
 }
 
 fn default_results_per_page() -> usize {
@@ -160,7 +160,7 @@ impl Default for Settings {
             semantic_search_enabled: false,
             vector_indexing_mode: VectorIndexingMode::Manual,
             indexing_intensity: IndexingIntensity::Balanced,
-            max_file_size_mb: 200,
+            max_file_size_mb: 400,
             results_per_page: 50,
             data_root: None,
             exclude_dirs: Vec::new(),

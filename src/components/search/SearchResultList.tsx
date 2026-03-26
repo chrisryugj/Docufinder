@@ -57,6 +57,8 @@ interface SearchResultListProps {
   onSelectResult?: (index: number) => void;
   /** 유사 문서 찾기 콜백 */
   onFindSimilar?: (filePath: string) => void;
+  /** 폴더 추가 콜백 */
+  onAddFolder?: () => void;
   /** 파일별 카테고리 맵 */
   categories?: Record<string, string>;
   /** 검색 패러다임 (즉시/자연어) */
@@ -104,6 +106,7 @@ export const SearchResultList = memo(function SearchResultList({
   semanticEnabled,
   onSelectResult,
   onFindSimilar,
+  onAddFolder,
   categories,
   paradigm = "instant",
   nlSubmitted = false,
@@ -423,6 +426,7 @@ export const SearchResultList = memo(function SearchResultList({
       recentSearches={recentSearches}
       onSelectSearch={onSelectSearch}
       semanticEnabled={semanticEnabled}
+      onAddFolder={onAddFolder}
     />
   );
 });

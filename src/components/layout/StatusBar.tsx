@@ -39,10 +39,15 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
 
   return (
     <footer
-      className="px-3 py-1.5 border-t"
+      className="px-3 py-2 border-t"
       style={{
         backgroundColor: "var(--color-bg-secondary)",
         borderColor: "var(--color-border)",
+        height: "45px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        overflow: "hidden",
       }}
     >
       {isIndexing ? (
@@ -97,15 +102,13 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           </div>
 
           {/* 현재 파일명 */}
-          {progress.current_file && (
-            <div
-              className="text-[11px] truncate"
-              style={{ color: "var(--color-text-muted)" }}
-              title={cleanPath(progress.current_file)}
-            >
-              {cleanPath(progress.current_file)}
-            </div>
-          )}
+          <div
+            className="text-[11px] truncate h-4"
+            style={{ color: "var(--color-text-muted)" }}
+            title={progress.current_file ? cleanPath(progress.current_file) : ""}
+          >
+            {progress.current_file ? cleanPath(progress.current_file) : ""}
+          </div>
         </div>
       ) : isVectorIndexing ? (
         <div className="space-y-1">
@@ -148,15 +151,13 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           </div>
 
           {/* 현재 파일명 */}
-          {vectorStatus.current_file && (
-            <div
-              className="text-[11px] truncate"
-              style={{ color: "var(--color-text-muted)" }}
-              title={cleanPath(vectorStatus.current_file)}
-            >
-              {cleanPath(vectorStatus.current_file)}
-            </div>
-          )}
+          <div
+            className="text-[11px] truncate h-4"
+            style={{ color: "var(--color-text-muted)" }}
+            title={vectorStatus.current_file ? cleanPath(vectorStatus.current_file) : ""}
+          >
+            {vectorStatus.current_file ? cleanPath(vectorStatus.current_file) : ""}
+          </div>
         </div>
       ) : (
         <div
