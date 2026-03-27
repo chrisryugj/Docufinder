@@ -109,7 +109,9 @@ fn pause_watching(state: &State<'_, RwLock<AppContainer>>) {
 }
 
 /// 파일 감시 재개 (DB의 watched_folders 목록으로 전체 재등록)
+/// 재개 전 WAL checkpoint 수행 (대량 인덱싱 후 WAL 파일 크기 관리)
 fn resume_watching(state: &State<'_, RwLock<AppContainer>>, db_path: &std::path::PathBuf) {
+    crate::db::wal_checkpoint(db_path);
     if let Ok(container) = state.read() {
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
@@ -607,7 +609,11 @@ pub async fn resume_indexing(
 pub async fn get_index_status(state: State<'_, RwLock<AppContainer>>) -> ApiResult<IndexStatus> {
     let (service, model_available, filename_cache) = {
         let container = state.read()?;
-        (container.index_service(), container.is_semantic_available(), container.get_filename_cache())
+        (
+            container.index_service(),
+            container.is_semantic_available(),
+            container.get_filename_cache(),
+        )
     };
     let mut status = service.get_status().await.map_err(ApiError::from)?;
     // OnceCell 초기화 여부가 아닌 모델 파일 존재 여부로 판단
@@ -1195,27 +1201,41 @@ pub async fn initialize_app(
     };
 
     if has_pending_chunks {
-        let container = state.read()?;
         tracing::info!("Found pending vector chunks. Starting background indexing.");
 
-        // 벡터 시작 전 watcher 일시 중지 + 감시 폴더 캡처 (DB 동시 접근 방지)
-        let watched_folders = if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-            crate::db::get_watched_folders(&conn).unwrap_or_default()
-        } else {
-            vec![]
-        };
+        // read lock을 최소 범위로 유지하고, 필요한 데이터만 추출
+        let (
+            embedder,
+            vector_index,
+            vector_worker,
+            db_path,
+            intensity,
+            watched_folders,
+            watch_manager,
+        ) = {
+            let container = state.read()?;
+            let watched_folders = if let Ok(conn) = crate::db::get_connection(&container.db_path) {
+                crate::db::get_watched_folders(&conn).unwrap_or_default()
+            } else {
+                vec![]
+            };
+            (
+                container.get_embedder(),
+                container.get_vector_index(),
+                container.get_vector_worker(),
+                container.db_path.clone(),
+                container.get_settings().indexing_intensity.clone(),
+                watched_folders,
+                container.get_watch_manager(),
+            )
+        }; // read lock 해제
 
-        if let Ok(wm) = container.get_watch_manager() {
+        // watcher 일시 중지 (lock 해제 후 별도 수행)
+        if let Ok(ref wm) = watch_manager {
             if let Ok(mut wm) = wm.write() {
                 wm.pause();
             }
         }
-
-        let embedder = container.get_embedder();
-        let vector_index = container.get_vector_index();
-        let vector_worker = container.get_vector_worker();
-        let db_path = container.db_path.clone();
-        let startup_settings = container.get_settings();
 
         if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
             if let Ok(mut worker) = vector_worker.write() {
@@ -1226,8 +1246,7 @@ pub async fn initialize_app(
                     emb,
                     vi,
                     Some(Arc::new(move |progress| {
-                        let _ =
-                            app_handle_clone.emit("vector-indexing-progress", &progress);
+                        let _ = app_handle_clone.emit("vector-indexing-progress", &progress);
                         // 벡터 인덱싱 완료 시 watcher 재개 + startup sync 시작
                         if progress.is_complete {
                             if let Some(cs) = app_handle_clone.try_state::<RwLock<AppContainer>>() {
@@ -1243,17 +1262,16 @@ pub async fn initialize_app(
                             spawn_startup_sync_async(app_handle_clone.clone());
                         }
                     })),
-                    Some(startup_settings.indexing_intensity.clone()),
+                    Some(intensity),
                 );
                 if started.is_err() {
                     // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
                     tracing::warn!("Failed to start vector indexing worker");
-                    if let Ok(wm) = container.get_watch_manager() {
+                    if let Ok(ref wm) = watch_manager {
                         if let Ok(mut wm) = wm.write() {
                             wm.resume_with_folders(&watched_folders);
                         }
                     }
-                    // 벡터 실패 시에도 startup sync는 진행
                     spawn_startup_sync_async(app_handle.clone());
                 }
             }
@@ -1331,21 +1349,38 @@ fn spawn_startup_sync_async(app_handle: AppHandle) {
             )
         };
 
-        for folder in folders_to_sync {
-            // 각 폴더 재인덱싱 전 watcher 일시 중지
-            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
-                if let Ok(c) = cs.read() {
-                    if let Ok(wm) = c.get_watch_manager() {
-                        if let Ok(mut wm) = wm.write() {
-                            wm.pause();
-                        }
+        let db_path = {
+            let cs = match app_handle.try_state::<RwLock<AppContainer>>() {
+                Some(c) => c,
+                None => return,
+            };
+            cs.read().map(|c| c.db_path.clone()).unwrap_or_default()
+        };
+
+        // 전체 루프를 하나의 pause/resume로 감싸기 (매 폴더 pause/resume 오버헤드 제거)
+        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+            if let Ok(c) = cs.read() {
+                if let Ok(wm) = c.get_watch_manager() {
+                    if let Ok(mut wm) = wm.write() {
+                        wm.pause();
                     }
                 }
             }
+        }
 
-            if let Err(e) = service
-                .reindex_folder(
-                    Path::new(&folder),
+        let mut total_added = 0usize;
+        let mut total_deleted = 0usize;
+
+        for folder in &folders_to_sync {
+            let path = std::path::Path::new(folder);
+            if !path.exists() {
+                continue;
+            }
+
+            // sync_folder: diff 기반 (추가/삭제만 처리, 전체 재인덱싱 아님)
+            match service
+                .sync_folder(
+                    path,
                     include_subfolders,
                     None,
                     max_file_size_mb,
@@ -1353,29 +1388,59 @@ fn spawn_startup_sync_async(app_handle: AppHandle) {
                 )
                 .await
             {
-                tracing::warn!("[Startup Sync] Reindex failed for {}: {}", folder, e);
+                Ok(result) => {
+                    total_added += result.added;
+                    total_deleted += result.deleted;
+                    if let Ok(conn) = crate::db::get_connection(&db_path) {
+                        let _ = crate::db::update_last_synced_at(&conn, folder);
+                    }
+                    if result.added > 0 || result.deleted > 0 {
+                        tracing::info!(
+                            "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
+                            folder,
+                            result.added,
+                            result.deleted,
+                            result.unchanged
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[Startup Sync] Sync failed for {}: {}", folder, e);
+                }
             }
+        }
 
-            // 재인덱싱 완료 후 watcher 복구
-            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
-                if let Ok(c) = cs.read() {
-                    if let Ok(conn) = crate::db::get_connection(&c.db_path) {
-                        let remaining_folders = crate::db::get_watched_folders(&conn)
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|f| std::path::Path::new(f).exists())
-                            .collect::<Vec<_>>();
-
-                        if let Ok(wm) = c.get_watch_manager() {
-                            if let Ok(mut wm) = wm.write() {
-                                if !remaining_folders.is_empty() {
-                                    wm.resume_with_folders(&remaining_folders);
-                                }
-                            }
+        // 루프 완료 후 watcher 복구
+        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+            if let Ok(c) = cs.read() {
+                if let Ok(conn) = crate::db::get_connection(&c.db_path) {
+                    let remaining = crate::db::get_watched_folders(&conn)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|f| std::path::Path::new(f).exists())
+                        .collect::<Vec<_>>();
+                    if let Ok(wm) = c.get_watch_manager() {
+                        if let Ok(mut wm) = wm.write() {
+                            wm.resume_with_folders(&remaining);
                         }
                     }
                 }
             }
+        }
+
+        if total_added > 0 || total_deleted > 0 {
+            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
+                if let Ok(c) = cs.read() {
+                    let _ = c.load_filename_cache();
+                }
+            }
+            tracing::info!(
+                "[Startup Sync] Complete: {} added, {} deleted",
+                total_added,
+                total_deleted
+            );
+        } else {
+            tracing::info!("[Startup Sync] No offline changes detected");
         }
     });
 }

@@ -22,28 +22,54 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct WatchPauseHandle {
-    paused: Arc<std::sync::atomic::AtomicBool>,
+    pause_count: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl WatchPauseHandle {
     pub fn new() -> Self {
         Self {
-            paused: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            pause_count: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
-    pub fn shared_flag(&self) -> Arc<std::sync::atomic::AtomicBool> {
-        self.paused.clone()
+    pub fn shared_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
+        self.pause_count.clone()
     }
 
+    /// Soft pause: 카운터만 증가 (unwatch 없음, 중첩 가능)
     pub fn pause_processing(&self) {
-        self.paused
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let prev = self
+            .pause_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        tracing::debug!(
+            "[WatchPauseHandle] pause_processing: {} → {}",
+            prev,
+            prev + 1
+        );
     }
 
+    /// Soft resume: 카운터 감소 (0 미만 방지)
     pub fn resume_processing(&self) {
-        self.paused
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let prev = self
+            .pause_count
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        if prev == 0 {
+            // underflow 방지 (이미 0이었으면 다시 0으로)
+            self.pause_count
+                .store(0, std::sync::atomic::Ordering::SeqCst);
+            tracing::warn!("[WatchPauseHandle] resume_processing called but was not paused");
+        } else {
+            tracing::debug!(
+                "[WatchPauseHandle] resume_processing: {} → {}",
+                prev,
+                prev - 1
+            );
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_paused(&self) -> bool {
+        self.pause_count.load(std::sync::atomic::Ordering::SeqCst) > 0
     }
 }
 
@@ -54,9 +80,10 @@ pub struct WatchManager {
     watched_folders: HashSet<PathBuf>,
     /// 🔴 Critical 버그 수정: worker thread handle 저장
     worker_thread: Option<JoinHandle<()>>,
-    /// 일시 중지 플래그 (인덱싱 중 DB 동시 접근 방지)
-    /// true이면 debounce 후 pending_files 처리를 건너뜀
-    paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// 일시 중지 카운터 (인덱싱 중 DB 동시 접근 방지)
+    /// > 0 이면 debounce 후 pending_files 처리를 건너뜀.
+    /// AtomicUsize로 중첩 pause/resume 지원.
+    pause_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// pause()가 반환될 때 watcher DB 작업이 완전히 끝났음을 보장하는 게이트
     processing_lock: Arc<Mutex<()>>,
 }
@@ -93,12 +120,12 @@ impl WatchManager {
     /// 새 WatchManager 생성 및 백그라운드 스레드 시작
     pub fn new(
         ctx: IndexContext,
-        paused: Arc<std::sync::atomic::AtomicBool>,
+        pause_count: Arc<std::sync::atomic::AtomicUsize>,
     ) -> Result<Self, notify::Error> {
         let (event_tx, event_rx) = mpsc::channel::<Event>();
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
 
-        let paused_for_loop = paused.clone();
+        let paused_for_loop = pause_count.clone();
         let processing_lock = Arc::new(Mutex::new(()));
         let processing_lock_for_loop = processing_lock.clone();
 
@@ -128,7 +155,7 @@ impl WatchManager {
             stop_tx,
             watched_folders: HashSet::new(),
             worker_thread: Some(worker_thread),
-            paused,
+            pause_count,
             processing_lock,
         })
     }
@@ -169,33 +196,68 @@ impl WatchManager {
 
     /// 파일 감시 일시 중지 (인덱싱 중 DB 동시 접근 방지)
     ///
-    /// 1. paused=true → worker_thread가 debounce 후 pending_files를 버림
+    /// 1. pause_count 증가 → worker_thread가 debounce 후 pending_files를 버림
     /// 2. unwatch_all() → 새 이벤트 수신 차단
+    /// 3. processing_lock 획득/해제 → 현재 배치 처리 완료 보장 (quiesce, 30초 타임아웃)
     pub fn pause(&mut self) {
-        self.paused
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.pause_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.unwatch_all();
-        drop(
-            self.processing_lock
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()),
+        // 현재 배치 완료 대기 (타임아웃 30초 — 거대 PDF 파싱 hang 방지)
+        let lock_result =
+            self.try_lock_with_timeout(&self.processing_lock, Duration::from_secs(30));
+        if !lock_result {
+            tracing::warn!(
+                "[WatchManager] processing_lock timeout (30s). Proceeding without quiesce."
+            );
+        }
+        tracing::info!(
+            "File watching paused (count={})",
+            self.pause_count.load(std::sync::atomic::Ordering::SeqCst)
         );
-        tracing::info!("File watching paused");
+    }
+
+    /// processing_lock을 타임아웃 부여하여 획득 시도
+    fn try_lock_with_timeout(&self, lock: &Arc<Mutex<()>>, timeout: Duration) -> bool {
+        let start = std::time::Instant::now();
+        loop {
+            match lock.try_lock() {
+                Ok(_guard) => return true,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    if start.elapsed() >= timeout {
+                        return false;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(std::sync::TryLockError::Poisoned(e)) => {
+                    drop(e.into_inner());
+                    return true;
+                }
+            }
+        }
     }
 
     /// 파일 감시 재개 (폴더 목록으로 재등록)
     ///
-    /// watch() 등록 완료 후 paused=false 설정하여
-    /// 이벤트가 처리 준비된 후에만 활성화
+    /// 카운터 감소 후 0이 되었을 때만 실제로 폴더를 재등록.
+    /// 중첩된 pause가 있으면 마지막 resume에서만 활성화.
     pub fn resume_with_folders(&mut self, folders: &[String]) {
-        for folder in folders {
-            if let Err(e) = self.watch(Path::new(folder)) {
-                tracing::warn!("Failed to resume watching {:?}: {}", folder, e);
+        let prev = self
+            .pause_count
+            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        if prev <= 1 {
+            // 마지막 resume: 실제로 폴더 재등록
+            self.pause_count
+                .store(0, std::sync::atomic::Ordering::SeqCst); // underflow 방지
+            for folder in folders {
+                if let Err(e) = self.watch(Path::new(folder)) {
+                    tracing::warn!("Failed to resume watching {:?}: {}", folder, e);
+                }
             }
+            tracing::info!("File watching resumed ({} folders)", folders.len());
+        } else {
+            tracing::debug!("File watching still paused (count={})", prev - 1);
         }
-        self.paused
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        tracing::info!("File watching resumed ({} folders)", folders.len());
     }
 
     /// 🔴 Critical 버그 수정: 명시적 종료 메서드
@@ -223,7 +285,7 @@ impl WatchManager {
         event_rx: Receiver<Event>,
         stop_rx: Receiver<()>,
         ctx: IndexContext,
-        paused: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        pause_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
         processing_lock: Arc<Mutex<()>>,
     ) {
         // 디바운스를 위한 대기 중인 파일들
@@ -253,7 +315,7 @@ impl WatchManager {
                     // 디바운스 시간이 지났고 대기 중인 파일이 있으면 처리
                     if !pending_files.is_empty() && last_event_time.elapsed() >= debounce_duration {
                         let _guard = processing_lock.lock().unwrap_or_else(|e| e.into_inner());
-                        if paused.load(std::sync::atomic::Ordering::Relaxed) {
+                        if pause_count.load(std::sync::atomic::Ordering::SeqCst) > 0 {
                             // 일시 중지 상태: pending_files 버림 (인덱싱 완료 후 resume 시 재감지됨)
                             let count = pending_files.len();
                             pending_files.clear();
@@ -357,8 +419,9 @@ impl WatchManager {
                     }
                 }
 
-                // 3. DB에서 삭제
-                if let Err(e) = db::delete_file(&conn, &path_str) {
+                // 3. DB에서 삭제 (SQLITE_BUSY retry 포함)
+                let path_str_ref = &path_str;
+                if let Err(e) = db::retry_on_busy(|| db::delete_file(&conn, path_str_ref)) {
                     tracing::warn!("Failed to delete file from DB: {}", e);
                 } else {
                     // 4. FilenameCache에서 삭제

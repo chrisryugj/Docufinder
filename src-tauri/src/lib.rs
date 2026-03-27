@@ -103,8 +103,8 @@ fn maybe_download_models(
     let e5_tokenizer = models_dir
         .join("kosimcse-roberta-multitask")
         .join("tokenizer.json");
-    let embedder_available =
-        (e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists()))
+    let embedder_available = (e5_model_int8.exists()
+        || (e5_model.exists() && e5_model_data.exists()))
         && e5_tokenizer.exists();
     if !semantic_enabled || (embedder_available && reranker_model.exists()) {
         return;
@@ -195,16 +195,7 @@ fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, 
     });
 }
 
-/// 기존 감시 폴더들 자동 감시 복원
-fn pause_watchers(container: &AppContainer) {
-    if let Ok(wm) = container.get_watch_manager() {
-        if let Ok(mut wm) = wm.write() {
-            wm.pause();
-        }
-    }
-}
-
-/// 기존 감시 폴더들 자동 감시 복원
+/// 기존 감시 폴더들 자동 감시 복원 (콜백에서 사용)
 fn resume_watchers(container: &AppContainer) {
     if let Ok(conn) = db::get_connection(&container.db_path) {
         if let Ok(folders) = db::get_watched_folders(&conn) {
@@ -247,172 +238,8 @@ fn validate_vector_index(container: &AppContainer) {
     }
 }
 
-
-/// 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
-fn spawn_startup_sync(app_handle: tauri::AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-        let (folders_to_sync, service, include_subfolders, max_file_size_mb, db_path, exclude_dirs) = {
-            let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
-                Some(c) => c,
-                None => return,
-            };
-            let container = match container_state.read() {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-            let conn = match db::get_connection(&container.db_path) {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-            let folder_infos = db::get_watched_folders_with_info(&conn).unwrap_or_default();
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            const SYNC_SKIP_SECS: i64 = 300;
-            let completed: Vec<String> = folder_infos
-                .into_iter()
-                .filter(|f| {
-                    if f.indexing_status != "completed" {
-                        return false;
-                    }
-                    match f.last_synced_at {
-                        Some(ts) if (now - ts) < SYNC_SKIP_SECS => {
-                            tracing::debug!(
-                                "[Startup Sync] Skipping {} (synced {}s ago)",
-                                f.path,
-                                now - ts
-                            );
-                            false
-                        }
-                        _ => true,
-                    }
-                })
-                .map(|f| f.path)
-                .collect();
-
-            if completed.is_empty() {
-                return;
-            }
-
-            let settings = container.get_settings();
-            let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            dirs.extend(settings.exclude_dirs.clone());
-            (
-                completed,
-                container.index_service(),
-                settings.include_subfolders,
-                settings.max_file_size_mb,
-                container.db_path.clone(),
-                dirs,
-            )
-        };
-
-        tracing::info!(
-            "[Startup Sync] Checking {} completed folders for offline changes...",
-            folders_to_sync.len()
-        );
-
-        let mut total_added = 0usize;
-        let mut total_deleted = 0usize;
-
-        for folder in &folders_to_sync {
-            let path = std::path::Path::new(folder);
-            if !path.exists() {
-                continue;
-            }
-
-            if let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() {
-                if let Ok(container) = container_state.read() {
-                    pause_watchers(&container);
-                }
-            }
-
-            let ah = app_handle.clone();
-            let progress_cb: Box<
-                dyn Fn(crate::indexer::pipeline::FtsIndexingProgress) + Send + Sync,
-            > = Box::new(move |p: crate::indexer::pipeline::FtsIndexingProgress| {
-                #[derive(serde::Serialize)]
-                struct ProgressEvent {
-                    phase: String,
-                    total_files: usize,
-                    processed_files: usize,
-                    current_file: Option<String>,
-                    folder_path: String,
-                    error: Option<String>,
-                }
-                let _ = ah.emit(
-                    "indexing-progress",
-                    &ProgressEvent {
-                        phase: p.phase,
-                        total_files: p.total_files,
-                        processed_files: p.processed_files,
-                        current_file: p.current_file,
-                        folder_path: p.folder_path,
-                        error: None,
-                    },
-                );
-            });
-
-            match service
-                .sync_folder(
-                    path,
-                    include_subfolders,
-                    Some(progress_cb),
-                    max_file_size_mb,
-                    exclude_dirs.clone(),
-                )
-                .await
-            {
-                Ok(result) => {
-                    total_added += result.added;
-                    total_deleted += result.deleted;
-                    if let Ok(conn) = db::get_connection(&db_path) {
-                        let _ = db::update_last_synced_at(&conn, folder);
-                    }
-                    if result.added > 0 || result.deleted > 0 {
-                        tracing::info!(
-                            "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
-                            folder,
-                            result.added,
-                            result.deleted,
-                            result.unchanged
-                        );
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!("[Startup Sync] Failed to sync {}: {}", folder, e);
-                }
-            }
-
-            if let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() {
-                if let Ok(container) = container_state.read() {
-                    resume_watchers(&container);
-                }
-            }
-        }
-
-        if total_added > 0 || total_deleted > 0 {
-            if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
-                if let Ok(c) = cs.read() {
-                    let _ = c.load_filename_cache();
-                }
-            }
-            tracing::info!(
-                "[Startup Sync] Complete: {} added, {} deleted",
-                total_added,
-                total_deleted
-            );
-        } else {
-            tracing::info!("[Startup Sync] No offline changes detected");
-        }
-    });
-}
+// spawn_startup_sync は initialize_app → spawn_startup_sync_async (index.rs) に統合済み。
+// lib.rs setup() での二重呼び出しを防止するために削除。
 
 /// 벡터 워커 정리 + 인덱스 저장 (종료/트레이 quit 공통)
 fn cleanup_vector_resources(container: &AppContainer) {
@@ -678,12 +505,11 @@ pub fn run() {
             // Store app container
             app.manage(RwLock::new(container));
 
-            // 미완료 벡터 인덱싱은 initialize_app (면책 동의 후 프론트엔드 호출)에서 처리.
-            // lib.rs에서 별도로 auto_resume_vector_indexing을 호출하면
-            // FolderTree의 resume_indexing(FTS sync)과 동시에 실행되어 DB Lock 발생 가능.
-
-            // 앱 시작 시 오프라인 변경 감지 + 동기화 (1초 후 백그라운드)
-            spawn_startup_sync(app.handle().clone());
+            // 미완료 벡터 인덱싱 + startup sync 모두 initialize_app에서 처리.
+            // (면책 동의 후 프론트엔드 호출 → spawn_startup_sync_async)
+            // lib.rs에서 spawn_startup_sync를 별도로 호출하면
+            // initialize_app의 spawn_startup_sync_async와 동시 실행되어
+            // 같은 폴더에 대해 reindex가 2번 동시에 발생 → SQLITE_BUSY + 데이터 중복.
 
             // 개발 모드에서 DevTools 열기 (DEVTOOLS=1 환경변수로 제어)
             #[cfg(debug_assertions)]

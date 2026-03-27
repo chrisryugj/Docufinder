@@ -7,6 +7,46 @@ pub use pool::*;
 use rusqlite::{params, Connection, Result};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// SQLITE_BUSY 시 재시도하는 래퍼 (busy_timeout으로 부족한 경우를 위한 application-level retry)
+/// 최대 3회 시도, 각 시도 사이 1초 대기
+pub fn retry_on_busy<F, T>(f: F) -> Result<T>
+where
+    F: Fn() -> Result<T>,
+{
+    const MAX_RETRIES: u32 = 3;
+    const RETRY_DELAY_MS: u64 = 1000;
+
+    for attempt in 0..MAX_RETRIES {
+        match f() {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                let is_busy = matches!(
+                    e,
+                    rusqlite::Error::SqliteFailure(
+                        rusqlite::ffi::Error {
+                            code: rusqlite::ffi::ErrorCode::DatabaseBusy,
+                            ..
+                        },
+                        _,
+                    )
+                );
+                if is_busy && attempt < MAX_RETRIES - 1 {
+                    tracing::warn!(
+                        "[DB retry] SQLITE_BUSY on attempt {}/{}, retrying in {}ms...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        RETRY_DELAY_MS
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+    unreachable!()
+}
+
 /// LIKE 패턴 특수문자 이스케이프 (SQL Injection 방지)
 /// %, _, \ 문자를 이스케이프하여 리터럴로 처리
 pub fn escape_like_pattern(s: &str) -> String {

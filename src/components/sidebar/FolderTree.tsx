@@ -15,6 +15,7 @@ interface FolderTreeProps {
   onFoldersChange?: () => void; // 폴더 목록 갱신 콜백
   onReindexStart?: () => void; // 재인덱싱 시작 콜백
   isIndexing?: boolean; // 현재 인덱싱 중 여부
+  isAutoIndexing?: React.RefObject<boolean>; // autoIndexAllDrives 실행 중 여부
 }
 
 interface ContextMenuState {
@@ -27,7 +28,7 @@ interface ContextMenuState {
 /**
  * 인덱싱된 폴더 목록 표시
  */
-export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart, isIndexing }: FolderTreeProps) {
+export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart, isIndexing, isAutoIndexing }: FolderTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
   );
@@ -103,6 +104,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
   useEffect(() => {
     if (isIndexing) return; // 이미 인덱싱 중이면 스킵
+    if (isAutoIndexing?.current) return; // autoIndexAllDrives 실행 중이면 스킵
 
     const incompleteFolders = Object.entries(folderInfo)
       .filter(([path, info]) => (info.indexing_status === "indexing" || info.indexing_status === "cancelled") && !resumedRef.current.has(path))

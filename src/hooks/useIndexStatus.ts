@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
@@ -35,6 +35,8 @@ interface UseIndexStatusReturn {
   cancelIndexing: () => Promise<void>;
   autoIndexAllDrives: () => Promise<void>;
   cancelledFolderPath: string | null;
+  /** autoIndexAllDrives 실행 중 여부 (FolderTree auto-resume 억제용) */
+  isAutoIndexing: React.RefObject<boolean>;
 }
 
 /**
@@ -46,6 +48,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const [progress, setProgress] = useState<IndexingProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelledFolderPath, setCancelledFolderPath] = useState<string | null>(null);
+  const autoIndexingRef = useRef(false);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -231,6 +234,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       const drives = folders.filter((f) => f.category === "drive" && f.exists);
       if (drives.length === 0) return;
 
+      autoIndexingRef.current = true;
       setIsIndexing(true);
       setError(null);
 
@@ -243,8 +247,10 @@ export function useIndexStatus(): UseIndexStatusReturn {
         await refreshStatus();
       }
 
+      autoIndexingRef.current = false;
       setIsIndexing(false);
     } catch {
+      autoIndexingRef.current = false;
       setIsIndexing(false);
     }
   }, [refreshStatus, indexSingleFolder]);
@@ -262,5 +268,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
     cancelIndexing,
     autoIndexAllDrives,
     cancelledFolderPath,
+    isAutoIndexing: autoIndexingRef,
   };
 }

@@ -28,9 +28,9 @@ export function useAppEvents({
   onHwpDetected,
 }: UseAppEventsOptions) {
   const backgroundRefreshToastAtRef = useRef(0);
-  const cbRef = useRef({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast });
+  const cbRef = useRef({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast });
   useEffect(() => {
-    cbRef.current = { query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast };
+    cbRef.current = { query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast, updateToast };
   });
 
   // 증분 인덱싱 완료 이벤트 — ref 패턴으로 listener를 한 번만 등록 (deps 변경 시 재등록 방지)
@@ -60,30 +60,31 @@ export function useAppEvents({
     return () => { unlistenFn?.(); };
   }, []);
 
-  // 모델 다운로드 상태 이벤트
+  // 모델 다운로드 상태 이벤트 — ref 패턴으로 listener 재등록 방지
   useEffect(() => {
     let toastId: string | null = null;
     let unlistenFn: UnlistenFn | null = null;
     listen<string>("model-download-status", (event) => {
+      const cb = cbRef.current;
       switch (event.payload) {
         case "downloading":
-          toastId = showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
+          toastId = cb.showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
           break;
         case "completed":
           if (toastId) {
-            updateToast(toastId, { message: "AI 모델 다운로드 완료!", type: "success" });
+            cb.updateToast(toastId, { message: "AI 모델 다운로드 완료!", type: "success" });
           }
           break;
         case "failed":
           if (toastId) {
-            updateToast(toastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 5000);
+            cb.updateToast(toastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 5000);
           }
           break;
       }
     }).then((fn) => { unlistenFn = fn; });
 
     return () => { unlistenFn?.(); };
-  }, [showToast, updateToast]);
+  }, []);
 
   // HWP 파일 감지 이벤트 (증분 인덱싱 시)
   useEffect(() => {

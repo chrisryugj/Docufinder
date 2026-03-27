@@ -116,7 +116,11 @@ pub fn detect_disk_type(path: &Path) -> DiskType {
 
     // 캐시 미스 → fallback 즉시 반환 (WMI는 백그라운드에서 캐시 업데이트)
     let guessed = guess_disk_type_by_letter(drive_letter);
-    tracing::debug!("Disk type for {}: {:?} (guessed, WMI pending)", drive_letter, guessed);
+    tracing::debug!(
+        "Disk type for {}: {:?} (guessed, WMI pending)",
+        drive_letter,
+        guessed
+    );
 
     // 백그라운드에서 WMI 조회 후 캐시 갱신 (다음 호출부터 정확한 값 사용)
     std::thread::spawn(move || {
@@ -124,7 +128,11 @@ pub fn detect_disk_type(path: &Path) -> DiskType {
             let cache = DISK_TYPE_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
             if let Ok(mut map) = cache.lock() {
                 map.insert(drive_letter, wmi_type);
-                tracing::debug!("Disk type for {}: {:?} (WMI updated)", drive_letter, wmi_type);
+                tracing::debug!(
+                    "Disk type for {}: {:?} (WMI updated)",
+                    drive_letter,
+                    wmi_type
+                );
             }
         }
     });

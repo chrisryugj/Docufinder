@@ -36,7 +36,8 @@
   },
   "pnpm": {
     "overrides": {
-      "rollup": ">=4.59.0"
+      "rollup": ">=4.59.0",
+      "picomatch": ">=4.0.4"
     }
   },
   "dependencies": {
