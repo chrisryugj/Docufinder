@@ -34,6 +34,7 @@ interface UseIndexStatusReturn {
   removeFolder: (path: string) => Promise<void>;
   cancelIndexing: () => Promise<void>;
   autoIndexAllDrives: () => Promise<void>;
+  cancelledFolderPath: string | null;
 }
 
 /**
@@ -44,6 +45,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const [isIndexing, setIsIndexing] = useState(false);
   const [progress, setProgress] = useState<IndexingProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelledFolderPath, setCancelledFolderPath] = useState<string | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -66,6 +68,12 @@ export function useIndexStatus(): UseIndexStatusReturn {
         unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
           const p = event.payload;
           setProgress(p);
+
+          if (p.phase === "cancelled") {
+            setCancelledFolderPath(p.folder_path);
+          } else if (p.phase === "preparing" || p.phase === "scanning" || p.phase === "completed") {
+            setCancelledFolderPath(null);
+          }
 
           // 완료/취소 시 인덱싱 상태 업데이트
           if (p.phase === "completed" || p.phase === "cancelled") {
@@ -253,5 +261,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
     removeFolder,
     cancelIndexing,
     autoIndexAllDrives,
+    cancelledFolderPath,
   };
 }

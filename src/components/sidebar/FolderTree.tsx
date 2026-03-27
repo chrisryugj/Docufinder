@@ -89,14 +89,16 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     fetchFolderInfo();
   }, [folders, fetchFolderInfo, fetchStats]);
 
-  // 증분 인덱싱 완료 시 통계 새로고침
+  // 증분 인덱싱 완료 시 통계 새로고침 — ref 패턴으로 listener를 한 번만 등록
+  const fetchStatsRef = useRef(fetchStats);
+  useEffect(() => { fetchStatsRef.current = fetchStats; });
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen<number>("incremental-index-updated", () => {
-      fetchStats();
+      fetchStatsRef.current();
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
-  }, [fetchStats]);
+  }, []);
 
   // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
   useEffect(() => {

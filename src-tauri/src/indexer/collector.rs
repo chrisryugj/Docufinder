@@ -153,8 +153,6 @@ pub fn save_file_metadata_and_cache(conn: &Connection, path: &Path) -> Result<St
 }
 
 /// 파일 메타데이터만 저장 (파일명 검색용)
-/// 기존에 FTS 인덱싱된 파일이 metadata-only로 전환되는 경우
-/// stale chunks/chunks_fts 데이터를 정리한다.
 pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -177,16 +175,9 @@ pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // 기존 파일이 있으면 stale chunks/chunks_fts 정리
-    if let Ok(file_id) = conn.query_row(
-        "SELECT id FROM files WHERE path = ?",
-        rusqlite::params![&path_str],
-        |row| row.get::<_, i64>(0),
-    ) {
-        if let Err(e) = db::delete_chunks_for_file_no_tx(conn, file_id) {
-            tracing::warn!("Failed to clean stale chunks for {:?}: {}", path, e);
-        }
-    }
+    // stale chunks 정리는 하지 않음:
+    // - 문서 파일: FTS 인덱싱 시 save_document_to_db_fts_only_no_tx에서 자동 삭제
+    // - DLL/EXE 등 바이너리: 애초에 chunk가 없어 no-op DELETE만 발생 → DB 락 경쟁 원인
 
     db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
         .map_err(|e| IndexError::DbError(e.to_string()))?;

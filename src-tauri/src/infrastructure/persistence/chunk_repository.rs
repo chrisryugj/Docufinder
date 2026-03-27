@@ -273,6 +273,7 @@ impl ChunkRepository for SqliteChunkRepository {
     }
 
     async fn delete_in_folder(&self, folder_path: &str) -> Result<usize, DomainError> {
+        let folder_path = folder_path.trim_end_matches(['/', '\\']);
         let escaped_unix = crate::db::escape_like_pattern(&folder_path.replace('\\', "/"));
         let escaped_win = crate::db::escape_like_pattern(&folder_path.replace('/', "\\"));
         let pattern_unix = format!("{}/%", escaped_unix);

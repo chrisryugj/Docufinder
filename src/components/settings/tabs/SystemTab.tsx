@@ -57,7 +57,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             </label>
             <Dropdown
               options={MAX_FILE_SIZE_OPTIONS}
-              value={String(settings.max_file_size_mb ?? 200)}
+              value={String(settings.max_file_size_mb ?? 400)}
               onChange={(value) => onChange("max_file_size_mb", parseInt(value))}
               placeholder="크기 선택"
             />

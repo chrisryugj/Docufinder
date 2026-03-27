@@ -54,7 +54,8 @@ export const RESULTS_PER_PAGE_OPTIONS = [
 export const MAX_FILE_SIZE_OPTIONS = [
   { value: "50", label: "50 MB" },
   { value: "100", label: "100 MB" },
-  { value: "200", label: "200 MB (기본)" },
+  { value: "200", label: "200 MB" },
+  { value: "400", label: "400 MB (기본)" },
   { value: "500", label: "500 MB" },
   { value: "0", label: "제한 없음" },
 ];

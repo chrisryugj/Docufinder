@@ -100,8 +100,12 @@ fn maybe_download_models(
         .join("model.onnx.data");
     let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
 
+    let e5_tokenizer = models_dir
+        .join("kosimcse-roberta-multitask")
+        .join("tokenizer.json");
     let embedder_available =
-        e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+        (e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists()))
+        && e5_tokenizer.exists();
     if !semantic_enabled || (embedder_available && reranker_model.exists()) {
         return;
     }
@@ -243,72 +247,6 @@ fn validate_vector_index(container: &AppContainer) {
     }
 }
 
-/// 미완료 벡터 인덱싱 자동 재개 (백그라운드 blocking 스레드에서 호출)
-fn auto_resume_vector_indexing(app_handle: tauri::AppHandle) {
-    let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>() else {
-        return;
-    };
-    let Ok(container) = container_state.read() else {
-        return;
-    };
-
-    let startup_settings = container.get_settings();
-    let should_auto_resume = container.is_semantic_available()
-        && startup_settings.semantic_search_enabled
-        && startup_settings.vector_indexing_mode
-            == crate::commands::settings::VectorIndexingMode::Auto;
-    if !should_auto_resume {
-        return;
-    }
-
-    let Ok(conn) = db::get_connection(&container.db_path) else {
-        return;
-    };
-    let Ok(stats) = db::get_vector_indexing_stats(&conn) else {
-        return;
-    };
-    if stats.pending_chunks == 0 {
-        return;
-    }
-
-    tracing::info!(
-        "Found {} pending vector chunks. Starting background indexing.",
-        stats.pending_chunks
-    );
-    let embedder = container.get_embedder();
-    let vector_index = container.get_vector_index();
-    let vector_worker = container.get_vector_worker();
-    let db_path = container.db_path.clone();
-
-    if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
-        if let Ok(mut worker) = vector_worker.write() {
-            // 벡터 시작 전 watcher 일시 중지 (DB 동시 접근 방지)
-            pause_watchers(&container);
-
-            let app_handle = app_handle.clone();
-            let started = worker.start(
-                db_path,
-                emb,
-                vi,
-                Some(Arc::new(move |progress| {
-                    let _ = app_handle.emit("vector-indexing-progress", &progress);
-                    if progress.is_complete {
-                        if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(c) = cs.read() {
-                                resume_watchers(&c);
-                            }
-                        }
-                    }
-                })),
-                Some(startup_settings.indexing_intensity.clone()),
-            );
-            if started.is_err() {
-                // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
-                resume_watchers(&container);
-            }
-        }
-    }
-}
 
 /// 앱 시작 시 완료된 폴더 자동 동기화 (오프라인 변경 감지)
 fn spawn_startup_sync(app_handle: tauri::AppHandle) {
@@ -740,16 +678,9 @@ pub fn run() {
             // Store app container
             app.manage(RwLock::new(container));
 
-            // 미완료 벡터 인덱싱 자동 재개 (2초 후 백그라운드 — 모델 로드가 blocking이므로 spawn)
-            {
-                let ah = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                    tokio::task::spawn_blocking(move || auto_resume_vector_indexing(ah))
-                        .await
-                        .ok();
-                });
-            }
+            // 미완료 벡터 인덱싱은 initialize_app (면책 동의 후 프론트엔드 호출)에서 처리.
+            // lib.rs에서 별도로 auto_resume_vector_indexing을 호출하면
+            // FolderTree의 resume_indexing(FTS sync)과 동시에 실행되어 DB Lock 발생 가능.
 
             // 앱 시작 시 오프라인 변경 감지 + 동기화 (1초 후 백그라운드)
             spawn_startup_sync(app.handle().clone());

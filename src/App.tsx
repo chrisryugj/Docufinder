@@ -127,6 +127,7 @@ function App() {
     removeFolder,
     cancelIndexing,
     autoIndexAllDrives,
+    cancelledFolderPath,
   } = useIndexStatus();
 
   // 최근 검색
@@ -837,6 +838,17 @@ function App() {
           onCancelIndexing={cancelIndexing}
           onCancelVectorIndexing={cancelVectorIndexing}
           onStartVectorIndexing={startVectorIndexing}
+          onResumeIndexing={async () => {
+            if (cancelledFolderPath) {
+              try {
+                await invoke("resume_indexing", { path: cancelledFolderPath });
+                refreshStatus();
+              } catch (e) {
+                showToast("인덱싱 재시작 실패", "error");
+              }
+            }
+          }}
+          hasCancelledFolders={!!cancelledFolderPath}
           semanticEnabled={semanticEnabled}
         />
       </div>

@@ -243,9 +243,9 @@ export const Sidebar = memo(function Sidebar({
             <div
               className="px-3 py-1.5 shrink-0 flex flex-col justify-center"
               style={{
-                height: "45px",
+                height: "50px",
+                minHeight: "50px",
                 borderTop: "1px solid var(--color-sidebar-border)",
-                overflow: "hidden",
               }}
             >
               <div

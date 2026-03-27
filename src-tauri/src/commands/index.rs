@@ -483,14 +483,14 @@ pub async fn reindex_folder(
     })
 }
 
-/// 미완료 인덱싱 재개 (sync 기반: 추가/수정/삭제 감지)
+/// 미완료 인덱싱 재개 (resume_folder_fts 기반: fts_indexed_at이 있는 파일 스킵)
 #[tauri::command]
 pub async fn resume_indexing(
     path: String,
     app_handle: AppHandle,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<AddFolderResult> {
-    tracing::info!("Syncing folder (resume): {}", path);
+    tracing::info!("Resuming incomplete indexing: {}", path);
 
     let folder_path = Path::new(&path);
     if !folder_path.exists() {
@@ -517,14 +517,21 @@ pub async fn resume_indexing(
         },
     );
 
-    // sync도 배치 DB 쓰기가 길어 watcher와 충돌하므로 동일하게 pause
+    // 인덱싱 상태를 'indexing'으로 유지
+    if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
+        let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "indexing");
+    }
+
+    // FTS resume도 배치 DB 쓰기가 길어 watcher와 충돌하므로 동일하게 pause
     pause_watching(&state);
 
-    // sync 기반 인덱싱 (추가/수정/삭제 감지)
+    // resume_folder_fts 기반 인덱싱 (fts_indexed_at이 있는 파일은 스킵)
+    // sync_folder는 강종 후 메타데이터 트랜잭션 롤백 시 모든 파일을 "new"로 인식하여
+    // 0부터 재인덱싱하는 문제가 있었음
     let progress_callback = create_fts_progress_callback(app_handle.clone());
-    let sync_result = match ctx
+    let result = match ctx
         .service
-        .sync_folder(
+        .resume_folder_fts(
             &canonical_path,
             ctx.include_subfolders,
             Some(progress_callback),
@@ -545,7 +552,7 @@ pub async fn resume_indexing(
 
     refresh_filename_cache(&state);
 
-    let was_cancelled = sync_result.errors.iter().any(|e| e.contains("Cancelled"));
+    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
 
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         let status = if was_cancelled {
@@ -558,12 +565,12 @@ pub async fn resume_indexing(
             let _ = crate::db::update_last_synced_at(&conn, &path_str);
         }
     }
-    let indexed_count = sync_result.added + sync_result.modified;
+
     let auto_vector_started = maybe_start_auto_vector(
         &ctx,
         app_handle,
         was_cancelled,
-        indexed_count,
+        result.indexed_count,
         false,
         Some(&state),
     );
@@ -571,27 +578,23 @@ pub async fn resume_indexing(
         resume_watching(&state, &ctx.db_path);
     }
 
-    let message = format!(
-        "동기화 완료: +{}개, -{}개, 변경없음 {}개{}",
-        sync_result.added,
-        sync_result.deleted,
-        sync_result.unchanged,
-        if sync_result.failed > 0 {
-            format!(", {}개 실패", sync_result.failed)
-        } else {
-            String::new()
-        }
+    let message = build_result_message(
+        &result,
+        was_cancelled,
+        ctx.semantic_available && ctx.semantic_enabled,
+        false,
     );
+    log_indexing_errors(&result.errors);
 
     Ok(AddFolderResult {
         success: true,
-        indexed_count,
-        failed_count: sync_result.failed,
+        indexed_count: result.indexed_count,
+        failed_count: result.failed_count,
         vectors_count: 0,
         message,
-        errors: sync_result.errors,
-        hwp_files: vec![],
-        ocr_image_count: 0, // sync에서는 별도 추적 안 함
+        errors: result.errors,
+        hwp_files: result.hwp_files,
+        ocr_image_count: result.ocr_image_count,
     })
 }
 
@@ -602,13 +605,14 @@ pub async fn resume_indexing(
 /// 인덱스 상태 조회
 #[tauri::command]
 pub async fn get_index_status(state: State<'_, RwLock<AppContainer>>) -> ApiResult<IndexStatus> {
-    let (service, model_available) = {
+    let (service, model_available, filename_cache) = {
         let container = state.read()?;
-        (container.index_service(), container.is_semantic_available())
+        (container.index_service(), container.is_semantic_available(), container.get_filename_cache())
     };
     let mut status = service.get_status().await.map_err(ApiError::from)?;
     // OnceCell 초기화 여부가 아닌 모델 파일 존재 여부로 판단
     status.semantic_available = model_available;
+    status.filename_cache_truncated = filename_cache.is_truncated();
     Ok(status)
 }
 
@@ -1150,6 +1154,8 @@ pub async fn initialize_app(
     tracing::info!("Initializing app after disclaimer acceptance");
 
     // 미완료 벡터 인덱싱 자동 재개
+    // 단, FTS 미완료 폴더가 존재하면 벡터 인덱싱 스킵
+    // (FolderTree의 resume_indexing이 FTS → 벡터 순서로 처리하므로 동시 실행 시 DB Lock 발생)
     let has_pending_chunks = {
         let container = state.read()?;
         let startup_settings = container.get_settings();
@@ -1161,11 +1167,28 @@ pub async fn initialize_app(
             let Ok(conn) = crate::db::get_connection(&container.db_path) else {
                 return Ok(());
             };
-            let Ok(stats) = crate::db::get_vector_indexing_stats(&conn) else {
-                return Ok(());
-            };
 
-            stats.pending_chunks > 0
+            // FTS 미완료 폴더가 있으면 벡터 인덱싱 스킵
+            // (resume_indexing이 FTS 완료 후 auto vector를 순차적으로 시작)
+            let has_incomplete_fts = crate::db::get_watched_folders_with_info(&conn)
+                .map(|folders| {
+                    folders.iter().any(|f| {
+                        f.indexing_status == "indexing" || f.indexing_status == "cancelled"
+                    })
+                })
+                .unwrap_or(false);
+
+            if has_incomplete_fts {
+                tracing::info!(
+                    "[initialize_app] FTS 미완료 폴더 존재 → 벡터 인덱싱 스킵 (resume_indexing에서 순차 처리)"
+                );
+                false
+            } else {
+                let Ok(stats) = crate::db::get_vector_indexing_stats(&conn) else {
+                    return Ok(());
+                };
+                stats.pending_chunks > 0
+            }
         } else {
             false
         }

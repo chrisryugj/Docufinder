@@ -270,6 +270,7 @@ impl IndexService {
             watched_folders,
             vectors_count,
             semantic_available,
+            filename_cache_truncated: false, // get_index_status 커맨드에서 덮어씀
         })
     }
 

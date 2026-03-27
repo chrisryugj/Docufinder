@@ -15,6 +15,9 @@ pub struct IndexStatus {
     pub vectors_count: usize,
     /// 시맨틱 검색 가능 여부
     pub semantic_available: bool,
+    /// 파일명 캐시가 상한(MAX_CACHE_ENTRIES)을 초과하여 잘렸는지 여부
+    #[serde(default)]
+    pub filename_cache_truncated: bool,
 }
 
 /// 폴더 추가 결과 DTO

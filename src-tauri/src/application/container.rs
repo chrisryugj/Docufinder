@@ -210,7 +210,10 @@ impl AppContainer {
 
                 Embedder::new(&model_path, &tokenizer_path)
                     .map(Arc::new)
-                    .map_err(|e| ApiError::EmbeddingFailed(e.to_string()))
+                    .map_err(|e| {
+                        tracing::error!("Embedder 초기화 실패: {}", e);
+                        ApiError::EmbeddingFailed(e.to_string())
+                    })
             })
             .cloned()
     }

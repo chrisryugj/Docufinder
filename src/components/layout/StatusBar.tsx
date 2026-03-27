@@ -10,7 +10,9 @@ interface StatusBarProps {
   onCancelIndexing?: () => void;
   onCancelVectorIndexing?: () => void;
   onStartVectorIndexing?: () => void;
+  onResumeIndexing?: () => void;
   semanticEnabled?: boolean;
+  hasCancelledFolders?: boolean;
 }
 
 const phaseLabels: Record<string, string> = {
@@ -22,7 +24,7 @@ const phaseLabels: Record<string, string> = {
   cancelled: "취소됨",
 };
 
-export const StatusBar = memo(function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, semanticEnabled }: StatusBarProps) {
+export const StatusBar = memo(function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, onResumeIndexing, semanticEnabled, hasCancelledFolders }: StatusBarProps) {
   const [appVersion, setAppVersion] = useState("");
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
@@ -43,11 +45,11 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
       style={{
         backgroundColor: "var(--color-bg-secondary)",
         borderColor: "var(--color-border)",
-        height: "45px",
+        height: "50px",
+        minHeight: "50px",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
-        overflow: "hidden",
       }}
     >
       {isIndexing ? (
@@ -190,6 +192,14 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
                 <span style={{ color: "var(--color-success, #22c55e)" }}>✓</span>
               </span>
             )}
+            {status?.filename_cache_truncated && (
+              <span
+                title="파일 수가 캐시 상한(100만개)을 초과했습니다. 일부 파일명 검색 결과가 누락될 수 있습니다."
+                style={{ color: "var(--color-warning, #f59e0b)" }}
+              >
+                · 파일명 캐시 초과
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span>
@@ -204,6 +214,15 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
                 "폴더를 추가하세요"
               )}
             </span>
+            {hasCancelledFolders && onResumeIndexing && !isIndexing && (
+              <button
+                onClick={onResumeIndexing}
+                className="px-1.5 py-0.5 text-[11px] rounded btn-accent-start-hover font-medium"
+                title="취소된 인덱싱을 다시 시작합니다"
+              >
+                재시작
+              </button>
+            )}
             {semanticEnabled && onStartVectorIndexing && !isVectorIndexing && hasPendingVectors && (
               <button
                 onClick={onStartVectorIndexing}

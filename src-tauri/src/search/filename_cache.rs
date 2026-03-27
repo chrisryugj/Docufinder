@@ -7,8 +7,8 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-/// 캐시 최대 엔트리 수 (~30MB 상한, 8GB RAM 환경 기준)
-const MAX_CACHE_ENTRIES: usize = 200_000;
+/// 캐시 최대 엔트리 수 (~250MB 상한, 16GB RAM 환경 기준)
+const MAX_CACHE_ENTRIES: usize = 1_000_000;
 
 /// 파일명 엔트리 (메모리 최적화: name 제거, String → Box<str>)
 #[derive(Debug, Clone)]

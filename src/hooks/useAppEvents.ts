@@ -28,22 +28,27 @@ export function useAppEvents({
   onHwpDetected,
 }: UseAppEventsOptions) {
   const backgroundRefreshToastAtRef = useRef(0);
+  const cbRef = useRef({ query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast });
+  useEffect(() => {
+    cbRef.current = { query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast };
+  });
 
-  // 증분 인덱싱 완료 이벤트
+  // 증분 인덱싱 완료 이벤트 — ref 패턴으로 listener를 한 번만 등록 (deps 변경 시 재등록 방지)
   useEffect(() => {
     let unlistenFn: UnlistenFn | null = null;
     listen<number>("incremental-index-updated", (event) => {
+      const cb = cbRef.current;
       clearSearchCache();
-      void refreshStatus();
-      void refreshVectorStatus();
+      void cb.refreshStatus();
+      void cb.refreshVectorStatus();
 
-      if (query.trim()) {
-        invalidateSearch();
+      if (cb.query.trim()) {
+        cb.invalidateSearch();
 
         const now = Date.now();
         if (now - backgroundRefreshToastAtRef.current > 4000) {
           backgroundRefreshToastAtRef.current = now;
-          showToast(
+          cb.showToast(
             `${event.payload}개 변경 파일을 반영해 현재 검색 결과를 새로고침했습니다.`,
             "info",
             2500
@@ -53,7 +58,7 @@ export function useAppEvents({
     }).then((fn) => { unlistenFn = fn; });
 
     return () => { unlistenFn?.(); };
-  }, [query, invalidateSearch, refreshStatus, refreshVectorStatus, showToast]);
+  }, []);
 
   // 모델 다운로드 상태 이벤트
   useEffect(() => {

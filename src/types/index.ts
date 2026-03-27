@@ -5,6 +5,7 @@ export interface IndexStatus {
   watched_folders: string[];
   vectors_count: number;
   semantic_available: boolean;
+  filename_cache_truncated?: boolean;
 }
 
 /** 폴더 추가 결과 */

@@ -129,6 +129,7 @@ pub fn get_file_metadata_in_folder(
     conn: &Connection,
     folder_path: &str,
 ) -> Result<std::collections::HashMap<String, (i64, Option<i64>)>> {
+    let folder_path = folder_path.trim_end_matches(['/', '\\']);
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -158,6 +159,7 @@ pub fn get_fts_indexed_paths_in_folder(
     conn: &Connection,
     folder_path: &str,
 ) -> Result<std::collections::HashSet<String>> {
+    let folder_path = folder_path.trim_end_matches(['/', '\\']);
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -289,6 +291,7 @@ pub fn get_file_and_chunk_ids_in_folder(
     folder_path: &str,
 ) -> Result<Vec<(i64, Vec<i64>)>> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let folder_path = folder_path.trim_end_matches(['/', '\\']);
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
 
@@ -322,6 +325,7 @@ pub fn get_file_and_chunk_ids_in_folder(
 /// 폴더 내 모든 파일 삭제 (FTS + 파일) - 트랜잭션 보장
 pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<usize> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let folder_path = folder_path.trim_end_matches(['/', '\\']);
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -567,6 +571,7 @@ pub struct FolderStats {
 /// 폴더별 인덱싱 통계 조회
 pub fn get_folder_stats(conn: &Connection, folder_path: &str) -> Result<FolderStats> {
     // 폴더 경로 이스케이프 (SQL Injection 방지)
+    let folder_path = folder_path.trim_end_matches(['/', '\\']);
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
     let pattern_unix = format!("{}/%", escaped_unix);
@@ -943,8 +948,9 @@ pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> 
     )?;
 
     for folder in folders {
-        let escaped_unix = escape_like_pattern(&folder.replace('\\', "/"));
-        let escaped_win = escape_like_pattern(&folder.replace('/', "\\"));
+        let clean_folder = folder.trim_end_matches(['/', '\\']);
+        let escaped_unix = escape_like_pattern(&clean_folder.replace('\\', "/"));
+        let escaped_win = escape_like_pattern(&clean_folder.replace('/', "\\"));
         let pattern_unix = format!("{}/%", escaped_unix);
         let pattern_win = format!("{}\\\\%", escaped_win);
 
