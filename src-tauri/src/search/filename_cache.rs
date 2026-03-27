@@ -74,14 +74,18 @@ impl FilenameCache {
         }
     }
 
-    /// DB에서 캐시 로드
+    /// DB에서 캐시 로드 (swap 패턴: 임시 버퍼에 로드 후 write lock은 swap만)
+    ///
+    /// write lock 보유 시간을 최소화하여 검색 블로킹 방지.
+    /// DB SELECT (HDD 5-10초) 동안에는 read lock 사용 가능.
     pub fn load_from_db(&self, conn: &Connection) -> Result<usize, rusqlite::Error> {
+        // 1. DB → 임시 버퍼 (lock 없이)
         let mut stmt = conn.prepare(&format!(
             "SELECT id, path, name, file_type, COALESCE(size, 0), COALESCE(modified_at, 0)
                  FROM files
                  ORDER BY name
                  LIMIT {}",
-            MAX_CACHE_ENTRIES + 1 // +1로 truncation 여부 감지 (불필요한 전체 DB 로드 방지)
+            MAX_CACHE_ENTRIES + 1
         ))?;
 
         let rows = stmt.query_map([], |row| {
@@ -114,11 +118,19 @@ impl FilenameCache {
             entries.truncate(MAX_CACHE_ENTRIES);
         }
 
+        // 2. id_index 빌드 (lock 없이)
+        let mut id_index = HashMap::with_capacity(entries.len());
+        for (idx, entry) in entries.iter().enumerate() {
+            id_index.insert(entry.file_id, idx);
+        }
+
         let count = entries.len();
+
+        // 3. write lock은 swap만 (O(1) — 포인터 교체)
         if let Ok(mut cache) = self.data.write() {
             cache.entries = entries;
+            cache.id_index = id_index;
             cache.truncated = was_truncated;
-            cache.rebuild_index();
         }
 
         tracing::info!(

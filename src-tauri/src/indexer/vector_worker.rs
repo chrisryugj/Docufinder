@@ -302,12 +302,11 @@ fn run_vector_indexing(
 
                 // 모든 청크가 이미 인덱스에 있으면 파일 마킹만 하고 넘어감
                 if new_chunks.is_empty() {
-                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                        tracing::warn!(
-                            "[VectorWorker] Failed to mark file {}: {}",
-                            prefetched.file_id,
-                            e
-                        );
+                    let file_id = prefetched.file_id;
+                    if let Err(e) =
+                        db::retry_on_busy(|| db::mark_file_vector_indexed(&conn, file_id))
+                    {
+                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", file_id, e);
                     }
 
                     // 상태 업데이트
@@ -405,12 +404,11 @@ fn run_vector_indexing(
                     } else {
                         last_save = processed;
                     }
-                    if let Err(e) = db::mark_file_vector_indexed(&conn, prefetched.file_id) {
-                        tracing::warn!(
-                            "[VectorWorker] Failed to mark file {}: {}",
-                            prefetched.file_id,
-                            e
-                        );
+                    let file_id = prefetched.file_id;
+                    if let Err(e) =
+                        db::retry_on_busy(|| db::mark_file_vector_indexed(&conn, file_id))
+                    {
+                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", file_id, e);
                     }
                 } else if file_failed_chunks > 0 {
                     tracing::warn!(

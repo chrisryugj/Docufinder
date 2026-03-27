@@ -12,7 +12,8 @@ use std::sync::Mutex;
 /// (Option<String>, Vec<Connection>): (현재 DB 경로, 풀 커넥션 목록)
 /// DB 경로 변경 시 풀을 drain하고 새 커넥션 생성.
 static CONN_POOL: Mutex<(Option<String>, Vec<Connection>)> = Mutex::new((None, Vec::new()));
-const MAX_POOL_SIZE: usize = 4;
+/// 풀 크기: Repository 2개(into_inner 영구 점유) + pipeline/vector_worker/prefetch + 여유
+const MAX_POOL_SIZE: usize = 6;
 
 /// 풀에서 관리되는 DB 커넥션 래퍼
 /// Deref<Target=Connection>으로 기존 &Connection API 호환.
@@ -24,14 +25,18 @@ pub struct PooledConnection {
 impl Drop for PooledConnection {
     fn drop(&mut self) {
         if let Some(conn) = self.inner.take() {
-            // 열린 트랜잭션이 있으면 반환하지 않음 (안전)
-            if conn.is_autocommit() {
-                let mut pool = CONN_POOL.lock().unwrap_or_else(|e| e.into_inner());
-                if pool.1.len() < MAX_POOL_SIZE {
-                    pool.1.push(conn);
+            if !conn.is_autocommit() {
+                // 열린 트랜잭션 발견 → ROLLBACK 후 풀에 반환
+                // (panic 후 catch_unwind에서 연결이 Drop되는 경우 WAL lock 잔류 방지)
+                if let Err(e) = conn.execute_batch("ROLLBACK") {
+                    tracing::warn!("[Pool] ROLLBACK failed on drop: {}", e);
+                    return; // ROLLBACK 실패 시 풀에 반환하지 않음
                 }
             }
-            // 풀이 가득 차거나 트랜잭션 중이면 그냥 drop
+            let mut pool = CONN_POOL.lock().unwrap_or_else(|e| e.into_inner());
+            if pool.1.len() < MAX_POOL_SIZE {
+                pool.1.push(conn);
+            }
         }
     }
 }
@@ -108,7 +113,7 @@ pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
     conn.execute_batch(&format!(
         "PRAGMA foreign_keys = ON;
          PRAGMA journal_mode = WAL;
-         PRAGMA busy_timeout = 5000;
+         PRAGMA busy_timeout = 30000;
          PRAGMA journal_size_limit = 67108864;
          PRAGMA synchronous = NORMAL;
          PRAGMA cache_size = -16384;
@@ -118,4 +123,15 @@ pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
     ))?;
 
     Ok(PooledConnection { inner: Some(conn) })
+}
+
+/// WAL 체크포인트 (대량 배치 작업 후 WAL 파일 크기 관리)
+/// TRUNCATE 모드: WAL 파일을 0바이트로 줄임
+pub fn wal_checkpoint(db_path: &std::path::Path) {
+    if let Ok(conn) = get_connection(db_path) {
+        match conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)") {
+            Ok(_) => tracing::debug!("[Pool] WAL checkpoint completed"),
+            Err(e) => tracing::debug!("[Pool] WAL checkpoint skipped: {}", e),
+        }
+    }
 }

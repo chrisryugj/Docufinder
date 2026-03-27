@@ -23,6 +23,7 @@ interface SidebarProps {
   bookmarks?: BookmarkInfo[];
   onBookmarkSelect?: (filePath: string, pageNumber?: number | null) => void;
   onBookmarkRemove?: (id: number) => void;
+  isAutoIndexing?: React.RefObject<boolean>;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -41,6 +42,7 @@ export const Sidebar = memo(function Sidebar({
   bookmarks = [],
   onBookmarkSelect,
   onBookmarkRemove,
+  isAutoIndexing,
 }: SidebarProps) {
   const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
@@ -177,6 +179,7 @@ export const Sidebar = memo(function Sidebar({
                       folders={watchedFolders}
                       onRemoveFolder={onRemoveFolder}
                       isIndexing={isIndexing}
+                      isAutoIndexing={isAutoIndexing}
                       onFoldersChange={onFoldersChange}
                     />
                     {onAddFolderByPath && (

@@ -365,7 +365,7 @@ impl AppContainer {
                     ocr_engine: ocr,
                 };
 
-                WatchManager::new(ctx, watch_pause_handle.shared_flag())
+                WatchManager::new(ctx, watch_pause_handle.shared_counter())
                     .map(|wm| Arc::new(RwLock::new(wm)))
                     .map_err(|e| ApiError::IndexingFailed(format!("WatchManager 생성 실패: {}", e)))
             })

@@ -128,6 +128,7 @@ function App() {
     cancelIndexing,
     autoIndexAllDrives,
     cancelledFolderPath,
+    isAutoIndexing,
   } = useIndexStatus();
 
   // 최근 검색
@@ -549,6 +550,7 @@ function App() {
         onAddFolderByPath={handleAddFolderByPath}
         onRemoveFolder={handleRemoveFolder}
         isIndexing={isIndexing}
+        isAutoIndexing={isAutoIndexing}
         onFoldersChange={refreshStatus}
         recentSearches={recentSearches}
         onSelectSearch={handleSelectSearch}
