@@ -26,14 +26,22 @@ const modes: { value: SearchParadigm; label: string; Icon: React.ComponentType }
 
 export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
   return (
-    <div className="inline-flex rounded-md bg-[var(--color-bg-tertiary)] p-0.5 flex-shrink-0">
+    <div
+      className="inline-flex rounded-md bg-[var(--color-bg-tertiary)] p-0.5 flex-shrink-0"
+      role="radiogroup"
+      aria-label="검색 패러다임 선택"
+    >
       {modes.map((m) => {
         const isActive = paradigm === m.value;
         const isNaturalActive = m.value === "natural" && isActive;
+        const desc = m.value === "instant" ? "실시간 키워드 검색" : "자연어로 질문하여 검색";
         return (
           <button
             key={m.value}
             onClick={() => onChange(m.value)}
+            role="radio"
+            aria-checked={isActive}
+            aria-label={`${m.label} — ${desc}`}
             className={`
               flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded transition-all duration-150
               ${isActive
@@ -47,7 +55,7 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
               background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
               boxShadow: "0 1px 4px var(--color-accent-glow)",
             } : undefined}
-            title={m.value === "instant" ? "실시간 키워드 검색" : "자연어로 질문하여 검색"}
+            title={desc}
           >
             <m.Icon />
             {m.label}

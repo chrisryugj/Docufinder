@@ -22,3 +22,5 @@
 | Rust borrow in loop | `Vec<&str>`로 split 결과 빌려서 같은 루프에서 `*remaining =` 재할당 → borrow 에러 | loop 내에서 원본 수정 필요하면 `Vec<String>`으로 소유해야 함 | remaining을 수정하는 루프에서는 반드시 `split().map(String::from).collect()` 사용 |
 | chrono NaiveDate API | `date_naive().with_month(1)` → Datelike trait 미 import + and_hms_opt 체인 타입 추론 실패 | chrono의 NaiveDate 메서드는 trait import + 명확한 체인 필요 | `use chrono::Datelike;` + `NaiveDate::from_ymd_opt()` → `and_hms_opt()` → `and_utc()` 순서 |
 | 계획 품질 피드백 | 첫 계획이 너무 표면적 → "대충 쓴 거 같다" 피드백 | 계획 작성 시 비판적 검토 섹션 포함, 설계 결정 근거+대안+리스크 명시 필수 | "왜 이 방식인가" + "다른 방식은 왜 안 되나" + "FTS5 NOT 제약 같은 기술적 한계" 반드시 포함 |
+| std::sync::OnceLock 마이그레이션 | once_cell → OnceLock 전환 시도 → `get_or_try_init` unstable (feature gate `once_cell_try`) | Rust 표준 라이브러리 API 안정화 상태 확인 필수 | OnceLock은 `get_or_init`만 stable, `get_or_try_init`은 nightly. fallible init 필요 시 once_cell 유지 |
+| 기능 상태 판단 | Explore 에이전트가 "스텁"이라 보고 → 실제로는 전부 완전 구현체 | 에이전트 보고서를 맹신하면 안 됨, 핵심 파일은 직접 Read로 확인 | 기능 존재/스텁 판단 시 반드시 (1) 프론트 hook (2) 백엔드 command (3) DB 스키마 세 곳 직접 확인 |

@@ -12,6 +12,7 @@ import {
   DATE_RANGE_OPTIONS,
   DEFAULT_FILTERS,
 } from "../../types/search";
+import { CustomSelect } from "../ui/CustomSelect";
 
 interface SearchFiltersProps {
   filters: FiltersType;
@@ -75,7 +76,7 @@ export const SearchFilters = memo(function SearchFilters({
       aria-label="검색 필터"
     >
       {/* 정렬 */}
-      <FilterDropdown
+      <InlineFilterDropdown
         label="정렬"
         value={filters.sortBy}
         options={SORT_OPTIONS}
@@ -83,7 +84,7 @@ export const SearchFilters = memo(function SearchFilters({
       />
 
       {/* 파일 타입 */}
-      <FilterDropdown
+      <InlineFilterDropdown
         label="파일"
         value={filters.fileType}
         options={FILE_TYPE_OPTIONS}
@@ -91,7 +92,7 @@ export const SearchFilters = memo(function SearchFilters({
       />
 
       {/* 날짜 범위 */}
-      <FilterDropdown
+      <InlineFilterDropdown
         label="날짜"
         value={filters.dateRange}
         options={DATE_RANGE_OPTIONS}
@@ -231,85 +232,37 @@ function ScopeDropdown({
   folders: string[];
   onChange: (scope: string | null) => void;
 }) {
-  const isActive = value !== null;
+  const scopeOptions = [
+    { value: "__all__" as const, label: "전체" },
+    ...folders.map((folder) => ({
+      value: folder,
+      label: getFolderLabel(folder),
+    })),
+  ];
 
   return (
-    <div className="relative inline-block">
-      <select
-        value={value ?? "__all__"}
-        onChange={(e) => onChange(e.target.value === "__all__" ? null : e.target.value)}
-        className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
-        style={{
-          backgroundColor: isActive ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
-          borderColor: isActive ? "var(--color-accent)" : "var(--color-border)",
-          color: isActive ? "var(--color-accent)" : "var(--color-text-secondary)",
-        }}
-        aria-label="검색 범위 필터"
-      >
-        <option value="__all__">전체</option>
-        {folders.map((folder) => (
-          <option key={folder} value={folder}>
-            {getFolderLabel(folder)}
-          </option>
-        ))}
-      </select>
-      <svg
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-        style={{ color: isActive ? "var(--color-accent)" : "var(--color-text-muted)" }}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-    </div>
+    <CustomSelect
+      value={value ?? "__all__"}
+      options={scopeOptions}
+      onChange={(v) => onChange(v === "__all__" ? null : v)}
+      ariaLabel="검색 범위 필터"
+      isActive={value !== null}
+    />
   );
 }
 
-function FilterDropdown<T extends string>({
+function InlineFilterDropdown<T extends string>({
   label,
   value,
   options,
   onChange,
 }: FilterDropdownProps<T>) {
-  const isDefault = value === options[0].value;
-
   return (
-    <div className="relative inline-block">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="appearance-none pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
-          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
-        style={{
-          backgroundColor: isDefault ? "var(--color-bg-secondary)" : "var(--color-accent-light)",
-          borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
-          color: isDefault ? "var(--color-text-secondary)" : "var(--color-accent)",
-        }}
-        aria-label={`${label} 필터`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {/* 드롭다운 아이콘 */}
-      <svg
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-        style={{ color: isDefault ? "var(--color-text-muted)" : "var(--color-accent)" }}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M19 9l-7 7-7-7"
-        />
-      </svg>
-    </div>
+    <CustomSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      ariaLabel={`${label} 필터`}
+    />
   );
 }

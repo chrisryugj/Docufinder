@@ -241,7 +241,7 @@ fn validate_vector_index(container: &AppContainer) {
 // spawn_startup_sync は initialize_app → spawn_startup_sync_async (index.rs) に統合済み。
 // lib.rs setup() での二重呼び出しを防止するために削除。
 
-/// 벡터 워커 정리 + 인덱스 저장 (종료/트레이 quit 공통)
+/// 벡터 워커 정리 + 인덱스 저장 + DB 최적화 (종료/트레이 quit 공통)
 fn cleanup_vector_resources(container: &AppContainer) {
     let vector_worker = container.get_vector_worker();
     if let Ok(mut worker) = vector_worker.write() {
@@ -254,6 +254,21 @@ fn cleanup_vector_resources(container: &AppContainer) {
     if let Ok(vi) = container.get_vector_index() {
         if let Err(e) = vi.save() {
             tracing::error!("Failed to save vector index: {}", e);
+        }
+    }
+    // DB 최적화: WAL 체크포인트 + 쿼리 플래너 통계 갱신
+    cleanup_database(&container.db_path);
+}
+
+/// 앱 종료 시 DB 정리: WAL 체크포인트 + PRAGMA optimize
+fn cleanup_database(db_path: &std::path::Path) {
+    if let Ok(conn) = crate::db::get_connection(db_path) {
+        match conn.execute_batch(
+            "PRAGMA wal_checkpoint(TRUNCATE);
+             PRAGMA optimize;",
+        ) {
+            Ok(_) => tracing::info!("DB cleanup completed (WAL checkpoint + optimize)"),
+            Err(e) => tracing::warn!("DB cleanup partial failure: {}", e),
         }
     }
 }

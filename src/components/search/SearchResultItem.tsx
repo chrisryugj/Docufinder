@@ -155,7 +155,7 @@ export const SearchResultItem = memo(function SearchResultItem({
 
         {/* Right side: confidence % + time + file type */}
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          {/* Confidence — number only */}
+          {/* Confidence — number + a11y label */}
           <span
             className="text-[11px] font-semibold tabular-nums leading-none"
             style={{
@@ -165,6 +165,8 @@ export const SearchResultItem = memo(function SearchResultItem({
                   ? "var(--color-warning)"
                   : "var(--color-text-muted)",
             }}
+            aria-label={`신뢰도 ${Math.round(result.confidence)}% (${result.confidence >= 70 ? "높음" : result.confidence >= 40 ? "보통" : "낮음"})`}
+            title={`신뢰도: ${Math.round(result.confidence)}%`}
           >
             {Math.round(result.confidence)}%
           </span>
@@ -182,7 +184,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           )}
 
           {/* File type badge */}
-          <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
+          <Badge variant={getFileTypeBadgeVariant(result.file_name)} aria-label={`파일 형식: ${fileExt.toUpperCase()}`}>
             {fileExt.toUpperCase()}
           </Badge>
           {category && category !== "기타" && (
@@ -195,34 +197,64 @@ export const SearchResultItem = memo(function SearchResultItem({
       <div
         className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1 pl-6"
         onClick={onToggleExpand}
+        aria-expanded={isExpanded}
+        role="button"
+        aria-label={isExpanded ? "미리보기 접기" : "미리보기 펼치기"}
       >
         <ChevronDown
-          className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+          className={`w-3 h-3 flex-shrink-0 mt-1 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
           style={{ color: "var(--color-text-muted)" }}
         />
         <div className="flex-1 min-w-0">
-          <p
-            style={{
-              color: "var(--color-text-secondary)",
-              fontSize: "var(--text-sm)",
-              lineHeight: "1.7",
-              letterSpacing: "0.3px",
-              ...(!isExpanded && {
+          {/* 축소 모드: line-clamp으로 2줄 미리보기 */}
+          {!isExpanded && (
+            <p
+              style={{
+                color: "var(--color-text-secondary)",
+                fontSize: "var(--text-sm)",
+                lineHeight: "1.7",
+                letterSpacing: "0.3px",
                 display: "-webkit-box",
                 WebkitLineClamp: 2,
                 WebkitBoxOrient: "vertical" as const,
                 overflow: "hidden",
-              }),
-            }}
+              }}
+            >
+              <HighlightedText
+                text={displayText}
+                ranges={displayRanges}
+                refineKeywords={refineKeywords}
+                searchQuery={query}
+                formatMode="preview"
+              />
+            </p>
+          )}
+          {/* 확장 모드: grid 트랜지션으로 부드러운 펼침 */}
+          <div
+            className="grid transition-[grid-template-rows] duration-200 ease-out"
+            style={{ gridTemplateRows: isExpanded ? "1fr" : "0fr" }}
           >
-            <HighlightedText
-              text={displayText}
-              ranges={displayRanges}
-              refineKeywords={refineKeywords}
-              searchQuery={query}
-              formatMode={isExpanded ? "full" : "preview"}
-            />
-          </p>
+            <div className="overflow-hidden">
+              {isExpanded && (
+                <p
+                  style={{
+                    color: "var(--color-text-secondary)",
+                    fontSize: "var(--text-sm)",
+                    lineHeight: "1.7",
+                    letterSpacing: "0.3px",
+                  }}
+                >
+                  <HighlightedText
+                    text={displayText}
+                    ranges={displayRanges}
+                    refineKeywords={refineKeywords}
+                    searchQuery={query}
+                    formatMode="full"
+                  />
+                </p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 

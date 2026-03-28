@@ -21,6 +21,7 @@ interface BadgeProps {
   variant?: BadgeVariant;
   children: ReactNode;
   className?: string;
+  "aria-label"?: string;
 }
 
 // CSS 변수 기반 스타일 반환
@@ -108,6 +109,7 @@ export const Badge = memo(function Badge({
   variant = "default",
   children,
   className = "",
+  "aria-label": ariaLabel,
 }: BadgeProps) {
   const variantStyle = getVariantStyle(variant);
 
@@ -115,6 +117,7 @@ export const Badge = memo(function Badge({
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold tracking-wide ${className}`}
       style={variantStyle}
+      aria-label={ariaLabel}
     >
       {children}
     </span>

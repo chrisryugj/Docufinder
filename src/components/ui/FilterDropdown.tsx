@@ -13,6 +13,7 @@ import {
   DATE_RANGE_OPTIONS,
   DEFAULT_FILTERS,
 } from "../../types/search";
+import { CustomSelect } from "./CustomSelect";
 
 interface FilterDropdownProps {
   filters: FiltersType;
@@ -341,29 +342,18 @@ function FilterSelect<T extends string>({
   options,
   onChange,
 }: FilterSelectProps<T>) {
-  const isDefault = value === options[0].value;
-
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
         {label}
       </span>
-      <select
+      <CustomSelect
         value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="flex-1 max-w-[160px] appearance-none px-3 py-1.5 rounded-md border cursor-pointer text-sm focus:outline-none focus:ring-1"
-        style={{
-          backgroundColor: isDefault ? "var(--color-bg-primary)" : "var(--color-accent-light)",
-          borderColor: isDefault ? "var(--color-border)" : "var(--color-accent)",
-          color: isDefault ? "var(--color-text-secondary)" : "var(--color-accent)",
-        }}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        options={options}
+        onChange={onChange}
+        ariaLabel={`${label} 필터`}
+        compact={false}
+      />
     </div>
   );
 }

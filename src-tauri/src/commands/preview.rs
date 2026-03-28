@@ -305,7 +305,7 @@ pub async fn update_bookmark_note(
     Ok(())
 }
 
-/// 모든 북마크 조회
+/// 모든 북마크 조회 (삭제된 파일의 고아 레코드 자동 정리)
 #[tauri::command]
 pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Vec<BookmarkInfo>> {
     let db_path = {
@@ -338,8 +338,34 @@ pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<
             })
             .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
-        let bookmarks: Vec<BookmarkInfo> = rows
+        let all_bookmarks: Vec<BookmarkInfo> = rows
             .filter_map(|r| r.ok())
+            .collect();
+
+        // 고아 레코드 정리: 파일이 삭제된 북마크 자동 제거
+        let orphan_ids: Vec<i64> = all_bookmarks
+            .iter()
+            .filter(|b| !std::path::Path::new(&b.file_path).exists())
+            .map(|b| b.id)
+            .collect();
+
+        if !orphan_ids.is_empty() {
+            let placeholders: String = orphan_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!("DELETE FROM bookmarks WHERE id IN ({})", placeholders);
+            if let Ok(mut del_stmt) = conn.prepare(&sql) {
+                let params: Vec<Box<dyn rusqlite::types::ToSql>> = orphan_ids
+                    .iter()
+                    .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+                    .collect();
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                let deleted = del_stmt.execute(param_refs.as_slice()).unwrap_or(0);
+                tracing::info!("Cleaned up {} orphaned bookmarks (files no longer exist)", deleted);
+            }
+        }
+
+        let bookmarks: Vec<BookmarkInfo> = all_bookmarks
+            .into_iter()
+            .filter(|b| !orphan_ids.contains(&b.id))
             .collect();
 
         Ok(bookmarks)
