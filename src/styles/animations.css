@@ -263,6 +263,47 @@
 }
 
 /* ============================================
+   WelcomeHero Bento Animations
+   ============================================ */
+
+@keyframes bento-item-in {
+  from { opacity: 0; transform: translateY(30px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-bento-item {
+  opacity: 0;
+  animation: bento-item-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.15; }
+  50% { transform: scale(1.2); opacity: 0.25; }
+}
+
+.animate-breathe {
+  animation: breathe 10s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(-5px); }
+  50% { transform: translateY(5px); }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes bob {
+  0%, 100% { transform: translateY(-10px); }
+  50% { transform: translateY(10px); }
+}
+
+.animate-bob {
+  animation: bob 6s ease-in-out infinite;
+}
+
+/* ============================================
    저사양 환경 최적화 (애니메이션 축소)
    ============================================ */
 @media (prefers-reduced-motion: reduce) {
