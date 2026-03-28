@@ -14,10 +14,16 @@ interface PreviewChunk {
   location_hint: string | null;
 }
 
+interface PreviewSection {
+  label: string | null;
+  content: string;
+}
+
 interface PreviewResponse {
   file_path: string;
   file_name: string;
   chunks: PreviewChunk[];
+  sections: PreviewSection[];
   total_chars: number;
 }
 
@@ -255,7 +261,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           </button>
         )}
 
-        {preview && preview.chunks.length > 0 && (
+        {preview && preview.sections.length > 0 && (
           <button
             onClick={handleGenerateSummary}
             disabled={summaryLoading}
@@ -273,7 +279,7 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {preview && (
           <span className="ml-auto text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">
-            {preview.chunks.length}개 청크 · {preview.total_chars.toLocaleString()}자
+            {preview.sections.length}개 섹션 · {preview.total_chars.toLocaleString()}자
           </span>
         )}
       </div>
@@ -293,7 +299,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {!loading && !error && preview && preview.chunks.length === 0 && (
+        {!loading && !error && preview && preview.sections.length === 0 && (
           <div className="p-4 text-sm text-center text-[var(--color-text-muted)]">
             <FileText size={24} className="mx-auto mb-2 opacity-30" />
             인덱싱된 텍스트가 없습니다
@@ -335,33 +341,30 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {!loading && !error && preview && preview.chunks.length > 0 && (
+        {!loading && !error && preview && preview.sections.length > 0 && (
           <div className="p-4 space-y-1">
-            {preview.chunks.map((chunk, i) => {
-              const showPageHeader = i === 0 || chunk.location_hint !== preview.chunks[i - 1]?.location_hint;
-              return (
-                <div key={chunk.chunk_id}>
-                  {showPageHeader && chunk.location_hint && (
-                    <div className="mt-3 mb-1 first:mt-0">
-                      <span className="text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
-                        {chunk.location_hint}
-                      </span>
-                    </div>
-                  )}
-                  <p
-                    className="whitespace-pre-wrap break-words text-[var(--color-text-secondary)]"
-                    style={{
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "var(--text-sm)",
-                      lineHeight: "1.7",
-                      letterSpacing: "0.3px",
-                    }}
-                  >
-                    {highlightText(chunk.content)}
-                  </p>
-                </div>
-              );
-            })}
+            {preview.sections.map((section, i) => (
+              <div key={i}>
+                {section.label && (
+                  <div className="mt-3 mb-1 first:mt-0">
+                    <span className="text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
+                      {section.label}
+                    </span>
+                  </div>
+                )}
+                <p
+                  className="whitespace-pre-wrap break-words text-[var(--color-text-secondary)]"
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "var(--text-sm)",
+                    lineHeight: "1.7",
+                    letterSpacing: "0.3px",
+                  }}
+                >
+                  {highlightText(section.content)}
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </div>

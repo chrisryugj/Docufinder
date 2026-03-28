@@ -631,6 +631,14 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
     let mut current_object_height: f32 = 0.0;
     let mut para_object_height: f32 = 0.0;
 
+    // 표(table) 구조 추적
+    let mut in_table: bool = false;
+    let mut table_depth: usize = 0;
+    let mut in_table_cell: bool = false;
+    let mut current_cell_text: String = String::new();
+    let mut table_row_cells: Vec<String> = Vec::new();
+    let mut table_rows: Vec<String> = Vec::new();
+
     // Phase 2: lineSeg 추적
     let mut in_lineseg_array = false;
     let mut current_linesegs: Vec<LineSeg> = Vec::new();
@@ -663,10 +671,29 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                     }
                 }
 
-                // 객체 태그 감지 (pic, tbl, container, rect, ellipse, curve 등)
+                // 표(tbl) 태그 — 별도 처리 (행/열 구조 보존)
+                if name_l == "tbl" && in_paragraph {
+                    in_table = true;
+                    table_depth = 1;
+                    table_rows.clear();
+                    table_row_cells.clear();
+                    current_cell_text.clear();
+                    current_object_height = 0.0;
+                } else if in_table {
+                    table_depth += 1;
+                    // tr/tc 태그 추적
+                    if name_l == "tr" {
+                        table_row_cells.clear();
+                    } else if name_l == "tc" {
+                        in_table_cell = true;
+                        current_cell_text.clear();
+                    }
+                }
+
+                // 객체 태그 감지 (pic, container, rect, ellipse, curve 등 — tbl 제외)
                 if matches!(
                     name_l.as_str(),
-                    "pic" | "tbl" | "container" | "rect" | "ellipse" | "curve"
+                    "pic" | "container" | "rect" | "ellipse" | "curve"
                 ) && in_paragraph
                 {
                     in_object = true;
@@ -676,8 +703,8 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                     object_depth += 1;
                 }
 
-                // 객체 내부의 sz 태그에서 높이 추출
-                if name_l == "sz" && in_object {
+                // 객체/표 내부의 sz 태그에서 높이 추출
+                if name_l == "sz" && (in_object || in_table) {
                     for attr in e.attributes().flatten() {
                         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
                         let val = std::str::from_utf8(&attr.value).unwrap_or("");
@@ -801,11 +828,51 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                     in_text = false;
                 }
 
-                // 객체 태그 종료
+                // 표 태그 종료
+                if in_table {
+                    if name_l == "tc" {
+                        // 셀 종료: 셀 텍스트를 행에 추가
+                        let cell = current_cell_text.trim().to_string();
+                        table_row_cells.push(cell);
+                        current_cell_text.clear();
+                        in_table_cell = false;
+                    } else if name_l == "tr" {
+                        // 행 종료: 빈 행 제거 후 셀들을 탭으로 합쳐서 행 완성
+                        let has_content = table_row_cells.iter().any(|c| !c.is_empty());
+                        if !table_row_cells.is_empty() && has_content {
+                            table_rows.push(table_row_cells.join("\t"));
+                        }
+                        table_row_cells.clear();
+                    } else if name_l == "tbl" {
+                        // 표 종료: 행들을 줄바꿈으로 합쳐서 하나의 문단으로 추가
+                        if !table_rows.is_empty() {
+                            let table_text = table_rows.join("\n");
+                            paragraphs.push(ParagraphNode {
+                                text: table_text.clone(),
+                                char_offset: total_char_offset,
+                                has_page_break_before: pending_page_break,
+                                style_id: current_style_id.clone(),
+                                object_height: current_object_height,
+                                line_segs: Vec::new(),
+                            });
+                            total_char_offset += table_text.chars().count() + 1;
+                            pending_page_break = false;
+                        }
+                        para_object_height += current_object_height;
+                        in_table = false;
+                        table_depth = 0;
+                        current_object_height = 0.0;
+                        table_rows.clear();
+                    } else {
+                        table_depth = table_depth.saturating_sub(1);
+                    }
+                }
+
+                // 객체 태그 종료 (tbl 제외)
                 if in_object {
                     if matches!(
                         name_l.as_str(),
-                        "pic" | "tbl" | "container" | "rect" | "ellipse" | "curve"
+                        "pic" | "container" | "rect" | "ellipse" | "curve"
                     ) {
                         // 객체 높이를 문단에 합산
                         para_object_height += current_object_height;
@@ -825,7 +892,17 @@ fn extract_paragraphs_from_section(xml_content: &str) -> Result<Vec<ParagraphNod
                 // p 태그 종료 = 문단 끝
                 if name_l == "p" {
                     in_paragraph = false;
-                    if !current_paragraph.is_empty() || !split_paragraph {
+
+                    if in_table && in_table_cell {
+                        // 표 셀 안의 문단 → paragraphs가 아닌 셀 버퍼에 추가
+                        let para_text = std::mem::take(&mut current_paragraph);
+                        if !para_text.is_empty() {
+                            if !current_cell_text.is_empty() {
+                                current_cell_text.push(' '); // 셀 내 다중 문단은 공백으로 연결
+                            }
+                            current_cell_text.push_str(&para_text);
+                        }
+                    } else if !current_paragraph.is_empty() || !split_paragraph {
                         let para_text = std::mem::take(&mut current_paragraph);
 
                         paragraphs.push(ParagraphNode {

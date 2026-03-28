@@ -20,12 +20,23 @@ pub struct PreviewChunk {
     pub location_hint: Option<String>,
 }
 
+/// 미리보기 섹션 (오버랩 제거 후 병합된 연속 텍스트)
+#[derive(Debug, Serialize)]
+pub struct PreviewSection {
+    /// 섹션 라벨 (페이지 번호, 시트명 등)
+    pub label: Option<String>,
+    /// 병합된 연속 텍스트
+    pub content: String,
+}
+
 /// 미리보기 응답
 #[derive(Debug, Serialize)]
 pub struct PreviewResponse {
     pub file_path: String,
     pub file_name: String,
     pub chunks: Vec<PreviewChunk>,
+    /// 오버랩 제거 후 섹션별 병합 텍스트
+    pub sections: Vec<PreviewSection>,
     pub total_chars: usize,
 }
 
@@ -60,6 +71,7 @@ pub async fn load_document_preview(
                     .unwrap_or("")
                     .to_string(),
                 chunks: vec![],
+                sections: vec![],
                 total_chars: 0,
             });
         }
@@ -77,7 +89,9 @@ pub async fn load_document_preview(
             .map(|c| c.file_name.clone())
             .unwrap_or_default();
 
-        let total_chars: usize = sorted.iter().map(|c| c.content.len()).sum();
+        // 오버랩 제거 후 섹션별 병합
+        let sections = merge_chunks_into_sections(&sorted);
+        let total_chars: usize = sections.iter().map(|s| s.content.len()).sum();
 
         let chunks: Vec<PreviewChunk> = sorted
             .into_iter()
@@ -94,12 +108,81 @@ pub async fn load_document_preview(
             file_path,
             file_name,
             chunks,
+            sections,
             total_chars,
         })
     })
     .await??;
 
     Ok(result)
+}
+
+/// 청크들을 오버랩 제거 후 섹션(페이지/시트)별로 병합
+fn merge_chunks_into_sections(sorted_chunks: &[db::ChunkInfo]) -> Vec<PreviewSection> {
+    if sorted_chunks.is_empty() {
+        return vec![];
+    }
+
+    let mut sections: Vec<PreviewSection> = Vec::new();
+    let mut current_label: Option<String> = None;
+    let mut current_text = String::new();
+    let mut prev_end_offset: i64 = 0;
+
+    for chunk in sorted_chunks {
+        // 섹션 라벨 결정 (location_hint > page_number)
+        let label = chunk
+            .location_hint
+            .clone()
+            .or_else(|| chunk.page_number.map(|p| format!("{}페이지", p)));
+
+        // 섹션 변경 감지 → 이전 섹션 저장 후 새 섹션 시작
+        if label != current_label && !current_text.is_empty() {
+            sections.push(PreviewSection {
+                label: current_label.take(),
+                content: current_text.clone(),
+            });
+            current_text.clear();
+            prev_end_offset = 0;
+        }
+        current_label = label;
+
+        // 오버랩 제거: 이전 청크의 end_offset과 현재 청크의 start_offset 비교
+        let overlap = if prev_end_offset > chunk.start_offset && prev_end_offset > 0 {
+            // 오버랩 바이트 수 = 이전 끝 - 현재 시작
+            (prev_end_offset - chunk.start_offset) as usize
+        } else {
+            0
+        };
+
+        if overlap > 0 && overlap < chunk.content.len() {
+            // 오버랩 구간을 건너뛰고 나머지만 추가
+            // char 경계 안전하게 처리
+            let content_chars: Vec<char> = chunk.content.chars().collect();
+            if overlap < content_chars.len() {
+                let trimmed: String = content_chars[overlap..].iter().collect();
+                current_text.push_str(&trimmed);
+            }
+        } else if overlap == 0 {
+            // 오버랩 없음 — 갭이 있으면 줄바꿈 추가
+            if prev_end_offset > 0 && chunk.start_offset > prev_end_offset {
+                current_text.push('\n');
+            }
+            current_text.push_str(&chunk.content);
+        }
+        // overlap >= content.len() → 완전 중복 청크, 스킵
+
+        prev_end_offset = chunk.end_offset;
+    }
+
+    // 마지막 섹션 저장
+    if !current_text.is_empty() {
+        sections.push(PreviewSection {
+            label: current_label,
+            content: current_text,
+        });
+    }
+
+    sections
 }
 
 // ======================== 북마크 ========================
