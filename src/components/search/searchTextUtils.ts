@@ -1,7 +1,7 @@
 export type TextRange = [number, number];
 
-const DEFAULT_CONTEXT_BEFORE = 40;
-const DEFAULT_CONTEXT_AFTER = 140;
+const DEFAULT_CONTEXT_BEFORE = 60;
+const DEFAULT_CONTEXT_AFTER = 200;
 
 export function extractSearchKeywords(query: string): string[] {
   return query

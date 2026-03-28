@@ -1315,9 +1315,9 @@ fn create_keyword_snippet(content: &str, query: &str) -> Option<String> {
         return None;
     }
 
-    // 컨텍스트: 40자 전, 140자 후 (프론트엔드 기본값과 동일)
-    let start = char_pos.saturating_sub(40);
-    let end = (char_pos + kw_char_len + 140).min(total_chars);
+    // 컨텍스트: 60자 전, 200자 후 (프론트엔드 기본값과 동일)
+    let start = char_pos.saturating_sub(60);
+    let end = (char_pos + kw_char_len + 200).min(total_chars);
 
     let before: String = content_chars[start..char_pos].iter().collect();
     let keyword: String = content_chars[char_pos..char_pos + kw_char_len]
