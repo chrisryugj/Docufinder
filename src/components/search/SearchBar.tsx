@@ -95,7 +95,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     }, [onSuggestionsClose]);
 
     return (
-      <div className="max-w-4xl mx-auto w-full relative">
+      <div className="w-full relative">
         {/* Paradigm Toggle (탭 헤더) */}
         {onParadigmChange && (
           <div className="mb-1">

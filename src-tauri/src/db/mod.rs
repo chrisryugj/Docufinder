@@ -508,10 +508,10 @@ pub fn insert_chunk(
     location_hint: Option<&str>,
     fts_extra_tokens: Option<&str>,
 ) -> Result<i64> {
-    // 청크 메타데이터 저장
+    // 청크 메타데이터 + 원본 content 저장
     conn.execute(
-        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, page_end, location_hint)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, page_end, location_hint, content)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         params![
             file_id,
             chunk_index as i64,
@@ -519,7 +519,8 @@ pub fn insert_chunk(
             end_offset as i64,
             page_number.map(|p| p as i64),
             page_end.map(|p| p as i64),
-            location_hint
+            location_hint,
+            content
         ],
     )?;
 
@@ -549,7 +550,8 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let sql = format!(
         "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.page_end, c.location_hint, f.path, f.name, fts.content, f.modified_at
+                c.page_end, c.location_hint, f.path, f.name,
+                COALESCE(c.content, fts.content) AS content, f.modified_at
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id
