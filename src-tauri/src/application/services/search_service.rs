@@ -303,9 +303,9 @@ impl SearchService {
             .embed(query, true)
             .map_err(|e| AppError::EmbeddingFailed(e.to_string()))?;
 
-        // 벡터 검색 (folder_scope 후처리 필터로 인한 결과 누락 방지: over-fetch)
+        // 벡터 검색 (folder_scope 프리필터로 불필요한 content 조회 방지)
         let vector_fetch_limit = if folder_scope.is_some() {
-            max_results * 5
+            max_results * 3
         } else {
             max_results
         };
@@ -313,40 +313,54 @@ impl SearchService {
             .search(&query_embedding, vector_fetch_limit)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
-        // chunk_id로 파일 정보 조회
         let conn = self.get_connection()?;
-        let chunk_ids: Vec<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
+
+        // ⚡ folder_scope 프리필터: 경량 경로 조회 → 스코프 밖 chunk 제거 후 content 조회
+        let filtered_results = if folder_scope.is_some() {
+            let all_ids: Vec<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
+            let path_map = db::get_chunk_file_paths(&conn, &all_ids)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?;
+            vector_results
+                .into_iter()
+                .filter(|vr| {
+                    path_map
+                        .get(&vr.chunk_id)
+                        .map(|p| matches_folder_scope(p, folder_scope))
+                        .unwrap_or(false)
+                })
+                .collect::<Vec<_>>()
+        } else {
+            vector_results
+        };
+
+        // chunk_id로 파일 정보 조회 (프리필터 후 — 필요한 것만)
+        let chunk_ids: Vec<i64> = filtered_results.iter().map(|r| r.chunk_id).collect();
         let chunks = db::get_chunks_by_ids(&conn, &chunk_ids)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
         let chunk_map: HashMap<i64, ChunkInfo> =
             chunks.into_iter().map(|c| (c.chunk_id, c)).collect();
 
-        // 결과 변환 (⚡ full_content 제거) + folder_scope 후처리 필터
-        let mut results: Vec<SearchResult> = vector_results
+        // 결과 변환 (⚡ full_content 제거)
+        let mut results: Vec<SearchResult> = filtered_results
             .into_iter()
             .filter_map(|vr| {
-                chunk_map.get(&vr.chunk_id).and_then(|chunk| {
-                    if !matches_folder_scope(&chunk.file_path, folder_scope) {
-                        return None;
-                    }
-                    Some(SearchResult {
-                        file_path: chunk.file_path.clone(),
-                        file_name: chunk.file_name.clone(),
-                        chunk_index: chunk.chunk_index,
-                        content_preview: truncate_preview(&chunk.content, 200),
-                        full_content: String::new(), // ⚡ 성능 최적화
-                        score: vr.score as f64,
-                        confidence: normalize_vector_confidence(vr.score as f64),
-                        match_type: MatchType::Semantic,
-                        highlight_ranges: vec![],
-                        page_number: chunk.page_number,
-                        start_offset: chunk.start_offset,
-                        location_hint: chunk.location_hint.clone(),
-                        snippet: Some(truncate_preview(&chunk.content, 200)), // snippet 추가
-                        modified_at: chunk.modified_at,
-                        has_hwp_pair: false,
-                    })
+                chunk_map.get(&vr.chunk_id).map(|chunk| SearchResult {
+                    file_path: chunk.file_path.clone(),
+                    file_name: chunk.file_name.clone(),
+                    chunk_index: chunk.chunk_index,
+                    content_preview: truncate_preview(&chunk.content, 200),
+                    full_content: String::new(),
+                    score: vr.score as f64,
+                    confidence: normalize_vector_confidence(vr.score as f64),
+                    match_type: MatchType::Semantic,
+                    highlight_ranges: vec![],
+                    page_number: chunk.page_number,
+                    start_offset: chunk.start_offset,
+                    location_hint: chunk.location_hint.clone(),
+                    snippet: Some(truncate_preview(&chunk.content, 200)),
+                    modified_at: chunk.modified_at,
+                    has_hwp_pair: false,
                 })
             })
             .collect();
@@ -397,9 +411,9 @@ impl SearchService {
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
-        // 2. 벡터 검색 (folder_scope 후처리 필터 대비 over-fetch)
+        // 2. 벡터 검색 (folder_scope 프리필터로 불필요한 결과 사전 제거)
         let vector_fetch_limit = if folder_scope.is_some() {
-            max_results * 5
+            max_results * 3
         } else {
             max_results
         };
@@ -407,7 +421,24 @@ impl SearchService {
             match (self.embedder.as_ref(), self.vector_index.as_ref()) {
                 (Some(emb), Some(vi)) => match emb.embed(query, true) {
                     Ok(qe) => {
-                        let results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
+                        let raw_results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
+                        // ⚡ folder_scope 프리필터: RRF 병합 전에 스코프 밖 결과 제거
+                        let results = if folder_scope.is_some() && !raw_results.is_empty() {
+                            let ids: Vec<i64> = raw_results.iter().map(|r| r.chunk_id).collect();
+                            let path_map = db::get_chunk_file_paths(&conn, &ids)
+                                .unwrap_or_default();
+                            raw_results
+                                .into_iter()
+                                .filter(|r| {
+                                    path_map
+                                        .get(&r.chunk_id)
+                                        .map(|p| matches_folder_scope(p, folder_scope))
+                                        .unwrap_or(false)
+                                })
+                                .collect()
+                        } else {
+                            raw_results
+                        };
                         (results, Some(qe))
                     }
                     Err(e) => {

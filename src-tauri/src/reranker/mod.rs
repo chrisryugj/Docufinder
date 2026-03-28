@@ -12,6 +12,8 @@ use thiserror::Error;
 use tokenizers::Tokenizer;
 
 const MAX_LENGTH: usize = 512;
+/// ONNX 미니배치 크기 제한 (메모리 스파이크 방지)
+const MAX_MINI_BATCH: usize = 16;
 
 #[derive(Error, Debug)]
 pub enum RerankerError {
@@ -82,20 +84,33 @@ impl Reranker {
 
     /// (query, document) 쌍들의 관련도 점수 계산
     ///
-    /// 반환값: 각 document의 관련도 점수 (높을수록 관련도 높음)
+    /// 대량 입력 시 MAX_MINI_BATCH 단위로 분할하여 메모리 스파이크 방지
     pub fn score(&self, query: &str, documents: &[&str]) -> Result<Vec<f32>, RerankerError> {
         if documents.is_empty() {
             return Ok(vec![]);
         }
 
-        // Cross-Encoder 입력 생성: [CLS] query [SEP] document [SEP]
-        // tokenizer.encode_batch_with_pairs 대신 수동으로 처리
+        // 미니배치 불필요 시 직접 추론
+        if documents.len() <= MAX_MINI_BATCH {
+            return self.score_batch(query, documents);
+        }
+
+        // 미니배치 분할 추론
+        let mut all_scores = Vec::with_capacity(documents.len());
+        for chunk in documents.chunks(MAX_MINI_BATCH) {
+            let batch_scores = self.score_batch(query, chunk)?;
+            all_scores.extend(batch_scores);
+        }
+        Ok(all_scores)
+    }
+
+    /// 단일 배치 ONNX 추론 (MAX_MINI_BATCH 이하 크기)
+    fn score_batch(&self, query: &str, documents: &[&str]) -> Result<Vec<f32>, RerankerError> {
         let pairs: Vec<(String, String)> = documents
             .iter()
             .map(|doc| (query.to_string(), doc.to_string()))
             .collect();
 
-        // 토큰화 (pairs 형식)
         let encodings = pairs
             .iter()
             .map(|(q, d)| {
@@ -112,7 +127,6 @@ impl Reranker {
             .max()
             .unwrap_or(0);
 
-        // 입력 텐서 생성
         let mut input_ids = Array2::<i64>::zeros((batch_size, seq_len));
         let mut attention_mask = Array2::<i64>::zeros((batch_size, seq_len));
         let mut token_type_ids = Array2::<i64>::zeros((batch_size, seq_len));
@@ -130,13 +144,11 @@ impl Reranker {
             }
         }
 
-        // Vec으로 변환
         let shape = [batch_size as i64, seq_len as i64];
         let input_ids_vec: Vec<i64> = input_ids.iter().copied().collect();
         let attention_mask_vec: Vec<i64> = attention_mask.iter().copied().collect();
         let token_type_ids_vec: Vec<i64> = token_type_ids.iter().copied().collect();
 
-        // ONNX 추론
         let input_ids_value = Value::from_array((shape, input_ids_vec))
             .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
         let attention_mask_value = Value::from_array((shape, attention_mask_vec))
@@ -145,13 +157,11 @@ impl Reranker {
             .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
 
         let scores = {
-            // Poison recovery: ONNX Session은 stateless이므로 이전 panic 후에도 안전하게 복구
             let mut session = self.session.lock().unwrap_or_else(|poisoned| {
                 tracing::warn!("Reranker ONNX session mutex was poisoned, recovering inner value");
                 poisoned.into_inner()
             });
 
-            // 출력 이름 수집 (borrow 충돌 방지)
             let output_names: Vec<String> = session
                 .outputs()
                 .iter()
@@ -166,14 +176,11 @@ impl Reranker {
                 ])
                 .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
 
-            // 출력에서 logits 추출 (모델에 따라 출력 이름이 다를 수 있음)
-            // Cross-Encoder 출력: [batch_size, 1] 또는 [batch_size]
             let output = outputs
                 .get("logits")
                 .or_else(|| outputs.get("output"))
                 .or_else(|| outputs.get("scores"))
                 .or_else(|| {
-                    // 첫 번째 출력 사용 (fallback)
                     output_names
                         .first()
                         .and_then(|name| outputs.get(name.as_str()))
@@ -189,7 +196,6 @@ impl Reranker {
                 .try_extract_tensor::<f32>()
                 .map_err(|e: ort::Error| RerankerError::OrtError(e.to_string()))?;
 
-            // 각 샘플의 점수 추출
             out_data.iter().take(batch_size).copied().collect()
         };
 

@@ -5,6 +5,7 @@ pub use migration::*;
 pub use pool::*;
 
 use rusqlite::{params, Connection, Result};
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// SQLITE_BUSY 시 재시도하는 래퍼 (busy_timeout으로 부족한 경우를 위한 application-level retry)
@@ -580,6 +581,35 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     })?;
 
     results.collect()
+}
+
+/// 청크 ID → 파일 경로 경량 조회 (content 없이 경로만 — 벡터 스코프 프리필터용)
+pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<HashMap<i64, String>> {
+    if chunk_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT c.id, f.path FROM chunks c JOIN files f ON f.id = c.file_id WHERE c.id IN ({})",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::ToSql> = chunk_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::ToSql)
+        .collect();
+
+    let mut map = HashMap::with_capacity(chunk_ids.len());
+    let rows = stmt.query_map(params.as_slice(), |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (id, path) = row?;
+        map.insert(id, path);
+    }
+    Ok(map)
 }
 
 /// 파일의 모든 청크 ID 조회
