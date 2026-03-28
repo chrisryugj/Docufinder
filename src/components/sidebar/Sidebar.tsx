@@ -52,14 +52,14 @@ export const Sidebar = memo(function Sidebar({
       {/* Mobile backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 z-30 lg:hidden bg-black/30 transition-opacity"
+          className="absolute inset-0 z-30 lg:hidden bg-black/30 transition-opacity"
           onClick={onToggle}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className="fixed left-0 top-0 h-full z-40 overflow-hidden transition-all duration-200 ease-out flex flex-col"
+        className="absolute left-0 top-0 h-full z-40 overflow-hidden transition-all duration-200 ease-out flex flex-col"
         style={{
           width: isOpen ? "var(--sidebar-width)" : "var(--sidebar-collapsed-width)",
           backgroundColor: "var(--color-sidebar-bg)",

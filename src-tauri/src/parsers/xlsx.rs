@@ -5,6 +5,12 @@ use std::path::Path;
 /// 최대 XLSX 파일 크기 (100MB)
 const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
 
+/// 시트당 최대 처리 행 수 (대용량 시트 행 방지)
+const MAX_ROWS_PER_SHEET: usize = 50_000;
+
+/// 전체 문서 최대 문자 수
+const MAX_TOTAL_CHARS: usize = 5_000_000;
+
 /// XLSX/XLS 파일 파싱
 /// calamine 크레이트 사용, 시트/행 정보 포함
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
@@ -78,13 +84,24 @@ fn extract_text_with_location(
     let (start_row, _) = range.start().unwrap_or((0, 0));
     let start_row = start_row as usize;
 
+    let mut total_chars = 0usize;
     for (row_idx, row) in range.rows().enumerate() {
+        if row_idx >= MAX_ROWS_PER_SHEET {
+            tracing::warn!("Sheet '{}' truncated at {} rows (max {})", sheet_name, row_idx, MAX_ROWS_PER_SHEET);
+            break;
+        }
+
         let actual_row = start_row + row_idx + 1; // 1-based Excel row
 
         let cells: Vec<String> = row.iter().filter_map(cell_to_string).collect();
 
         if !cells.is_empty() {
             let row_text = cells.join("\t");
+            total_chars += row_text.len();
+            if total_chars > MAX_TOTAL_CHARS {
+                tracing::warn!("Sheet '{}' truncated at {} chars (max {})", sheet_name, total_chars, MAX_TOTAL_CHARS);
+                break;
+            }
             all_rows_text.push(row_text.clone());
             row_infos.push((actual_row, row_text));
         }

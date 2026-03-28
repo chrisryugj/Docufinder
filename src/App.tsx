@@ -275,7 +275,7 @@ function AppContent() {
   // ── Render ──
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
+    <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '1920px' }}>
       <div className="noise-overlay" aria-hidden="true" />
 
       <FloatingErrorBanner
@@ -306,7 +306,7 @@ function AppContent() {
       />
 
       <div
-        className="flex flex-col h-screen transition-all duration-200 ease-out"
+        className="flex flex-col h-full transition-all duration-200 ease-out"
         style={{ paddingLeft: ui.sidebarOpen ? "var(--sidebar-width)" : "var(--sidebar-collapsed-width)" }}
       >
         {/* Compact Search Bar */}
@@ -368,7 +368,7 @@ function AppContent() {
 
         {/* Search Bar + Filters */}
         {!search.isCollapsed && (
-          <div className="px-4 pt-4 pb-2">
+          <div className={`px-4 pt-4 pb-2 ${ui.previewFilePath ? "" : "max-w-4xl mx-auto"}`}>
             <SearchBar
               ref={search.searchInputRef}
               query={search.query}
@@ -400,7 +400,7 @@ function AppContent() {
             />
 
             {search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
-              <div className="max-w-4xl mx-auto mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+              <div className={`mt-2 pb-3 border-b ${ui.previewFilePath ? "" : "max-w-4xl mx-auto"}`} style={{ borderColor: "var(--color-border)" }}>
                 {search.paradigm === "natural" && search.parsedQuery ? (
                   <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
                 ) : (
@@ -449,7 +449,7 @@ function AppContent() {
             )}
 
             <main className="px-5 sm:px-8 pb-20 h-full">
-              <div className={`mx-auto mt-4 h-full ${search.query.trim() ? (ui.previewFilePath ? "max-w-3xl" : "max-w-4xl") : "w-full max-w-[1400px]"}`}>
+              <div className={`mx-auto mt-4 h-full ${search.query.trim() ? (ui.previewFilePath ? "w-full" : "max-w-4xl") : "w-full max-w-[1400px]"}`}>
                 {/* 유사 문서 배너 */}
                 {search.similarResults.length > 0 && (
                   <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>
@@ -552,7 +552,7 @@ function AppContent() {
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
-              <div className="shrink-0" style={{ width: ui.previewWidth }}>
+              <div className="shrink-0" style={{ width: ui.previewWidth, minWidth: 280, maxWidth: '50%' }}>
                 <PreviewPanel
                   filePath={ui.previewFilePath}
                   highlightQuery={search.query}

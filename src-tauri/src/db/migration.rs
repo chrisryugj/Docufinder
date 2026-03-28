@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 10;
+const CURRENT_SCHEMA_VERSION: i32 = 11;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -279,6 +279,19 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         )?;
         set_schema_version(&conn, 10)?;
         tracing::info!("Schema migrated to v10 (file tags)");
+    }
+
+    // === v11: chunks 테이블에 원본 content 컬럼 추가 ===
+    // FTS 테이블에는 형태소 토큰이 추가된 텍스트가 저장되므로
+    // 미리보기용 원본 텍스트를 별도 보관
+    if get_schema_version(&conn) < 11 {
+        if let Err(e) =
+            conn.execute("ALTER TABLE chunks ADD COLUMN content TEXT", [])
+        {
+            tracing::trace!("Migration v11: content column already exists: {}", e);
+        }
+        set_schema_version(&conn, 11)?;
+        tracing::info!("Schema migrated to v11 (chunks.content for preview)");
     }
 
     tracing::info!(

@@ -137,7 +137,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
 
   // Preview
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
-  const [previewWidth, setPreviewWidth] = useState(360);
+  const [previewWidth, setPreviewWidth] = useState(() => Math.round(window.innerWidth * 0.3));
   const isResizingRef = useRef(false);
   const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -148,7 +148,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
     const onMove = (ev: MouseEvent) => {
       if (!isResizingRef.current) return;
       const delta = startX - ev.clientX;
-      setPreviewWidth(Math.max(280, Math.min(700, startWidth + delta)));
+      setPreviewWidth(Math.max(280, Math.min(Math.round(window.innerWidth * 0.5), startWidth + delta)));
     };
     const onUp = () => {
       isResizingRef.current = false;
