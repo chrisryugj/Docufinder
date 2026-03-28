@@ -108,9 +108,9 @@ export const Sidebar = memo(function Sidebar({
               <Plus className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
             <button
-              onClick={() => onSelectSearch("")}
+              onClick={onToggle}
               className="p-2 rounded-md btn-icon-hover"
-              title="최근 검색"
+              title="최근 검색 (사이드바 펼치기)"
               aria-label="최근 검색"
             >
               <Clock className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />

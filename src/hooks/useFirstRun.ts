@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { exit } from "@tauri-apps/plugin-process";
+import { logToBackend } from "../utils/errorLogger";
 
 const STORAGE_KEYS = {
   DISCLAIMER_ACCEPTED: "docufinder_disclaimer_accepted",
@@ -42,7 +43,7 @@ export function useFirstRun() {
     try {
       await invoke("initialize_app");
     } catch (e) {
-      console.error("Failed to initialize app:", e);
+      logToBackend("error", "Failed to initialize app", String(e), "useFirstRun");
     }
 
     const onboardingCompleted = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);

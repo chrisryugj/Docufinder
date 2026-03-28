@@ -12,10 +12,10 @@ use thiserror::Error;
 use zip::ZipArchive;
 
 /// 기본 청크 크기 (문자 수)
-/// 512 → 1024로 증가: 청크 수 50% 감소, DB 크기/검색 비용 절감
-pub const DEFAULT_CHUNK_SIZE: usize = 1024;
-/// 기본 청크 오버랩 (문자 수)
-pub const DEFAULT_CHUNK_OVERLAP: usize = 128;
+/// 600자 ≈ 한국어 기준 ~400-480 토큰 → KoSimCSE 512 토큰 제한 내 수용
+pub const DEFAULT_CHUNK_SIZE: usize = 600;
+/// 기본 청크 오버랩 (문자 수, ~25% overlap)
+pub const DEFAULT_CHUNK_OVERLAP: usize = 150;
 
 #[derive(Error, Debug)]
 #[allow(clippy::enum_variant_names)]
@@ -154,7 +154,10 @@ pub fn validate_zip_archive<R: std::io::Read + std::io::Seek>(
     Ok(())
 }
 
-/// 텍스트를 청크로 분할 (공통 유틸)
+/// 텍스트를 청크로 분할 (문장 경계 인식)
+///
+/// chunk_size 근처의 문장 종결 위치(`.`, `!`, `?`, `\n\n`)에서 분할하여
+/// 의미 단위가 깨지지 않도록 합니다.
 pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<DocumentChunk> {
     let mut chunks = Vec::new();
     let chars: Vec<char> = text.chars().collect();
@@ -164,11 +167,19 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<Document
         return chunks;
     }
 
-    let step = chunk_size.saturating_sub(overlap).max(1);
     let mut start = 0;
 
     while start < total_len {
-        let end = (start + chunk_size).min(total_len);
+        let raw_end = (start + chunk_size).min(total_len);
+
+        // 문장 경계 탐색: chunk_size의 80% ~ 100% 범위에서 마지막 문장 종결점 찾기
+        let search_start = start + (chunk_size * 4 / 5).min(raw_end - start);
+        let end = if raw_end < total_len {
+            find_sentence_boundary(&chars, search_start, raw_end).unwrap_or(raw_end)
+        } else {
+            raw_end
+        };
+
         let chunk_content: String = chars[start..end].iter().collect();
 
         chunks.push(DocumentChunk {
@@ -180,7 +191,9 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<Document
             location_hint: None,
         });
 
-        start += step;
+        // 다음 시작점: 문장 경계 기준으로 overlap 적용
+        let next_start = if end > overlap { end - overlap } else { end };
+        start = next_start.max(start + 1); // 무한루프 방지
 
         if end >= total_len {
             break;
@@ -188,4 +201,28 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<Document
     }
 
     chunks
+}
+
+/// 문장 종결 경계 탐색 (search_start..limit 범위에서 마지막 종결점 반환)
+fn find_sentence_boundary(chars: &[char], search_start: usize, limit: usize) -> Option<usize> {
+    let mut best = None;
+    let mut i = search_start;
+    while i < limit {
+        let c = chars[i];
+        // 빈 줄(\n\n)은 가장 강한 경계
+        if c == '\n' && i + 1 < limit && chars[i + 1] == '\n' {
+            best = Some(i + 2);
+            i += 2;
+            continue;
+        }
+        // 문장 종결 문자 뒤에 공백이나 줄바꿈이 오는 경우
+        if (c == '.' || c == '!' || c == '?' || c == '다' || c == '요') && i + 1 < chars.len() {
+            let next = chars[i + 1];
+            if next == ' ' || next == '\n' || next == '\r' {
+                best = Some(i + 1);
+            }
+        }
+        i += 1;
+    }
+    best
 }

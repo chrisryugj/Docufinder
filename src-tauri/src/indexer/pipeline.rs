@@ -11,8 +11,10 @@ use crate::db;
 use crate::indexer::exclusions::is_excluded_dir;
 use crate::ocr::OcrEngine;
 use crate::parsers::{parse_file, ParsedDocument};
+use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
+use once_cell::sync::Lazy;
 use rayon::prelude::*;
 use rusqlite::Connection;
 use std::fs;
@@ -23,6 +25,20 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use super::collector::{collect_files, save_file_metadata_only};
+
+/// FTS 인덱싱 시 형태소 토큰 생성용 글로벌 토크나이저 (lazy init)
+pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> = Lazy::new(|| {
+    match LinderaKoTokenizer::new() {
+        Ok(t) => {
+            tracing::info!("FTS 형태소 분석기 초기화 완료");
+            Some(t)
+        }
+        Err(e) => {
+            tracing::warn!("FTS 형태소 분석기 초기화 실패 (형태소 없이 인덱싱): {}", e);
+            None
+        }
+    }
+});
 
 /// 스트리밍 파이프라인 채널 버퍼 크기
 /// 32: 8GB RAM PC에서 대용량 문서(XLSX/PDF) 동시 버퍼링 시 메모리 피크 억제
@@ -242,7 +258,7 @@ fn index_folder_fts_impl(
         );
         let _ = conn.execute_batch("BEGIN");
         for (i, path) in metadata_docs.iter().enumerate() {
-            if cancel_flag.load(Ordering::Relaxed) {
+            if cancel_flag.load(Ordering::Acquire) {
                 break;
             }
             let _ = save_file_metadata_only(conn, path);
@@ -273,7 +289,7 @@ fn index_folder_fts_impl(
     tracing::info!("[FTS] Found {} files to index in {:?}", total, folder_path);
     send_progress("scanning", total, 0, None, true); // force: 스캔 완료
 
-    if cancel_flag.load(Ordering::Relaxed) {
+    if cancel_flag.load(Ordering::Acquire) {
         send_progress("cancelled", total, 0, None, true); // force: 취소
         return Ok(FolderIndexResult {
             folder_path: folder_str,
@@ -315,7 +331,7 @@ fn index_folder_fts_impl(
 
         pool.install(|| {
             let _ = file_paths.par_iter().try_for_each(|path| {
-                if cancel_flag_producer.load(Ordering::Relaxed) {
+                if cancel_flag_producer.load(Ordering::Acquire) {
                     return Err(());
                 }
 
@@ -370,7 +386,7 @@ fn index_folder_fts_impl(
 
     {
         loop {
-            if cancel_flag.load(Ordering::Relaxed) {
+            if cancel_flag.load(Ordering::Acquire) {
                 // 취소 시 현재까지 커밋
                 let _ = conn.execute_batch("COMMIT");
                 send_progress("cancelled", total, processed, None, true); // force: 취소
@@ -392,7 +408,7 @@ fn index_folder_fts_impl(
                                 .unwrap_or("unknown");
                             send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
-                            match save_document_to_db_fts_only_no_tx(conn, &path, document, None) {
+                            match save_document_to_db_fts_only_no_tx(conn, &path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
                                 Ok(_) => {
                                     indexed += 1;
                                     // OCR 이미지 파일 카운트
@@ -654,7 +670,7 @@ pub fn scan_metadata_only(
         })
         .filter_map(|e| e.ok())
     {
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             let _ = conn.execute_batch("COMMIT");
             send_progress("cancelled", count, true);
             return Ok(MetadataScanResult {
@@ -767,7 +783,7 @@ pub fn index_file_fts_only(
     conn.execute_batch("BEGIN")
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document, None) {
+    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
         Ok(c) => c,
         Err(e) => {
             let _ = conn.execute_batch("ROLLBACK");

@@ -58,3 +58,36 @@ pub const BLOCKED_PATH_PATTERNS: &[&str] = &[
     "/program files (x86)/",
     "/programdata/",
 ];
+
+/// 통합 경로 안전성 검증
+///
+/// BLOCKED_PATH_PATTERNS + DEFAULT_EXCLUDED_DIRS를 모두 검사하여
+/// 시스템/보호 경로 접근을 차단합니다.
+#[allow(dead_code)] // IndexService/FolderService에서 기존 로직 마이그레이션 시 활용
+pub fn is_blocked_path(path: &std::path::Path) -> bool {
+    let path_str = path.to_string_lossy().to_lowercase();
+
+    // 1. BLOCKED_PATH_PATTERNS 체크 (부분 경로 매치)
+    for pattern in BLOCKED_PATH_PATTERNS {
+        if path_str.contains(&pattern.to_lowercase()) {
+            return true;
+        }
+    }
+
+    // 2. 경로 컴포넌트 기반 체크 (DEFAULT_EXCLUDED_DIRS의 시스템 폴더)
+    for component in path.components() {
+        if let std::path::Component::Normal(name) = component {
+            let name_lower = name.to_string_lossy().to_lowercase();
+            // 시스템 폴더만 체크 (node_modules 등 개발 폴더는 인덱싱 제외 전용)
+            let system_dirs = [
+                "windows", "$recycle.bin", "system volume information",
+                "recovery", "programdata",
+            ];
+            if system_dirs.contains(&name_lower.as_str()) {
+                return true;
+            }
+        }
+    }
+
+    false
+}

@@ -233,10 +233,20 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
 fn download_file_optional_hash(url: &str, dest: &Path, expected_hash: &str) -> Result<(), String> {
     if expected_hash.is_empty() {
         // 해시 미설정 → 직접 다운로드 (검증 스킵)
+        // ⚠️ 보안 경고: 배포 빌드 전 반드시 SHA-256 해시를 채울 것
+        #[cfg(not(debug_assertions))]
+        tracing::error!(
+            "⚠️ SECURITY: {} 의 SHA-256 해시가 미설정 — 무결성 검증 없이 다운로드합니다. 배포 전 반드시 해시를 설정하세요!",
+            dest.display()
+        );
         download_file_with_timeout(url, dest)?;
-        // 다운로드 후 해시 출력 (개발용)
+        // 다운로드 후 해시 출력 (해시 상수에 채울 값)
         if let Ok(hash) = compute_sha256(dest) {
-            tracing::info!("Downloaded {} SHA-256: {}", dest.display(), hash);
+            tracing::warn!(
+                "SHA-256 해시 미설정 파일 다운로드 완료. 이 해시를 model_downloader.rs 상수에 채우세요:\n  파일: {}\n  SHA-256: {}",
+                dest.display(),
+                hash
+            );
         }
         Ok(())
     } else {
@@ -382,7 +392,7 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
         let mut file =
             File::create(&temp_path).map_err(|e| format!("임시 파일 생성 실패: {}", e))?;
 
-        let mut reader = response.into_body().into_reader();
+        let mut reader = response.into_body().into_reader().take(MAX_FILE_SIZE);
         io::copy(&mut reader, &mut file).map_err(|e| format!("파일 쓰기 실패: {}", e))?;
     }
 

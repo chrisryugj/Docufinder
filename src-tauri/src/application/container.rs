@@ -168,12 +168,12 @@ impl AppContainer {
 
     /// 인덱싱 취소 플래그 리셋
     pub fn reset_cancel_flag(&self) {
-        self.indexing_cancel_flag.store(false, Ordering::Relaxed);
+        self.indexing_cancel_flag.store(false, Ordering::Release);
     }
 
     /// 인덱싱 취소 요청
     pub fn cancel_indexing(&self) {
-        self.indexing_cancel_flag.store(true, Ordering::Relaxed);
+        self.indexing_cancel_flag.store(true, Ordering::Release);
     }
 
     /// 임베더 가져오기 (lazy load)

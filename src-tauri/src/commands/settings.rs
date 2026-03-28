@@ -293,7 +293,10 @@ pub async fn update_settings(
     let content = serde_json::to_string_pretty(&settings)
         .map_err(|e| ApiError::SettingsSave(e.to_string()))?;
 
-    fs::write(&settings_path, content).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
+    // atomic write: 크래시 시 설정 파일 손상 방지
+    let tmp_path = settings_path.with_extension("json.tmp");
+    fs::write(&tmp_path, &content).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
+    fs::rename(&tmp_path, &settings_path).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
 
     // 인메모리 캐시 갱신
     {

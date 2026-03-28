@@ -7,10 +7,11 @@ use crate::db;
 use crate::indexer::collector::{collect_files, save_file_metadata_only};
 use crate::indexer::pipeline::{
     save_document_to_db_fts_only_no_tx, FtsIndexingProgress, FtsProgressCallback, IndexError,
-    ParseResult, CHANNEL_BUFFER_SIZE, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
+    ParseResult, CHANNEL_BUFFER_SIZE, FTS_TOKENIZER, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
 };
 use crate::ocr::OcrEngine;
 use crate::parsers::parse_file;
+use crate::tokenizer::TextTokenizer;
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use rayon::prelude::*;
@@ -62,7 +63,7 @@ pub fn sync_folder_fts(
     };
     let fs_files = collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs);
 
-    if cancel_flag.load(Ordering::Relaxed) {
+    if cancel_flag.load(Ordering::Acquire) {
         return Ok(SyncResult {
             folder_path: folder_str,
             added: 0,
@@ -153,7 +154,7 @@ pub fn sync_folder_fts(
     // 4. 삭제 처리
     let mut deleted = 0;
     for path in &to_delete {
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             break;
         }
         if let Err(e) = db::delete_file(conn, path) {
@@ -167,7 +168,7 @@ pub fn sync_folder_fts(
     if !to_metadata.is_empty() {
         let _ = conn.execute_batch("BEGIN");
         for (i, path) in to_metadata.iter().enumerate() {
-            if cancel_flag.load(Ordering::Relaxed) {
+            if cancel_flag.load(Ordering::Acquire) {
                 break;
             }
             let _ = save_file_metadata_only(conn, path);
@@ -250,7 +251,7 @@ pub fn sync_folder_fts(
 
         pool.install(|| {
             let _ = to_index.par_iter().try_for_each(|path| {
-                if cancel_flag_producer.load(Ordering::Relaxed) {
+                if cancel_flag_producer.load(Ordering::Acquire) {
                     return Err(());
                 }
 
@@ -298,7 +299,7 @@ pub fn sync_folder_fts(
 
     let mut batch_count = 0;
     loop {
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             let _ = conn.execute_batch("COMMIT");
             break;
         }
@@ -315,7 +316,7 @@ pub fn sync_folder_fts(
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
                         send_progress("indexing", total, processed, Some(file_name), false);
-                        match save_document_to_db_fts_only_no_tx(conn, &path, document, None) {
+                        match save_document_to_db_fts_only_no_tx(conn, &path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
                             Ok(_) => indexed += 1,
                             Err(e) => {
                                 failed += 1;

@@ -36,9 +36,12 @@ export function useKeyboardShortcuts(
         return;
       }
 
-      // Escape: 검색 초기화 / 모달 닫기
+      // Escape: 검색 초기화 (모달이 열려있으면 모달이 자체 처리하므로 스킵)
       if (e.key === "Escape") {
-        h.onEscape?.();
+        const modalOpen = document.querySelector("[role='dialog']");
+        if (!modalOpen) {
+          h.onEscape?.();
+        }
         return;
       }
 
