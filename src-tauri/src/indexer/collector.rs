@@ -22,7 +22,7 @@ pub(crate) fn collect_files(
 ) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
-    if cancel_flag.load(Ordering::Relaxed) {
+    if cancel_flag.load(Ordering::Acquire) {
         return files;
     }
 
@@ -53,7 +53,7 @@ fn collect_files_shallow(dir: &Path, files: &mut Vec<PathBuf>, cancel_flag: &Ato
     };
 
     for entry in entries.flatten() {
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             break;
         }
 
@@ -83,7 +83,7 @@ fn collect_files_recursive(
     cancel_flag: &AtomicBool,
     excluded_dirs: &[String],
 ) {
-    if cancel_flag.load(Ordering::Relaxed) {
+    if cancel_flag.load(Ordering::Acquire) {
         return;
     }
 
@@ -96,7 +96,7 @@ fn collect_files_recursive(
     };
 
     for entry in entries.flatten() {
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             break;
         }
 

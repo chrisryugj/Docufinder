@@ -353,17 +353,31 @@ pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiRes
                 _ => {}
             }
 
-            match std::fs::read(path) {
-                Ok(data) => {
+            // 스트리밍 방식: 파일 전체를 메모리에 올리지 않음
+            match std::fs::File::open(path) {
+                Ok(mut file) => {
                     if zip.start_file(&entry_name, options).is_ok() {
-                        use std::io::Write;
-                        if zip.write_all(&data).is_ok() {
-                            count += 1;
+                        use std::io::{BufReader, Read, Write};
+                        let mut reader = BufReader::new(&mut file);
+                        let mut buf = [0u8; 64 * 1024]; // 64KB 버퍼
+                        let mut ok = true;
+                        loop {
+                            match reader.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => {
+                                    if zip.write_all(&buf[..n]).is_err() {
+                                        ok = false;
+                                        break;
+                                    }
+                                }
+                                Err(_) => { ok = false; break; }
+                            }
                         }
+                        if ok { count += 1; }
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to read file {}: {}", path_str, e);
+                    tracing::warn!("Failed to open file {}: {}", path_str, e);
                 }
             }
         }

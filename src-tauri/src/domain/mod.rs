@@ -8,7 +8,8 @@
 //! - **Repository Traits**: 데이터 접근 추상화 (DIP 적용)
 //! - **Domain Errors**: 비즈니스 규칙 위반 에러
 //!
-//! NOTE: Phase 2에서 Clean Architecture 전환 시 활용 예정
+//! NOTE: 현재 서비스 레이어에서 직접 db 모듈을 호출하여 미사용 상태.
+//! Clean Architecture 전환 시 서비스 → Repository trait → impl 구조로 활용 예정.
 #![allow(dead_code)]
 
 pub mod entities;

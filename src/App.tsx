@@ -309,6 +309,10 @@ function App() {
   // 미리보기 패널
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
+  const handleBookmarkSelect = useCallback((filePath: string, pageNumber?: number | null) => {
+    setPreviewFilePath(filePath);
+    handleOpenFile(filePath, pageNumber ?? undefined);
+  }, [handleOpenFile]);
   const [previewWidth, setPreviewWidth] = useState(360);
   const isResizingRef = useRef(false);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -564,6 +568,17 @@ function App() {
     }
   }, [applySettings, semanticEnabled, vectorIndexingMode, isVectorIndexing, cancelVectorIndexing, clearSearchCache, refreshVectorStatus, startVectorIndexing]);
 
+  const handleResumeIndexing = useCallback(async () => {
+    if (cancelledFolderPath) {
+      try {
+        await invoke("resume_indexing", { path: cancelledFolderPath });
+        refreshStatus();
+      } catch {
+        showToast("인덱싱 재시작 실패", "error");
+      }
+    }
+  }, [cancelledFolderPath, refreshStatus, showToast]);
+
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");
     clearSearchCache();
@@ -601,10 +616,7 @@ function App() {
         onRemoveSearch={removeSearch}
         onClearSearches={clearSearches}
         bookmarks={bookmarks}
-        onBookmarkSelect={(filePath, pageNumber) => {
-          setPreviewFilePath(filePath);
-          handleOpenFile(filePath, pageNumber);
-        }}
+        onBookmarkSelect={handleBookmarkSelect}
         onBookmarkRemove={removeBookmark}
       />
 
@@ -904,16 +916,7 @@ function App() {
           onCancelIndexing={cancelIndexing}
           onCancelVectorIndexing={cancelVectorIndexing}
           onStartVectorIndexing={startVectorIndexing}
-          onResumeIndexing={async () => {
-            if (cancelledFolderPath) {
-              try {
-                await invoke("resume_indexing", { path: cancelledFolderPath });
-                refreshStatus();
-              } catch (e) {
-                showToast("인덱싱 재시작 실패", "error");
-              }
-            }
-          }}
+          onResumeIndexing={handleResumeIndexing}
           hasCancelledFolders={!!cancelledFolderPath}
           semanticEnabled={semanticEnabled}
         />

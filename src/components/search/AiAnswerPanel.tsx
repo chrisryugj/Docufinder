@@ -1,4 +1,5 @@
 import { useState, memo } from "react";
+import DOMPurify from "dompurify";
 import { Sparkles, ChevronDown, ChevronUp, Clock, FileText, X, Loader2 } from "lucide-react";
 import type { AiAnalysis } from "../../types/search";
 
@@ -200,5 +201,9 @@ function renderSimpleMarkdown(md: string): string {
   safe = safe.replace(/\x00CB(\d+)\x00/g, (_, idx) => codeBlocks[Number(idx)]);
   safe = safe.replace(/\x00IC(\d+)\x00/g, (_, idx) => inlineCodes[Number(idx)]);
 
-  return safe;
+  // 5) DOMPurify로 최종 새니타이징 (XSS 방어 심층 방어)
+  return DOMPurify.sanitize(safe, {
+    ALLOWED_TAGS: ["strong", "em", "h3", "h4", "li", "br", "pre", "code"],
+    ALLOWED_ATTR: ["class"],
+  });
 }

@@ -169,7 +169,7 @@ impl BackgroundParser {
         let mut processed = 0;
 
         loop {
-            if cancel_flag.load(Ordering::Relaxed) {
+            if cancel_flag.load(Ordering::Acquire) {
                 tracing::info!("BackgroundParser: cancelled");
                 send_progress("cancelled", total_pending, processed, None, false);
                 break;
@@ -179,7 +179,7 @@ impl BackgroundParser {
             if !idle_detector::is_user_idle(config.idle_threshold_ms) {
                 send_progress("waiting_idle", total_pending, processed, None, false);
                 idle_detector::wait_for_idle_sync(config.idle_threshold_ms, 500);
-                if cancel_flag.load(Ordering::Relaxed) {
+                if cancel_flag.load(Ordering::Acquire) {
                     break;
                 }
             }

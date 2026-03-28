@@ -47,6 +47,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.0",
     "clsx": "^2.1.1",
+    "dompurify": "^3.3.3",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.469.0",
     "react": "^19.2.3",

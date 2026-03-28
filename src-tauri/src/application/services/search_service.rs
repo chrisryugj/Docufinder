@@ -457,8 +457,8 @@ impl SearchService {
         let vector_chunk_ids: HashSet<i64> = vector_results.iter().map(|r| r.chunk_id).collect();
 
         // 4. RRF 병합 (슬라이스 참조로 clone 제거)
-        // k=15: 소규모 데이터셋(max_results 20~50)에서 순위 차이가 더 뚜렷해짐
-        const RRF_K: f32 = 15.0;
+        // k=60: 학술 표준값. FTS/벡터 양쪽에서 합의된 결과에 더 높은 가중치 부여
+        const RRF_K: f32 = 60.0;
         let mut hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
 
         // 5. 벡터 전용 결과의 content를 미리 확보 (reranking에 필요)
@@ -479,8 +479,12 @@ impl SearchService {
             };
 
         // 6. Cross-Encoder Reranking (상위 40개 — 재현율 향상, MiniLM-L6 ~1ms/후보)
+        // NOTE: ms-marco-MiniLM-L6-v2는 영어 전용 모델. 한국어 쿼리에선 리랭킹 스킵.
         const RERANK_TOP_K: usize = 40;
-        if let Some(rr) = self.reranker.as_ref() {
+        let has_korean = query.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c)
+            || ('\u{1100}'..='\u{11FF}').contains(&c)
+            || ('\u{3130}'..='\u{318F}').contains(&c));
+        if let Some(rr) = self.reranker.as_ref().filter(|_| !has_korean) {
             if hybrid_results.len() > 1 {
                 let top_k = hybrid_results.len().min(RERANK_TOP_K);
                 let top_results: Vec<_> = hybrid_results.drain(..top_k).collect();
@@ -626,6 +630,18 @@ impl SearchService {
             })
             .collect();
 
+        // 파일별 중복 제거: 같은 파일에서 최대 3개 청크만 유지 (결과 다양성 향상)
+        {
+            const MAX_CHUNKS_PER_FILE: usize = 3;
+            let mut file_counts: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+            results.retain(|r| {
+                let count = file_counts.entry(r.file_path.clone()).or_insert(0);
+                *count += 1;
+                *count <= MAX_CHUNKS_PER_FILE
+            });
+        }
+
         // 시맨틱 결과에 가장 유사한 문장 추가 (snippet이 없는 결과만)
         if let Some(qe) = query_embedding.as_ref() {
             if let Err(e) = self.enrich_semantic_results(&mut results, qe) {
@@ -665,31 +681,41 @@ impl SearchService {
     ) -> AppResult<SearchResponse> {
         let conn = self.get_connection()?;
 
-        let scope_clause = folder_scope
-            .map(|s| {
-                let escaped = s
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_");
-                format!(" AND f.path LIKE '{}%' ESCAPE '\\\\'", escaped)
-            })
-            .unwrap_or_default();
-
-        let sql = format!(
-            "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
-             FROM files f
-             WHERE f.modified_at IS NOT NULL {}
-             ORDER BY f.modified_at DESC
-             LIMIT ?1",
-            scope_clause
-        );
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(s) = folder_scope {
+            let escaped = s
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let scope_pattern = format!("{}%", escaped);
+            (
+                "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
+                 FROM files f
+                 WHERE f.modified_at IS NOT NULL AND f.path LIKE ?2 ESCAPE '\\'
+                 ORDER BY f.modified_at DESC
+                 LIMIT ?1".to_string(),
+                vec![
+                    Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>,
+                    Box::new(scope_pattern),
+                ],
+            )
+        } else {
+            (
+                "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
+                 FROM files f
+                 WHERE f.modified_at IS NOT NULL
+                 ORDER BY f.modified_at DESC
+                 LIMIT ?1".to_string(),
+                vec![Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>],
+            )
+        };
 
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| AppError::SearchFailed(e.to_string()))?;
 
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         let results: Vec<SearchResult> = stmt
-            .query_map(rusqlite::params![max_results as i64], |row| {
+            .query_map(param_refs.as_slice(), |row| {
                 Ok(SearchResult {
                     file_path: row.get(0)?,
                     file_name: row.get(1)?,
@@ -830,8 +856,13 @@ impl SearchService {
                 continue;
             }
 
-            // ⚡ full_content 대신 content_preview 사용 (성능 최적화)
-            let sentences = sentence::split_sentences(&result.content_preview);
+            // full_content 우선 사용 (더 넓은 범위에서 유사 문장 탐색), 없으면 content_preview
+            let source = if !result.full_content.is_empty() {
+                &result.full_content
+            } else {
+                &result.content_preview
+            };
+            let sentences = sentence::split_sentences(source);
             for sent in sentences {
                 all_sentences.push((idx, sent.text, sent.start, sent.end));
             }

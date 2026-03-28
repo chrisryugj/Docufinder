@@ -1,19 +1,20 @@
 use crate::ai::types::*;
+use once_cell::sync::OnceCell;
 use reqwest::Client;
-use std::sync::OnceLock;
 
 const BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL: &str = "gemini-3.1-flash-lite-preview";
 
-static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+static HTTP_CLIENT: OnceCell<Client> = OnceCell::new();
 
-fn client() -> &'static Client {
-    HTTP_CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client")
-    })
+fn client() -> Result<&'static Client, GeminiClientError> {
+    HTTP_CLIENT
+        .get_or_try_init(|| {
+            Client::builder()
+                .timeout(std::time::Duration::from_secs(60))
+                .build()
+                .map_err(|e| GeminiClientError::Network(format!("HTTP 클라이언트 생성 실패: {}", e)))
+        })
 }
 
 /// 공통 요청 구성
@@ -60,7 +61,7 @@ pub async fn generate(
 
     let request = build_request(system_prompt, user_message, temperature, max_tokens);
 
-    let response = client()
+    let response = client()?
         .post(&url)
         .header("x-goog-api-key", api_key)
         .json(&request)
@@ -108,7 +109,7 @@ pub async fn generate_stream(
 
     let request = build_request(system_prompt, user_message, temperature, max_tokens);
 
-    let response = client()
+    let response = client()?
         .post(&url)
         .header("x-goog-api-key", api_key)
         .json(&request)

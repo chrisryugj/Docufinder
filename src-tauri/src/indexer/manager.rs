@@ -48,22 +48,31 @@ impl WatchPauseHandle {
         );
     }
 
-    /// Soft resume: 카운터 감소 (0 미만 방지)
+    /// Soft resume: 카운터 감소 (compare_exchange로 underflow 방지)
     pub fn resume_processing(&self) {
-        let prev = self
-            .pause_count
-            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        if prev == 0 {
-            // underflow 방지 (이미 0이었으면 다시 0으로)
-            self.pause_count
-                .store(0, std::sync::atomic::Ordering::SeqCst);
-            tracing::warn!("[WatchPauseHandle] resume_processing called but was not paused");
-        } else {
-            tracing::debug!(
-                "[WatchPauseHandle] resume_processing: {} → {}",
-                prev,
-                prev - 1
-            );
+        loop {
+            let current = self.pause_count.load(std::sync::atomic::Ordering::SeqCst);
+            if current == 0 {
+                tracing::warn!("[WatchPauseHandle] resume_processing called but was not paused");
+                return;
+            }
+            if self
+                .pause_count
+                .compare_exchange(
+                    current,
+                    current - 1,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                tracing::debug!(
+                    "[WatchPauseHandle] resume_processing: {} → {}",
+                    current,
+                    current - 1
+                );
+                return;
+            }
         }
     }
 
@@ -242,21 +251,36 @@ impl WatchManager {
     /// 카운터 감소 후 0이 되었을 때만 실제로 폴더를 재등록.
     /// 중첩된 pause가 있으면 마지막 resume에서만 활성화.
     pub fn resume_with_folders(&mut self, folders: &[String]) {
-        let prev = self
-            .pause_count
-            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-        if prev <= 1 {
-            // 마지막 resume: 실제로 폴더 재등록
-            self.pause_count
-                .store(0, std::sync::atomic::Ordering::SeqCst); // underflow 방지
-            for folder in folders {
-                if let Err(e) = self.watch(Path::new(folder)) {
-                    tracing::warn!("Failed to resume watching {:?}: {}", folder, e);
-                }
+        loop {
+            let current = self.pause_count.load(std::sync::atomic::Ordering::SeqCst);
+            if current == 0 {
+                tracing::warn!("resume_with_folders called but was not paused");
+                return;
             }
-            tracing::info!("File watching resumed ({} folders)", folders.len());
-        } else {
-            tracing::debug!("File watching still paused (count={})", prev - 1);
+            let new_val = current - 1;
+            if self
+                .pause_count
+                .compare_exchange(
+                    current,
+                    new_val,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::SeqCst,
+                )
+                .is_ok()
+            {
+                if new_val == 0 {
+                    // 마지막 resume: 실제로 폴더 재등록
+                    for folder in folders {
+                        if let Err(e) = self.watch(Path::new(folder)) {
+                            tracing::warn!("Failed to resume watching {:?}: {}", folder, e);
+                        }
+                    }
+                    tracing::info!("File watching resumed ({} folders)", folders.len());
+                } else {
+                    tracing::debug!("File watching still paused (count={})", new_val);
+                }
+                return;
+            }
         }
     }
 

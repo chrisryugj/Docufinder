@@ -94,7 +94,7 @@ impl VectorWorker {
         }
 
         // 취소 플래그 리셋
-        self.cancel_flag.store(false, Ordering::Relaxed);
+        self.cancel_flag.store(false, Ordering::Release);
 
         // 상태 초기화
         if let Ok(mut status) = self.status.write() {
@@ -160,7 +160,7 @@ impl VectorWorker {
 
     /// 취소 요청
     pub fn cancel(&self) {
-        self.cancel_flag.store(true, Ordering::Relaxed);
+        self.cancel_flag.store(true, Ordering::Release);
     }
 
     /// 스레드 종료 대기
@@ -259,7 +259,7 @@ fn run_vector_indexing(
 
     loop {
         // 취소 확인
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             tracing::info!("[VectorWorker] Cancelled");
             send_progress(processed, None, false);
             break;
@@ -327,7 +327,7 @@ fn run_vector_indexing(
 
                 for batch in new_chunk_refs.chunks(EMBEDDING_BATCH_SIZE) {
                     // 취소 확인
-                    if cancel_flag.load(Ordering::Relaxed) {
+                    if cancel_flag.load(Ordering::Acquire) {
                         cancelled_mid_file = true;
                         break;
                     }
@@ -486,7 +486,7 @@ fn run_prefetch_thread(
 
     for file_id in pending_file_ids {
         // 취소 확인
-        if cancel_flag.load(Ordering::Relaxed) {
+        if cancel_flag.load(Ordering::Acquire) {
             tracing::debug!("[Prefetch] Cancelled");
             break;
         }
