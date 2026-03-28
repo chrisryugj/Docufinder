@@ -8,3 +8,5 @@ pub mod preview;
 pub mod search;
 pub mod settings;
 pub mod system;
+pub mod tags;
+pub mod typo;

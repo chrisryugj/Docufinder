@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
+import { TagInput } from "../ui/TagInput";
 import type { SummaryResponse, SummarySentence } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 
@@ -36,6 +37,11 @@ interface PreviewPanelProps {
   onOpenFolder?: (path: string) => void;
   onBookmark?: (filePath: string, contentPreview: string, pageNumber?: number | null, locationHint?: string | null) => void;
   isBookmarked?: boolean;
+  /** 태그 관련 */
+  tags?: string[];
+  tagSuggestions?: string[];
+  onAddTag?: (filePath: string, tag: string) => void;
+  onRemoveTag?: (filePath: string, tag: string) => void;
 }
 
 export const PreviewPanel = memo(function PreviewPanel({
@@ -47,6 +53,10 @@ export const PreviewPanel = memo(function PreviewPanel({
   onOpenFolder,
   onBookmark,
   isBookmarked,
+  tags = [],
+  tagSuggestions = [],
+  onAddTag,
+  onRemoveTag,
 }: PreviewPanelProps) {
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -283,6 +293,18 @@ export const PreviewPanel = memo(function PreviewPanel({
           </span>
         )}
       </div>
+
+      {/* 태그 */}
+      {onAddTag && filePath && (
+        <div className="px-3 py-1.5 border-b" style={{ borderColor: "var(--color-border)" }}>
+          <TagInput
+            tags={tags}
+            suggestions={tagSuggestions}
+            onAdd={(tag) => onAddTag(filePath, tag)}
+            onRemove={(tag) => onRemoveTag?.(filePath, tag)}
+          />
+        </div>
+      )}
 
       {/* 콘텐츠 */}
       <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">

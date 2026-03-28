@@ -12,6 +12,7 @@ interface UseExportOptions {
 interface UseExportReturn {
   exportToCSV: (results: SearchResult[], query: string) => Promise<void>;
   exportToXLSX: (results: SearchResult[], query: string) => Promise<void>;
+  exportToJSON: (results: SearchResult[], query: string) => Promise<void>;
   packageToZip: (results: SearchResult[]) => Promise<void>;
   copyToClipboard: (results: SearchResult[], query: string) => Promise<void>;
   isExporting: boolean;
@@ -111,6 +112,48 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
   );
 
   /**
+   * JSON 내보내기 (Rust 백엔드)
+   */
+  const exportToJSON = useCallback(
+    async (results: SearchResult[], query: string) => {
+      if (results.length === 0) {
+        showToast("내보낼 결과가 없습니다", "error");
+        return;
+      }
+
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const safeQuery = query.replace(/[^a-zA-Z0-9가-힣]/g, "_").slice(0, 20);
+
+      const outputPath = await save({
+        defaultPath: `Anything_${safeQuery}_${timestamp}.json`,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+
+      if (!outputPath) return;
+
+      setIsExporting(true);
+      try {
+        const rows = results.map((r) => ({
+          file_name: r.file_name,
+          file_path: r.file_path,
+          location_hint: r.location_hint || `청크 ${r.chunk_index}`,
+          content_preview: r.content_preview.replace(/\n/g, " "),
+          score: r.score,
+          modified_at: r.modified_at ?? null,
+        }));
+
+        await invoke("export_json", { rows, query, outputPath });
+        showToast(`${results.length}건 JSON 내보내기 완료`, "success");
+      } catch (e) {
+        showToast(`JSON 내보내기 실패: ${e}`, "error");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [showToast]
+  );
+
+  /**
    * ZIP 패키징 (검색 결과 파일들)
    */
   const packageToZip = useCallback(
@@ -190,6 +233,7 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
   return {
     exportToCSV,
     exportToXLSX,
+    exportToJSON,
     packageToZip,
     copyToClipboard,
     isExporting,

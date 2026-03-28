@@ -213,6 +213,73 @@ pub async fn export_xlsx(
     .map_err(|e| ApiError::IndexingFailed(e.to_string()))?
 }
 
+/// 검색 결과를 JSON으로 내보내기
+#[tauri::command]
+pub async fn export_json(
+    rows: Vec<ExportRow>,
+    query: String,
+    output_path: String,
+) -> ApiResult<String> {
+    validate_output_path(&output_path)?;
+    tokio::task::spawn_blocking(move || {
+        #[derive(serde::Serialize)]
+        struct JsonExport {
+            query: String,
+            exported_at: String,
+            total_results: usize,
+            results: Vec<JsonRow>,
+        }
+
+        #[derive(serde::Serialize)]
+        struct JsonRow {
+            file_name: String,
+            file_path: String,
+            location_hint: String,
+            content_preview: String,
+            score: f64,
+            modified_at: Option<String>,
+        }
+
+        let results: Vec<JsonRow> = rows
+            .iter()
+            .map(|r| {
+                let modified = r.modified_at.and_then(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0).map(|dt| {
+                        dt.with_timezone(&chrono::Local)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string()
+                    })
+                });
+                JsonRow {
+                    file_name: r.file_name.clone(),
+                    file_path: r.file_path.clone(),
+                    location_hint: r.location_hint.clone(),
+                    content_preview: r.content_preview.clone(),
+                    score: (r.score * 100.0).round() / 100.0,
+                    modified_at: modified,
+                }
+            })
+            .collect();
+
+        let export = JsonExport {
+            query,
+            exported_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+            total_results: results.len(),
+            results,
+        };
+
+        let json = serde_json::to_string_pretty(&export)
+            .map_err(|e| ApiError::IndexingFailed(format!("JSON 직렬화 실패: {}", e)))?;
+
+        std::fs::write(&output_path, json)
+            .map_err(|e| ApiError::IndexingFailed(format!("JSON 저장 실패: {}", e)))?;
+
+        Ok(output_path)
+    })
+    .await
+    .map_err(|e| ApiError::IndexingFailed(e.to_string()))?
+}
+
 /// 선택된 파일들을 ZIP으로 패키징
 #[tauri::command]
 pub async fn package_zip(file_paths: Vec<String>, output_path: String) -> ApiResult<u32> {

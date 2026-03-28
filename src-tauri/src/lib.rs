@@ -717,9 +717,17 @@ pub fn run() {
             commands::ai::ask_ai,
             commands::export::export_csv,
             commands::export::export_xlsx,
+            commands::export::export_json,
             commands::export::package_zip,
+            commands::search::get_search_history_stats,
             commands::duplicate::find_duplicates,
             commands::expiry::scan_expiry_dates,
+            commands::tags::add_file_tag,
+            commands::tags::remove_file_tag,
+            commands::tags::get_file_tags,
+            commands::tags::get_all_tags,
+            commands::tags::get_files_by_tag,
+            commands::typo::suggest_correction,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

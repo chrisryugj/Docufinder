@@ -14,6 +14,9 @@ import { useUpdater } from "./hooks/useUpdater";
 import { useBookmarks } from "./hooks/useBookmarks";
 import { useWindowFocus } from "./hooks/useWindowFocus";
 import { useSimilarDocuments } from "./hooks/useSimilarDocuments";
+import { useFilterPresets, type FilterPreset } from "./hooks/useFilterPresets";
+import { useFileTags } from "./hooks/useFileTags";
+import { useTypoCorrection } from "./hooks/useTypoCorrection";
 import { useDocumentCategories } from "./hooks/useDocumentCategories";
 import { useRecentSearchSaver } from "./hooks/useRecentSearchSaver";
 import { useResultSelection } from "./hooks/useResultSelection";
@@ -24,6 +27,7 @@ import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./compone
 import { FloatingErrorBanner } from "./components/layout/FloatingErrorBanner";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
+import { TypoSuggestion } from "./components/search/TypoSuggestion";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
 import { AiAnswerPanel } from "./components/search/AiAnswerPanel";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
@@ -339,12 +343,52 @@ function App() {
   // 문서 카테고리 자동 분류
   const categories = useDocumentCategories(filteredResults, semanticEnabled);
 
+  // 오타 교정
+  const { suggestion: typoSuggestion, dismiss: dismissTypo } = useTypoCorrection(query, results.length === 0 && !isLoading);
+
   // 내보내기 (토스트 연동)
-  const { exportToCSV, exportToXLSX, packageToZip, copyToClipboard } = useExport({ showToast });
+  const { exportToCSV, exportToXLSX, exportToJSON, packageToZip, copyToClipboard } = useExport({ showToast });
+
+  // 파일 태그
+  const { allTags, getFileTags, addTag, removeTag } = useFileTags(showToast);
+  const [previewTags, setPreviewTags] = useState<string[]>([]);
+  const tagSuggestions = useMemo(() => allTags.map((t) => t.tag), [allTags]);
+
+  // 미리보기 파일 변경 시 태그 로드
+  useEffect(() => {
+    if (previewFilePath) {
+      getFileTags(previewFilePath).then(setPreviewTags);
+    } else {
+      setPreviewTags([]);
+    }
+  }, [previewFilePath, getFileTags]);
+
+  const handleAddTag = useCallback(async (filePath: string, tag: string) => {
+    await addTag(filePath, tag);
+    const updated = await getFileTags(filePath);
+    setPreviewTags(updated);
+  }, [addTag, getFileTags]);
+
+  const handleRemoveTag = useCallback(async (filePath: string, tag: string) => {
+    await removeTag(filePath, tag);
+    const updated = await getFileTags(filePath);
+    setPreviewTags(updated);
+  }, [removeTag, getFileTags]);
+
+  // 필터 프리셋
+  const { presets, addPreset, removePreset, applyPreset } = useFilterPresets();
+  const handleSavePreset = useCallback((name: string) => {
+    addPreset(name, filters);
+    showToast(`프리셋 "${name}" 저장됨`, "success");
+  }, [addPreset, filters, showToast]);
+  const handleApplyPreset = useCallback((preset: FilterPreset) => {
+    setFilters(applyPreset(preset, filters));
+  }, [applyPreset, filters, setFilters]);
 
   // SearchResultList용 메모이제이션 (인라인 함수 → 안정적 참조)
   const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
   const handleExportXLSX = useCallback(() => exportToXLSX(filteredResults, query), [exportToXLSX, filteredResults, query]);
+  const handleExportJSON = useCallback(() => exportToJSON(filteredResults, query), [exportToJSON, filteredResults, query]);
   const handlePackageZip = useCallback(() => packageToZip(filteredResults), [packageToZip, filteredResults]);
   const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, query), [copyToClipboard, filteredResults, query]);
   const memoizedRefineKeywords = useMemo(
@@ -681,8 +725,23 @@ function App() {
                     onRefineQueryChange={setRefineQuery}
                     onRefineQueryClear={clearRefine}
                     watchedFolders={status?.watched_folders ?? []}
+                    presets={presets}
+                    onSavePreset={handleSavePreset}
+                    onApplyPreset={handleApplyPreset}
+                    onRemovePreset={removePreset}
                   />
                 )}
+              </div>
+            )}
+
+            {/* 오타 교정 제안 */}
+            {typoSuggestion && (
+              <div className="mt-1.5">
+                <TypoSuggestion
+                  suggestions={typoSuggestion.suggestions}
+                  onAccept={(word) => { setQuery(word); dismissTypo(); }}
+                  onDismiss={dismissTypo}
+                />
               </div>
             )}
 
@@ -780,6 +839,7 @@ function App() {
                   onOpenFolder={handleOpenFolder}
                   onExportCSV={handleExportCSV}
                   onExportXLSX={handleExportXLSX}
+                  onExportJSON={handleExportJSON}
                   onPackageZip={handlePackageZip}
                   onCopyAll={handleCopyAll}
                   refineKeywords={memoizedRefineKeywords}
@@ -827,6 +887,10 @@ function App() {
                   onOpenFolder={handleOpenFolder}
                   onBookmark={addBookmark}
                   isBookmarked={isBookmarked(previewFilePath)}
+                  tags={previewTags}
+                  tagSuggestions={tagSuggestions}
+                  onAddTag={handleAddTag}
+                  onRemoveTag={handleRemoveTag}
                 />
               </div>
             </>
@@ -926,6 +990,7 @@ function App() {
           if (!query) setQuery("*"); // 빈 쿼리일 때 전체 조회 트리거
         }}
         onOpenFile={handleOpenFile}
+        onSearchQuery={handleSelectSearch}
       />
 
       <DuplicateFinderModal

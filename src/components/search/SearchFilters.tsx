@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import type {
   SearchFilters as FiltersType,
   SortOption,
@@ -13,6 +13,7 @@ import {
   DEFAULT_FILTERS,
 } from "../../types/search";
 import { CustomSelect } from "../ui/CustomSelect";
+import type { FilterPreset } from "../../hooks/useFilterPresets";
 
 interface SearchFiltersProps {
   filters: FiltersType;
@@ -26,6 +27,11 @@ interface SearchFiltersProps {
   onRefineQueryClear?: () => void;
   /** 등록된 폴더 목록 (범위 필터용) */
   watchedFolders?: string[];
+  /** 필터 프리셋 */
+  presets?: FilterPreset[];
+  onSavePreset?: (name: string) => void;
+  onApplyPreset?: (preset: FilterPreset) => void;
+  onRemovePreset?: (id: string) => void;
 }
 
 /**
@@ -40,6 +46,10 @@ export const SearchFilters = memo(function SearchFilters({
   onRefineQueryChange,
   onRefineQueryClear,
   watchedFolders = [],
+  presets = [],
+  onSavePreset,
+  onApplyPreset,
+  onRemovePreset,
 }: SearchFiltersProps) {
   const handleSortChange = (sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
@@ -189,6 +199,17 @@ export const SearchFilters = memo(function SearchFilters({
         </div>
       )}
 
+      {/* 프리셋 */}
+      {onSavePreset && onApplyPreset && (
+        <PresetDropdown
+          presets={presets}
+          hasActiveFilters={hasActiveFilters}
+          onSave={onSavePreset}
+          onApply={onApplyPreset}
+          onRemove={onRemovePreset}
+        />
+      )}
+
       {/* 초기화 버튼 */}
       {hasActiveFilters && (
         <button
@@ -265,4 +286,176 @@ function InlineFilterDropdown<T extends string>({
       ariaLabel={`${label} 필터`}
     />
   );
+}
+
+/** 프리셋 저장/불러오기 드롭다운 */
+function PresetDropdown({
+  presets,
+  hasActiveFilters,
+  onSave,
+  onApply,
+  onRemove,
+}: {
+  presets: FilterPreset[];
+  hasActiveFilters: boolean;
+  onSave: (name: string) => void;
+  onApply: (preset: FilterPreset) => void;
+  onRemove?: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 외부 클릭 닫기
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setSaving(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (saving) inputRef.current?.focus();
+  }, [saving]);
+
+  const handleSave = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onSave(trimmed);
+    setName("");
+    setSaving(false);
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => { setOpen(!open); setSaving(false); }}
+        className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs transition-colors"
+        style={{
+          borderColor: "var(--color-border)",
+          backgroundColor: "var(--color-bg-secondary)",
+          color: "var(--color-text-muted)",
+        }}
+        title="필터 프리셋"
+        aria-label="필터 프리셋"
+        aria-expanded={open}
+      >
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+        </svg>
+        프리셋
+      </button>
+
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1 w-56 rounded-lg border shadow-lg z-50 overflow-hidden"
+          style={{
+            backgroundColor: "var(--color-bg-primary)",
+            borderColor: "var(--color-border)",
+          }}
+        >
+          {/* 저장된 프리셋 목록 */}
+          {presets.length > 0 ? (
+            <div className="max-h-48 overflow-y-auto">
+              {presets.map((preset) => (
+                <div
+                  key={preset.id}
+                  className="flex items-center gap-1 px-3 py-2 hover:bg-[var(--color-bg-tertiary)] cursor-pointer group"
+                  onClick={() => { onApply(preset); setOpen(false); }}
+                >
+                  <span className="flex-1 text-xs text-[var(--color-text-primary)] truncate">
+                    {preset.name}
+                  </span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    {describePreset(preset)}
+                  </span>
+                  {onRemove && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onRemove(preset.id); }}
+                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] transition-opacity"
+                      title="삭제"
+                      aria-label={`프리셋 "${preset.name}" 삭제`}
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-3 py-3 text-xs text-center text-[var(--color-text-muted)]">
+              저장된 프리셋이 없습니다
+            </div>
+          )}
+
+          {/* 구분선 + 저장 */}
+          <div className="border-t" style={{ borderColor: "var(--color-border)" }}>
+            {saving ? (
+              <div className="flex items-center gap-1 p-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setSaving(false); }}
+                  placeholder="프리셋 이름..."
+                  maxLength={30}
+                  className="flex-1 px-2 py-1 text-xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+                  style={{
+                    backgroundColor: "var(--color-bg-secondary)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+                <button
+                  onClick={handleSave}
+                  disabled={!name.trim()}
+                  className="px-2 py-1 text-xs rounded font-medium text-white disabled:opacity-40"
+                  style={{ backgroundColor: "var(--color-accent)" }}
+                >
+                  저장
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setSaving(true)}
+                disabled={!hasActiveFilters}
+                className="w-full px-3 py-2 text-xs text-left transition-colors disabled:opacity-40"
+                style={{ color: "var(--color-accent)" }}
+              >
+                + 현재 필터를 프리셋으로 저장
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 프리셋 설명 텍스트 (간략) */
+function describePreset(preset: FilterPreset): string {
+  const parts: string[] = [];
+  if (preset.filters.fileType !== "all") {
+    const map: Record<string, string> = { hwpx: "한글", docx: "워드", pptx: "PPT", xlsx: "엑셀", pdf: "PDF", txt: "TXT" };
+    parts.push(map[preset.filters.fileType] || preset.filters.fileType);
+  }
+  if (preset.filters.dateRange !== "all") {
+    const map: Record<string, string> = { today: "오늘", week: "7일", month: "30일" };
+    parts.push(map[preset.filters.dateRange] || preset.filters.dateRange);
+  }
+  if (preset.filters.sortBy !== "relevance") {
+    const map: Record<string, string> = { confidence: "신뢰도", date_desc: "최신", date_asc: "오래된", name: "이름", size: "크기" };
+    parts.push(map[preset.filters.sortBy] || preset.filters.sortBy);
+  }
+  return parts.length > 0 ? parts.join(" · ") : "기본";
 }

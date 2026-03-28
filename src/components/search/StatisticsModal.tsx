@@ -3,11 +3,25 @@ import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "../ui/Modal";
 import type { DocumentStatistics, StatEntry, FileEntry } from "../../types/search";
 
+interface QueryStat {
+  query: string;
+  frequency: number;
+  last_searched_at: number;
+}
+
+interface SearchHistoryStats {
+  total_searches: number;
+  unique_queries: number;
+  top_queries: QueryStat[];
+  recent_queries: QueryStat[];
+}
+
 interface StatisticsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onFilterByType?: (fileType: string) => void;
   onOpenFile?: (filePath: string, pageNumber?: number | null) => void;
+  onSearchQuery?: (query: string) => void;
 }
 
 /** 파일 크기 포맷 */
@@ -214,22 +228,109 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** 검색 히스토리 탭 */
+function SearchHistoryTab({ stats, onSearchQuery }: { stats: SearchHistoryStats; onSearchQuery?: (query: string) => void }) {
+  const [subTab, setSubTab] = useState<"top" | "recent">("top");
+  const maxFreq = stats.top_queries[0]?.frequency ?? 1;
+
+  const formatRelTime = (ts: number) => {
+    const diff = Date.now() - ts * 1000;
+    if (diff < 60_000) return "방금 전";
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)}분 전`;
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}시간 전`;
+    if (diff < 604800_000) return `${Math.floor(diff / 86400_000)}일 전`;
+    return new Date(ts * 1000).toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+  };
+
+  const queries = subTab === "top" ? stats.top_queries : stats.recent_queries;
+
+  return (
+    <div className="space-y-4">
+      {/* 요약 카드 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="text-center px-3 py-2.5 rounded-lg" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+          <div className="text-lg font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+            {stats.total_searches.toLocaleString()}
+          </div>
+          <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>총 검색 횟수</div>
+        </div>
+        <div className="text-center px-3 py-2.5 rounded-lg" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+          <div className="text-lg font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+            {stats.unique_queries.toLocaleString()}
+          </div>
+          <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>고유 검색어</div>
+        </div>
+      </div>
+
+      {/* 서브 탭 */}
+      <div className="flex gap-2">
+        {([["top", "자주 검색"], ["recent", "최근 검색"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setSubTab(id)}
+            className="px-2.5 py-1 text-xs rounded-md font-medium transition-colors"
+            style={{
+              backgroundColor: subTab === id ? "var(--color-accent)" : "var(--color-bg-tertiary)",
+              color: subTab === id ? "white" : "var(--color-text-muted)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 목록 */}
+      <div className="max-h-64 overflow-y-auto space-y-0.5">
+        {queries.map((q, i) => (
+          <button
+            key={q.query}
+            onClick={() => onSearchQuery?.(q.query)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors text-left"
+          >
+            <span className="w-5 text-xs text-[var(--color-text-muted)] text-right shrink-0">{i + 1}</span>
+            <span className="flex-1 text-sm text-[var(--color-text-primary)] truncate">{q.query}</span>
+            {subTab === "top" ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-16 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${(q.frequency / maxFreq) * 100}%`, backgroundColor: "var(--color-accent)" }} />
+                </div>
+                <span className="text-xs text-[var(--color-text-muted)] w-8 text-right">{q.frequency}회</span>
+              </div>
+            ) : (
+              <span className="text-xs text-[var(--color-text-muted)] shrink-0">{formatRelTime(q.last_searched_at)}</span>
+            )}
+          </button>
+        ))}
+        {queries.length === 0 && (
+          <div className="text-center py-8 text-sm text-[var(--color-text-muted)]">검색 기록이 없습니다</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const StatisticsModal = memo(function StatisticsModal({
   isOpen,
   onClose,
   onFilterByType,
   onOpenFile,
+  onSearchQuery,
 }: StatisticsModalProps) {
   const [stats, setStats] = useState<DocumentStatistics | null>(null);
+  const [searchStats, setSearchStats] = useState<SearchHistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<"docs" | "search">("docs");
 
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-    invoke<DocumentStatistics>("get_document_statistics")
-      .then(setStats)
-      .catch(() => setStats(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      invoke<DocumentStatistics>("get_document_statistics").catch(() => null),
+      invoke<SearchHistoryStats>("get_search_history_stats").catch(() => null),
+    ]).then(([docStats, srchStats]) => {
+      setStats(docStats);
+      setSearchStats(srchStats);
+    }).finally(() => setLoading(false));
   }, [isOpen]);
 
   const handleSegmentClick = useCallback(
@@ -248,12 +349,29 @@ export const StatisticsModal = memo(function StatisticsModal({
   );
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="문서 통계" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="통계" size="lg">
+      {/* 탭 헤더 */}
+      <div className="flex gap-1 mb-4 border-b" style={{ borderColor: "var(--color-border)" }}>
+        {([["docs", "문서 통계"], ["search", "검색 히스토리"]] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className="px-3 py-2 text-sm font-medium transition-colors border-b-2"
+            style={{
+              borderColor: tab === id ? "var(--color-accent)" : "transparent",
+              color: tab === id ? "var(--color-accent)" : "var(--color-text-muted)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-6 h-6 rounded-full animate-spin" style={{ border: "2px solid var(--color-border)", borderTopColor: "var(--color-accent)" }} />
         </div>
-      ) : stats ? (
+      ) : tab === "docs" && stats ? (
         <div className="space-y-6">
           {/* 요약 카드 */}
           <div className="grid grid-cols-3 gap-3">
@@ -304,6 +422,8 @@ export const StatisticsModal = memo(function StatisticsModal({
             </Section>
           </div>
         </div>
+      ) : tab === "search" && searchStats ? (
+        <SearchHistoryTab stats={searchStats} onSearchQuery={(q) => { onSearchQuery?.(q); onClose(); }} />
       ) : (
         <p className="text-center py-8 text-sm" style={{ color: "var(--color-text-muted)" }}>
           통계를 불러올 수 없습니다.

@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 9;
+const CURRENT_SCHEMA_VERSION: i32 = 10;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -256,6 +256,29 @@ pub fn init_database(db_path: &Path) -> Result<()> {
         )?;
         set_schema_version(&conn, 9)?;
         tracing::info!("Schema migrated to v9 (bookmark unique constraint)");
+    }
+
+    // v10: 파일 태그 시스템
+    if get_schema_version(&conn) < 10 {
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS file_tags (
+                id INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL,
+                tag TEXT NOT NULL,
+                created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+            )",
+            [],
+        )?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_file_tags_path_tag ON file_tags(file_path, tag)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag)",
+            [],
+        )?;
+        set_schema_version(&conn, 10)?;
+        tracing::info!("Schema migrated to v10 (file tags)");
     }
 
     tracing::info!(

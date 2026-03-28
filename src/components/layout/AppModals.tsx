@@ -16,6 +16,7 @@ interface AppModalsProps {
   helpOpen: boolean;
   onHelpClose: () => void;
 
+
   showDisclaimer: boolean;
   onAcceptDisclaimer: () => void;
   onExitApp: () => void;

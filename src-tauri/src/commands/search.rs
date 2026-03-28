@@ -440,3 +440,88 @@ pub struct DocumentStatistics {
     pub recent_files: Vec<FileEntry>,
     pub largest_files: Vec<FileEntry>,
 }
+
+/// 검색 히스토리 통계
+#[derive(Debug, serde::Serialize)]
+pub struct SearchHistoryStats {
+    /// 총 검색 횟수 (sum of frequency)
+    pub total_searches: i64,
+    /// 고유 검색어 수
+    pub unique_queries: i64,
+    /// 자주 검색한 키워드 TOP 20
+    pub top_queries: Vec<QueryStat>,
+    /// 최근 검색어 TOP 20
+    pub recent_queries: Vec<QueryStat>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct QueryStat {
+    pub query: String,
+    pub frequency: i64,
+    pub last_searched_at: i64,
+}
+
+/// 검색 히스토리 통계 조회
+#[tauri::command]
+pub async fn get_search_history_stats(
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<SearchHistoryStats> {
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<SearchHistoryStats> {
+        let conn = crate::db::get_connection(&db_path)?;
+
+        // 총 검색 횟수
+        let total_searches: i64 = conn
+            .query_row("SELECT COALESCE(SUM(frequency), 0) FROM search_queries", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        // 고유 검색어 수
+        let unique_queries: i64 = conn
+            .query_row("SELECT COUNT(*) FROM search_queries", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        // 자주 검색한 TOP 20
+        let mut stmt = conn
+            .prepare("SELECT query, frequency, last_searched_at FROM search_queries ORDER BY frequency DESC LIMIT 20")
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+        let top_queries: Vec<QueryStat> = stmt
+            .query_map([], |row| {
+                Ok(QueryStat {
+                    query: row.get(0)?,
+                    frequency: row.get(1)?,
+                    last_searched_at: row.get(2)?,
+                })
+            })
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // 최근 검색어 TOP 20
+        let mut stmt2 = conn
+            .prepare("SELECT query, frequency, last_searched_at FROM search_queries ORDER BY last_searched_at DESC LIMIT 20")
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+        let recent_queries: Vec<QueryStat> = stmt2
+            .query_map([], |row| {
+                Ok(QueryStat {
+                    query: row.get(0)?,
+                    frequency: row.get(1)?,
+                    last_searched_at: row.get(2)?,
+                })
+            })
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(SearchHistoryStats {
+            total_searches,
+            unique_queries,
+            top_queries,
+            recent_queries,
+        })
+    })
+    .await?
+}

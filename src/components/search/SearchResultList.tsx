@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
-import { List, LayoutGrid, ClipboardCopy, FileDown, FileSpreadsheet, Archive, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
+import { List, LayoutGrid, ClipboardCopy, FileDown, FileSpreadsheet, FileJson2, Archive, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
 import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch, ParsedQueryInfo } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -29,6 +29,7 @@ interface SearchResultListProps {
   onOpenFolder?: (path: string) => void;
   onExportCSV?: () => void;
   onExportXLSX?: () => void;
+  onExportJSON?: () => void;
   onPackageZip?: () => void;
   onCopyAll?: () => void;
   /** 결과 내 검색 키워드 (추가 하이라이트용) */
@@ -91,6 +92,7 @@ export const SearchResultList = memo(function SearchResultList({
   onOpenFolder,
   onExportCSV,
   onExportXLSX,
+  onExportJSON,
   onPackageZip,
   onCopyAll,
   refineKeywords,
@@ -229,6 +231,7 @@ export const SearchResultList = memo(function SearchResultList({
           onCopyAll={onCopyAll}
           onExportCSV={onExportCSV}
           onExportXLSX={onExportXLSX}
+          onExportJSON={onExportJSON}
           onPackageZip={onPackageZip}
         />
 
@@ -482,6 +485,7 @@ function ResultsToolbar({
   onCopyAll,
   onExportCSV,
   onExportXLSX,
+  onExportJSON,
   onPackageZip,
 }: {
   viewMode: ViewMode;
@@ -493,6 +497,7 @@ function ResultsToolbar({
   onCopyAll?: () => void;
   onExportCSV?: () => void;
   onExportXLSX?: () => void;
+  onExportJSON?: () => void;
   onPackageZip?: () => void;
 }) {
   return (
@@ -573,6 +578,15 @@ function ResultsToolbar({
         >
           <FileSpreadsheet className="w-3.5 h-3.5" />
           Excel
+        </button>
+        <button
+          onClick={onExportJSON}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
+          title="JSON 파일로 내보내기"
+          aria-label="JSON 파일로 내보내기"
+        >
+          <FileJson2 className="w-3.5 h-3.5" />
+          JSON
         </button>
         <button
           onClick={onPackageZip}
