@@ -337,7 +337,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, [query, setQuery]);
 
-  // paradigm 전환 (localStorage 저장 + 상태 초기화)
+  // paradigm 전환 (localStorage 저장 + 상태 초기화 + 캐시 클리어)
   const setParadigm = useCallback((p: SearchParadigm) => {
     setParadigmInternal(p);
     try { localStorage.setItem("docufinder_paradigm", p); } catch {}
@@ -345,6 +345,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     setQuery("");
     setParsedQuery(null);
     setNlSubmitted(false);
+    clearSearchCache();
     startTransition(() => {
       setResults([]);
       setFilenameResults([]);
@@ -408,7 +409,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch, COMPOSITION_IDLE_MS, paradigm]);
+  }, [query, searchMode, debounceMs, executeSearch, paradigm]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {

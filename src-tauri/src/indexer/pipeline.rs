@@ -263,7 +263,12 @@ fn index_folder_fts_impl(
             }
             let _ = save_file_metadata_only(conn, path);
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
-                let _ = conn.execute_batch("COMMIT; BEGIN");
+                if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                    tracing::warn!("Metadata batch commit failed: {}", e);
+                    if conn.is_autocommit() {
+                        let _ = conn.execute_batch("BEGIN");
+                    }
+                }
             }
         }
         let _ = conn.execute_batch("COMMIT");
@@ -459,6 +464,10 @@ fn index_folder_fts_impl(
                     if batch_count >= TRANSACTION_BATCH_SIZE {
                         if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                             tracing::warn!("Batch commit failed: {}", e);
+                            // 트랜잭션 상태 복구: autocommit이면 BEGIN 재시도
+                            if conn.is_autocommit() {
+                                let _ = conn.execute_batch("BEGIN");
+                            }
                         }
                         batch_count = 0;
                     }
@@ -476,9 +485,9 @@ fn index_folder_fts_impl(
         }
     }
 
-    if !was_cancelled {
-        let _ = producer_handle.join();
-    }
+    // 항상 producer 스레드 join (취소 시에도 channel drop으로 빠르게 종료됨)
+    // receiver는 이미 drop되었으므로 producer의 sender.send()가 Err 반환 → 루프 종료
+    let _ = producer_handle.join();
 
     let phase = if was_cancelled {
         "cancelled"
@@ -525,7 +534,7 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-    let size = metadata.len() as i64;
+    let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
     let modified_at = metadata
         .modified()
         .ok()
@@ -715,7 +724,7 @@ pub fn scan_metadata_only(
         // DB에 메타데이터만 저장 (확장자/용량 무관 — 파일명 검색 완전성 보장)
         let path_str = path.to_string_lossy().to_string();
         let file_type = ext.clone();
-        let size = metadata.len() as i64;
+        let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
         let modified_at = metadata
             .modified()
             .ok()
@@ -743,6 +752,9 @@ pub fn scan_metadata_only(
         if batch_count >= BATCH_SIZE {
             if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                 tracing::warn!("Batch commit failed: {}", e);
+                if conn.is_autocommit() {
+                    let _ = conn.execute_batch("BEGIN");
+                }
             }
             batch_count = 0;
         }

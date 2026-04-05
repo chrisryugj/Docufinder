@@ -93,7 +93,7 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
             // calamine 라이브러리 내부 패닉 방지 + 타임아웃 (대용량 시트 행 방지)
             let path_owned = path.to_path_buf();
             let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || {
+            let handle = std::thread::spawn(move || {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     xlsx::parse(&path_owned)
                 }))
@@ -107,9 +107,20 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
             });
             // 15초 타임아웃
             match rx.recv_timeout(std::time::Duration::from_secs(15)) {
-                Ok(result) => result,
+                Ok(result) => {
+                    let _ = handle.join();
+                    result
+                }
                 Err(_) => {
                     tracing::error!("XLS/XLSX parser timeout (15s): {:?}", path);
+                    // 타임아웃된 스레드 정리용 경량 클린업 스레드 (PDF 패턴과 동일)
+                    let _ = std::thread::Builder::new()
+                        .name("xlsx-cleanup".into())
+                        .stack_size(64 * 1024)
+                        .spawn(move || {
+                            let _ = handle.join();
+                            tracing::debug!("Timed-out XLSX thread reclaimed");
+                        });
                     Err(ParseError::ParseError(format!(
                         "XLS/XLSX 파싱 타임아웃 (15초 초과): {}",
                         path.display()

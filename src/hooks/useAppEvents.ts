@@ -86,14 +86,15 @@ export function useAppEvents({
     return () => { unlistenFn?.(); };
   }, []);
 
-  // HWP 파일 감지 이벤트 (증분 인덱싱 시)
+  // HWP 파일 감지 이벤트 (증분 인덱싱 시) — ref 패턴으로 재등록 방지
+  const onHwpDetectedRef = useRef(onHwpDetected);
+  useEffect(() => { onHwpDetectedRef.current = onHwpDetected; });
   useEffect(() => {
-    if (!onHwpDetected) return;
     let unlistenFn: UnlistenFn | null = null;
     listen<string[]>("hwp-files-detected", (event) => {
-      onHwpDetected(event.payload);
+      onHwpDetectedRef.current?.(event.payload);
     }).then((fn) => { unlistenFn = fn; });
 
     return () => { unlistenFn?.(); };
-  }, [onHwpDetected]);
+  }, []);
 }

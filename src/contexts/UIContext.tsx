@@ -132,13 +132,15 @@ export function UIProvider({ children }: { children: ReactNode }) {
   // Preview
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [previewWidth, setPreviewWidth] = useState(() => Math.round(window.innerWidth * 0.3));
+  const previewWidthRef = useRef(previewWidth);
+  useEffect(() => { previewWidthRef.current = previewWidth; }, [previewWidth]);
   const isResizingRef = useRef(false);
   const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isResizingRef.current = true;
     const startX = e.clientX;
-    const startWidth = previewWidth;
+    const startWidth = previewWidthRef.current;
     const onMove = (ev: MouseEvent) => {
       if (!isResizingRef.current) return;
       const delta = startX - ev.clientX;
@@ -155,7 +157,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
     document.addEventListener("mouseup", onUp);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-  }, [previewWidth]);
+  }, []);
 
   // Bookmarks
   const { bookmarks, addBookmark, removeBookmark, isBookmarked } = useBookmarks({ showToast });
@@ -166,11 +168,15 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const tagSuggestions = useMemo(() => allTags.map((t) => t.tag), [allTags]);
 
   useEffect(() => {
+    let cancelled = false;
     if (previewFilePath) {
-      getFileTags(previewFilePath).then(setPreviewTags);
+      getFileTags(previewFilePath).then((tags) => {
+        if (!cancelled) setPreviewTags(tags);
+      });
     } else {
       setPreviewTags([]);
     }
+    return () => { cancelled = true; };
   }, [previewFilePath, getFileTags]);
 
   const handleAddTag = useCallback(async (filePath: string, tag: string) => {

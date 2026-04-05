@@ -158,7 +158,11 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
     };
 
     let mut xml_content = String::new();
-    std::io::Read::read_to_string(&mut entry, &mut xml_content)?;
+    // .take()로 디컴프레션 크기 제한 (ZIP 헤더 위조 시 OOM 방어)
+    {
+        use std::io::Read;
+        entry.take(super::MAX_ENTRY_UNCOMPRESSED_SIZE).read_to_string(&mut xml_content)?;
+    }
 
     let mut reader = Reader::from_str(&xml_content);
     reader.config_mut().trim_text(true);

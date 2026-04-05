@@ -173,7 +173,12 @@ pub fn sync_folder_fts(
             }
             let _ = save_file_metadata_only(conn, path);
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
-                let _ = conn.execute_batch("COMMIT; BEGIN");
+                if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                    tracing::warn!("Sync metadata batch commit failed: {}", e);
+                    if conn.is_autocommit() {
+                        let _ = conn.execute_batch("BEGIN");
+                    }
+                }
             }
         }
         let _ = conn.execute_batch("COMMIT");
@@ -344,6 +349,9 @@ pub fn sync_folder_fts(
                 if batch_count >= TRANSACTION_BATCH_SIZE {
                     if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                         tracing::warn!("Batch commit failed: {}", e);
+                        if conn.is_autocommit() {
+                            let _ = conn.execute_batch("BEGIN");
+                        }
                     }
                     batch_count = 0;
                 }
