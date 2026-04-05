@@ -1,10 +1,8 @@
 import { createContext, useContext, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
-import { useAiSearch } from "../hooks/useAiSearch";
-import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
-import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch, AiAnalysis } from "../types/search";
+import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch } from "../types/search";
 import { useUIContext } from "./UIContext";
 
 // ── Types ──────────────────────────────────────────────
@@ -70,12 +68,6 @@ export interface SearchContextValue {
   typoSuggestion: { suggestions: { word: string; distance: number; frequency: number }[] } | null;
   dismissTypo: () => void;
 
-  // Filter presets
-  presets: FilterPreset[];
-  handleSavePreset: (name: string) => void;
-  handleApplyPreset: (preset: FilterPreset) => void;
-  removePreset: (id: string) => void;
-
   // Similar documents
   similarResults: SearchResult[];
   similarSourceFile: string | null;
@@ -88,19 +80,8 @@ export interface SearchContextValue {
 
   // Export (memoized)
   handleExportCSV: () => void;
-  handleExportXLSX: () => void;
-  handleExportJSON: () => void;
-  handlePackageZip: () => void;
   handleCopyAll: () => void;
   memoizedRefineKeywords: string[] | undefined;
-
-  // AI search
-  aiAnalysis: AiAnalysis | null;
-  isAiLoading: boolean;
-  aiError: string | null;
-  requestAiAnalysis: (query: string, results: SearchResult[]) => void;
-  clearAiAnalysis: () => void;
-  handleAskAi: () => void;
 
   // Refs
   searchInputRef: React.RefObject<HTMLInputElement | null>;
@@ -194,16 +175,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // ── Typo Correction ──
   const { suggestion: typoSuggestion, dismiss: dismissTypo } = useTypoCorrection(query, results.length === 0 && !isLoading);
 
-  // ── Filter Presets ──
-  const { presets, addPreset, removePreset, applyPreset } = useFilterPresets();
-  const handleSavePreset = useCallback((name: string) => {
-    addPreset(name, filters);
-    showToast(`프리셋 "${name}" 저장됨`, "success");
-  }, [addPreset, filters, showToast]);
-  const handleApplyPreset = useCallback((preset: FilterPreset) => {
-    setFilters(applyPreset(preset, filters));
-  }, [applyPreset, filters, setFilters]);
-
   // ── Similar Documents ──
   const { similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults } = useSimilarDocuments(showToast);
 
@@ -211,30 +182,13 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const { selectedIndex, setSelectedIndex } = useResultSelection(filteredResults, setPreviewFilePath);
 
   // ── Export (memoized) ──
-  const { exportToCSV, exportToXLSX, exportToJSON, packageToZip, copyToClipboard } = useExport({ showToast });
+  const { exportToCSV, copyToClipboard } = useExport({ showToast });
   const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
-  const handleExportXLSX = useCallback(() => exportToXLSX(filteredResults, query), [exportToXLSX, filteredResults, query]);
-  const handleExportJSON = useCallback(() => exportToJSON(filteredResults, query), [exportToJSON, filteredResults, query]);
-  const handlePackageZip = useCallback(() => packageToZip(filteredResults), [packageToZip, filteredResults]);
   const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, query), [copyToClipboard, filteredResults, query]);
   const memoizedRefineKeywords = useMemo(
     () => refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined,
     [refineQuery]
   );
-
-  // ── AI Search ──
-  const { aiAnalysis, isAiLoading, aiError, requestAiAnalysis, clearAiAnalysis } = useAiSearch();
-
-  // 자연어 모드: 검색 완료 시 AI 자동 분석
-  const aiAutoRef = useRef({ aiEnabled: false, paradigm, query, filteredResults, isLoading, requestAiAnalysis });
-  aiAutoRef.current = { aiEnabled: false, paradigm, query, filteredResults, isLoading, requestAiAnalysis };
-  // Note: aiEnabled는 AppContent에서 별도 effect로 처리
-
-  const handleAskAi = useCallback(() => {
-    if (query.trim() && filteredResults.length > 0) {
-      requestAiAnalysis(query, filteredResults);
-    }
-  }, [query, filteredResults, requestAiAnalysis]);
 
   // ── searchMode 변경 시 keywordOnly 리셋 ──
   useEffect(() => {
@@ -253,11 +207,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     autoComplete, handleSuggestionSelect,
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,
-    presets, handleSavePreset, handleApplyPreset, removePreset,
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex, setSelectedIndex,
-    handleExportCSV, handleExportXLSX, handleExportJSON, handlePackageZip, handleCopyAll, memoizedRefineKeywords,
-    aiAnalysis, isAiLoading, aiError, requestAiAnalysis, clearAiAnalysis, handleAskAi,
+    handleExportCSV, handleCopyAll, memoizedRefineKeywords,
     searchInputRef, compactSearchInputRef,
     clearSearchCache,
   };

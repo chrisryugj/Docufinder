@@ -9,7 +9,6 @@ use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager, WatchPauseHandle, WatchRuntimeSettings};
 use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
 use crate::ocr::OcrEngine;
-use crate::reranker::Reranker;
 use crate::search::filename_cache::FilenameCache;
 use crate::search::vector::VectorIndex;
 use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
@@ -46,7 +45,6 @@ pub struct AppContainer {
     /// 벡터 워커 - Arc로 공유하여 IndexService에서 동일 인스턴스 사용
     vector_worker: Arc<RwLock<VectorWorker>>,
     tokenizer: OnceCell<Arc<dyn TextTokenizer>>,
-    reranker: OnceCell<Arc<Reranker>>,
     /// OCR 엔진 (PaddleOCR ONNX)
     ocr_engine: OnceCell<Arc<OcrEngine>>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
@@ -103,7 +101,6 @@ impl AppContainer {
             watch_manager: OnceCell::new(),
             vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
             tokenizer: OnceCell::new(),
-            reranker: OnceCell::new(),
             ocr_engine: OnceCell::new(),
             filename_cache: Arc::new(FilenameCache::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -125,7 +122,6 @@ impl AppContainer {
             self.get_embedder().ok(),
             self.get_vector_index().ok(),
             self.get_tokenizer().ok(),
-            self.get_reranker().ok(),
             Some(self.filename_cache.clone()),
         )
     }
@@ -386,37 +382,6 @@ impl AppContainer {
                     .map_err(|e| ApiError::IndexingFailed(format!("토크나이저 초기화 실패: {}", e)))
             })
             .cloned()
-    }
-
-    /// Cross-Encoder Reranker 가져오기 (lazy load)
-    pub fn get_reranker(&self) -> Result<Arc<Reranker>, ApiError> {
-        self.reranker
-            .get_or_try_init(|| {
-                let model_dir = self.models_dir.join("ms-marco-MiniLM-L6-v2");
-                let model_path = model_dir.join("model.onnx");
-                let tokenizer_path = model_dir.join("tokenizer.json");
-
-                if !model_path.exists() {
-                    return Err(ApiError::ModelNotFound(format!(
-                        "Reranker 모델을 찾을 수 없습니다: {:?}",
-                        model_path
-                    )));
-                }
-
-                Reranker::new(&model_path, &tokenizer_path)
-                    .map(Arc::new)
-                    .map_err(|e| ApiError::IndexingFailed(format!("Reranker 초기화 실패: {}", e)))
-            })
-            .cloned()
-    }
-
-    /// Reranker 모델 사용 가능 여부 확인
-    pub fn is_reranker_available(&self) -> bool {
-        let model_path = self
-            .models_dir
-            .join("ms-marco-MiniLM-L6-v2")
-            .join("model.onnx");
-        model_path.exists()
     }
 
     /// OCR 엔진 (PaddleOCR ONNX)

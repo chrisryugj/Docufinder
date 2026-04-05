@@ -2,7 +2,6 @@
 
 use crate::application::dto::search::SearchResult;
 use crate::search::nl_query::DateFilter;
-use std::collections::HashSet;
 
 // ── 스코어 정규화 ─────────────────────────────────────
 
@@ -202,39 +201,6 @@ pub fn interpolate_page_from_snippet(
     Some(interpolated.round() as i64)
 }
 
-// ── Reranking 헬퍼 ───────────────────────────────────
-
-pub fn apply_reranked_top_results<T: Clone>(
-    top_results: Vec<T>,
-    rerank_candidate_indices: &[usize],
-    reranked_indices: &[usize],
-) -> Vec<T> {
-    let mut appended = HashSet::new();
-    let mut reordered = Vec::with_capacity(top_results.len());
-
-    for &idx in reranked_indices {
-        if let Some(&orig_idx) = rerank_candidate_indices.get(idx) {
-            if appended.insert(orig_idx) {
-                reordered.push(top_results[orig_idx].clone());
-            }
-        }
-    }
-
-    for &orig_idx in rerank_candidate_indices {
-        if appended.insert(orig_idx) {
-            reordered.push(top_results[orig_idx].clone());
-        }
-    }
-
-    for (idx, result) in top_results.iter().cloned().enumerate() {
-        if !appended.contains(&idx) {
-            reordered.push(result);
-        }
-    }
-
-    reordered
-}
-
 // ── 벡터 검색 folder_scope 필터 ──────────────────────
 
 /// 벡터 검색 결과의 folder_scope 후처리 필터 (Windows: case-insensitive)
@@ -419,20 +385,6 @@ pub fn count_article_pattern(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rerank_keeps_vector_only_results_in_their_original_tail_order() {
-        let top_results = vec!["vector-only-a", "fts-b", "fts-c"];
-        let reranked = apply_reranked_top_results(top_results, &[1, 2], &[1, 0]);
-        assert_eq!(reranked, vec!["fts-c", "fts-b", "vector-only-a"]);
-    }
-
-    #[test]
-    fn rerank_restores_missing_candidates_without_dropping_results() {
-        let top_results = vec!["vector-a", "fts-b", "vector-c", "fts-d"];
-        let reranked = apply_reranked_top_results(top_results, &[1, 3], &[1]);
-        assert_eq!(reranked, vec!["fts-d", "fts-b", "vector-a", "vector-c"]);
-    }
 
     #[test]
     fn count_article_pattern_works() {

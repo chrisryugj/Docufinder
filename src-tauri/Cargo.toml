@@ -60,18 +60,11 @@ async-trait = "0.1"
 # HTTP client for model download
 ureq = "3"
 
-# Gemini AI (RAG)
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
-futures = "0.3"
-
 # SHA-256 무결성 검증
 sha2 = "0.10"
 
 # Base64 (PowerShell EncodedCommand)
 base64 = "0.22"
-
-# Export
-rust_xlsxwriter = "0.94"
 
 # Utilities
 thiserror = "2"

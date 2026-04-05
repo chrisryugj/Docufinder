@@ -3,7 +3,7 @@ import { InfoTooltip } from "../../ui/Tooltip";
 import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
-import { CONFIDENCE_STEP, VECTOR_INDEXING_MODE_OPTIONS, AI_MODEL_OPTIONS } from "./types";
+import { CONFIDENCE_STEP, VECTOR_INDEXING_MODE_OPTIONS } from "./types";
 
 interface SearchTabProps extends TabProps {
   onSemanticToggle: (enabled: boolean) => void;
@@ -134,77 +134,6 @@ export function SearchTab({ settings, onChange, onSemanticToggle }: SearchTabPro
         )}
       </div>
 
-      {/* AI 검색 (Gemini RAG) */}
-      <div
-        className="rounded-lg p-3"
-        style={{
-          backgroundColor: (settings.ai_enabled ?? false) ? "rgba(59, 130, 246, 0.08)" : "var(--color-bg-secondary)",
-          border: `1px solid ${(settings.ai_enabled ?? false) ? "rgba(59, 130, 246, 0.3)" : "var(--color-border)"}`,
-        }}
-      >
-        <SettingsToggle
-          label="AI 답변"
-          description="검색 결과를 Gemini AI가 분석하여 답변 생성 (API 키 필요)"
-          checked={settings.ai_enabled ?? false}
-          onChange={(v) => onChange("ai_enabled", v)}
-        />
-        {(settings.ai_enabled ?? false) && (
-          <div className="mt-2 space-y-2">
-            {/* API 키 */}
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
-                Gemini API 키
-                <InfoTooltip
-                  content="Google AI Studio에서 무료 발급 가능"
-                  maxWidth={200}
-                />
-              </label>
-              <input
-                type="password"
-                className="w-full rounded-md px-3 py-1.5 text-xs font-mono"
-                style={{
-                  backgroundColor: "var(--color-bg-primary)",
-                  color: "var(--color-text-primary)",
-                  border: "1px solid var(--color-border)",
-                }}
-                value={settings.ai_api_key ?? ""}
-                onChange={(e) => onChange("ai_api_key", e.target.value || undefined)}
-                placeholder="AIzaSy..."
-              />
-            </div>
-            {/* 모델 선택 */}
-            <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>모델</label>
-              <Dropdown
-                options={AI_MODEL_OPTIONS}
-                value={settings.ai_model ?? "gemini-3.1-flash-lite-preview"}
-                onChange={(value) => onChange("ai_model", value)}
-                placeholder="모델 선택"
-              />
-            </div>
-            {/* 온도 */}
-            <div>
-              <label className="flex items-center text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
-                창의성 (Temperature)
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.1}
-                  value={settings.ai_temperature ?? 0.2}
-                  onChange={(e) => onChange("ai_temperature", Number(e.target.value))}
-                  className="flex-1 accent-[var(--color-accent)]"
-                />
-                <div className="min-w-[32px] text-sm font-semibold text-right" style={{ color: "var(--color-text-primary)" }}>
-                  {(settings.ai_temperature ?? 0.2).toFixed(1)}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
       {/* OCR 설정 */}
       <div>
         <SettingsToggle

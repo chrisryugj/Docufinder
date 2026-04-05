@@ -318,12 +318,10 @@ pub async fn update_settings(
         let e5_model_data = models_dir
             .join("kosimcse-roberta-multitask")
             .join("model.onnx.data");
-        let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
-
         // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
         let embedder_available =
             e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
-        if !embedder_available || !reranker_model.exists() {
+        if !embedder_available {
             let download_models_dir = models_dir.clone();
             let download_app = app.clone();
             tauri::async_runtime::spawn(async move {

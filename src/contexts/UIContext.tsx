@@ -20,12 +20,9 @@ export interface UIContextValue {
   setTheme: (theme: import("../hooks/useTheme").Theme) => void;
 
   // First Run
-  showDisclaimer: boolean;
   showOnboarding: boolean;
-  acceptDisclaimer: () => void;
   completeOnboarding: () => void;
   skipOnboarding: () => void;
-  exitApp: () => void;
 
   // Sidebar
   sidebarOpen: boolean;
@@ -41,8 +38,6 @@ export interface UIContextValue {
   setStatsOpen: (open: boolean) => void;
   duplicateOpen: boolean;
   setDuplicateOpen: (open: boolean) => void;
-  expiryOpen: boolean;
-  setExpiryOpen: (open: boolean) => void;
 
   // Auto Index Prompt
   showAutoIndexPrompt: boolean;
@@ -119,7 +114,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [duplicateOpen, setDuplicateOpen] = useState(false);
-  const [expiryOpen, setExpiryOpen] = useState(false);
 
   // Auto Index Prompt
   const [showAutoIndexPrompt, setShowAutoIndexPrompt] = useState(false);
@@ -203,7 +197,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     helpOpen, setHelpOpen,
     statsOpen, setStatsOpen,
     duplicateOpen, setDuplicateOpen,
-    expiryOpen, setExpiryOpen,
     showAutoIndexPrompt, setShowAutoIndexPrompt, tryShowAutoIndexPrompt,
     reportResults, setReportResults,
     pendingHwpFiles, setPendingHwpFiles,

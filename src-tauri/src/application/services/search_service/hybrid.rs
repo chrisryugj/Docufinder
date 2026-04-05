@@ -4,7 +4,7 @@ use super::helpers::*;
 use super::SearchService;
 use crate::application::dto::search::{MatchType, SearchResponse, SearchResult};
 use crate::application::errors::{AppError, AppResult};
-use crate::db::{self, ChunkInfo};
+use crate::db;
 use crate::search::{fts, hybrid};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
@@ -19,7 +19,6 @@ impl SearchService {
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
-        let use_reranker = self.reranker.is_some();
 
         let conn = self.get_connection()?;
 
@@ -76,101 +75,24 @@ impl SearchService {
 
         // 4. RRF 병합 (k=60: 학술 표준값)
         const RRF_K: f32 = 60.0;
-        let mut hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
+        let hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
 
-        // 5. 벡터 전용 결과 content 확보 (reranking용)
-        let pre_rerank_vector_only_ids: Vec<i64> = hybrid_results
-            .iter()
-            .filter(|r| !fts_map.contains_key(&r.chunk_id))
-            .map(|r| r.chunk_id)
-            .collect();
-        let pre_rerank_vector_chunks: HashMap<i64, ChunkInfo> =
-            if !pre_rerank_vector_only_ids.is_empty() {
-                db::get_chunks_by_ids(&conn, &pre_rerank_vector_only_ids)
-                    .map_err(|e| AppError::SearchFailed(e.to_string()))?
-                    .into_iter()
-                    .map(|c| (c.chunk_id, c))
-                    .collect()
-            } else {
-                HashMap::new()
-            };
-
-        // 6. Cross-Encoder Reranking (영어 전용 — 한국어 쿼리 시 스킵)
-        const RERANK_TOP_K: usize = 40;
-        let has_korean = query.chars().any(|c| {
-            ('\u{AC00}'..='\u{D7AF}').contains(&c)
-                || ('\u{1100}'..='\u{11FF}').contains(&c)
-                || ('\u{3130}'..='\u{318F}').contains(&c)
-        });
-        if let Some(rr) = self.reranker.as_ref().filter(|_| !has_korean) {
-            if hybrid_results.len() > 1 {
-                let top_k = hybrid_results.len().min(RERANK_TOP_K);
-                let top_results: Vec<_> = hybrid_results.drain(..top_k).collect();
-
-                let rerank_candidates: Vec<(usize, &str)> = top_results
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, r)| {
-                        if let Some(f) = fts_map.get(&r.chunk_id) {
-                            return Some((i, f.content.as_str()));
-                        }
-                        if let Some(c) = pre_rerank_vector_chunks.get(&r.chunk_id) {
-                            return Some((i, c.content.as_str()));
-                        }
-                        None
-                    })
-                    .collect();
-
-                let mut did_rerank = false;
-                if !rerank_candidates.is_empty() {
-                    let documents: Vec<&str> =
-                        rerank_candidates.iter().map(|(_, c)| *c).collect();
-                    if let Ok(reranked_indices) = rr.rerank(query, &documents, documents.len()) {
-                        let rerank_candidate_indices: Vec<usize> =
-                            rerank_candidates.iter().map(|(i, _)| *i).collect();
-                        let mut reranked = apply_reranked_top_results(
-                            top_results.clone(),
-                            &rerank_candidate_indices,
-                            &reranked_indices,
-                        );
-                        reranked.extend(hybrid_results);
-                        hybrid_results = reranked;
-                        did_rerank = true;
-                        tracing::debug!("Reranked top {} results (including vector-only)", top_k);
-                    } else {
-                        tracing::warn!("Reranking failed, using original order");
-                    }
-                }
-                if !did_rerank {
-                    let mut restored = top_results;
-                    restored.extend(hybrid_results);
-                    hybrid_results = restored;
-                }
-            }
-        }
-
-        // 7. 벡터 전용 결과 DB 조회 (pre_rerank 재사용 + 누락분 추가)
+        // 5. 벡터 전용 결과 DB 조회
         let vector_only_ids: Vec<i64> = hybrid_results
             .iter()
             .filter(|r| !fts_map.contains_key(&r.chunk_id))
             .map(|r| r.chunk_id)
             .collect();
 
-        let mut vector_only_chunks = pre_rerank_vector_chunks;
-        {
-            let missing_ids: Vec<i64> = vector_only_ids
-                .iter()
-                .filter(|id| !vector_only_chunks.contains_key(id))
-                .copied()
-                .collect();
-            if !missing_ids.is_empty() {
-                let extra = db::get_chunks_by_ids(&conn, &missing_ids)
-                    .map_err(|e| AppError::SearchFailed(e.to_string()))?;
-                for c in extra {
-                    vector_only_chunks.insert(c.chunk_id, c);
-                }
-            }
-        }
+        let vector_only_chunks: HashMap<i64, db::ChunkInfo> = if !vector_only_ids.is_empty() {
+            db::get_chunks_by_ids(&conn, &vector_only_ids)
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?
+                .into_iter()
+                .map(|c| (c.chunk_id, c))
+                .collect()
+        } else {
+            HashMap::new()
+        };
 
         // 결과 변환
         let mut results: Vec<SearchResult> = hybrid_results
@@ -264,8 +186,8 @@ impl SearchService {
         let search_time_ms = start.elapsed().as_millis() as u64;
 
         tracing::debug!(
-            "Hybrid search '{}': {} results in {}ms (tokenizer={}, reranker={})",
-            query, total_count, search_time_ms, use_tokenizer, use_reranker
+            "Hybrid search '{}': {} results in {}ms (tokenizer={})",
+            query, total_count, search_time_ms, use_tokenizer
         );
 
         Ok(SearchResponse {

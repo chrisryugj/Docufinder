@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -16,18 +16,15 @@ import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
-import { FloatingErrorBanner } from "./components/layout/FloatingErrorBanner";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import { TypoSuggestion } from "./components/search/TypoSuggestion";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
-import { AiAnswerPanel } from "./components/search/AiAnswerPanel";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { StatisticsModal } from "./components/search/StatisticsModal";
 import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
-import { ExpiryAlertModal } from "./components/search/ExpiryAlertModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
@@ -58,7 +55,7 @@ function AppContent() {
   // ── App Settings (cross-cutting) ──
   const {
     minConfidence, viewDensity, semanticEnabled, vectorIndexingMode,
-    resultsPerPage, aiEnabled, applySettings,
+    resultsPerPage, applySettings,
   } = useAppSettings({ setSearchMode: search.setSearchMode });
 
   // Document categories (cross-cutting: search results + settings)
@@ -127,7 +124,7 @@ function AppContent() {
 
   // 폴더 0개 → 자동 인덱싱 안내
   useEffect(() => {
-    if (idx.status && idx.status.watched_folders.length === 0 && !ui.showDisclaimer && !ui.showOnboarding) {
+    if (idx.status && idx.status.watched_folders.length === 0 && !ui.showOnboarding) {
       ui.tryShowAutoIndexPrompt();
     }
   }, [idx.status, ui]);
@@ -167,18 +164,7 @@ function AppContent() {
     onHwpDetected: handleHwpDetected,
   });
 
-  // 자연어 모드: AI 자동 분석
-  const aiAutoRef = useRef({ aiEnabled, paradigm: search.paradigm, query: search.query, filteredResults: search.filteredResults, isLoading: search.isLoading, requestAiAnalysis: search.requestAiAnalysis });
-  aiAutoRef.current = { aiEnabled, paradigm: search.paradigm, query: search.query, filteredResults: search.filteredResults, isLoading: search.isLoading, requestAiAnalysis: search.requestAiAnalysis };
-  useEffect(() => {
-    const { aiEnabled: ai, paradigm: p, query: q, filteredResults: fr, isLoading: loading, requestAiAnalysis: req } = aiAutoRef.current;
-    if (ai && p === "natural" && search.parsedQuery && fr.length > 0 && !loading) {
-      req(q, fr);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.parsedQuery]);
-
-  // 윈도우 포커스 → 검색창 포커스
+  // 윈도우 ���커스 → 검색창 포커스
   useWindowFocus(search.searchInputRef, ui.settingsOpen);
 
   // 에러 통합
@@ -278,11 +264,6 @@ function AppContent() {
     <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '1920px' }}>
       <div className="noise-overlay" aria-hidden="true" />
 
-      <FloatingErrorBanner
-        message={search.aiError?.toLowerCase().includes("api") ? search.aiError : null}
-        isError={true}
-        onDismiss={search.clearAiAnalysis}
-      />
 
       <UpdateBanner updater={ui.updater} />
 
@@ -353,7 +334,6 @@ function AppContent() {
               onOpenHelp={() => ui.setHelpOpen(true)}
               onOpenStats={() => ui.setStatsOpen(true)}
               onOpenDuplicates={() => ui.setDuplicateOpen(true)}
-              onOpenExpiry={() => ui.setExpiryOpen(true)}
               onGoHome={() => {
                 search.setQuery("");
                 search.setSelectedIndex(-1);
@@ -413,10 +393,6 @@ function AppContent() {
                     onRefineQueryChange={search.setRefineQuery}
                     onRefineQueryClear={search.clearRefine}
                     watchedFolders={idx.status?.watched_folders ?? []}
-                    presets={search.presets}
-                    onSavePreset={search.handleSavePreset}
-                    onApplyPreset={search.handleApplyPreset}
-                    onRemovePreset={search.removePreset}
                   />
                 )}
               </div>
@@ -475,31 +451,6 @@ function AppContent() {
                   </div>
                 )}
 
-                {/* AI 물어보기 버튼 */}
-                {aiEnabled && !search.aiAnalysis && !search.isAiLoading && !search.aiError && search.filteredResults.length > 0 && (
-                  <div className="mb-3 flex justify-end">
-                    <button
-                      onClick={search.handleAskAi}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:opacity-90"
-                      style={{ backgroundColor: "var(--color-accent)", color: "white" }}
-                    >
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5Z"/></svg>
-                      AI에게 물어보기
-                    </button>
-                  </div>
-                )}
-
-                {/* AI 답변 패널 */}
-                {aiEnabled && (search.aiAnalysis || search.isAiLoading || (search.aiError && !search.aiError.toLowerCase().includes("api"))) && (
-                  <AiAnswerPanel
-                    analysis={search.aiAnalysis}
-                    isLoading={search.isAiLoading}
-                    error={search.aiError && !search.aiError.toLowerCase().includes("api") ? search.aiError : null}
-                    onDismiss={search.clearAiAnalysis}
-                    onOpenFile={(filePath) => handleOpenFile(filePath, undefined)}
-                  />
-                )}
-
                 <SearchResultList
                   results={search.filteredResults}
                   filenameResults={search.filters.excludeFilename ? [] : search.filenameResults}
@@ -514,9 +465,6 @@ function AppContent() {
                   onCopyPath={handleCopyPath}
                   onOpenFolder={handleOpenFolder}
                   onExportCSV={search.handleExportCSV}
-                  onExportXLSX={search.handleExportXLSX}
-                  onExportJSON={search.handleExportJSON}
-                  onPackageZip={search.handlePackageZip}
                   onCopyAll={search.handleCopyAll}
                   refineKeywords={search.memoizedRefineKeywords}
                   resultCount={search.filteredResults.length}
@@ -594,9 +542,6 @@ function AppContent() {
         onAutoIndexAllDrives={idx.autoIndexAllDrives}
         helpOpen={ui.helpOpen}
         onHelpClose={() => ui.setHelpOpen(false)}
-        showDisclaimer={ui.showDisclaimer}
-        onAcceptDisclaimer={ui.acceptDisclaimer}
-        onExitApp={ui.exitApp}
         showOnboarding={ui.showOnboarding}
         onCompleteOnboarding={() => { ui.completeOnboarding(); ui.setShowAutoIndexPrompt(true); }}
         onSkipOnboarding={() => { ui.skipOnboarding(); ui.setShowAutoIndexPrompt(true); }}
@@ -661,12 +606,6 @@ function AppContent() {
         showToast={ui.showToast}
       />
 
-      <ExpiryAlertModal
-        isOpen={ui.expiryOpen}
-        onClose={() => ui.setExpiryOpen(false)}
-        onOpenFile={handleOpenFile}
-        showToast={ui.showToast}
-      />
 
       <AutoIndexPrompt
         isOpen={ui.showAutoIndexPrompt}
