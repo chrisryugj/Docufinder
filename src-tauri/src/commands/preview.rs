@@ -184,6 +184,111 @@ fn merge_chunks_into_sections(sorted_chunks: &[db::ChunkInfo]) -> Vec<PreviewSec
     sections
 }
 
+// ======================== 마크다운 미리보기 ========================
+
+/// 마크다운 미리보기 응답
+#[derive(Debug, Serialize)]
+pub struct MarkdownPreviewResponse {
+    pub file_path: String,
+    pub file_name: String,
+    pub markdown: String,
+}
+
+/// kordoc으로 파일의 마크다운을 직접 추출 (미리보기 렌더링용)
+///
+/// DB 청크가 아닌 원본 파일을 직접 파싱하여 완전한 마크다운을 반환한다.
+/// kordoc 미지원 또는 실패 시 DB 청크 병합 텍스트로 fallback.
+#[tauri::command]
+pub async fn load_markdown_preview(
+    file_path: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<MarkdownPreviewResponse> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+
+    let file_name = std::path::Path::new(&file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let fp = file_path.clone();
+    let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        let path = std::path::Path::new(&fp);
+
+        // kordoc 지원 확장자 확인
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
+        if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
+            if let Ok(md) = crate::parsers::kordoc::get_markdown(path) {
+                return Ok(md);
+            }
+        }
+
+        // fallback: DB 청크 병합
+        Err(ApiError::IndexingFailed("kordoc 미사용".to_string()))
+    })
+    .await?;
+
+    match result {
+        Ok(markdown) => Ok(MarkdownPreviewResponse {
+            file_path,
+            file_name,
+            markdown,
+        }),
+        Err(_) => {
+            // fallback: 기존 load_document_preview 로직으로 plain text 반환
+            let db_path = {
+                let container = state.read()?;
+                container.db_path.to_string_lossy().to_string()
+            };
+
+            let fp2 = file_path.clone();
+            let markdown = tokio::task::spawn_blocking(move || -> ApiResult<String> {
+                let conn = db::get_connection(std::path::Path::new(&db_path))?;
+                let chunk_ids = db::get_chunk_ids_for_path(&conn, &fp2)
+                    .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+                if chunk_ids.is_empty() {
+                    return Ok(String::new());
+                }
+
+                let chunk_infos = db::get_chunks_by_ids(&conn, &chunk_ids)
+                    .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+                let mut sorted = chunk_infos;
+                sorted.sort_by_key(|c| c.chunk_index);
+
+                let sections = merge_chunks_into_sections(&sorted);
+                Ok(sections
+                    .into_iter()
+                    .map(|s| {
+                        if let Some(label) = s.label {
+                            format!("## {}\n\n{}", label, s.content)
+                        } else {
+                            s.content
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n"))
+            })
+            .await??;
+
+            Ok(MarkdownPreviewResponse {
+                file_path,
+                file_name,
+                markdown,
+            })
+        }
+    }
+}
+
 // ======================== 북마크 ========================
 
 /// 북마크 정보 (프론트엔드용)

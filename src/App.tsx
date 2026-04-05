@@ -348,7 +348,7 @@ function AppContent() {
 
         {/* Search Bar + Filters */}
         {!search.isCollapsed && (
-          <div className={`px-4 pt-4 pb-2 ${ui.previewFilePath ? "" : "max-w-4xl mx-auto"}`}>
+          <div className="px-4 pt-4 pb-2">
             <SearchBar
               ref={search.searchInputRef}
               query={search.query}
@@ -380,7 +380,7 @@ function AppContent() {
             />
 
             {search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
-              <div className={`mt-2 pb-3 border-b ${ui.previewFilePath ? "" : "max-w-4xl mx-auto"}`} style={{ borderColor: "var(--color-border)" }}>
+              <div className="mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
                 {search.paradigm === "natural" && search.parsedQuery ? (
                   <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
                 ) : (
@@ -393,6 +393,10 @@ function AppContent() {
                     onRefineQueryChange={search.setRefineQuery}
                     onRefineQueryClear={search.clearRefine}
                     watchedFolders={idx.status?.watched_folders ?? []}
+                    presets={search.presets}
+                    onSavePreset={search.handleSavePreset}
+                    onApplyPreset={search.handleApplyPreset}
+                    onRemovePreset={search.removePreset}
                   />
                 )}
               </div>
@@ -425,7 +429,7 @@ function AppContent() {
             )}
 
             <main className="px-5 sm:px-8 pb-20 h-full">
-              <div className={`mx-auto mt-4 h-full ${search.query.trim() ? (ui.previewFilePath ? "w-full" : "max-w-4xl") : "w-full max-w-[1400px]"}`}>
+              <div className="mt-4 h-full">
                 {/* 유사 문서 배너 */}
                 {search.similarResults.length > 0 && (
                   <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>

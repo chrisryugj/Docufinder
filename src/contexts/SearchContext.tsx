@@ -1,6 +1,7 @@
 import { createContext, useContext, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
+import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
 import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch } from "../types/search";
 import { useUIContext } from "./UIContext";
@@ -67,6 +68,12 @@ export interface SearchContextValue {
   // Typo correction
   typoSuggestion: { suggestions: { word: string; distance: number; frequency: number }[] } | null;
   dismissTypo: () => void;
+
+  // Filter presets
+  presets: FilterPreset[];
+  handleSavePreset: (name: string) => void;
+  handleApplyPreset: (preset: FilterPreset) => void;
+  removePreset: (id: string) => void;
 
   // Similar documents
   similarResults: SearchResult[];
@@ -175,6 +182,16 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // ── Typo Correction ──
   const { suggestion: typoSuggestion, dismiss: dismissTypo } = useTypoCorrection(query, results.length === 0 && !isLoading);
 
+  // ── Filter Presets ──
+  const { presets, addPreset, removePreset, applyPreset } = useFilterPresets();
+  const handleSavePreset = useCallback((name: string) => {
+    addPreset(name, filters);
+    showToast(`프리셋 "${name}" 저장됨`, "success");
+  }, [addPreset, filters, showToast]);
+  const handleApplyPreset = useCallback((preset: FilterPreset) => {
+    setFilters(applyPreset(preset, filters));
+  }, [applyPreset, filters, setFilters]);
+
   // ── Similar Documents ──
   const { similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults } = useSimilarDocuments(showToast);
 
@@ -207,6 +224,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     autoComplete, handleSuggestionSelect,
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,
+    presets, handleSavePreset, handleApplyPreset, removePreset,
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex, setSelectedIndex,
     handleExportCSV, handleCopyAll, memoizedRefineKeywords,
