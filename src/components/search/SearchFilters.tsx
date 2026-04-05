@@ -1,4 +1,4 @@
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
 import type {
   SearchFilters as FiltersType,
   SortOption,
@@ -50,21 +50,21 @@ export const SearchFilters = memo(function SearchFilters({
   onApplyPreset,
   onRemovePreset,
 }: SearchFiltersProps) {
-  const handleSortChange = (sortBy: SortOption) => {
+  const handleSortChange = useCallback((sortBy: SortOption) => {
     onFiltersChange({ ...filters, sortBy });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleFileTypeChange = (fileType: FileTypeFilter) => {
+  const handleFileTypeChange = useCallback((fileType: FileTypeFilter) => {
     onFiltersChange({ ...filters, fileType });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleDateRangeChange = (dateRange: DateRangeFilter) => {
+  const handleDateRangeChange = useCallback((dateRange: DateRangeFilter) => {
     onFiltersChange({ ...filters, dateRange });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     onFiltersChange(DEFAULT_FILTERS);
-  };
+  }, [onFiltersChange]);
 
   const hasActiveFilters =
     filters.sortBy !== "relevance" ||

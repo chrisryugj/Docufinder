@@ -179,7 +179,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const summaryRequestId = useRef(0);
 
-  // 파일 로드
+  // 파일 로드 (빠른 클릭 시 debounce로 불필요한 백엔드 파싱 방지)
   useEffect(() => {
     if (!filePath) {
       setMarkdown(null);
@@ -194,22 +194,24 @@ export const PreviewPanel = memo(function PreviewPanel({
     setLoading(true);
     setError(null);
 
-    invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
-      .then((res) => {
-        if (!cancelled) {
-          setMarkdown(res.markdown);
-          setLoading(false);
-          contentRef.current?.scrollTo(0, 0);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setError(typeof e === "string" ? e : e?.message || "미리보기 로드 실패");
-          setLoading(false);
-        }
-      });
+    const timer = setTimeout(() => {
+      invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
+        .then((res) => {
+          if (!cancelled) {
+            setMarkdown(res.markdown);
+            setLoading(false);
+            contentRef.current?.scrollTo(0, 0);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setError(typeof e === "string" ? e : e?.message || "미리보기 로드 실패");
+            setLoading(false);
+          }
+        });
+    }, 80); // 80ms debounce — 빠른 키보드 탐색 시 중간 파일 로드 방지
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
 
   // 요약 생성

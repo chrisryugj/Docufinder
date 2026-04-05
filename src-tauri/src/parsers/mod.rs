@@ -86,53 +86,71 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         "txt" | "md" => txt::parse(path),
         // HWP5 바이너리: kordoc 전용 (Rust 파서 없음, 위에서 이미 시도했으면 여기서 에러)
         "hwp" => Err(ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())),
-        "hwpx" => hwpx::parse(path),
-        "docx" => docx::parse(path),
-        "pptx" => pptx::parse(path),
-        "xlsx" | "xls" => {
-            // calamine 라이브러리 내부 패닉 방지 + 타임아웃 (대용량 시트 행 방지)
-            let path_owned = path.to_path_buf();
-            let (tx, rx) = std::sync::mpsc::channel();
-            let handle = std::thread::spawn(move || {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    xlsx::parse(&path_owned)
-                }))
-                .unwrap_or_else(|_| {
-                    Err(ParseError::ParseError(format!(
-                        "XLS/XLSX 파서 내부 오류 (파일 손상 가능): {}",
-                        path_owned.display()
-                    )))
-                });
-                let _ = tx.send(result);
-            });
-            // 15초 타임아웃
-            match rx.recv_timeout(std::time::Duration::from_secs(15)) {
-                Ok(result) => {
-                    let _ = handle.join();
-                    result
-                }
-                Err(_) => {
-                    tracing::error!("XLS/XLSX parser timeout (15s): {:?}", path);
-                    // 타임아웃된 스레드 정리용 경량 클린업 스레드 (PDF 패턴과 동일)
-                    let _ = std::thread::Builder::new()
-                        .name("xlsx-cleanup".into())
-                        .stack_size(64 * 1024)
-                        .spawn(move || {
-                            let _ = handle.join();
-                            tracing::debug!("Timed-out XLSX thread reclaimed");
-                        });
-                    Err(ParseError::ParseError(format!(
-                        "XLS/XLSX 파싱 타임아웃 (15초 초과): {}",
-                        path.display()
-                    )))
-                }
-            }
-        }
+        "hwpx" => parse_with_timeout(path, 30, "HWPX", |p| hwpx::parse(p)),
+        "docx" => parse_with_timeout(path, 30, "DOCX", |p| docx::parse(p)),
+        "pptx" => parse_with_timeout(path, 30, "PPTX", |p| pptx::parse(p)),
+        "xlsx" | "xls" => parse_with_timeout(path, 15, "XLS/XLSX", |p| xlsx::parse(p)),
         "pdf" => pdf::parse(path, ocr),
         ext if ocr.is_some() && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
             image_ocr::parse(path, ocr.unwrap())
         }
         _ => Err(ParseError::UnsupportedFileType(extension)),
+    }
+}
+
+/// 공통 타임아웃 + 패닉 방어 래퍼 (HWPX, DOCX, PPTX, XLSX 공통)
+///
+/// 별도 스레드에서 파서를 실행하고 `timeout_secs` 초 내 완료되지 않으면 에러 반환.
+/// catch_unwind로 파서 내부 패닉도 안전하게 잡음.
+fn parse_with_timeout<F>(
+    path: &Path,
+    timeout_secs: u64,
+    label: &str,
+    parse_fn: F,
+) -> Result<ParsedDocument, ParseError>
+where
+    F: FnOnce(&Path) -> Result<ParsedDocument, ParseError> + Send + 'static,
+{
+    let path_owned = path.to_path_buf();
+    let label_owned = label.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let handle = std::thread::spawn(move || {
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| parse_fn(&path_owned)))
+                .unwrap_or_else(|_| {
+                    Err(ParseError::ParseError(format!(
+                        "{} 파서 내부 오류 (파일 손상 가능): {}",
+                        label_owned,
+                        path_owned.display()
+                    )))
+                });
+        let _ = tx.send(result);
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(result) => {
+            let _ = handle.join();
+            result
+        }
+        Err(_) => {
+            tracing::error!("{} parser timeout ({}s): {:?}", label, timeout_secs, path);
+            // 클린업 스레드로 타임아웃된 파서 스레드 회수
+            let label_for_log = label.to_string();
+            let _ = std::thread::Builder::new()
+                .name(format!("{}-cleanup", label.to_lowercase()))
+                .stack_size(64 * 1024)
+                .spawn(move || {
+                    let _ = handle.join();
+                    tracing::debug!("Timed-out {} thread reclaimed", label_for_log);
+                });
+            Err(ParseError::ParseError(format!(
+                "{} 파싱 타임아웃 ({}초 초과): {}",
+                label,
+                timeout_secs,
+                path.display()
+            )))
+        }
     }
 }
 

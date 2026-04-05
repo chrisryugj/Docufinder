@@ -218,15 +218,11 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
     };
 
     // 페이지별 분리 (form feed 문자 \x0c 기준)
-    let pages: Vec<&str> = raw_text.split('\x0c').collect();
-    let page_count = pages.len();
+    let page_count = raw_text.matches('\x0c').count() + 1;
 
-    // 페이지별 텍스트 정리
-    let cleaned_pages: Vec<String> = pages.iter().map(|p| clean_pdf_text(p)).collect();
-
-    // 스캔 페이지 감지 + OCR (OCR 엔진 있을 때만)
+    // OCR 필요 여부 판정 + OCR 결과 (필요 시에만 cleaned_pages 전체 보유)
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    let ocr_texts = if let Some(ocr_engine) = ocr {
+    let ocr_texts: Vec<Option<String>> = if let Some(ocr_engine) = ocr {
         if file_size > MAX_OCR_FILE_SIZE {
             tracing::info!(
                 "PDF too large for OCR ({:.1}MB > {}MB): {:?}",
@@ -234,32 +230,40 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
                 MAX_OCR_FILE_SIZE / 1_048_576,
                 path
             );
-            vec![None; page_count]
+            vec![]
         } else {
-            let has_scanned = cleaned_pages
-                .iter()
-                .any(|p| p.chars().count() < SCANNED_PAGE_CHAR_THRESHOLD);
+            // 스캔 페이지 존재 여부를 빠르게 확인 (clean 전 raw 텍스트로)
+            let has_scanned = raw_text.split('\x0c').any(|p| {
+                let trimmed = p.trim();
+                trimmed.chars().count() < SCANNED_PAGE_CHAR_THRESHOLD
+            });
             if has_scanned {
-                ocr_scanned_pages(path, &cleaned_pages, ocr_engine)
+                // OCR 경로: cleaned_pages 전체 필요 (lopdf가 페이지 번호로 접근하므로)
+                let cleaned: Vec<String> = raw_text.split('\x0c').map(|p| clean_pdf_text(p)).collect();
+                let result = ocr_scanned_pages(path, &cleaned, ocr_engine);
+                result
             } else {
-                vec![None; page_count]
+                vec![]
             }
         }
     } else {
-        vec![None; page_count]
+        vec![]
     };
 
-    // 페이지별 텍스트 조합 (OCR 결과가 있으면 대체)
-    let mut all_text = String::new();
+    // 페이지별 스트리밍 처리: clean → chunk → all_text에 추가
+    // raw_text를 split 이터레이터로 소비하여 메모리 피크 최소화
+    let mut all_text = String::with_capacity(raw_text.len() / 2); // 정리 후 대략 50% 추정
     let mut chunks = Vec::new();
     let mut global_offset = 0;
 
-    for (page_idx, cleaned) in cleaned_pages.iter().enumerate() {
-        // OCR 결과가 있으면 대체, 없으면 기존 텍스트 사용
-        let page_text = if let Some(Some(ocr_text)) = ocr_texts.get(page_idx) {
+    for (page_idx, raw_page) in raw_text.split('\x0c').enumerate() {
+        // OCR 결과가 있으면 대체, 없으면 현재 페이지만 clean
+        let page_text_owned;
+        let page_text: &str = if let Some(Some(ocr_text)) = ocr_texts.get(page_idx) {
             ocr_text.as_str()
         } else {
-            cleaned.as_str()
+            page_text_owned = clean_pdf_text(raw_page);
+            &page_text_owned
         };
 
         if page_text.is_empty() {

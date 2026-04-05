@@ -7,6 +7,45 @@ use serde::Serialize;
 use std::sync::RwLock;
 use tauri::State;
 
+/// 프리뷰 경로 검증: canonicalize + 감시 폴더 내 경로인지 확인
+fn validate_preview_path(
+    file_path: &str,
+    state: &State<'_, RwLock<AppContainer>>,
+) -> ApiResult<String> {
+    // 1. 경로 정규화 (path traversal 방지)
+    let canonical = std::fs::canonicalize(file_path)
+        .map_err(|_| ApiError::Validation("파일을 찾을 수 없습니다".to_string()))?;
+    let canonical_str = canonical.to_string_lossy().to_string();
+
+    // 2. 감시 폴더 내 경로인지 확인 (화이트리스트)
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.to_string_lossy().to_string()
+    };
+    if let Ok(conn) = db::get_connection(std::path::Path::new(&db_path)) {
+        if let Ok(folders) = db::get_watched_folders(&conn) {
+            if !folders.is_empty() {
+                // \\?\ prefix 제거 + case-insensitive 비교 (Windows)
+                let strip = |p: &str| -> String {
+                    p.strip_prefix(r"\\?\")
+                        .unwrap_or(p)
+                        .replace('\\', "/")
+                        .to_lowercase()
+                };
+                let normalized = strip(&canonical_str);
+                let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
+                if !in_scope {
+                    return Err(ApiError::Validation(
+                        "감시 폴더 외부 파일은 미리보기할 수 없습니다".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(canonical_str)
+}
+
 // ======================== 미리보기 ========================
 
 /// 미리보기 청크 (프론트엔드용)
@@ -48,6 +87,9 @@ pub async fn load_document_preview(
     if file_path.trim().is_empty() {
         return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
     }
+
+    // 경로 검증 (DB 조회에만 사용되므로 가벼운 검증)
+    let file_path = validate_preview_path(&file_path, &state)?;
 
     let db_path = {
         let container = state.read()?;
@@ -214,16 +256,14 @@ pub async fn load_markdown_preview(
         return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
     }
 
-    let file_name = std::path::Path::new(&file_path)
+    // 경로 검증: canonicalize + 감시 폴더 화이트리스트
+    let fp = validate_preview_path(&file_path, &state)?;
+
+    let file_name = std::path::Path::new(&fp)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_string();
-
-    // 경로 검증: 파일이 실제 존재하는지 확인 (path traversal 방지)
-    let canonical = std::fs::canonicalize(&file_path)
-        .map_err(|_| ApiError::Validation("파일을 찾을 수 없습니다".to_string()))?;
-    let fp = canonical.to_string_lossy().to_string();
 
     let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
         let path = std::path::Path::new(&fp);
