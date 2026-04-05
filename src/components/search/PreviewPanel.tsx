@@ -1,31 +1,20 @@
-import { memo, useEffect, useState, useRef, useCallback } from "react";
+import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { TagInput } from "../ui/TagInput";
 import type { SummaryResponse, SummarySentence } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 
-interface PreviewChunk {
-  chunk_id: number;
-  chunk_index: number;
-  content: string;
-  page_number: number | null;
-  location_hint: string | null;
-}
+// ─── Types ─────────────────────────────────────────────
 
-interface PreviewSection {
-  label: string | null;
-  content: string;
-}
-
-interface PreviewResponse {
+interface MarkdownPreviewResponse {
   file_path: string;
   file_name: string;
-  chunks: PreviewChunk[];
-  sections: PreviewSection[];
-  total_chars: number;
+  markdown: string;
 }
 
 interface PreviewPanelProps {
@@ -37,12 +26,133 @@ interface PreviewPanelProps {
   onOpenFolder?: (path: string) => void;
   onBookmark?: (filePath: string, contentPreview: string, pageNumber?: number | null, locationHint?: string | null) => void;
   isBookmarked?: boolean;
-  /** 태그 관련 */
   tags?: string[];
   tagSuggestions?: string[];
   onAddTag?: (filePath: string, tag: string) => void;
   onRemoveTag?: (filePath: string, tag: string) => void;
 }
+
+// ─── 검색어 하이라이트 + 법령 참조 유틸 ────────────────
+
+function highlightTextWithLegal(
+  text: string,
+  searchRegex: RegExp | null,
+  onOpenUrl: (url: string) => void,
+): React.ReactNode {
+  const legalRefs = extractLegalReferences(text);
+
+  if (legalRefs.length === 0 && !searchRegex) return text;
+
+  const applySearchHighlight = (str: string, keyBase: string): React.ReactNode[] => {
+    if (!searchRegex || !str) return [str];
+    const parts = str.split(new RegExp(`(${searchRegex.source})`, "gi"));
+    return parts.map((part, i) =>
+      i % 2 === 1 ? (
+        <mark key={`${keyBase}-h${i}`} className="hl-search">{part}</mark>
+      ) : (
+        <span key={`${keyBase}-t${i}`}>{part}</span>
+      ),
+    );
+  };
+
+  if (legalRefs.length === 0) {
+    return <>{applySearchHighlight(text, "s")}</>;
+  }
+
+  const segments: React.ReactNode[] = [];
+  let lastEnd = 0;
+
+  for (let li = 0; li < legalRefs.length; li++) {
+    const ref = legalRefs[li];
+    if (ref.start > lastEnd) {
+      segments.push(...applySearchHighlight(text.slice(lastEnd, ref.start), `pre-${li}`));
+    }
+    segments.push(
+      <button
+        key={`legal-${li}`}
+        onClick={() => onOpenUrl(ref.url)}
+        className="inline underline decoration-dotted underline-offset-2 cursor-pointer hover:opacity-80 transition-opacity"
+        style={{ color: "var(--color-accent)" }}
+        title={`${ref.lawName ? ref.lawName + " " : ""}${ref.article || ref.text} — 법제처에서 열기`}
+      >
+        {ref.text}
+      </button>,
+    );
+    lastEnd = ref.end;
+  }
+
+  if (lastEnd < text.length) {
+    segments.push(...applySearchHighlight(text.slice(lastEnd), "post"));
+  }
+
+  return <>{segments}</>;
+}
+
+// ─── 마크다운 커스텀 컴포넌트 ──────────────────────────
+
+function createMarkdownComponents(
+  searchRegex: RegExp | null,
+  onOpenUrl: (url: string) => void,
+): ComponentProps<typeof ReactMarkdown>["components"] {
+  // 텍스트 노드에 하이라이트 적용하는 래퍼
+  const TextWrapper = ({ children }: { children: React.ReactNode }) => {
+    if (typeof children === "string") {
+      return <>{highlightTextWithLegal(children, searchRegex, onOpenUrl)}</>;
+    }
+    return <>{children}</>;
+  };
+
+  return {
+    // 텍스트가 포함된 블록 요소에 하이라이트 적용
+    p: ({ children }) => (
+      <p className="doc-paragraph">
+        {Array.isArray(children)
+          ? children.map((child, i) => <TextWrapper key={i}>{child}</TextWrapper>)
+          : <TextWrapper>{children}</TextWrapper>}
+      </p>
+    ),
+    // 헤딩
+    h1: ({ children }) => <h1 className="doc-h1"><TextWrapper>{children}</TextWrapper></h1>,
+    h2: ({ children }) => <h2 className="doc-h2"><TextWrapper>{children}</TextWrapper></h2>,
+    h3: ({ children }) => <h3 className="doc-h3"><TextWrapper>{children}</TextWrapper></h3>,
+    h4: ({ children }) => <h4 className="doc-h4"><TextWrapper>{children}</TextWrapper></h4>,
+    h5: ({ children }) => <h5 className="doc-h5">{children}</h5>,
+    h6: ({ children }) => <h6 className="doc-h6">{children}</h6>,
+    // 테이블
+    table: ({ children }) => (
+      <div className="doc-table-wrapper">
+        <table className="doc-table">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => <thead className="doc-thead">{children}</thead>,
+    th: ({ children }) => <th className="doc-th"><TextWrapper>{children}</TextWrapper></th>,
+    td: ({ children }) => <td className="doc-td"><TextWrapper>{children}</TextWrapper></td>,
+    // 링크: 외부 브라우저로 열기
+    a: ({ href, children }) => (
+      <button
+        onClick={() => href && onOpenUrl(href)}
+        className="inline underline decoration-dotted underline-offset-2 cursor-pointer hover:opacity-80"
+        style={{ color: "var(--color-accent)" }}
+        title={href}
+      >
+        {children}
+      </button>
+    ),
+    // 리스트
+    ul: ({ children }) => <ul className="doc-ul">{children}</ul>,
+    ol: ({ children }) => <ol className="doc-ol">{children}</ol>,
+    li: ({ children }) => <li className="doc-li"><TextWrapper>{children}</TextWrapper></li>,
+    // 구분선
+    hr: () => <hr className="doc-hr" />,
+    // 인용문
+    blockquote: ({ children }) => <blockquote className="doc-blockquote">{children}</blockquote>,
+    // 강조
+    strong: ({ children }) => <strong className="doc-strong">{children}</strong>,
+    em: ({ children }) => <em className="doc-em">{children}</em>,
+  };
+}
+
+// ─── PreviewPanel ──────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel({
   filePath,
@@ -58,7 +168,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   onAddTag,
   onRemoveTag,
 }: PreviewPanelProps) {
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
+  const [markdown, setMarkdown] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -69,26 +179,25 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const summaryRequestId = useRef(0);
 
+  // 파일 로드
   useEffect(() => {
     if (!filePath) {
-      setPreview(null);
+      setMarkdown(null);
       setSummary(null);
       return;
     }
 
-    // 파일 변경 시 진행 중인 요약 요청 무효화
     summaryRequestId.current++;
     setSummary(null);
 
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setSummary(null);
 
-    invoke<PreviewResponse>("load_document_preview", { filePath })
+    invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
       .then((res) => {
         if (!cancelled) {
-          setPreview(res);
+          setMarkdown(res.markdown);
           setLoading(false);
           contentRef.current?.scrollTo(0, 0);
         }
@@ -103,6 +212,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     return () => { cancelled = true; };
   }, [filePath]);
 
+  // 요약 생성
   const handleGenerateSummary = useCallback(() => {
     if (!filePath || summaryLoading) return;
     const reqId = ++summaryRequestId.current;
@@ -110,99 +220,36 @@ export const PreviewPanel = memo(function PreviewPanel({
 
     invoke<SummaryResponse>("generate_summary", { filePath, numSentences: 3 })
       .then((res) => {
-        // stale 응답 무시 (파일 전환 시)
         if (summaryRequestId.current === reqId) {
           setSummary(res);
           setSummaryExpanded(true);
         }
       })
-      .catch(() => {
-        // 요약 실패는 무시 (핵심 기능 아님)
-      })
+      .catch(() => {})
       .finally(() => {
-        if (summaryRequestId.current === reqId) {
-          setSummaryLoading(false);
-        }
+        if (summaryRequestId.current === reqId) setSummaryLoading(false);
       });
   }, [filePath, summaryLoading]);
 
+  // URL 열기
   const handleOpenUrl = useCallback((url: string) => {
-    invoke("open_url", { url }).catch(() => {
-      // fallback: 브라우저에서 직접 열기 시도 무시
-    });
+    invoke("open_url", { url }).catch(() => {});
   }, []);
 
-  const highlightText = useCallback((text: string): React.ReactNode => {
-    // 1단계: 법령 참조 감지
-    const legalRefs = extractLegalReferences(text);
+  // 검색어 정규식
+  const searchRegex = useMemo(() => {
+    if (!highlightQuery?.trim()) return null;
+    const keywords = highlightQuery.trim().split(/\s+/).filter(Boolean);
+    if (keywords.length === 0) return null;
+    const pattern = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    return new RegExp(pattern, "gi");
+  }, [highlightQuery]);
 
-    // 2단계: 검색어 하이라이트 패턴
-    let searchRegex: RegExp | null = null;
-    if (highlightQuery?.trim()) {
-      const keywords = highlightQuery.trim().split(/\s+/).filter(Boolean);
-      if (keywords.length > 0) {
-        const pattern = keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-        searchRegex = new RegExp(pattern, 'gi');
-      }
-    }
-
-    // 법령 참조도 없고 검색어도 없으면 텍스트 그대로
-    if (legalRefs.length === 0 && !searchRegex) return text;
-
-    // 법령 참조 없으면 기존 검색어 하이라이트만
-    if (legalRefs.length === 0 && searchRegex) {
-      const parts = text.split(new RegExp(`(${searchRegex.source})`, 'gi'));
-      return parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="hl-search">{part}</mark>
-        ) : part
-      );
-    }
-
-    // 법령 참조 기준으로 텍스트 분할 후 각 조각에 검색어 하이라이트 적용
-    const segments: React.ReactNode[] = [];
-    let lastEnd = 0;
-
-    const applySearchHighlight = (str: string, keyBase: string): React.ReactNode[] => {
-      if (!searchRegex || !str) return [str];
-      const parts = str.split(new RegExp(`(${searchRegex.source})`, 'gi'));
-      return parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={`${keyBase}-h${i}`} className="hl-search">{part}</mark>
-        ) : (
-          <span key={`${keyBase}-t${i}`}>{part}</span>
-        )
-      );
-    };
-
-    for (let li = 0; li < legalRefs.length; li++) {
-      const ref = legalRefs[li];
-      // 법령 참조 앞 일반 텍스트
-      if (ref.start > lastEnd) {
-        segments.push(...applySearchHighlight(text.slice(lastEnd, ref.start), `pre-${li}`));
-      }
-      // 법령 참조 링크
-      segments.push(
-        <button
-          key={`legal-${li}`}
-          onClick={() => handleOpenUrl(ref.url)}
-          className="inline underline decoration-dotted underline-offset-2 cursor-pointer hover:opacity-80 transition-opacity"
-          style={{ color: "var(--color-accent)" }}
-          title={`${ref.lawName ? ref.lawName + " " : ""}${ref.article || ref.text} — 법제처에서 열기`}
-        >
-          {ref.text}
-        </button>
-      );
-      lastEnd = ref.end;
-    }
-
-    // 마지막 법령 참조 뒤 텍스트
-    if (lastEnd < text.length) {
-      segments.push(...applySearchHighlight(text.slice(lastEnd), "post"));
-    }
-
-    return segments;
-  }, [highlightQuery, handleOpenUrl]);
+  // 마크다운 컴포넌트 (메모이즈)
+  const markdownComponents = useMemo(
+    () => createMarkdownComponents(searchRegex, handleOpenUrl),
+    [searchRegex, handleOpenUrl],
+  );
 
   if (!filePath) return null;
 
@@ -258,7 +305,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         </button>
         {onBookmark && (
           <button
-            onClick={() => onBookmark(filePath, preview?.chunks?.[0]?.content?.slice(0, 200) || "", null, null)}
+            onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
             className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${
               isBookmarked
                 ? "text-[var(--color-accent)] bg-[var(--color-accent-bg)]"
@@ -271,12 +318,12 @@ export const PreviewPanel = memo(function PreviewPanel({
           </button>
         )}
 
-        {preview && preview.sections.length > 0 && (
+        {markdown && (
           <button
             onClick={handleGenerateSummary}
             disabled={summaryLoading}
             className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
-            title="AI 요약 생성 (TextRank)"
+            title="요약 생성"
           >
             {summaryLoading ? (
               <div className="w-3 h-3 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
@@ -287,9 +334,9 @@ export const PreviewPanel = memo(function PreviewPanel({
           </button>
         )}
 
-        {preview && (
+        {markdown && (
           <span className="ml-auto text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">
-            {preview.sections.length}개 섹션 · {preview.total_chars.toLocaleString()}자
+            {markdown.length.toLocaleString()}자
           </span>
         )}
       </div>
@@ -321,7 +368,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {!loading && !error && preview && preview.sections.length === 0 && (
+        {!loading && !error && markdown !== null && markdown.length === 0 && (
           <div className="p-4 text-sm text-center text-[var(--color-text-muted)]">
             <FileText size={24} className="mx-auto mb-2 opacity-30" />
             인덱싱된 텍스트가 없습니다
@@ -336,7 +383,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-[var(--color-accent)]"
             >
               <Sparkles size={12} />
-              요약 ({summary.sentences.length}문장 / {summary.total_sentences}문장)
+              요약 ({summary.sentences.length}문장)
               <span className="ml-auto text-[var(--color-text-muted)] font-normal">
                 {summary.generation_time_ms}ms
               </span>
@@ -350,12 +397,7 @@ export const PreviewPanel = memo(function PreviewPanel({
                       style={{ backgroundColor: "var(--color-accent)", color: "white" }}>
                       {i + 1}
                     </span>
-                    <div className="flex-1">
-                      <p className="text-[var(--color-text-primary)]">{s.text}</p>
-                      {s.location_hint && (
-                        <span className="text-[10px] text-[var(--color-text-muted)]">{s.location_hint}</span>
-                      )}
-                    </div>
+                    <p className="flex-1 text-[var(--color-text-primary)]">{s.text}</p>
                   </div>
                 ))}
               </div>
@@ -363,30 +405,15 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {!loading && !error && preview && preview.sections.length > 0 && (
-          <div className="p-4 space-y-1">
-            {preview.sections.map((section, i) => (
-              <div key={i}>
-                {section.label && (
-                  <div className="mt-3 mb-1 first:mt-0">
-                    <span className="text-[10px] font-semibold tracking-wider uppercase text-[var(--color-text-muted)]">
-                      {section.label}
-                    </span>
-                  </div>
-                )}
-                <p
-                  className="whitespace-pre-wrap break-words text-[var(--color-text-secondary)]"
-                  style={{
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "var(--text-sm)",
-                    lineHeight: "1.7",
-                    letterSpacing: "0.3px",
-                  }}
-                >
-                  {highlightText(section.content)}
-                </p>
-              </div>
-            ))}
+        {/* 마크다운 렌더링 — 문서 스타일 */}
+        {!loading && !error && markdown && (
+          <div className="doc-preview px-6 py-5">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {markdown}
+            </ReactMarkdown>
           </div>
         )}
       </div>

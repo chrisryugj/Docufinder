@@ -26,7 +26,7 @@ const NON_LAW_WORDS = new Set([
 
 /** law.go.kr 검색 URL 생성 */
 function buildLawUrl(query: string): string {
-  return `https://law.go.kr/LSW/lsInfoP.do?lsiSeq=0&efYd=0&query=${encodeURIComponent(query)}`;
+  return `https://law.go.kr/lsSc.do?query=${encodeURIComponent(query)}`;
 }
 
 /**

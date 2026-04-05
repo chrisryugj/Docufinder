@@ -1,6 +1,7 @@
 pub mod docx;
 pub mod hwpx;
 pub mod image_ocr;
+pub mod kordoc;
 pub mod pdf;
 pub mod pptx;
 pub mod txt;
@@ -66,8 +67,25 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         .unwrap_or("")
         .to_lowercase();
 
+    // kordoc 지원 포맷: 먼저 kordoc 시도 → 실패 시 Rust 파서 fallback
+    let kordoc_formats = ["hwp", "hwpx", "docx", "pdf"];
+    if kordoc_formats.contains(&extension.as_str()) && kordoc::is_available() {
+        match kordoc::parse(path) {
+            Ok(doc) => return Ok(doc),
+            Err(e) => {
+                tracing::warn!(
+                    "kordoc fallback → Rust 파서: {} ({})",
+                    path.display(),
+                    e
+                );
+            }
+        }
+    }
+
     match extension.as_str() {
         "txt" | "md" => txt::parse(path),
+        // HWP5 바이너리: kordoc 전용 (Rust 파서 없음, 위에서 이미 시도했으면 여기서 에러)
+        "hwp" => Err(ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())),
         "hwpx" => hwpx::parse(path),
         "docx" => docx::parse(path),
         "pptx" => pptx::parse(path),
