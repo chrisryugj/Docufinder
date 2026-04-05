@@ -252,8 +252,12 @@ fn cleanup_vector_resources(container: &AppContainer) {
     cleanup_database(&container.db_path);
 }
 
-/// 앱 종료 시 DB 정리: WAL 체크포인트 + PRAGMA optimize
+/// 앱 종료 시 DB 정리: 풀 drain → WAL 체크포인트 + PRAGMA optimize
 fn cleanup_database(db_path: &std::path::Path) {
+    // 풀의 모든 커넥션을 먼저 닫아야 WAL 체크포인트가 완전히 적용됨
+    // (풀 커넥션이 WAL read lock을 보유하면 TRUNCATE 모드 체크포인트 실패)
+    crate::db::pool::drain_pool();
+
     if let Ok(conn) = crate::db::get_connection(db_path) {
         match conn.execute_batch(
             "PRAGMA wal_checkpoint(TRUNCATE);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, UIEvent, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, UIEvent, useMemo } from "react";
 
 interface UseCollapsibleSearchOptions {
   /** 스크롤 임계값 (px) - 이 값 이상 스크롤 시 축소 */
@@ -42,11 +42,9 @@ export function useCollapsibleSearch(
 
   // 최근 타이핑 활동 추적 (포커스 일시 이탈 시에도 collapse 방지)
   const lastTypingTimeRef = useRef(0);
-  const prevQueryRef = useRef(query);
-  if (prevQueryRef.current !== query) {
-    prevQueryRef.current = query;
+  useEffect(() => {
     lastTypingTimeRef.current = Date.now();
-  }
+  }, [query]);
 
   // 쓰로틀링을 위한 RAF 플래그
   const rafPending = useRef(false);

@@ -239,7 +239,7 @@ function AppContent() {
         if ((freshStatus?.pending_chunks ?? 0) > 0) idx.startVectorIndexing();
       }).catch(() => {});
     }
-  }, [applySettings, semanticEnabled, vectorIndexingMode, idx, ui]);
+  }, [applySettings, semanticEnabled, vectorIndexingMode, idx.isVectorIndexing, idx.cancelVectorIndexing, idx.refreshVectorStatus, idx.startVectorIndexing, ui.isMountedRef]);
 
   const handleResumeIndexing = useCallback(async () => {
     if (idx.cancelledFolderPath) {
