@@ -1,5 +1,5 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
-import { Home, Plus, HelpCircle, Settings, BarChart3, Files, CalendarClock, MoreHorizontal } from "lucide-react";
+import { Home, Plus, HelpCircle, Settings, BarChart3, Files, MoreHorizontal } from "lucide-react";
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -7,14 +7,13 @@ interface HeaderProps {
   onOpenHelp: () => void;
   onOpenStats: () => void;
   onOpenDuplicates: () => void;
-  onOpenExpiry: () => void;
   onGoHome: () => void;
   isIndexing: boolean;
   isSidebarOpen: boolean;
   hasQuery?: boolean;
 }
 
-export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onOpenExpiry, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
+export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -36,7 +35,6 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
   const menuItems = [
     { icon: BarChart3, label: "문서 통계", onClick: onOpenStats },
     { icon: Files, label: "중복 문서 탐지", onClick: onOpenDuplicates },
-    { icon: CalendarClock, label: "문서 만료 알림", onClick: onOpenExpiry },
     { icon: HelpCircle, label: "도움말", onClick: onOpenHelp },
   ];
 

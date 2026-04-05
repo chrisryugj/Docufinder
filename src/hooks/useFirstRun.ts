@@ -1,55 +1,28 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { exit } from "@tauri-apps/plugin-process";
 import { logToBackend } from "../utils/errorLogger";
 
 const STORAGE_KEYS = {
-  DISCLAIMER_ACCEPTED: "docufinder_disclaimer_accepted",
-  DISCLAIMER_VERSION: "docufinder_disclaimer_version",
   ONBOARDING_COMPLETED: "docufinder_onboarding_completed",
 };
 
-const CURRENT_DISCLAIMER_VERSION = "1.0";
-
 export function useFirstRun() {
-  const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    const disclaimerAccepted = localStorage.getItem(STORAGE_KEYS.DISCLAIMER_ACCEPTED);
-    const disclaimerVersion = localStorage.getItem(STORAGE_KEYS.DISCLAIMER_VERSION);
     const onboardingCompleted = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
 
-    // 면책 조항 버전이 변경되었으면 재동의 필요
-    const needsDisclaimer = !disclaimerAccepted || disclaimerVersion !== CURRENT_DISCLAIMER_VERSION;
-    const needsOnboarding = !onboardingCompleted;
+    // 앱 초기화 (벡터 인덱싱 재개 + Startup Sync)
+    invoke("initialize_app").catch((e) => {
+      logToBackend("error", "Failed to initialize app", String(e), "useFirstRun");
+    });
 
-    if (needsDisclaimer) {
-      setShowDisclaimer(true);
-    } else if (needsOnboarding) {
+    if (!onboardingCompleted) {
       setShowOnboarding(true);
     }
 
     setIsInitialized(true);
-  }, []);
-
-  const acceptDisclaimer = useCallback(async () => {
-    localStorage.setItem(STORAGE_KEYS.DISCLAIMER_ACCEPTED, "true");
-    localStorage.setItem(STORAGE_KEYS.DISCLAIMER_VERSION, CURRENT_DISCLAIMER_VERSION);
-    setShowDisclaimer(false);
-
-    // 앱 초기화: 벡터 인덱싱 재개 + Startup Sync 시작
-    try {
-      await invoke("initialize_app");
-    } catch (e) {
-      logToBackend("error", "Failed to initialize app", String(e), "useFirstRun");
-    }
-
-    const onboardingCompleted = localStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
-    if (!onboardingCompleted) {
-      setShowOnboarding(true);
-    }
   }, []);
 
   const completeOnboarding = useCallback(() => {
@@ -62,24 +35,16 @@ export function useFirstRun() {
     setShowOnboarding(false);
   }, []);
 
-  const exitApp = useCallback(async () => {
-    await exit(0);
-  }, []);
-
-  // 설정에서 온보딩 다시 보기
   const resetOnboarding = useCallback(() => {
     localStorage.removeItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
     setShowOnboarding(true);
   }, []);
 
   return {
-    showDisclaimer,
     showOnboarding,
     isInitialized,
-    acceptDisclaimer,
     completeOnboarding,
     skipOnboarding,
-    exitApp,
     resetOnboarding,
   };
 }

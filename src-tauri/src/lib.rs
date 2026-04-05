@@ -1,4 +1,3 @@
-mod ai; // Gemini RAG (v2.6)
 mod application; // 클린 아키텍처: Application Layer
 mod commands;
 mod constants;
@@ -11,7 +10,6 @@ mod infrastructure; // 클린 아키텍처: Infrastructure Layer
 mod model_downloader; // 모델 자동 다운로드
 pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
 pub mod parsers;
-mod reranker; // Cross-Encoder Reranking (Phase 5)
 mod search;
 mod tokenizer; // 한국어 형태소 분석 (Phase 5)
 mod utils; // 유틸리티 (idle_detector, disk_info)
@@ -98,15 +96,13 @@ fn maybe_download_models(
     let e5_model_data = models_dir
         .join("kosimcse-roberta-multitask")
         .join("model.onnx.data");
-    let reranker_model = models_dir.join("ms-marco-MiniLM-L6-v2").join("model.onnx");
-
     let e5_tokenizer = models_dir
         .join("kosimcse-roberta-multitask")
         .join("tokenizer.json");
     let embedder_available = (e5_model_int8.exists()
         || (e5_model.exists() && e5_model_data.exists()))
         && e5_tokenizer.exists();
-    if !semantic_enabled || (embedder_available && reranker_model.exists()) {
+    if !semantic_enabled || embedder_available {
         return;
     }
 
@@ -121,19 +117,15 @@ fn maybe_download_models(
                 let any_downloaded = result.onnx_runtime_downloaded
                     || result.model_downloaded
                     || result.model_data_downloaded
-                    || result.tokenizer_downloaded
-                    || result.reranker_model_downloaded
-                    || result.reranker_tokenizer_downloaded;
+                    || result.tokenizer_downloaded;
 
                 if any_downloaded {
                     tracing::info!(
-                        "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}, Reranker={}, RerankerTokenizer={}",
+                        "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}",
                         result.onnx_runtime_downloaded,
                         result.model_downloaded,
                         result.model_data_downloaded,
                         result.tokenizer_downloaded,
-                        result.reranker_model_downloaded,
-                        result.reranker_tokenizer_downloaded
                     );
                 }
                 let _ = app_handle.emit("model-download-status", "completed");
@@ -430,16 +422,6 @@ pub fn run() {
                 );
             }
 
-            // Check reranker availability
-            if container.is_reranker_available() {
-                tracing::info!("Reranker: enabled (ms-marco-MiniLM-L6-v2)");
-            } else {
-                tracing::warn!(
-                    "Reranker: disabled (model not found at {:?})",
-                    container.models_dir.join("ms-marco-MiniLM-L6-v2")
-                );
-            }
-
             // Check OCR availability
             if container.is_ocr_available() && setup_settings.ocr_enabled {
                 tracing::info!("OCR: enabled (PaddleOCR ONNX)");
@@ -714,14 +696,9 @@ pub fn run() {
             commands::preview::update_bookmark_note,
             commands::preview::get_bookmarks,
             commands::preview::generate_summary,
-            commands::ai::ask_ai,
             commands::export::export_csv,
-            commands::export::export_xlsx,
-            commands::export::export_json,
-            commands::export::package_zip,
             commands::search::get_search_history_stats,
             commands::duplicate::find_duplicates,
-            commands::expiry::scan_expiry_dates,
             commands::tags::add_file_tag,
             commands::tags::remove_file_tag,
             commands::tags::get_file_tags,

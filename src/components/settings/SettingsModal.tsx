@@ -4,7 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import type { Settings } from "../../types/settings";
-import { GeneralTab, SearchTab, AppearanceTab, SystemTab } from "./tabs";
+import { GeneralTab, SearchTab, SystemTab } from "./tabs";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,12 +15,11 @@ interface SettingsModalProps {
   onAutoIndexAllDrives?: () => Promise<void>;
 }
 
-type SettingsTab = "general" | "search" | "appearance" | "system";
+type SettingsTab = "general" | "search" | "system";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "일반" },
   { id: "search", label: "검색" },
-  { id: "appearance", label: "외관" },
   { id: "system", label: "시스템" },
 ];
 
@@ -256,11 +255,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           {activeTab === "search" && (
             <div role="tabpanel" id="settings-panel-search" aria-labelledby="settings-tab-search">
               <SearchTab settings={settings} onChange={handleChange} onSemanticToggle={handleSemanticToggle} />
-            </div>
-          )}
-          {activeTab === "appearance" && (
-            <div role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance">
-              <AppearanceTab settings={settings} onChange={handleChange} />
             </div>
           )}
           {activeTab === "system" && (

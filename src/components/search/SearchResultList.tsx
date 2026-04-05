@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
-import { List, LayoutGrid, ClipboardCopy, FileDown, FileSpreadsheet, FileJson2, Archive, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
+import { List, LayoutGrid, ClipboardCopy, FileDown, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
 import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch, ParsedQueryInfo } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -28,9 +28,6 @@ interface SearchResultListProps {
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   onExportCSV?: () => void;
-  onExportXLSX?: () => void;
-  onExportJSON?: () => void;
-  onPackageZip?: () => void;
   onCopyAll?: () => void;
   /** 결과 내 검색 키워드 (추가 하이라이트용) */
   refineKeywords?: string[];
@@ -91,9 +88,6 @@ export const SearchResultList = memo(function SearchResultList({
   onCopyPath,
   onOpenFolder,
   onExportCSV,
-  onExportXLSX,
-  onExportJSON,
-  onPackageZip,
   onCopyAll,
   refineKeywords,
   resultCount,
@@ -230,9 +224,6 @@ export const SearchResultList = memo(function SearchResultList({
           searchTime={searchTime}
           onCopyAll={onCopyAll}
           onExportCSV={onExportCSV}
-          onExportXLSX={onExportXLSX}
-          onExportJSON={onExportJSON}
-          onPackageZip={onPackageZip}
         />
 
         <FilenameResultsSection
@@ -484,9 +475,6 @@ function ResultsToolbar({
   searchTime,
   onCopyAll,
   onExportCSV,
-  onExportXLSX,
-  onExportJSON,
-  onPackageZip,
 }: {
   viewMode: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
@@ -496,9 +484,6 @@ function ResultsToolbar({
   searchTime?: number | null;
   onCopyAll?: () => void;
   onExportCSV?: () => void;
-  onExportXLSX?: () => void;
-  onExportJSON?: () => void;
-  onPackageZip?: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 mb-2">
@@ -569,33 +554,6 @@ function ResultsToolbar({
         >
           <FileDown className="w-3.5 h-3.5" />
           CSV
-        </button>
-        <button
-          onClick={onExportXLSX}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
-          title="Excel 파일로 내보내기"
-          aria-label="Excel 파일로 내보내기"
-        >
-          <FileSpreadsheet className="w-3.5 h-3.5" />
-          Excel
-        </button>
-        <button
-          onClick={onExportJSON}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
-          title="JSON 파일로 내보내기"
-          aria-label="JSON 파일로 내보내기"
-        >
-          <FileJson2 className="w-3.5 h-3.5" />
-          JSON
-        </button>
-        <button
-          onClick={onPackageZip}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border font-medium btn-outline-accent-hover"
-          title="검색된 문서들 ZIP으로 묶기"
-          aria-label="검색된 문서들 ZIP으로 묶기"
-        >
-          <Archive className="w-3.5 h-3.5" />
-          ZIP
         </button>
       </div>
     </div>

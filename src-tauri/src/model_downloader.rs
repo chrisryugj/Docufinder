@@ -27,12 +27,6 @@ const E5_MODEL_F32_URL: &str =
 #[allow(dead_code)]
 const E5_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx.data";
 
-// Cross-Encoder Reranker (ms-marco-MiniLM-L-6-v2)
-const RERANKER_MODEL_URL: &str =
-    "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/onnx/model_quantized.onnx";
-const RERANKER_TOKENIZER_URL: &str =
-    "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/resolve/main/tokenizer.json";
-
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
 // INT8 양자화 모델 SHA-256
@@ -46,10 +40,6 @@ const E5_MODEL_DATA_SHA256: &str =
     "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
 const E5_TOKENIZER_SHA256: &str =
     "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
-const RERANKER_MODEL_SHA256: &str =
-    "e9d8ebf845c413e981c175bfe49a3bfa9b3dcce2a3ba54875ee5df5a58639fbe";
-const RERANKER_TOKENIZER_SHA256: &str =
-    "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66";
 // ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
 const ONNX_RUNTIME_ZIP_SHA256: &str =
     "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
@@ -82,8 +72,6 @@ pub struct DownloadResult {
     pub model_downloaded: bool,
     pub model_data_downloaded: bool,
     pub tokenizer_downloaded: bool,
-    pub reranker_model_downloaded: bool,
-    pub reranker_tokenizer_downloaded: bool,
 }
 
 /// 필요한 모델 파일들을 확인하고 없으면 다운로드
@@ -101,8 +89,6 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
         model_downloaded: false,
         model_data_downloaded: false,
         tokenizer_downloaded: false,
-        reranker_model_downloaded: false,
-        reranker_tokenizer_downloaded: false,
     };
 
     // ONNX Runtime DLL 다운로드
@@ -142,54 +128,7 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
         verify_existing_file(&tokenizer_path, E5_TOKENIZER_SHA256, "토크나이저")?;
     }
 
-    // Cross-Encoder Reranker 모델 다운로드
-    let reranker_result = ensure_reranker_model(models_dir)?;
-    result.reranker_model_downloaded = reranker_result.0;
-    result.reranker_tokenizer_downloaded = reranker_result.1;
-
     Ok(result)
-}
-
-/// Cross-Encoder Reranker 모델 다운로드
-pub fn ensure_reranker_model(models_dir: &Path) -> Result<(bool, bool), String> {
-    let reranker_dir = models_dir.join("ms-marco-MiniLM-L6-v2");
-    fs::create_dir_all(&reranker_dir).map_err(|e| format!("Reranker 디렉토리 생성 실패: {}", e))?;
-
-    let model_path = reranker_dir.join("model.onnx");
-    let tokenizer_path = reranker_dir.join("tokenizer.json");
-
-    let mut model_downloaded = false;
-    let mut tokenizer_downloaded = false;
-
-    // Reranker 모델 다운로드 (SHA-256 검증)
-    if !model_path.exists() {
-        tracing::info!("Reranker 모델 다운로드 중...");
-        download_file_verified(RERANKER_MODEL_URL, &model_path, RERANKER_MODEL_SHA256)?;
-        model_downloaded = true;
-        tracing::info!("Reranker 모델 다운로드 및 검증 완료");
-    } else {
-        verify_existing_file(&model_path, RERANKER_MODEL_SHA256, "Reranker 모델")?;
-    }
-
-    // Reranker 토크나이저 다운로드 (SHA-256 검증)
-    if !tokenizer_path.exists() {
-        tracing::info!("Reranker 토크나이저 다운로드 중...");
-        download_file_verified(
-            RERANKER_TOKENIZER_URL,
-            &tokenizer_path,
-            RERANKER_TOKENIZER_SHA256,
-        )?;
-        tokenizer_downloaded = true;
-        tracing::info!("Reranker 토크나이저 다운로드 및 검증 완료");
-    } else {
-        verify_existing_file(
-            &tokenizer_path,
-            RERANKER_TOKENIZER_SHA256,
-            "Reranker 토크나이저",
-        )?;
-    }
-
-    Ok((model_downloaded, tokenizer_downloaded))
 }
 
 /// PaddleOCR 모델 다운로드 (Detection + Korean Recognition + Dictionary)
@@ -457,11 +396,3 @@ pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
     )
 }
 
-/// Reranker 모델 파일 존재 여부 확인
-pub fn check_reranker_model(models_dir: &Path) -> (bool, bool) {
-    let reranker_dir = models_dir.join("ms-marco-MiniLM-L6-v2");
-    (
-        reranker_dir.join("model.onnx").exists(),
-        reranker_dir.join("tokenizer.json").exists(),
-    )
-}

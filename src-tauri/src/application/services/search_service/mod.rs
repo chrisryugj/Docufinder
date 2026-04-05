@@ -12,7 +12,6 @@ mod smart;
 use crate::application::dto::search::{SearchMode, SearchQuery, SearchResponse};
 use crate::application::errors::{AppError, AppResult};
 use crate::db;
-use crate::reranker::Reranker;
 use crate::search::filename_cache::FilenameCache;
 use crate::tokenizer::TextTokenizer;
 use std::path::PathBuf;
@@ -24,7 +23,6 @@ pub struct SearchService {
     pub(super) embedder: Option<Arc<crate::embedder::Embedder>>,
     pub(super) vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
     pub(super) tokenizer: Option<Arc<dyn TextTokenizer>>,
-    pub(super) reranker: Option<Arc<Reranker>>,
     pub(super) filename_cache: Option<Arc<FilenameCache>>,
 }
 
@@ -35,7 +33,6 @@ impl SearchService {
         embedder: Option<Arc<crate::embedder::Embedder>>,
         vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
         tokenizer: Option<Arc<dyn TextTokenizer>>,
-        reranker: Option<Arc<Reranker>>,
         filename_cache: Option<Arc<FilenameCache>>,
     ) -> Self {
         Self {
@@ -43,7 +40,6 @@ impl SearchService {
             embedder,
             vector_index,
             tokenizer,
-            reranker,
             filename_cache,
         }
     }
