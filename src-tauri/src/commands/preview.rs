@@ -75,8 +75,15 @@ pub async fn load_document_preview(
             });
         }
 
-        // 2. 청크 데이터 조회
-        let chunk_infos = db::get_chunks_by_ids(&conn, &chunk_ids)
+        // 2. 청크 데이터 조회 (대용량 문서 보호: 최대 500 청크)
+        const MAX_PREVIEW_CHUNKS: usize = 500;
+        let limited_ids = if chunk_ids.len() > MAX_PREVIEW_CHUNKS {
+            tracing::info!("Preview truncated: {} → {} chunks for {}", chunk_ids.len(), MAX_PREVIEW_CHUNKS, file_path);
+            chunk_ids[..MAX_PREVIEW_CHUNKS].to_vec()
+        } else {
+            chunk_ids
+        };
+        let chunk_infos = db::get_chunks_by_ids(&conn, &limited_ids)
             .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
         // 3. chunk_index 순 정렬
@@ -213,7 +220,11 @@ pub async fn load_markdown_preview(
         .unwrap_or("")
         .to_string();
 
-    let fp = file_path.clone();
+    // 경로 검증: 파일이 실제 존재하는지 확인 (path traversal 방지)
+    let canonical = std::fs::canonicalize(&file_path)
+        .map_err(|_| ApiError::Validation("파일을 찾을 수 없습니다".to_string()))?;
+    let fp = canonical.to_string_lossy().to_string();
+
     let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
         let path = std::path::Path::new(&fp);
 

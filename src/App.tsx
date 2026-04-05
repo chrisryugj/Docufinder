@@ -84,7 +84,7 @@ function AppContent() {
     const hasFailed = results.some((r) => r.failed_count > 0);
     const hasHwp = results.some((r) => (r.hwp_files?.length ?? 0) > 0);
     if (hasFailed || hasHwp) ui.setReportResults(results);
-  }, [ui]);
+  }, [ui.setReportResults]);
 
   const handleAddFolder = useCallback(async () => {
     const results = await rawHandleAddFolder();
@@ -127,7 +127,7 @@ function AppContent() {
     if (idx.status && idx.status.watched_folders.length === 0 && !ui.showOnboarding) {
       ui.tryShowAutoIndexPrompt();
     }
-  }, [idx.status, ui]);
+  }, [idx.status, ui.showOnboarding, ui.tryShowAutoIndexPrompt]);
 
   // ── Cross-cutting: 인덱싱 완료 → 캐시 무효화 ──
   useEffect(() => {
@@ -135,7 +135,7 @@ function AppContent() {
       clearSearchCache();
       if (search.query.trim()) search.invalidateSearch();
     }
-  }, [idx.progress?.phase, search]);
+  }, [idx.progress?.phase, search.query, search.invalidateSearch]);
 
   // 벡터 인덱싱 완료 → 토스트
   useEffect(() => {
@@ -145,13 +145,13 @@ function AppContent() {
       clearSearchCache();
       if (search.query.trim()) search.invalidateSearch();
     }
-  }, [idx.vectorJustCompleted, idx, ui, search]);
+  }, [idx.vectorJustCompleted, idx.clearVectorCompleted, ui.showToast, search.query, search.invalidateSearch]);
 
   // HWP 감지 콜백
   const handleHwpDetected = useCallback((paths: string[]) => {
     ui.setPendingHwpFiles((prev) => [...prev, ...paths]);
     ui.showToast(`새 HWP 파일 ${paths.length}개 발견 — 변환하려면 아래 배너를 확인하세요`, "info", 5000);
-  }, [ui]);
+  }, [ui.setPendingHwpFiles, ui.showToast]);
 
   // Tauri 이벤트 리스너
   useAppEvents({
@@ -173,13 +173,13 @@ function AppContent() {
     search.clearSearchError();
     idx.clearIndexError();
     idx.clearVectorError();
-  }, [search, idx]);
+  }, [search.clearSearchError, idx.clearIndexError, idx.clearVectorError]);
 
   // 북마크 선택 → 미리보기 + 파일 열기
   const handleBookmarkSelect = useCallback((filePath: string, pageNumber?: number | null) => {
     ui.setPreviewFilePath(filePath);
     handleOpenFile(filePath, pageNumber ?? undefined);
-  }, [handleOpenFile, ui]);
+  }, [handleOpenFile, ui.setPreviewFilePath]);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts(
@@ -221,7 +221,7 @@ function AppContent() {
   const handleSettingsClose = useCallback(() => {
     ui.setSettingsOpen(false);
     requestAnimationFrame(() => search.searchInputRef.current?.focus());
-  }, [ui, search]);
+  }, [ui.setSettingsOpen, search.searchInputRef]);
 
   const handleSettingsSaved = useCallback((settings: Settings) => {
     const wasEnabled = semanticEnabled;
@@ -250,7 +250,7 @@ function AppContent() {
         ui.showToast("인덱싱 재시작 실패", "error");
       }
     }
-  }, [idx, ui]);
+  }, [idx.cancelledFolderPath, idx.refreshStatus, ui.showToast]);
 
   const handleClearData = useCallback(async () => {
     await invoke("clear_all_data");

@@ -273,7 +273,7 @@ export const SearchResultList = memo(function SearchResultList({
               <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
                 {results.slice(0, visibleCount).map((result, index) => (
                   <div
-                    key={`${result.file_path}-${result.chunk_index}-${index}`}
+                    key={`${result.file_path}-${result.chunk_index ?? 0}-${result.start_offset ?? index}`}
                     className={`group ${index < 10 ? "stagger-item" : ""}`}
                     style={{
                       contain: "layout style",

@@ -14,17 +14,19 @@ export function useResultSelection(
   setPreviewFilePath: React.Dispatch<React.SetStateAction<string | null>>
 ): UseResultSelectionReturn {
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
-  const prevResultsLength = useRef(filteredResults.length);
+  const prevResultsRef = useRef({ length: filteredResults.length, firstPath: filteredResults[0]?.file_path });
 
-  // 결과가 변경되면 선택 초기화
+  // 결과가 변경되면 선택 초기화 (길이 + 첫 번째 결과 경로로 비교)
   useEffect(() => {
-    if (prevResultsLength.current !== filteredResults.length) {
-      prevResultsLength.current = filteredResults.length;
+    const prev = prevResultsRef.current;
+    const firstPath = filteredResults[0]?.file_path;
+    if (prev.length !== filteredResults.length || prev.firstPath !== firstPath) {
+      prevResultsRef.current = { length: filteredResults.length, firstPath };
       if (selectedIndex >= filteredResults.length) {
         setSelectedIndex(filteredResults.length > 0 ? 0 : -1);
       }
     }
-  }, [filteredResults.length, selectedIndex]);
+  }, [filteredResults, selectedIndex]);
 
   // 선택된 결과 변경 시 미리보기 패널 업데이트
   useEffect(() => {

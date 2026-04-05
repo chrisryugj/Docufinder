@@ -167,7 +167,7 @@ pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-    let size = metadata.len() as i64;
+    let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
     let modified_at = metadata
         .modified()
         .ok()

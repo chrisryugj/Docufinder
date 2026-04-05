@@ -6,7 +6,7 @@
 .noise-overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1;
   pointer-events: none;
   opacity: 0.025;
   background-image: var(--bg-noise);

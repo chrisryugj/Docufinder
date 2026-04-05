@@ -215,39 +215,36 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let mut child = cmd.spawn().map_err(|e| {
+    let child = cmd.spawn().map_err(|e| {
         ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}"))
     })?;
 
-    // 타임아웃 대기 (try_wait 폴링)
-    let start = std::time::Instant::now();
+    // wait_with_output()을 별도 스레드에서 실행하여 stdout 데드락 방지
+    // (try_wait 폴링은 stdout 파이프 버퍼가 차면 데드락 발생 가능)
     let timeout = std::time::Duration::from_secs(KORDOC_TIMEOUT_SECS);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    let _ = child.kill();
-                    let _ = child.wait(); // 좀비 방지
-                    return Err(ParseError::ParseError(format!(
-                        "kordoc 타임아웃 ({}초 초과): {}",
-                        KORDOC_TIMEOUT_SECS,
-                        file_path.display()
-                    )));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-            Err(e) => {
-                return Err(ParseError::ParseError(format!(
-                    "kordoc 프로세스 대기 실패: {e}"
-                )));
-            }
-        }
-    }
+    let file_display = file_path.display().to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
 
-    let output = child.wait_with_output().map_err(|e| {
-        ParseError::ParseError(format!("kordoc 출력 읽기 실패: {e}"))
-    })?;
+    std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+
+    let output = match rx.recv_timeout(timeout) {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            return Err(ParseError::ParseError(format!(
+                "kordoc 출력 읽기 실패: {e}"
+            )));
+        }
+        Err(_) => {
+            // 타임아웃 — 스레드 내 child는 drop 시 자동 kill (Windows)
+            return Err(ParseError::ParseError(format!(
+                "kordoc 타임아웃 ({}초 초과): {}",
+                KORDOC_TIMEOUT_SECS, file_display
+            )));
+        }
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -255,6 +252,16 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         return Err(ParseError::ParseError(format!(
             "kordoc 실행 실패 (exit {})",
             output.status
+        )));
+    }
+
+    // kordoc 출력 크기 제한 (100MB — OOM 방지)
+    const MAX_OUTPUT_SIZE: usize = 100 * 1024 * 1024;
+    if output.stdout.len() > MAX_OUTPUT_SIZE {
+        return Err(ParseError::ParseError(format!(
+            "kordoc 출력 크기 초과: {}MB (최대 {}MB)",
+            output.stdout.len() / 1_048_576,
+            MAX_OUTPUT_SIZE / 1_048_576
         )));
     }
 

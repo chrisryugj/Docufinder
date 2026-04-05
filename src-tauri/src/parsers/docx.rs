@@ -39,7 +39,11 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         .map_err(|e| ParseError::ParseError(format!("document.xml not found: {}", e)))?;
 
     let mut contents = String::new();
-    std::io::Read::read_to_string(&mut document_xml, &mut contents)?;
+    // .take()로 디컴프레션 크기 제한 (ZIP 헤더 위조 시 OOM 방어)
+    {
+        use std::io::Read;
+        document_xml.take(super::MAX_ENTRY_UNCOMPRESSED_SIZE).read_to_string(&mut contents)?;
+    }
 
     let (pages, total_text) = extract_text_with_pages(&contents)?;
 

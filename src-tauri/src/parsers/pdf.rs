@@ -105,6 +105,17 @@ pub fn detached_thread_count() -> usize {
 ///
 /// `ocr`: OCR 엔진이 있으면 스캔 페이지(텍스트 10자 미만)에서 이미지 추출 → OCR
 pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
+    // 파일 크기 체크 (다른 파서와 동일, 대용량 PDF OOM 방지)
+    if let Ok(metadata) = std::fs::metadata(path) {
+        if metadata.len() > super::MAX_FILE_SIZE {
+            return Err(ParseError::ParseError(format!(
+                "PDF 파일 크기 초과: {}MB (최대 {}MB)",
+                metadata.len() / 1024 / 1024,
+                super::MAX_FILE_SIZE / 1024 / 1024
+            )));
+        }
+    }
+
     // 시간 기반 자동 리셋 (hang 스레드 누적 시 5분 후 자동 복구)
     try_auto_reset();
 
@@ -185,6 +196,26 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
 
     // 스레드 정상 종료 대기 (이미 완료됨)
     let _ = handle.join();
+
+    // 추출 텍스트 크기 제한 (50MB — 대용량 PDF OOM 방지)
+    const MAX_EXTRACTED_TEXT_SIZE: usize = 50 * 1024 * 1024;
+    let raw_text = if raw_text.len() > MAX_EXTRACTED_TEXT_SIZE {
+        tracing::warn!(
+            "PDF text truncated: {}MB → {}MB: {:?}",
+            raw_text.len() / 1_048_576,
+            MAX_EXTRACTED_TEXT_SIZE / 1_048_576,
+            path
+        );
+        let mut truncated = raw_text;
+        truncated.truncate(MAX_EXTRACTED_TEXT_SIZE);
+        // char 경계 안전하게 자르기
+        while !truncated.is_char_boundary(truncated.len()) {
+            truncated.pop();
+        }
+        truncated
+    } else {
+        raw_text
+    };
 
     // 페이지별 분리 (form feed 문자 \x0c 기준)
     let pages: Vec<&str> = raw_text.split('\x0c').collect();
