@@ -20,3 +20,5 @@ export { useSimilarDocuments } from "./useSimilarDocuments";
 export { useDocumentCategories } from "./useDocumentCategories";
 export { useRecentSearchSaver } from "./useRecentSearchSaver";
 export { useResultSelection } from "./useResultSelection";
+export { useAiAnswer } from "./useAiAnswer";
+export type { UseAiAnswerReturn } from "./useAiAnswer";

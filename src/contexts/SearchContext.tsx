@@ -1,9 +1,9 @@
 import { createContext, useContext, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
-import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection } from "../hooks";
+import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection, useAiAnswer } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
 import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
-import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch } from "../types/search";
+import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch, AiAnalysis } from "../types/search";
 import { useUIContext } from "./UIContext";
 
 // ── Types ──────────────────────────────────────────────
@@ -89,6 +89,14 @@ export interface SearchContextValue {
   handleExportCSV: () => void;
   handleCopyAll: () => void;
   memoizedRefineKeywords: string[] | undefined;
+
+  // AI QA
+  aiAnswer: string;
+  isAiStreaming: boolean;
+  aiAnalysis: AiAnalysis | null;
+  aiError: string | null;
+  askAi: (query: string, folderScope?: string | null) => void;
+  resetAi: () => void;
 
   // Refs
   searchInputRef: React.RefObject<HTMLInputElement | null>;
@@ -198,6 +206,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // ── Result Selection + Preview 연동 ──
   const { selectedIndex, setSelectedIndex } = useResultSelection(filteredResults, setPreviewFilePath);
 
+  // ── AI QA ──
+  const { answer: aiAnswer, isStreaming: isAiStreaming, analysis: aiAnalysis, error: aiError, ask: askAi, reset: resetAi } = useAiAnswer();
+
   // ── Export (memoized) ──
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
   const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
@@ -228,6 +239,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex, setSelectedIndex,
     handleExportCSV, handleCopyAll, memoizedRefineKeywords,
+    aiAnswer, isAiStreaming, aiAnalysis, aiError, askAi, resetAi,
     searchInputRef, compactSearchInputRef,
     clearSearchCache,
   };

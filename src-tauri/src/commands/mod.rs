@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod duplicate;
 pub mod export;
 pub mod file;

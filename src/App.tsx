@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -20,6 +20,8 @@ import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import { TypoSuggestion } from "./components/search/TypoSuggestion";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
+import AiAnswerPanel from "./components/search/AiAnswerPanel";
+import { AiDisclaimerModal, isAiDisclaimerAccepted } from "./components/search/AiDisclaimerModal";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
@@ -60,6 +62,26 @@ function AppContent() {
 
   // Document categories (cross-cutting: search results + settings)
   const categories = useDocumentCategories(search.filteredResults, semanticEnabled);
+
+  // ── AI Disclaimer ──
+  const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
+
+  const executeAiQuery = useCallback(() => {
+    search.askAi(search.query, search.filters.searchScope);
+  }, [search.askAi, search.query, search.filters.searchScope]);
+
+  // ── Submit handler (paradigm-aware) ──
+  const handleSubmitQuery = useCallback(() => {
+    if (search.paradigm === "question") {
+      if (!isAiDisclaimerAccepted()) {
+        setShowAiDisclaimer(true);
+        return;
+      }
+      executeAiQuery();
+    } else {
+      search.submitNaturalQuery();
+    }
+  }, [search.paradigm, search.submitNaturalQuery, executeAiQuery]);
 
   // ── File Actions (cross-cutting) ──
   const {
@@ -320,7 +342,7 @@ function AppContent() {
               totalResultCount={search.results.length}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
-              onSubmitNatural={search.submitNaturalQuery}
+              onSubmitNatural={handleSubmitQuery}
             />
           </div>
         )}
@@ -370,7 +392,7 @@ function AppContent() {
               onSuggestionsSetIndex={search.autoComplete.setSelectedIndex}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
-              onSubmitNatural={search.submitNaturalQuery}
+              onSubmitNatural={handleSubmitQuery}
             />
 
             <VectorIndexingBanner
@@ -455,40 +477,50 @@ function AppContent() {
                   </div>
                 )}
 
-                <SearchResultList
-                  results={search.filteredResults}
-                  filenameResults={search.filters.excludeFilename ? [] : search.filenameResults}
-                  groupedResults={search.groupedResults}
-                  viewMode={search.viewMode}
-                  onViewModeChange={search.setViewMode}
-                  viewDensity={viewDensity}
-                  query={search.query}
-                  isLoading={search.isLoading}
-                  selectedIndex={search.selectedIndex}
-                  onOpenFile={handleOpenFile}
-                  onCopyPath={handleCopyPath}
-                  onOpenFolder={handleOpenFolder}
-                  onExportCSV={search.handleExportCSV}
-                  onCopyAll={search.handleCopyAll}
-                  refineKeywords={search.memoizedRefineKeywords}
-                  resultCount={search.filteredResults.length}
-                  totalResultCount={search.results.length}
-                  minConfidence={minConfidence}
-                  searchTime={search.searchTime}
-                  resultsPerPage={resultsPerPage}
-                  indexedFiles={idx.status?.indexed_files ?? 0}
-                  indexedFolders={idx.status?.watched_folders?.length ?? 0}
-                  recentSearches={search.recentSearches}
-                  onSelectSearch={search.handleSelectSearch}
-                  semanticEnabled={semanticEnabled}
-                  onAddFolder={handleAddFolder}
-                  onSelectResult={search.setSelectedIndex}
-                  onFindSimilar={semanticEnabled ? search.handleFindSimilar : undefined}
-                  categories={categories}
-                  paradigm={search.paradigm}
-                  nlSubmitted={search.nlSubmitted}
-                  parsedQuery={search.parsedQuery}
-                />
+                {search.paradigm === "question" ? (
+                  <AiAnswerPanel
+                    answer={search.aiAnswer}
+                    isStreaming={search.isAiStreaming}
+                    analysis={search.aiAnalysis}
+                    error={search.aiError}
+                    onReset={search.resetAi}
+                  />
+                ) : (
+                  <SearchResultList
+                    results={search.filteredResults}
+                    filenameResults={search.filters.excludeFilename ? [] : search.filenameResults}
+                    groupedResults={search.groupedResults}
+                    viewMode={search.viewMode}
+                    onViewModeChange={search.setViewMode}
+                    viewDensity={viewDensity}
+                    query={search.query}
+                    isLoading={search.isLoading}
+                    selectedIndex={search.selectedIndex}
+                    onOpenFile={handleOpenFile}
+                    onCopyPath={handleCopyPath}
+                    onOpenFolder={handleOpenFolder}
+                    onExportCSV={search.handleExportCSV}
+                    onCopyAll={search.handleCopyAll}
+                    refineKeywords={search.memoizedRefineKeywords}
+                    resultCount={search.filteredResults.length}
+                    totalResultCount={search.results.length}
+                    minConfidence={minConfidence}
+                    searchTime={search.searchTime}
+                    resultsPerPage={resultsPerPage}
+                    indexedFiles={idx.status?.indexed_files ?? 0}
+                    indexedFolders={idx.status?.watched_folders?.length ?? 0}
+                    recentSearches={search.recentSearches}
+                    onSelectSearch={search.handleSelectSearch}
+                    semanticEnabled={semanticEnabled}
+                    onAddFolder={handleAddFolder}
+                    onSelectResult={search.setSelectedIndex}
+                    onFindSimilar={semanticEnabled ? search.handleFindSimilar : undefined}
+                    categories={categories}
+                    paradigm={search.paradigm}
+                    nlSubmitted={search.nlSubmitted}
+                    parsedQuery={search.parsedQuery}
+                  />
+                )}
               </div>
             </main>
           </div>
@@ -537,6 +569,14 @@ function AppContent() {
         />
       </div>
 
+      <AiDisclaimerModal
+        isOpen={showAiDisclaimer}
+        onAccept={() => {
+          setShowAiDisclaimer(false);
+          executeAiQuery();
+        }}
+        onDecline={() => setShowAiDisclaimer(false)}
+      />
       <AppModals
         settingsOpen={ui.settingsOpen}
         onSettingsClose={handleSettingsClose}
@@ -594,8 +634,8 @@ function AppContent() {
             pptx: "pptx", ppt: "pptx", xlsx: "xlsx", xls: "xlsx",
             pdf: "pdf", txt: "txt", md: "txt",
           };
-          const filterType = typeMap[fileType] || "all";
-          search.setFilters((prev) => ({ ...prev, fileType: filterType }));
+          const ft = typeMap[fileType];
+          search.setFilters((prev) => ({ ...prev, fileTypes: ft ? [ft] : [] }));
           if (!search.query) search.setQuery("*");
         }}
         onOpenFile={handleOpenFile}

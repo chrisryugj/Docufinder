@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { TagInput } from "../ui/TagInput";
-import type { SummaryResponse, SummarySentence } from "../../types/search";
+import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 
 // ─── Types ─────────────────────────────────────────────
@@ -173,8 +173,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // 요약 상태
-  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  // AI 요약 상태
+  const [aiSummary, setAiSummary] = useState<AiAnalysis | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
   const summaryRequestId = useRef(0);
@@ -183,12 +183,12 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     if (!filePath) {
       setMarkdown(null);
-      setSummary(null);
+      setAiSummary(null);
       return;
     }
 
     summaryRequestId.current++;
-    setSummary(null);
+    setAiSummary(null);
 
     let cancelled = false;
     setLoading(true);
@@ -214,16 +214,17 @@ export const PreviewPanel = memo(function PreviewPanel({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
 
-  // 요약 생성
+  // AI 요약 생성
   const handleGenerateSummary = useCallback(() => {
     if (!filePath || summaryLoading) return;
     const reqId = ++summaryRequestId.current;
     setSummaryLoading(true);
+    setAiSummary(null);
 
-    invoke<SummaryResponse>("generate_summary", { filePath, numSentences: 3 })
+    invoke<AiAnalysis>("summarize_ai", { filePath })
       .then((res) => {
         if (summaryRequestId.current === reqId) {
-          setSummary(res);
+          setAiSummary(res);
           setSummaryExpanded(true);
         }
       })
@@ -325,14 +326,14 @@ export const PreviewPanel = memo(function PreviewPanel({
             onClick={handleGenerateSummary}
             disabled={summaryLoading}
             className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
-            title="요약 생성"
+            title="AI 요약 생성"
           >
             {summaryLoading ? (
-              <div className="w-3 h-3 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+              <div className="w-3 h-3 border border-[#7c3aed] border-t-transparent rounded-full animate-spin" />
             ) : (
               <Sparkles size={12} />
             )}
-            요약
+            AI 요약
           </button>
         )}
 
@@ -377,31 +378,27 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {/* 요약 섹션 */}
-        {summary && summary.sentences.length > 0 && (
-          <div className="mx-4 mt-3 mb-1 rounded-lg border" style={{ borderColor: "var(--color-accent)", backgroundColor: "color-mix(in srgb, var(--color-accent) 5%, var(--color-bg-primary))" }}>
+        {/* AI 요약 섹션 */}
+        {aiSummary && (
+          <div className="mx-4 mt-3 mb-1 rounded-lg border" style={{ borderColor: "#7c3aed", backgroundColor: "color-mix(in srgb, #7c3aed 5%, var(--color-bg-primary))" }}>
             <button
               onClick={() => setSummaryExpanded(!summaryExpanded)}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-[var(--color-accent)]"
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium"
+              style={{ color: "#7c3aed" }}
             >
               <Sparkles size={12} />
-              요약 ({summary.sentences.length}문장)
+              AI 요약
               <span className="ml-auto text-[var(--color-text-muted)] font-normal">
-                {summary.generation_time_ms}ms
+                {(aiSummary.processing_time_ms / 1000).toFixed(1)}초
+                {aiSummary.tokens_used && ` · ${aiSummary.tokens_used.total_tokens} tokens`}
               </span>
               {summaryExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
             {summaryExpanded && (
-              <div className="px-3 pb-3 space-y-2">
-                {summary.sentences.map((s: SummarySentence, i: number) => (
-                  <div key={i} className="flex gap-2 text-[13px] leading-relaxed">
-                    <span className="shrink-0 mt-0.5 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold"
-                      style={{ backgroundColor: "var(--color-accent)", color: "white" }}>
-                      {i + 1}
-                    </span>
-                    <p className="flex-1 text-[var(--color-text-primary)]">{s.text}</p>
-                  </div>
-                ))}
+              <div className="px-3 pb-3 text-[13px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {aiSummary.answer}
+                </ReactMarkdown>
               </div>
             )}
           </div>
@@ -414,7 +411,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               remarkPlugins={[remarkGfm]}
               components={markdownComponents}
             >
-              {markdown}
+              {markdown.replace(/<br\s*\/?>/gi, " ")}
             </ReactMarkdown>
           </div>
         )}

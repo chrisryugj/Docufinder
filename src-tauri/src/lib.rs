@@ -7,6 +7,7 @@ mod embedder;
 mod error;
 mod indexer;
 mod infrastructure; // 클린 아키텍처: Infrastructure Layer
+mod llm; // LLM 클라이언트 (RAG + AI 요약)
 mod model_downloader; // 모델 자동 다운로드
 pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
 pub mod parsers;
@@ -710,6 +711,8 @@ pub fn run() {
             commands::tags::get_all_tags,
             commands::tags::get_files_by_tag,
             commands::typo::suggest_correction,
+            commands::ai::ask_ai,
+            commands::ai::summarize_ai,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

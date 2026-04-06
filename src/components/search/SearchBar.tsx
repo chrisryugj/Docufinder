@@ -58,6 +58,8 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     ref
   ) => {
     const isNatural = paradigm === "natural";
+    const isQuestion = paradigm === "question";
+    const needsEnterToSubmit = isNatural || isQuestion;
     const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
@@ -68,15 +70,15 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLInputElement>) => {
-        // 자연어 모드: Enter로 검색 실행
-        if (isNatural && e.key === "Enter" && !e.nativeEvent.isComposing) {
+        // 자연어/질문 모드: Enter로 실행
+        if (needsEnterToSubmit && e.key === "Enter" && !e.nativeEvent.isComposing) {
           e.preventDefault();
           onSubmitNatural?.();
           return;
         }
 
         // 자동완성 키보드 처리 우선 (즉시 모드만)
-        if (!isNatural && onSuggestionsKeyDown) {
+        if (!needsEnterToSubmit && onSuggestionsKeyDown) {
           const selected = onSuggestionsKeyDown(e);
           if (selected !== null) {
             onSuggestionSelect?.(selected);
@@ -84,7 +86,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           }
         }
       },
-      [isNatural, onSubmitNatural, onSuggestionsKeyDown, onSuggestionSelect]
+      [needsEnterToSubmit, onSubmitNatural, onSuggestionsKeyDown, onSuggestionSelect]
     );
 
     const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -137,9 +139,11 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {...imeHandlers}
             onKeyDown={handleKeyDown}
             onBlur={handleBlur}
-            placeholder={isNatural
-              ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만"
-              : "예산 집행현황, 계약서, 인사발령"
+            placeholder={isQuestion
+              ? "문서에 대해 질문하세요... (예: 계약서의 해지 조건은?)"
+              : isNatural
+                ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만"
+                : "예산 집행현황, 계약서, 인사발령"
             }
             className="flex-1 bg-transparent border-none focus:outline-none ml-3"
             style={{

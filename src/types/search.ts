@@ -77,16 +77,17 @@ export const SEARCH_MODES: SearchModeInfo[] = [
 /** 정렬 옵션 ("size"는 향후 파일 크기 정렬 기능용으로 예약) */
 export type SortOption = "relevance" | "confidence" | "date_desc" | "date_asc" | "name" | "size";
 
-/** 파일 타입 필터 */
-export type FileTypeFilter = "all" | "hwpx" | "docx" | "pptx" | "xlsx" | "pdf" | "txt";
+/** 파일 타입 필터 (개별 확장자) */
+export type FileTypeFilter = "hwpx" | "docx" | "pptx" | "xlsx" | "pdf" | "txt";
 
 /** 날짜 범위 필터 */
-export type DateRangeFilter = "all" | "today" | "week" | "month";
+export type DateRangeFilter = "all" | "today" | "week" | "month" | "quarter" | "half" | "year" | `custom:${string}`;
 
 /** 검색 필터 상태 */
 export interface SearchFilters {
   sortBy: SortOption;
-  fileType: FileTypeFilter;
+  /** 선택된 확장자들 (빈 배열 = 전체) */
+  fileTypes: FileTypeFilter[];
   dateRange: DateRangeFilter;
   keywordOnly: boolean;
   /** 파일명 검색 결과 제외 */
@@ -98,7 +99,7 @@ export interface SearchFilters {
 /** 기본 필터 값 */
 export const DEFAULT_FILTERS: SearchFilters = {
   sortBy: "relevance",
-  fileType: "all",
+  fileTypes: [],
   dateRange: "all",
   keywordOnly: false,
   excludeFilename: false,
@@ -116,29 +117,31 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 /** 파일 타입 필터 목록 */
 export const FILE_TYPE_OPTIONS: { value: FileTypeFilter; label: string }[] = [
-  { value: "all", label: "전체" },
-  { value: "hwpx", label: "한글" },
-  { value: "docx", label: "워드" },
-  { value: "pptx", label: "파워포인트" },
-  { value: "xlsx", label: "엑셀" },
+  { value: "hwpx", label: "HWPX" },
+  { value: "docx", label: "DOCX" },
+  { value: "pptx", label: "PPTX" },
+  { value: "xlsx", label: "XLSX" },
   { value: "pdf", label: "PDF" },
-  { value: "txt", label: "텍스트" },
+  { value: "txt", label: "TXT" },
 ];
 
 /** 날짜 범위 필터 목록 */
 export const DATE_RANGE_OPTIONS: { value: DateRangeFilter; label: string }[] = [
-  { value: "all", label: "전체" },
+  { value: "all", label: "기간 없음" },
   { value: "today", label: "오늘" },
   { value: "week", label: "7일" },
   { value: "month", label: "30일" },
+  { value: "quarter", label: "90일" },
+  { value: "half", label: "6개월" },
+  { value: "year", label: "1년" },
 ];
 
 // =====================
 // 검색 패러다임 (v2.5)
 // =====================
 
-/** 검색 패러다임: 즉시(실시간) vs 자연어(Enter 실행) */
-export type SearchParadigm = "instant" | "natural";
+/** 검색 패러다임: 즉시(실시간) vs 자연어(Enter 실행) vs 질문(AI RAG) */
+export type SearchParadigm = "instant" | "natural" | "question";
 
 /** NL 파서 결과 (자연어 검색 모드) */
 export interface ParsedQueryInfo {

@@ -19,9 +19,18 @@ const NaturalIcon = () => (
   </svg>
 );
 
+const QuestionIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
 const modes: { value: SearchParadigm; label: string; Icon: React.ComponentType }[] = [
   { value: "instant", label: "즉시", Icon: InstantIcon },
   { value: "natural", label: "자연어", Icon: NaturalIcon },
+  { value: "question", label: "질문", Icon: QuestionIcon },
 ];
 
 export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
@@ -34,7 +43,13 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
       {modes.map((m) => {
         const isActive = paradigm === m.value;
         const isNaturalActive = m.value === "natural" && isActive;
-        const desc = m.value === "instant" ? "실시간 키워드 검색" : "자연어로 질문하여 검색";
+        const isQuestionActive = m.value === "question" && isActive;
+        const hasGradient = isNaturalActive || isQuestionActive;
+        const desc = m.value === "instant"
+          ? "실시간 키워드 검색"
+          : m.value === "natural"
+            ? "자연어로 질문하여 검색"
+            : "AI에게 문서 기반 질문";
         return (
           <button
             key={m.value}
@@ -45,16 +60,21 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
             className={`
               flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded transition-all duration-150
               ${isActive
-                ? isNaturalActive
+                ? hasGradient
                   ? "text-white shadow-sm"
                   : "bg-[var(--color-accent)] text-white shadow-sm"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
               }
             `}
-            style={isNaturalActive ? {
-              background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
-              boxShadow: "0 1px 4px var(--color-accent-glow)",
-            } : undefined}
+            style={
+              isNaturalActive ? {
+                background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
+                boxShadow: "0 1px 4px var(--color-accent-glow)",
+              } : isQuestionActive ? {
+                background: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
+                boxShadow: "0 1px 4px rgba(124, 58, 237, 0.3)",
+              } : undefined
+            }
             title={desc}
           >
             <m.Icon />
