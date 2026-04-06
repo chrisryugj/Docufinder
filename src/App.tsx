@@ -401,7 +401,7 @@ function AppContent() {
               onCancel={idx.cancelVectorIndexing}
             />
 
-            {search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
+            {search.paradigm !== "question" && search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
               <div className="mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
                 {search.paradigm === "natural" && search.parsedQuery ? (
                   <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
@@ -484,6 +484,15 @@ function AppContent() {
                     analysis={search.aiAnalysis}
                     error={search.aiError}
                     onReset={search.resetAi}
+                    currentQuestion={search.aiAskedQuery}
+                    onExampleClick={(text) => {
+                      search.setQuery(text);
+                      if (!isAiDisclaimerAccepted()) {
+                        setShowAiDisclaimer(true);
+                      } else {
+                        search.askAi(text, search.filters.searchScope);
+                      }
+                    }}
                   />
                 ) : (
                   <SearchResultList
@@ -656,12 +665,10 @@ function AppContent() {
         onClose={() => ui.setShowAutoIndexPrompt(false)}
         onAutoIndex={idx.autoIndexAllDrives}
         onSelectFolder={handleAddFolder}
+        onIndexFolderByPath={handleAddFolderByPath}
       />
 
       <FloatingUI
-        vectorStatus={idx.vectorStatus}
-        vectorProgress={idx.vectorProgress}
-        onCancelVectorIndexing={idx.cancelVectorIndexing}
         showScrollTop={search.showScrollTop}
         onScrollToTop={search.scrollToTop}
       />

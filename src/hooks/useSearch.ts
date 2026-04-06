@@ -396,7 +396,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   // 디바운스 검색 — 즉시 모드에서만 실행, 자연어 모드에서는 스킵
   useEffect(() => {
-    if (paradigm === "natural") return; // 자연어 모드는 Enter로만 실행
+    if (paradigm !== "instant") return; // 즉시 모드만 디바운스 검색
 
     const delay = isComposingRef.current
       ? Math.max(debounceMs, COMPOSITION_IDLE_MS)
@@ -416,7 +416,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     const needsFilter =
       minConfidence > 0 ||
       filters.keywordOnly ||
-      filters.fileType !== "all" ||
+      filters.fileTypes.length > 0 ||
       filters.dateRange !== "all" ||
       debouncedRefineQuery.trim().length > 0;
     const needsSort = filters.sortBy !== "relevance";
@@ -443,19 +443,29 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     // 날짜 범위 필터
     if (filters.dateRange !== "all") {
       const nowSec = Math.floor(Date.now() / 1000);
-      const cutoff: Record<string, number> = {
-        today: nowSec - 86400,
-        week: nowSec - 86400 * 7,
-        month: nowSec - 86400 * 30,
-      };
-      const minTime = cutoff[filters.dateRange] ?? 0;
+      let minTime = 0;
+
+      if (filters.dateRange.startsWith("custom:")) {
+        const days = parseInt(filters.dateRange.slice(7), 10);
+        if (!isNaN(days) && days > 0) minTime = nowSec - 86400 * days;
+      } else {
+        const cutoff: Record<string, number> = {
+          today: nowSec - 86400,
+          week: nowSec - 86400 * 7,
+          month: nowSec - 86400 * 30,
+          quarter: nowSec - 86400 * 90,
+          half: nowSec - 86400 * 180,
+          year: nowSec - 86400 * 365,
+        };
+        minTime = cutoff[filters.dateRange] ?? 0;
+      }
+
       filtered = filtered.filter((r) => (r.modified_at ?? 0) >= minTime);
     }
 
-    // 파일 타입 필터
-    if (filters.fileType !== "all") {
+    // 파일 타입 필터 (다중 선택)
+    if (filters.fileTypes.length > 0) {
       const extMap: Record<FileTypeFilter, string[]> = {
-        all: [],
         hwpx: ["hwpx"],
         docx: ["docx", "doc"],
         pptx: ["pptx", "ppt"],
@@ -463,7 +473,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         pdf: ["pdf"],
         txt: ["txt", "md"],
       };
-      const allowedExts = extMap[filters.fileType];
+      const allowedExts = filters.fileTypes.flatMap((ft) => extMap[ft] ?? []);
       filtered = filtered.filter((r) => {
         const ext = r.file_name.split(".").pop()?.toLowerCase() || "";
         return allowedExts.includes(ext);

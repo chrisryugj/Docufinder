@@ -37,6 +37,22 @@
   color: var(--color-error);
 }
 
+/* AI 섹션 슬라이드 인 애니메이션 */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ai-section-enter {
+  animation: slideDown 0.2s ease-out;
+}
+
 /* Glassmorphism - blur 제거 (저사양/내부망 최적화) */
 .glass {
   background: rgba(250, 250, 247, 0.95);
@@ -112,6 +128,14 @@ mark.hl-filename {
   background-color: var(--color-highlight-filename-bg);
   color: var(--color-highlight-filename-text);
   border-bottom: 2px solid var(--color-highlight-filename-border);
+}
+
+/* Snippet separator (preview mode ... → ·) */
+.snippet-sep {
+  color: var(--color-text-muted);
+  font-weight: 400;
+  opacity: 0.6;
+  user-select: none;
 }
 
 /* Custom Scrollbar */
@@ -435,4 +459,28 @@ mark.hl-filename {
 }
 .doc-em {
   font-style: italic;
+}
+
+/* 요약 내 마크다운 — 컴팩트 여백 */
+.summary-inline .doc-paragraph {
+  margin: 0.2em 0;
+}
+.summary-inline .doc-table-wrapper {
+  margin: 0.4em 0;
+}
+.summary-inline .doc-h1,
+.summary-inline .doc-h2,
+.summary-inline .doc-h3,
+.summary-inline .doc-h4 {
+  font-size: 1em;
+  margin: 0.3em 0 0.1em;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.summary-inline .doc-ul,
+.summary-inline .doc-ol {
+  margin: 0.2em 0;
+}
+.summary-inline > :first-child {
+  margin-top: 0;
 }

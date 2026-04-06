@@ -277,9 +277,20 @@ pub async fn load_markdown_preview(
 
         let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
         if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
-            if let Ok(md) = crate::parsers::kordoc::get_markdown(path) {
-                return Ok(md);
+            match crate::parsers::kordoc::get_markdown(path) {
+                Ok(md) => {
+                    tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
+                    // 디버그: 마크다운 첫 500자 출력
+                    let preview: String = md.chars().take(500).collect();
+                    tracing::info!("preview markdown:\n{}", preview);
+                    return Ok(md);
+                }
+                Err(e) => {
+                    tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp, e);
+                }
             }
+        } else {
+            tracing::debug!("preview: kordoc 미사용 (ext={}, available={}) — {}", ext, crate::parsers::kordoc::is_available(), fp);
         }
 
         // fallback: DB 청크 병합

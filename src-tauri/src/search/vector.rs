@@ -256,10 +256,19 @@ impl VectorIndex {
     /// View(mmap) 모드에서 Loaded(in-memory) 모드로 전환
     /// add()/remove() 호출 전에 자동으로 호출됨
     fn ensure_writable(&self) -> Result<(), VectorError> {
-        // Fast path: 이미 writable이면 즉시 반환
+        // Fast path: 이미 Loaded이면 즉시 반환
         {
             let mode = self.mode.read().map_err(|_| VectorError::LockPoisoned)?;
-            if *mode != IndexMode::View {
+            if *mode == IndexMode::Loaded {
+                return Ok(());
+            }
+            // Empty → Loaded: 인덱스는 이미 in-memory, mode만 변경
+            if *mode == IndexMode::Empty {
+                drop(mode);
+                let mut wmode = self.mode.write().map_err(|_| VectorError::LockPoisoned)?;
+                if *wmode == IndexMode::Empty {
+                    *wmode = IndexMode::Loaded;
+                }
                 return Ok(());
             }
         }
@@ -489,9 +498,11 @@ impl VectorIndex {
         // View 모드에서는 저장 불필요 (이미 디스크 파일 = 최신 상태)
         {
             let mode = self.mode.read().map_err(|_| VectorError::LockPoisoned)?;
-            if *mode == IndexMode::View || *mode == IndexMode::Empty {
+            if *mode == IndexMode::View {
                 return Ok(());
             }
+            // Empty 모드에서 id_map이 비어있으면 저장 불필요
+            // 비어있지 않은 경우는 id_map 길이 체크(아래)가 처리함
         }
 
         let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;

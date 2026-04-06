@@ -45,15 +45,54 @@ function mergeOverlappingRanges(ranges: [number, number][]): [number, number][] 
  * - `. ` 뒤 한글/대문자 시작 (문장 끝)
  * - 목록 구분자 (○, ●)
  */
+/**
+ * Preview 모드용 텍스트 정제 (마크다운/서식 아티팩트 제거)
+ */
+function cleanForPreview(text: string): string {
+  return text
+    .replace(/#{1,6}\s*/g, "")           // ## 헤더 → 제거
+    .replace(/\*\*([^*]*)\*\*/g, "$1")   // **bold** → bold
+    .replace(/\*\*/g, "")               // 남은 ** 마커
+    .replace(/(^|\s)\*\s+/g, "$1")      // * 불릿 마커
+    .replace(/\s\|\s/g, " ")            // | 표 구분자
+    .replace(/&\d{4,5};/g, " ")         // raw HTML entities (&8228; 등)
+    .replace(/\s{2,}/g, " ")            // 다중 공백 축소
+    .trim();
+}
+
+/**
+ * Preview 모드: ... 세퍼레이터를 시각적 구분자(·)로 변환하여 렌더링
+ */
+function renderPreviewSegments(text: string, keyPrefix: string): React.ReactNode[] {
+  const cleaned = cleanForPreview(text);
+  const segments = cleaned.split(/\.{3,}/);
+  const result: React.ReactNode[] = [];
+
+  segments.forEach((seg, idx) => {
+    const trimmed = seg.trim();
+    if (!trimmed) return;
+    if (result.length > 0) {
+      result.push(
+        <span key={`${keyPrefix}-sep-${idx}`} className="snippet-sep" aria-hidden="true"> · </span>
+      );
+    }
+    result.push(trimmed);
+  });
+
+  return result.length > 0 ? result : cleaned ? [cleaned] : [];
+}
+
 function formatAndRender(text: string, keyPrefix: string, mode: "preview" | "full"): React.ReactNode[] {
-  const formatted = mode === "preview"
-    ? text
-    : text
-        // 문장 끝: `. ` 뒤에 한글/대문자 시작이면 줄바꿈 (길이 유지)
-        .replace(/\. +(?=[가-힣A-Z○●■□▶▷])/g, ".\n")
-        // 목록 구분자 앞에서 줄바꿈 (길이 유지)
-        .replace(/ ○ /g, "\n○ ")
-        .replace(/ ● /g, "\n● ");
+  if (mode === "preview") {
+    return renderPreviewSegments(text, keyPrefix);
+  }
+
+  const formatted = text
+    // 문장 끝: `. ` 뒤에 한글/대문자 시작이면 줄바꿈 (길이 유지)
+    .replace(/\. +(?=[가-힣A-Z○●■□▶▷])/g, ".\n")
+    // 목록 구분자 앞에서 줄바꿈 (길이 유지)
+    .replace(/ ○ /g, "\n○ ")
+    .replace(/ ● /g, "\n● ");
 
   // 줄바꿈으로 분리하여 React 노드로 변환
   const lines = formatted.split("\n");

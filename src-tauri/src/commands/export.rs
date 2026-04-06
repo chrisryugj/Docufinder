@@ -8,6 +8,7 @@ pub struct ExportRow {
     pub location_hint: String,
     pub content_preview: String,
     pub score: f64,
+    #[allow(dead_code)]
     pub modified_at: Option<i64>,
 }
 

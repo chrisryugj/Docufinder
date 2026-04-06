@@ -152,7 +152,7 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
     archive: &mut ZipArchive<R>,
     entry_name: &str,
 ) -> Result<String, ParseError> {
-    let mut entry = match archive.by_name(entry_name) {
+    let entry = match archive.by_name(entry_name) {
         Ok(e) => e,
         Err(_) => return Ok(String::new()),
     };

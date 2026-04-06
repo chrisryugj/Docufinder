@@ -1,6 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileIcon } from "../ui/FileIcon";
@@ -152,6 +153,16 @@ function createMarkdownComponents(
   };
 }
 
+// ─── 상수 ─────────────────────────────────────────────
+
+type SummaryType = "brief" | "structured" | "keywords";
+
+const SUMMARY_TYPE_LABELS: Record<SummaryType, string> = {
+  brief: "핵심 3줄",
+  structured: "항목별 정리",
+  keywords: "핵심 키워드",
+};
+
 // ─── PreviewPanel ──────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel({
@@ -176,19 +187,58 @@ export const PreviewPanel = memo(function PreviewPanel({
   // AI 요약 상태
   const [aiSummary, setAiSummary] = useState<AiAnalysis | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [summaryType, setSummaryType] = useState<SummaryType>("brief");
+  const [showSummaryMenu, setShowSummaryMenu] = useState(false);
   const summaryRequestId = useRef(0);
 
-  // 파일 로드 (빠른 클릭 시 debounce로 불필요한 백엔드 파싱 방지)
+  // 파일 질문 상태
+  const [showFileQa, setShowFileQa] = useState(false);
+  const [fileQuestion, setFileQuestion] = useState("");
+  const [fileAnswer, setFileAnswer] = useState("");
+  const [fileAnswerLoading, setFileAnswerLoading] = useState(false);
+  const [fileAnswerError, setFileAnswerError] = useState<string | null>(null);
+  const [fileAnalysis, setFileAnalysis] = useState<AiAnalysis | null>(null);
+  const fileQaUnlistenRef = useRef<UnlistenFn[]>([]);
+
+  // 파일 QA Tauri 이벤트 리스너 (마운트 시 1회)
+  useEffect(() => {
+    const setup = async () => {
+      const u1 = await listen<string>("ai-file-token", (e) => {
+        setFileAnswer((prev) => prev + e.payload);
+      });
+      const u2 = await listen<AiAnalysis>("ai-file-complete", (e) => {
+        setFileAnalysis(e.payload);
+        setFileAnswerLoading(false);
+      });
+      const u3 = await listen<string>("ai-file-error", (e) => {
+        setFileAnswerError(e.payload);
+        setFileAnswerLoading(false);
+      });
+      fileQaUnlistenRef.current = [u1, u2, u3];
+    };
+    setup();
+    return () => {
+      fileQaUnlistenRef.current.forEach((fn) => fn());
+      fileQaUnlistenRef.current = [];
+    };
+  }, []);
+
+  // 파일 변경 시 AI 상태 초기화
   useEffect(() => {
     if (!filePath) {
       setMarkdown(null);
-      setAiSummary(null);
       return;
     }
-
     summaryRequestId.current++;
     setAiSummary(null);
+    setSummaryError(null);
+    setShowSummaryMenu(false);
+    setFileAnswer("");
+    setFileAnalysis(null);
+    setFileAnswerError(null);
+    setFileAnswerLoading(false);
 
     let cancelled = false;
     setLoading(true);
@@ -209,30 +259,52 @@ export const PreviewPanel = memo(function PreviewPanel({
             setLoading(false);
           }
         });
-    }, 80); // 80ms debounce — 빠른 키보드 탐색 시 중간 파일 로드 방지
+    }, 80);
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
 
   // AI 요약 생성
-  const handleGenerateSummary = useCallback(() => {
+  const handleGenerateSummary = useCallback((type: SummaryType) => {
     if (!filePath || summaryLoading) return;
     const reqId = ++summaryRequestId.current;
     setSummaryLoading(true);
+    setSummaryError(null);
     setAiSummary(null);
+    setSummaryType(type);
 
-    invoke<AiAnalysis>("summarize_ai", { filePath })
+    invoke<AiAnalysis>("summarize_ai", { filePath, summaryType: type })
       .then((res) => {
         if (summaryRequestId.current === reqId) {
           setAiSummary(res);
           setSummaryExpanded(true);
         }
       })
-      .catch(() => {})
+      .catch((e) => {
+        if (summaryRequestId.current === reqId) {
+          const msg = typeof e === "string" ? e : e?.message || "AI 요약 실패";
+          setSummaryError(msg);
+        }
+      })
       .finally(() => {
         if (summaryRequestId.current === reqId) setSummaryLoading(false);
       });
   }, [filePath, summaryLoading]);
+
+  // 파일 질문 전송
+  const handleAskFileQuestion = useCallback(() => {
+    if (!filePath || !fileQuestion.trim() || fileAnswerLoading) return;
+    setFileAnswer("");
+    setFileAnalysis(null);
+    setFileAnswerError(null);
+    setFileAnswerLoading(true);
+
+    invoke("ask_ai_file", { filePath, query: fileQuestion }).catch((e) => {
+      const msg = typeof e === "string" ? e : e?.message || "질문 처리 실패";
+      setFileAnswerError(msg);
+      setFileAnswerLoading(false);
+    });
+  }, [filePath, fileQuestion, fileAnswerLoading]);
 
   // URL 열기
   const handleOpenUrl = useCallback((url: string) => {
@@ -248,7 +320,6 @@ export const PreviewPanel = memo(function PreviewPanel({
     return new RegExp(pattern, "gi");
   }, [highlightQuery]);
 
-  // 마크다운 컴포넌트 (메모이즈)
   const markdownComponents = useMemo(
     () => createMarkdownComponents(searchRegex, handleOpenUrl),
     [searchRegex, handleOpenUrl],
@@ -259,6 +330,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const dirPath = filePath.replace(/[/\\][^/\\]*$/, "");
+  const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa || fileAnswer;
 
   return (
     <div className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)" }}>
@@ -271,70 +343,58 @@ export const PreviewPanel = memo(function PreviewPanel({
         <Badge variant={getFileTypeBadgeVariant(fileName)}>
           {ext.toUpperCase()}
         </Badge>
-        <button
-          onClick={onClose}
-          className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors"
-          title="닫기"
-        >
+        <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors" title="닫기">
           <X size={14} />
         </button>
       </div>
 
       {/* 액션 바 */}
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b text-xs overflow-x-auto" style={{ borderColor: "var(--color-border)" }}>
-        <button
-          onClick={() => onOpenFile?.(filePath)}
-          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
-          title="파일 열기"
-        >
-          <ExternalLink size={12} />
-          열기
+        <button onClick={() => onOpenFile?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="파일 열기">
+          <ExternalLink size={12} />열기
         </button>
-        <button
-          onClick={() => onCopyPath?.(filePath)}
-          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
-          title="경로 복사"
-        >
-          <Copy size={12} />
-          복사
+        <button onClick={() => onCopyPath?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="경로 복사">
+          <Copy size={12} />복사
         </button>
-        <button
-          onClick={() => onOpenFolder?.(dirPath)}
-          className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap"
-          title="폴더 열기"
-        >
-          <FolderOpen size={12} />
-          폴더
+        <button onClick={() => onOpenFolder?.(dirPath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="폴더 열기">
+          <FolderOpen size={12} />폴더
         </button>
         {onBookmark && (
           <button
             onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
-            className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${
-              isBookmarked
-                ? "text-[var(--color-accent)] bg-[var(--color-accent-bg)]"
-                : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
-            }`}
+            className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${isBookmarked ? "text-[var(--color-accent)] bg-[var(--color-accent-bg)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
             title={isBookmarked ? "북마크 해제" : "북마크 추가"}
           >
-            <Bookmark size={12} fill={isBookmarked ? "currentColor" : "none"} />
-            북마크
+            <Bookmark size={12} fill={isBookmarked ? "currentColor" : "none"} />북마크
           </button>
         )}
 
         {markdown && (
-          <button
-            onClick={handleGenerateSummary}
-            disabled={summaryLoading}
-            className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
-            title="AI 요약 생성"
-          >
-            {summaryLoading ? (
-              <div className="w-3 h-3 border border-[#7c3aed] border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Sparkles size={12} />
-            )}
-            AI 요약
-          </button>
+          <>
+            {/* AI 요약 버튼 */}
+            <button
+              onClick={() => setShowSummaryMenu((v) => !v)}
+              disabled={summaryLoading}
+              className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
+              title="AI 요약 생성"
+            >
+              {summaryLoading
+                ? <div className="w-3 h-3 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                : <Sparkles size={12} />
+              }
+              AI 요약
+              <ChevronDown size={10} className={`transition-transform ${showSummaryMenu ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* 파일 질문 버튼 */}
+            <button
+              onClick={() => setShowFileQa((v) => !v)}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              title="이 파일에 대해 질문"
+            >
+              <MessageSquare size={12} />질문
+            </button>
+          </>
         )}
 
         {markdown && (
@@ -343,6 +403,30 @@ export const PreviewPanel = memo(function PreviewPanel({
           </span>
         )}
       </div>
+
+      {/* 요약 유형 선택 메뉴 */}
+      {showSummaryMenu && (
+        <div className="flex items-center gap-1.5 px-3 py-2 border-b" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}>
+          <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">요약 유형:</span>
+          {(["brief", "structured", "keywords"] as SummaryType[]).map((type) => (
+            <button
+              key={type}
+              onClick={() => { setShowSummaryMenu(false); handleGenerateSummary(type); }}
+              className="px-2 py-0.5 rounded text-[11px] transition-colors"
+              style={{
+                backgroundColor: summaryType === type && aiSummary ? "var(--color-accent-light)" : "var(--color-bg-tertiary)",
+                color: summaryType === type && aiSummary ? "var(--color-accent)" : "var(--color-text-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              {SUMMARY_TYPE_LABELS[type]}
+            </button>
+          ))}
+          <button onClick={() => setShowSummaryMenu(false)} className="ml-auto text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] p-0.5 rounded">
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* 태그 */}
       {onAddTag && filePath && (
@@ -356,7 +440,140 @@ export const PreviewPanel = memo(function PreviewPanel({
         </div>
       )}
 
-      {/* 콘텐츠 */}
+      {/* AI 섹션 (요약 + 파일 질문) — 스크롤 밖 고정 영역 */}
+      {hasAiContent && (
+        <div className="border-b overflow-hidden ai-section-enter shrink-0" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-accent-light)" }}>
+
+          {/* 요약 로딩 */}
+          {summaryLoading && (
+            <div className="flex items-center gap-2 px-3 py-2.5 text-xs" style={{ color: "var(--color-accent)" }}>
+              <div className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin shrink-0" />
+              <span>"{SUMMARY_TYPE_LABELS[summaryType]}" 요약 생성 중...</span>
+            </div>
+          )}
+
+          {/* 요약 에러 */}
+          {summaryError && !summaryLoading && (
+            <div className="px-3 py-2.5">
+              <div className="flex items-center gap-1.5 text-xs mb-1" style={{ color: "var(--color-error)" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                AI 요약 실패
+              </div>
+              <p className="text-[11px] text-[var(--color-text-secondary)]">{summaryError}</p>
+              <button
+                onClick={() => handleGenerateSummary(summaryType)}
+                className="mt-1.5 text-[11px] text-[var(--color-accent)] hover:underline"
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
+
+          {/* 요약 결과 */}
+          {aiSummary && !summaryLoading && (
+            <>
+              <button
+                onClick={() => setSummaryExpanded(!summaryExpanded)}
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium"
+                style={{ color: "var(--color-accent)" }}
+              >
+                <Sparkles size={12} />
+                AI 요약 — {SUMMARY_TYPE_LABELS[summaryType]}
+                <span className="ml-auto text-[var(--color-text-muted)] font-normal">
+                  {(aiSummary.processing_time_ms / 1000).toFixed(1)}초
+                  {aiSummary.tokens_used && ` · ${aiSummary.tokens_used.total_tokens} tokens`}
+                </span>
+                {summaryExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+              {summaryExpanded && (
+                <div className="px-3 pb-3 text-[13px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline" style={{ backgroundColor: "var(--color-bg-primary)" }}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {aiSummary.answer}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* 파일 질문 섹션 */}
+          {showFileQa && (
+            <div className="border-t" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-bg-primary)" }}>
+              {/* 질문 입력 */}
+              <div className="flex items-center gap-1.5 px-3 py-2">
+                <MessageSquare size={11} style={{ color: "var(--color-accent)" }} className="shrink-0" />
+                <input
+                  type="text"
+                  value={fileQuestion}
+                  onChange={(e) => setFileQuestion(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleAskFileQuestion();
+                    }
+                  }}
+                  placeholder="이 파일에 대해 질문하세요..."
+                  className="flex-1 bg-transparent border-none focus:outline-none text-xs"
+                  style={{ color: "var(--color-text-primary)" }}
+                />
+                {fileAnswerLoading ? (
+                  <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+                ) : (
+                  fileQuestion.trim() && (
+                    <button
+                      onClick={handleAskFileQuestion}
+                      className="shrink-0 p-1 rounded transition-colors hover:opacity-80"
+                      style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+                      title="전송 (Enter)"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                      </svg>
+                    </button>
+                  )
+                )}
+              </div>
+
+              {/* 파일 질문 에러 */}
+              {fileAnswerError && (
+                <div className="px-3 pb-2 text-[11px]" style={{ color: "var(--color-error)" }}>
+                  {fileAnswerError}
+                </div>
+              )}
+
+              {/* 파일 질문 답변 스트리밍 */}
+              {(fileAnswer || fileAnswerLoading) && (
+                <div className="px-3 pb-3 max-h-48 overflow-y-auto">
+                  <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
+                    {fileAnswer}
+                    {fileAnswerLoading && !fileAnswer && (
+                      <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>
+                    )}
+                    {fileAnswerLoading && fileAnswer && (
+                      <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                    )}
+                  </div>
+                  {fileAnalysis && (
+                    <div className="mt-1.5 flex items-center justify-between">
+                      <button
+                        onClick={() => { setFileAnswer(""); setFileAnalysis(null); setFileAnswerError(null); setFileQuestion(""); }}
+                        className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                      >
+                        초기화
+                      </button>
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        {(fileAnalysis.processing_time_ms / 1000).toFixed(1)}초
+                        {fileAnalysis.tokens_used && ` · ${fileAnalysis.tokens_used.total_tokens} tokens`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 마크다운 스크롤 영역 */}
       <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         {loading && (
           <div className="flex items-center justify-center h-32">
@@ -378,39 +595,10 @@ export const PreviewPanel = memo(function PreviewPanel({
           </div>
         )}
 
-        {/* AI 요약 섹션 */}
-        {aiSummary && (
-          <div className="mx-4 mt-3 mb-1 rounded-lg border" style={{ borderColor: "#7c3aed", backgroundColor: "color-mix(in srgb, #7c3aed 5%, var(--color-bg-primary))" }}>
-            <button
-              onClick={() => setSummaryExpanded(!summaryExpanded)}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium"
-              style={{ color: "#7c3aed" }}
-            >
-              <Sparkles size={12} />
-              AI 요약
-              <span className="ml-auto text-[var(--color-text-muted)] font-normal">
-                {(aiSummary.processing_time_ms / 1000).toFixed(1)}초
-                {aiSummary.tokens_used && ` · ${aiSummary.tokens_used.total_tokens} tokens`}
-              </span>
-              {summaryExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            </button>
-            {summaryExpanded && (
-              <div className="px-3 pb-3 text-[13px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {aiSummary.answer}
-                </ReactMarkdown>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 마크다운 렌더링 — 문서 스타일 */}
+        {/* 마크다운 렌더링 */}
         {!loading && !error && markdown && (
           <div className="doc-preview px-6 py-5">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={markdownComponents}
-            >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
               {markdown.replace(/<br\s*\/?>/gi, " ")}
             </ReactMarkdown>
           </div>

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import type {
   SearchFilters as FiltersType,
   SortOption,
-  FileTypeFilter,
   DateRangeFilter,
   ViewMode,
   SearchMode,
@@ -43,14 +42,14 @@ export function FilterDropdown({
 
   const hasActiveFilters =
     filters.sortBy !== "relevance" ||
-    filters.fileType !== "all" ||
+    filters.fileTypes.length > 0 ||
     filters.dateRange !== "all" ||
     filters.keywordOnly ||
     filters.excludeFilename;
 
   const activeFilterCount = [
     filters.sortBy !== "relevance",
-    filters.fileType !== "all",
+    filters.fileTypes.length > 0,
     filters.dateRange !== "all",
     filters.keywordOnly,
     filters.excludeFilename,
@@ -98,7 +97,7 @@ export function FilterDropdown({
       {/* 필터 버튼 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors"
+        className="flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-medium transition-colors"
         style={{
           backgroundColor: hasActiveFilters ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
           borderColor: hasActiveFilters ? "var(--color-accent)" : "var(--color-border)",
@@ -107,20 +106,20 @@ export function FilterDropdown({
         aria-expanded={isOpen}
         aria-haspopup="menu"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
         </svg>
         필터
         {activeFilterCount > 0 && (
           <span
-            className="flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold"
+            className="flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold"
             style={{ backgroundColor: "var(--color-accent)", color: "white" }}
           >
             {activeFilterCount}
           </span>
         )}
         <svg
-          className={`w-3.5 h-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          className={`w-3 h-3 transition-transform ${isOpen ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -147,19 +146,53 @@ export function FilterDropdown({
               onChange={(v) => onFiltersChange({ ...filters, sortBy: v as SortOption })}
             />
 
-            {/* 파일 타입 */}
-            <FilterSelect
-              label="파일 타입"
-              value={filters.fileType}
-              options={FILE_TYPE_OPTIONS}
-              onChange={(v) => onFiltersChange({ ...filters, fileType: v as FileTypeFilter })}
-            />
+            {/* 확장자 (다중 선택) */}
+            <div>
+              <span className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                확장자
+              </span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {FILE_TYPE_OPTIONS.map((opt) => {
+                  const checked = filters.fileTypes.includes(opt.value);
+                  return (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded border cursor-pointer transition-colors text-xs"
+                      style={{
+                        borderColor: checked ? "var(--color-accent)" : "var(--color-border)",
+                        backgroundColor: checked ? "var(--color-accent-light)" : "transparent",
+                        color: checked ? "var(--color-accent)" : "var(--color-text-secondary)",
+                        fontWeight: checked ? 600 : 400,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const prev = filters.fileTypes;
+                          const next = prev.includes(opt.value)
+                            ? prev.filter((t) => t !== opt.value)
+                            : [...prev, opt.value];
+                          onFiltersChange({ ...filters, fileTypes: next });
+                        }}
+                        className="accent-[var(--color-accent)] w-3 h-3"
+                      />
+                      {opt.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* 날짜 범위 */}
             <FilterSelect
               label="날짜"
               value={filters.dateRange}
-              options={DATE_RANGE_OPTIONS}
+              options={
+                filters.dateRange.startsWith("custom:")
+                  ? [...DATE_RANGE_OPTIONS, { value: filters.dateRange, label: `${filters.dateRange.slice(7)}일` }]
+                  : DATE_RANGE_OPTIONS
+              }
               onChange={(v) => onFiltersChange({ ...filters, dateRange: v as DateRangeFilter })}
             />
 

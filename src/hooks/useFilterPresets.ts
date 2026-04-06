@@ -40,7 +40,7 @@ export function useFilterPresets() {
       name,
       filters: {
         sortBy: filters.sortBy,
-        fileType: filters.fileType,
+        fileTypes: filters.fileTypes,
         dateRange: filters.dateRange,
         keywordOnly: filters.keywordOnly,
         excludeFilename: filters.excludeFilename,

@@ -54,8 +54,10 @@ export const SearchFilters = memo(function SearchFilters({
     onFiltersChange({ ...filters, sortBy });
   }, [filters, onFiltersChange]);
 
-  const handleFileTypeChange = useCallback((fileType: FileTypeFilter) => {
-    onFiltersChange({ ...filters, fileType });
+  const handleFileTypeToggle = useCallback((ft: FileTypeFilter) => {
+    const prev = filters.fileTypes;
+    const next = prev.includes(ft) ? prev.filter((t) => t !== ft) : [...prev, ft];
+    onFiltersChange({ ...filters, fileTypes: next });
   }, [filters, onFiltersChange]);
 
   const handleDateRangeChange = useCallback((dateRange: DateRangeFilter) => {
@@ -68,7 +70,7 @@ export const SearchFilters = memo(function SearchFilters({
 
   const hasActiveFilters =
     filters.sortBy !== "relevance" ||
-    filters.fileType !== "all" ||
+    filters.fileTypes.length > 0 ||
     filters.dateRange !== "all" ||
     filters.keywordOnly ||
     filters.excludeFilename ||
@@ -92,19 +94,15 @@ export const SearchFilters = memo(function SearchFilters({
         onChange={handleSortChange}
       />
 
-      {/* 파일 타입 */}
-      <InlineFilterDropdown
-        label="파일"
-        value={filters.fileType}
-        options={FILE_TYPE_OPTIONS}
-        onChange={handleFileTypeChange}
+      {/* 확장자 (다중 선택) */}
+      <FileTypeCheckboxDropdown
+        selected={filters.fileTypes}
+        onToggle={handleFileTypeToggle}
       />
 
       {/* 날짜 범위 */}
-      <InlineFilterDropdown
-        label="날짜"
+      <DateRangeDropdown
         value={filters.dateRange}
-        options={DATE_RANGE_OPTIONS}
         onChange={handleDateRangeChange}
       />
 
@@ -287,6 +285,223 @@ function InlineFilterDropdown<T extends string>({
   );
 }
 
+/** 확장자 체크박스 드롭다운 (다중 선택) */
+function FileTypeCheckboxDropdown({
+  selected,
+  onToggle,
+}: {
+  selected: FileTypeFilter[];
+  onToggle: (ft: FileTypeFilter) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const active = selected.length > 0;
+  const label = active
+    ? selected.map((ft) => ft.toUpperCase()).join(", ")
+    : "확장자";
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
+          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1
+          text-left whitespace-nowrap max-w-[140px] truncate"
+        style={{
+          backgroundColor: active ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+          borderColor: active ? "var(--color-accent)" : "var(--color-border)",
+          color: active ? "var(--color-accent)" : "var(--color-text-secondary)",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label="확장자 필터"
+        title={active ? selected.map((ft) => ft.toUpperCase()).join(", ") : "확장자 필터"}
+      >
+        {label}
+      </button>
+      <svg
+        className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none transition-transform ${isOpen ? "rotate-180" : ""}`}
+        style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)" }}
+        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+
+      {isOpen && (
+        <div
+          className="absolute left-0 top-full mt-1 rounded-md border shadow-lg z-50 overflow-hidden animate-scale-in"
+          style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}
+        >
+          {FILE_TYPE_OPTIONS.map((option) => {
+            const checked = selected.includes(option.value);
+            return (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors hover:bg-[var(--color-bg-tertiary)] whitespace-nowrap"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => onToggle(option.value)}
+                  className="accent-[var(--color-accent)] w-3.5 h-3.5"
+                />
+                <span
+                  style={{
+                    color: checked ? "var(--color-accent)" : "var(--color-text-secondary)",
+                    fontWeight: checked ? 600 : 400,
+                  }}
+                >
+                  {option.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 날짜 범위 드롭다운 (커스텀 일수 입력 지원) */
+function DateRangeDropdown({
+  value,
+  onChange,
+}: {
+  value: DateRangeFilter;
+  onChange: (value: DateRangeFilter) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [customDays, setCustomDays] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const active = value !== "all";
+  const isCustom = value.startsWith("custom:");
+  const selectedLabel = isCustom
+    ? `${value.slice(7)}일`
+    : DATE_RANGE_OPTIONS.find((o) => o.value === value)?.label ?? "기간 없음";
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+
+  const handleCustomSubmit = () => {
+    const days = parseInt(customDays, 10);
+    if (!isNaN(days) && days > 0) {
+      onChange(`custom:${days}` as DateRangeFilter);
+      setIsOpen(false);
+      setCustomDays("");
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="pl-2 pr-5 py-0.5 rounded border cursor-pointer font-medium
+          transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1
+          text-left whitespace-nowrap"
+        style={{
+          backgroundColor: active ? "var(--color-accent-light)" : "var(--color-bg-secondary)",
+          borderColor: active ? "var(--color-accent)" : "var(--color-border)",
+          color: active ? "var(--color-accent)" : "var(--color-text-secondary)",
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-label="날짜 범위 필터"
+      >
+        {selectedLabel}
+      </button>
+      <svg
+        className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none transition-transform ${isOpen ? "rotate-180" : ""}`}
+        style={{ color: active ? "var(--color-accent)" : "var(--color-text-muted)" }}
+        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+
+      {isOpen && (
+        <div
+          className="absolute left-0 top-full mt-1 min-w-full rounded-md border shadow-lg z-50 overflow-hidden animate-scale-in"
+          style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}
+          role="listbox"
+        >
+          {DATE_RANGE_OPTIONS.map((option) => {
+            const isSelected = option.value === value;
+            return (
+              <button
+                key={option.value}
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => { onChange(option.value); setIsOpen(false); }}
+                className="w-full px-3 py-1 text-left transition-colors hover:bg-[var(--color-bg-tertiary)]"
+                style={{
+                  color: isSelected ? "var(--color-accent)" : "var(--color-text-secondary)",
+                  fontWeight: isSelected ? 600 : 400,
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          {/* 커스텀 일수 입력 */}
+          <div
+            className="border-t px-2 py-1.5 flex items-center gap-1"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <input
+              ref={inputRef}
+              type="number"
+              min={1}
+              max={3650}
+              value={customDays}
+              onChange={(e) => setCustomDays(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") handleCustomSubmit(); }}
+              placeholder="일수"
+              className="w-14 px-1.5 py-0.5 text-xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+              style={{
+                backgroundColor: "var(--color-bg-primary)",
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-primary)",
+              }}
+            />
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>일</span>
+            <button
+              onClick={handleCustomSubmit}
+              disabled={!customDays || parseInt(customDays, 10) <= 0}
+              className="px-1.5 py-0.5 text-xs rounded font-medium text-white disabled:opacity-40"
+              style={{ backgroundColor: "var(--color-accent)" }}
+            >
+              적용
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 프리셋 저장/불러오기 드롭다운 */
 function PresetDropdown({
   presets,
@@ -442,13 +657,13 @@ function PresetDropdown({
 /** 프리셋 설명 텍스트 (간략) */
 function describePreset(preset: FilterPreset): string {
   const parts: string[] = [];
-  if (preset.filters.fileType !== "all") {
-    const map: Record<string, string> = { hwpx: "한글", docx: "워드", pptx: "PPT", xlsx: "엑셀", pdf: "PDF", txt: "TXT" };
-    parts.push(map[preset.filters.fileType] || preset.filters.fileType);
+  if (preset.filters.fileTypes && preset.filters.fileTypes.length > 0) {
+    parts.push(preset.filters.fileTypes.map((ft) => ft.toUpperCase()).join(","));
   }
   if (preset.filters.dateRange !== "all") {
-    const map: Record<string, string> = { today: "오늘", week: "7일", month: "30일" };
-    parts.push(map[preset.filters.dateRange] || preset.filters.dateRange);
+    const map: Record<string, string> = { today: "오늘", week: "7일", month: "30일", quarter: "90일", half: "6개월", year: "1년" };
+    const dr = preset.filters.dateRange;
+    parts.push(dr.startsWith("custom:") ? `${dr.slice(7)}일` : map[dr] || dr);
   }
   if (preset.filters.sortBy !== "relevance") {
     const map: Record<string, string> = { confidence: "신뢰도", date_desc: "최신", date_asc: "오래된", name: "이름", size: "크기" };

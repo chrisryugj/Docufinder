@@ -53,29 +53,33 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
       }}
     >
       {isIndexing ? (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {/* 진행률 정보 */}
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
-              <span style={{ color: "var(--color-text-secondary)" }}>
-                {phaseLabels[progress.phase] || progress.phase}
+          <div className="flex items-center gap-1.5 text-xs min-w-0">
+            <span className="w-1.5 h-1.5 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
+            <span className="shrink-0" style={{ color: "var(--color-text-secondary)" }}>
+              {phaseLabels[progress.phase] || progress.phase}
+            </span>
+            {progress.phase !== "preparing" && (
+              <span className="shrink-0 tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+                {progress.processed_files}/{progress.total_files}
               </span>
-              {progress.phase !== "preparing" && (
-                <span style={{ color: "var(--color-text-muted)" }}>
-                  {progress.processed_files}/{progress.total_files}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
+            )}
+            {progress.current_file && (
+              <span
+                className="truncate text-[11px] min-w-0"
+                style={{ color: "var(--color-text-muted)" }}
+                title={cleanPath(progress.current_file)}
+              >
+                · {progress.current_file.replace(/^.*[\\/]/, "")}
+              </span>
+            )}
+            <div className="flex items-center gap-2 ml-auto shrink-0">
               {progress.phase !== "preparing" && (
                 <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
               )}
               {onCancelIndexing && (
-                <button
-                  onClick={onCancelIndexing}
-                  className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover"
-                >
+                <button onClick={onCancelIndexing} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
                   취소
                 </button>
               )}
@@ -83,10 +87,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           </div>
 
           {/* 진행률 바 */}
-          <div
-            className="h-1 rounded-full overflow-hidden"
-            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
-          >
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
             {progress.phase === "preparing" ? (
               <div
                 className="h-full w-1/3 rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]"
@@ -95,43 +96,33 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             ) : (
               <div
                 className="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${percent}%`,
-                  backgroundColor: "var(--color-accent)",
-                }}
+                style={{ width: `${percent}%`, backgroundColor: "var(--color-accent)" }}
               />
             )}
           </div>
-
-          {/* 현재 파일명 */}
-          <div
-            className="text-[11px] truncate h-4"
-            style={{ color: "var(--color-text-muted)" }}
-            title={progress.current_file ? cleanPath(progress.current_file) : ""}
-          >
-            {progress.current_file ? cleanPath(progress.current_file) : ""}
-          </div>
         </div>
       ) : isVectorIndexing ? (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {/* 벡터 인덱싱 진행률 */}
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
-              <span style={{ color: "var(--color-text-secondary)" }}>
-                시맨틱 인덱싱
+          <div className="flex items-center gap-1.5 text-xs min-w-0">
+            <span className="w-1.5 h-1.5 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
+            <span className="shrink-0" style={{ color: "var(--color-text-secondary)" }}>시맨틱 인덱싱</span>
+            <span className="shrink-0 tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+              {vectorStatus.processed_chunks}/{vectorStatus.total_chunks}
+            </span>
+            {vectorStatus.current_file && (
+              <span
+                className="truncate text-[11px] min-w-0"
+                style={{ color: "var(--color-text-muted)" }}
+                title={cleanPath(vectorStatus.current_file)}
+              >
+                · {vectorStatus.current_file.replace(/^.*[\\/]/, "")}
               </span>
-              <span style={{ color: "var(--color-text-muted)" }}>
-                {vectorStatus.processed_chunks}/{vectorStatus.total_chunks}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
+            )}
+            <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{vectorPercent}%</span>
               {onCancelVectorIndexing && (
-                <button
-                  onClick={onCancelVectorIndexing}
-                  className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover"
-                >
+                <button onClick={onCancelVectorIndexing} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
                   취소
                 </button>
               )}
@@ -139,26 +130,11 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
           </div>
 
           {/* 진행률 바 */}
-          <div
-            className="h-1 rounded-full overflow-hidden"
-            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
-          >
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${vectorPercent}%`,
-                backgroundColor: "var(--color-accent)",
-              }}
+              style={{ width: `${vectorPercent}%`, backgroundColor: "var(--color-accent)" }}
             />
-          </div>
-
-          {/* 현재 파일명 */}
-          <div
-            className="text-[11px] truncate h-4"
-            style={{ color: "var(--color-text-muted)" }}
-            title={vectorStatus.current_file ? cleanPath(vectorStatus.current_file) : ""}
-          >
-            {vectorStatus.current_file ? cleanPath(vectorStatus.current_file) : ""}
           </div>
         </div>
       ) : (

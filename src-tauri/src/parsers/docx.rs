@@ -34,7 +34,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     super::validate_zip_archive(&mut archive)?;
 
     // word/document.xml 파일 읽기
-    let mut document_xml = archive
+    let document_xml = archive
         .by_name("word/document.xml")
         .map_err(|e| ParseError::ParseError(format!("document.xml not found: {}", e)))?;
 

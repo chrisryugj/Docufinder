@@ -214,17 +214,33 @@ fn validate_vector_index(container: &AppContainer) {
     let vector_file_exists = vector_file.exists();
     let map_file_exists = map_file.exists();
 
+    tracing::info!(
+        "[VectorValidate] usearch={} ({}), map={} ({})",
+        vector_file_exists,
+        vector_file.display(),
+        map_file_exists,
+        map_file.display(),
+    );
+
     if container.is_semantic_available() {
         if let Ok(conn) = db::get_connection(&container.db_path) {
             if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
+                tracing::info!(
+                    "[VectorValidate] DB: total={}, vector_indexed={}, pending_chunks={}",
+                    stats.total_files, stats.vector_indexed_files, stats.pending_chunks
+                );
                 if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
                     tracing::warn!(
-                        "Vector index file missing (usearch={}, map={}), but DB has {} indexed files. Resetting DB.",
-                        vector_file_exists, map_file_exists, stats.vector_indexed_files
+                        "[VectorValidate] Index file missing → resetting {} files in DB",
+                        stats.vector_indexed_files
                     );
                     if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
-                        tracing::info!("Reset vector_indexed_at for {} files", reset_count);
+                        tracing::info!("[VectorValidate] Reset vector_indexed_at for {} files", reset_count);
                     }
+                } else if vector_file_exists && map_file_exists {
+                    tracing::info!(
+                        "[VectorValidate] Both files present — no reset needed"
+                    );
                 }
             }
         }
@@ -712,6 +728,7 @@ pub fn run() {
             commands::tags::get_files_by_tag,
             commands::typo::suggest_correction,
             commands::ai::ask_ai,
+            commands::ai::ask_ai_file,
             commands::ai::summarize_ai,
         ])
         .run(tauri::generate_context!())

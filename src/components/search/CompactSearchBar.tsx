@@ -12,7 +12,6 @@ import { FilterDropdown, FilterChip } from "../ui/FilterDropdown";
 import SearchParadigmToggle from "./SearchParadigmToggle";
 import {
   SORT_OPTIONS,
-  FILE_TYPE_OPTIONS,
   DATE_RANGE_OPTIONS,
 } from "../../types/search";
 
@@ -111,20 +110,21 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
         });
       }
 
-      if (filters.fileType !== "all") {
-        const opt = FILE_TYPE_OPTIONS.find((o) => o.value === filters.fileType);
+      if (filters.fileTypes.length > 0) {
         labels.push({
           key: "fileType",
-          label: `파일:${opt?.label || filters.fileType}`,
-          onRemove: () => onFiltersChange({ ...filters, fileType: "all" }),
+          label: `확장자:${filters.fileTypes.map((ft) => ft.toUpperCase()).join(",")}`,
+          onRemove: () => onFiltersChange({ ...filters, fileTypes: [] }),
         });
       }
 
       if (filters.dateRange !== "all") {
-        const opt = DATE_RANGE_OPTIONS.find((o) => o.value === filters.dateRange);
+        const dr = filters.dateRange;
+        const opt = DATE_RANGE_OPTIONS.find((o) => o.value === dr);
+        const dateLabel = dr.startsWith("custom:") ? `${dr.slice(7)}일` : opt?.label || dr;
         labels.push({
           key: "dateRange",
-          label: `날짜:${opt?.label || filters.dateRange}`,
+          label: `날짜:${dateLabel}`,
           onRemove: () => onFiltersChange({ ...filters, dateRange: "all" }),
         });
       }

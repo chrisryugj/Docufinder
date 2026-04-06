@@ -95,6 +95,7 @@ export interface SearchContextValue {
   isAiStreaming: boolean;
   aiAnalysis: AiAnalysis | null;
   aiError: string | null;
+  aiAskedQuery: string;
   askAi: (query: string, folderScope?: string | null) => void;
   resetAi: () => void;
 
@@ -207,7 +208,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const { selectedIndex, setSelectedIndex } = useResultSelection(filteredResults, setPreviewFilePath);
 
   // ── AI QA ──
-  const { answer: aiAnswer, isStreaming: isAiStreaming, analysis: aiAnalysis, error: aiError, ask: askAi, reset: resetAi } = useAiAnswer();
+  const { answer: aiAnswer, isStreaming: isAiStreaming, analysis: aiAnalysis, error: aiError, askedQuery: aiAskedQuery, ask: askAi, reset: resetAi } = useAiAnswer();
 
   // ── Export (memoized) ──
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
@@ -239,7 +240,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex, setSelectedIndex,
     handleExportCSV, handleCopyAll, memoizedRefineKeywords,
-    aiAnswer, isAiStreaming, aiAnalysis, aiError, askAi, resetAi,
+    aiAnswer, isAiStreaming, aiAnalysis, aiError, aiAskedQuery, askAi, resetAi,
     searchInputRef, compactSearchInputRef,
     clearSearchCache,
   };

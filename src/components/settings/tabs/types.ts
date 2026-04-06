@@ -62,6 +62,7 @@ export const MAX_FILE_SIZE_OPTIONS = [
 
 export const AI_MODEL_OPTIONS = [
   { value: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite (빠름/저렴)" },
+  { value: "gemini-3.0-flash", label: "Gemini 3.0 Flash (표준)" },
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (균형)" },
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (고품질)" },
 ];

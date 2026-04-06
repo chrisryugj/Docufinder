@@ -8,6 +8,7 @@ export interface UseAiAnswerReturn {
   isStreaming: boolean;
   analysis: AiAnalysis | null;
   error: string | null;
+  askedQuery: string;
   ask: (query: string, folderScope?: string | null) => void;
   reset: () => void;
 }
@@ -17,6 +18,7 @@ export function useAiAnswer(): UseAiAnswerReturn {
   const [isStreaming, setIsStreaming] = useState(false);
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [askedQuery, setAskedQuery] = useState("");
   const unlistenRefs = useRef<UnlistenFn[]>([]);
 
   // Tauri event 리스너 등록
@@ -43,6 +45,7 @@ export function useAiAnswer(): UseAiAnswerReturn {
   }, []);
 
   const ask = useCallback((query: string, folderScope?: string | null) => {
+    setAskedQuery(query);
     setAnswer("");
     setAnalysis(null);
     setError(null);
@@ -58,11 +61,12 @@ export function useAiAnswer(): UseAiAnswerReturn {
   }, []);
 
   const reset = useCallback(() => {
+    setAskedQuery("");
     setAnswer("");
     setAnalysis(null);
     setError(null);
     setIsStreaming(false);
   }, []);
 
-  return { answer, isStreaming, analysis, error, ask, reset };
+  return { answer, isStreaming, analysis, error, askedQuery, ask, reset };
 }

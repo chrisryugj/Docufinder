@@ -148,7 +148,7 @@ function CustomSelectInner<T extends string>({
       {/* 옵션 목록 */}
       {isOpen && (
         <div
-          className="absolute left-0 top-full mt-1 min-w-full rounded-md border shadow-lg z-50 overflow-hidden animate-scale-in"
+          className="absolute left-0 top-full mt-1 min-w-full w-max rounded-md border shadow-lg z-50 overflow-hidden animate-scale-in"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             borderColor: "var(--color-border)",
@@ -172,7 +172,7 @@ function CustomSelectInner<T extends string>({
                   onChange(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full px-3 ${compact ? "py-1" : "py-1.5"} ${textSize} text-left transition-colors
+                className={`w-full px-3 ${compact ? "py-1" : "py-1.5"} ${textSize} text-left whitespace-nowrap transition-colors
                   ${index === focusIndex ? "bg-[var(--color-bg-tertiary)]" : ""}
                   hover:bg-[var(--color-bg-tertiary)]`}
                 style={{
