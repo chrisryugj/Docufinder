@@ -121,79 +121,80 @@ fn extract_text_with_location(
     (full_text, chunks)
 }
 
-/// 행 정보를 유지하면서 청크 생성
+/// 행 정보를 유지하면서 청크 생성 (overlap 지원)
 fn create_chunks_with_rows(
     row_infos: &[(usize, String)],
     sheet_name: &str,
     base_offset: usize,
     chunk_size: usize,
-    _overlap: usize,
+    overlap: usize,
 ) -> Vec<DocumentChunk> {
     let mut chunks = Vec::new();
+    let n = row_infos.len();
 
-    if row_infos.is_empty() {
+    if n == 0 {
         return chunks;
     }
 
-    let mut current_chunk_text = String::new();
-    let mut chunk_start_row: Option<usize> = None;
-    let mut chunk_end_row = 0;
+    let mut start_idx = 0;
     let mut current_offset = base_offset;
 
-    for (row_num, row_text) in row_infos {
-        let row_with_newline = if current_chunk_text.is_empty() {
-            row_text.clone()
-        } else {
-            format!("\n{}", row_text)
-        };
+    while start_idx < n {
+        let mut end_idx = start_idx;
+        let mut current_size = 0;
 
-        // 청크 크기 초과 시 새 청크 시작
-        if current_chunk_text.len() + row_with_newline.len() > chunk_size
-            && !current_chunk_text.is_empty()
-        {
-            // 현재 청크 저장
-            let location =
-                format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
-            chunks.push(DocumentChunk {
-                content: current_chunk_text.clone(),
-                start_offset: current_offset,
-                end_offset: current_offset + current_chunk_text.len(),
-                page_number: None,
-                page_end: None,
-                location_hint: Some(location),
-            });
-
-            current_offset += current_chunk_text.len() + 1; // +1 for newline
-            current_chunk_text.clear();
-            chunk_start_row = None;
+        // chunk_size에 맞게 행 추가
+        while end_idx < n {
+            let row_size = row_infos[end_idx].1.len() + if end_idx > start_idx { 1 } else { 0 };
+            if current_size + row_size > chunk_size && end_idx > start_idx {
+                break;
+            }
+            current_size += row_size;
+            end_idx += 1;
         }
 
-        // 행 추가
-        if chunk_start_row.is_none() {
-            chunk_start_row = Some(*row_num);
+        // 무한 루프 방지: 단일 행이 chunk_size를 초과해도 최소 1개 포함
+        if end_idx == start_idx {
+            end_idx = start_idx + 1;
         }
-        chunk_end_row = *row_num;
 
-        if current_chunk_text.is_empty() {
-            current_chunk_text = row_text.clone();
-        } else {
-            current_chunk_text.push('\n');
-            current_chunk_text.push_str(row_text);
-        }
-    }
+        let content: String = row_infos[start_idx..end_idx]
+            .iter()
+            .map(|(_, text)| text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
 
-    // 마지막 청크 저장
-    if !current_chunk_text.is_empty() {
-        let location =
-            format_location_hint(sheet_name, chunk_start_row.unwrap_or(1), chunk_end_row);
+        let start_row = row_infos[start_idx].0;
+        let end_row = row_infos[end_idx - 1].0;
+
         chunks.push(DocumentChunk {
-            content: current_chunk_text.clone(),
+            content: content.clone(),
             start_offset: current_offset,
-            end_offset: current_offset + current_chunk_text.len(),
+            end_offset: current_offset + content.len(),
             page_number: None,
             page_end: None,
-            location_hint: Some(location),
+            location_hint: Some(format_location_hint(sheet_name, start_row, end_row)),
         });
+
+        current_offset += content.len() + 1;
+
+        if overlap == 0 {
+            start_idx = end_idx;
+        } else {
+            // 오버랩: 이전 청크 끝 행들을 다음 청크에 포함하여 문맥 연속성 보장
+            let mut overlap_size = 0;
+            let mut new_start = end_idx;
+            for idx in (start_idx..end_idx).rev() {
+                let row_size = row_infos[idx].1.len() + 1;
+                if overlap_size + row_size > overlap && new_start < end_idx {
+                    break;
+                }
+                overlap_size += row_size;
+                new_start = idx;
+            }
+            // 최소 1행 이상 전진 (무한 루프 방지)
+            start_idx = new_start.max(start_idx + 1);
+        }
     }
 
     chunks

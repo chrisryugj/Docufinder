@@ -2,9 +2,10 @@
 //!
 //! DB와 파일시스템 간 변경분 감지 및 증분 인덱싱
 
-use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
+use crate::constants::{METADATA_EXCLUDED_EXTENSIONS, OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
-use crate::indexer::collector::{collect_files, save_file_metadata_only};
+use crate::indexer::collector::save_file_metadata_only;
+use crate::indexer::exclusions::is_excluded_dir;
 use crate::indexer::pipeline::{
     save_document_to_db_fts_only_no_tx, FtsIndexingProgress, FtsProgressCallback, IndexError,
     ParseResult, CHANNEL_BUFFER_SIZE, FTS_TOKENIZER, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
@@ -55,40 +56,82 @@ pub fn sync_folder_fts(
     let db_files = db::get_file_metadata_in_folder(conn, &folder_str)
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    // 2. 파일시스템 스캔
     let max_file_size_bytes = if max_file_size_mb > 0 {
         max_file_size_mb * 1_048_576
     } else {
         0
     };
-    let fs_files = collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs);
 
-    if cancel_flag.load(Ordering::Acquire) {
-        return Ok(SyncResult {
-            folder_path: folder_str,
-            added: 0,
-            modified: 0,
-            deleted: 0,
-            failed: 0,
-            unchanged: 0,
-            errors: vec!["Cancelled".to_string()],
-        });
-    }
-
-    // 3. Diff 계산
-    let mut to_update: Vec<PathBuf> = Vec::new(); // 추가 + 수정
+    // 2 & 3. 파일시스템 스캔 + Diff 계산 (단일 패스: Vec + HashSet 이중 적재 제거)
+    //
+    // 기존: collect_files() → Vec<PathBuf> (~200MB) + HashSet<String> (~200MB)
+    // 개선: WalkDir 직접 순회하면서 diff 계산 → fs_path_set만 유지 (~200MB)
+    let mut to_update: Vec<PathBuf> = Vec::new();
+    let mut fs_path_set: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut unchanged = 0usize;
 
-    let fs_path_set: std::collections::HashSet<String> = fs_files
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect();
+    let walker = if recursive {
+        walkdir::WalkDir::new(folder_path)
+    } else {
+        walkdir::WalkDir::new(folder_path).max_depth(1)
+    };
 
-    for path in &fs_files {
+    'walk: for entry in walker
+        .into_iter()
+        .filter_entry(|e| {
+            if e.file_type().is_dir() {
+                let name = e.file_name().to_str().unwrap_or("");
+                if name.starts_with('.') {
+                    return false;
+                }
+                if is_excluded_dir(e.path(), excluded_dirs) {
+                    return false;
+                }
+            }
+            true
+        })
+        .filter_map(|e| e.ok())
+    {
+        if cancel_flag.load(Ordering::Acquire) {
+            return Ok(SyncResult {
+                folder_path: folder_str,
+                added: 0,
+                modified: 0,
+                deleted: 0,
+                failed: 0,
+                unchanged: 0,
+                errors: vec!["Cancelled".to_string()],
+            });
+        }
+
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path().to_path_buf();
+
+        // 임시 파일 / 숨김 파일 제외
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if file_name.starts_with("~$") || file_name.starts_with('.') {
+            continue 'walk;
+        }
+
+        // 메타데이터 저장 제외 확장자 (DLL/EXE/SYS 등)
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if METADATA_EXCLUDED_EXTENSIONS.contains(&ext.as_str()) {
+            continue 'walk;
+        }
+
         let path_str = path.to_string_lossy().to_string();
+        fs_path_set.insert(path_str.clone());
+
         if let Some(&(db_modified, _db_size)) = db_files.get(&path_str) {
             // DB에 있음 → modified_at 비교
-            if let Ok(meta) = fs::metadata(path) {
+            if let Ok(meta) = fs::metadata(&path) {
                 let fs_modified = meta
                     .modified()
                     .ok()
@@ -96,7 +139,7 @@ pub fn sync_folder_fts(
                     .map(|d| d.as_secs() as i64)
                     .unwrap_or(0);
                 if fs_modified != db_modified {
-                    to_update.push(path.clone()); // 수정됨
+                    to_update.push(path);
                 } else {
                     unchanged += 1;
                 }
@@ -104,7 +147,7 @@ pub fn sync_folder_fts(
                 unchanged += 1;
             }
         } else {
-            to_update.push(path.clone()); // 새 파일
+            to_update.push(path);
         }
     }
 
