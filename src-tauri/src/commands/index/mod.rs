@@ -118,7 +118,7 @@ pub(super) fn pause_watching(state: &State<'_, RwLock<AppContainer>>) {
 
 /// 파일 감시 재개 (DB의 watched_folders 목록으로 전체 재등록)
 /// 재개 전 WAL checkpoint 수행 (대량 인덱싱 후 WAL 파일 크기 관리)
-pub(super) fn resume_watching(state: &State<'_, RwLock<AppContainer>>, db_path: &std::path::PathBuf) {
+pub(super) fn resume_watching(state: &State<'_, RwLock<AppContainer>>, db_path: &std::path::Path) {
     crate::db::wal_checkpoint(db_path);
     if let Ok(container) = state.read() {
         if let Ok(wm) = container.get_watch_manager() {

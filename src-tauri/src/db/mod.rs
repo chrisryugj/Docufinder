@@ -165,35 +165,6 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
     )
 }
 
-/// 폴더 내 파일 메타데이터 조회 (sync diff용)
-pub fn get_file_metadata_in_folder(
-    conn: &Connection,
-    folder_path: &str,
-) -> Result<std::collections::HashMap<String, (i64, Option<i64>)>> {
-    let folder_path = folder_path.trim_end_matches(['/', '\\']);
-    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
-    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
-    let pattern_unix = format!("{}/%", escaped_unix);
-    let pattern_win = format!("{}\\\\%", escaped_win);
-
-    let mut stmt = conn.prepare(
-        "SELECT path, modified_at, size FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'"
-    )?;
-
-    let rows = stmt.query_map(params![pattern_unix, pattern_win], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, Option<i64>>(2)?,
-        ))
-    })?;
-
-    let mut map = std::collections::HashMap::new();
-    for (path, modified_at, size) in rows.flatten() {
-        map.insert(path, (modified_at, size));
-    }
-    Ok(map)
-}
 
 /// 폴더 내 이미 FTS 인덱싱 완료된 파일 경로 조회 (resume 시 스킵용)
 pub fn get_fts_indexed_paths_in_folder(

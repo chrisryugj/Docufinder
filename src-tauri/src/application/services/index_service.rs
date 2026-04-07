@@ -55,7 +55,6 @@ impl IndexService {
         include_subfolders: bool,
         progress_callback: Option<FtsProgressCallback>,
         max_file_size_mb: u64,
-        pre_collected_files: Option<Vec<PathBuf>>,
         excluded_dirs: Vec<String>,
     ) -> AppResult<FolderIndexResult> {
         // 경로 유효성 검증
@@ -78,7 +77,6 @@ impl IndexService {
                 cancel_flag,
                 progress_callback,
                 max_file_size_mb,
-                pre_collected_files,
                 &excluded_dirs,
                 ocr_engine,
             )
@@ -336,7 +334,6 @@ impl IndexService {
             include_subfolders,
             progress_callback,
             max_file_size_mb,
-            None,
             excluded_dirs,
         )
         .await

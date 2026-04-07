@@ -253,7 +253,7 @@ fn get_pending_files_count(
 ) -> Result<usize, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
     let folder_str = folder_str.trim_end_matches(['/', '\\']);
-    let escaped = crate::db::escape_like_pattern(&folder_str);
+    let escaped = crate::db::escape_like_pattern(folder_str);
     let pattern = format!("{}%", escaped);
 
     let count: i64 = conn.query_row(
@@ -272,7 +272,7 @@ fn get_next_pending_file(
 ) -> Result<Option<PendingFile>, rusqlite::Error> {
     let folder_str = folder_path.to_string_lossy();
     let folder_str = folder_str.trim_end_matches(['/', '\\']);
-    let escaped = crate::db::escape_like_pattern(&folder_str);
+    let escaped = crate::db::escape_like_pattern(folder_str);
     let pattern = format!("{}%", escaped);
 
     let mut stmt = conn.prepare(

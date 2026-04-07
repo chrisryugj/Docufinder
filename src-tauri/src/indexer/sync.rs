@@ -13,10 +13,11 @@ use crate::indexer::pipeline::{
 use crate::ocr::OcrEngine;
 use crate::parsers::parse_file;
 use crate::tokenizer::TextTokenizer;
+use crate::utils::idle_detector;
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
 use rayon::prelude::*;
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
@@ -52,29 +53,37 @@ pub fn sync_folder_fts(
 
     let folder_str = folder_path.to_string_lossy().to_string();
 
-    // 1. DB에서 기존 파일 메타데이터 조회
-    let db_files = db::get_file_metadata_in_folder(conn, &folder_str)
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
     let max_file_size_bytes = if max_file_size_mb > 0 {
         max_file_size_mb * 1_048_576
     } else {
         0
     };
 
-    // 2 & 3. 파일시스템 스캔 + Diff 계산 (단일 패스: Vec + HashSet 이중 적재 제거)
+    // 1. DB 임시 테이블로 파일시스템 스냅샷 적재
     //
-    // 기존: collect_files() → Vec<PathBuf> (~200MB) + HashSet<String> (~200MB)
-    // 개선: WalkDir 직접 순회하면서 diff 계산 → fs_path_set만 유지 (~200MB)
-    let mut to_update: Vec<PathBuf> = Vec::new();
-    let mut fs_path_set: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut unchanged = 0usize;
+    // 기존: db_files HashMap (~200MB) + fs_path_set HashSet (~200MB) = ~400MB
+    // 개선: SQLite TEMP TABLE에 FS 경로 적재 → SQL JOIN으로 diff 계산 (~40-80MB)
+    conn.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS _sync_fs \
+         (path TEXT PRIMARY KEY NOT NULL, modified_at INTEGER NOT NULL)",
+    )
+    .map_err(|e| IndexError::DbError(e.to_string()))?;
+    conn.execute_batch("DELETE FROM _sync_fs")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     let walker = if recursive {
         walkdir::WalkDir::new(folder_path)
     } else {
         walkdir::WalkDir::new(folder_path).max_depth(1)
     };
+
+    // 배치 INSERT (5_000개마다 COMMIT)
+    conn.execute_batch("BEGIN")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let mut insert_stmt = conn
+        .prepare("INSERT OR REPLACE INTO _sync_fs (path, modified_at) VALUES (?1, ?2)")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let mut insert_batch_count = 0usize;
 
     'walk: for entry in walker
         .into_iter()
@@ -93,6 +102,9 @@ pub fn sync_folder_fts(
         .filter_map(|e| e.ok())
     {
         if cancel_flag.load(Ordering::Acquire) {
+            drop(insert_stmt);
+            let _ = conn.execute_batch("ROLLBACK");
+            let _ = conn.execute_batch("DROP TABLE IF EXISTS _sync_fs");
             return Ok(SyncResult {
                 folder_path: folder_str,
                 added: 0,
@@ -108,7 +120,7 @@ pub fn sync_folder_fts(
             continue;
         }
 
-        let path = entry.path().to_path_buf();
+        let path = entry.path();
 
         // 임시 파일 / 숨김 파일 제외
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -126,37 +138,84 @@ pub fn sync_folder_fts(
             continue 'walk;
         }
 
-        let path_str = path.to_string_lossy().to_string();
-        fs_path_set.insert(path_str.clone());
+        let path_str = path.to_string_lossy();
+        let modified_at = fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
 
-        if let Some(&(db_modified, _db_size)) = db_files.get(&path_str) {
-            // DB에 있음 → modified_at 비교
-            if let Ok(meta) = fs::metadata(&path) {
-                let fs_modified = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                if fs_modified != db_modified {
-                    to_update.push(path);
-                } else {
-                    unchanged += 1;
+        if let Err(e) = insert_stmt.execute(params![path_str.as_ref(), modified_at]) {
+            tracing::warn!("Failed to insert FS path into temp table: {}", e);
+            continue 'walk;
+        }
+        insert_batch_count += 1;
+
+        #[allow(clippy::manual_is_multiple_of)]
+        if insert_batch_count % 5_000 == 0 {
+            if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                tracing::warn!("Sync temp table batch commit failed: {}", e);
+                if conn.is_autocommit() {
+                    let _ = conn.execute_batch("BEGIN");
                 }
-            } else {
-                unchanged += 1;
             }
-        } else {
-            to_update.push(path);
         }
     }
 
-    // 삭제된 파일: DB에는 있지만 파일시스템에 없음
-    let to_delete: Vec<String> = db_files
-        .keys()
-        .filter(|db_path| !fs_path_set.contains(*db_path))
-        .cloned()
+    drop(insert_stmt);
+    conn.execute_batch("COMMIT")
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    // 2. SQL diff: 추가/수정 대상 파일
+    //    LEFT JOIN files → DB에 없거나(is_new) modified_at 불일치(수정됨)
+    let mut update_stmt = conn
+        .prepare(
+            "SELECT t.path FROM _sync_fs t \
+             LEFT JOIN files f ON t.path = f.path \
+             WHERE f.path IS NULL OR t.modified_at != f.modified_at",
+        )
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let to_update: Vec<PathBuf> = update_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| IndexError::DbError(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .map(PathBuf::from)
         .collect();
+    drop(update_stmt);
+
+    // 3. SQL diff: 삭제된 파일 (DB에 있으나 FS 임시 테이블에 없음)
+    let folder_escaped_unix = db::escape_like_pattern(&folder_str.replace('\\', "/"));
+    let folder_escaped_win = db::escape_like_pattern(&folder_str.replace('/', "\\"));
+    let pattern_unix = format!("{}/%", folder_escaped_unix);
+    let pattern_win = format!("{}\\%", folder_escaped_win);
+
+    let mut delete_stmt = conn
+        .prepare(
+            "SELECT f.path FROM files f \
+             WHERE (f.path LIKE ?1 ESCAPE '\\' OR f.path LIKE ?2 ESCAPE '\\') \
+             AND NOT EXISTS (SELECT 1 FROM _sync_fs t WHERE t.path = f.path)",
+        )
+        .map_err(|e| IndexError::DbError(e.to_string()))?;
+    let to_delete: Vec<String> = delete_stmt
+        .query_map(params![pattern_unix, pattern_win], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|e| IndexError::DbError(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    drop(delete_stmt);
+
+    // 4. unchanged 카운트 (전체 FS - to_update)
+    let total_fs_count = conn
+        .query_row("SELECT COUNT(*) FROM _sync_fs", [], |row| {
+            row.get::<_, usize>(0)
+        })
+        .unwrap_or(0);
+    let unchanged = total_fs_count.saturating_sub(to_update.len());
+
+    // 임시 테이블 정리
+    let _ = conn.execute_batch("DROP TABLE IF EXISTS _sync_fs");
 
     // 파싱 가능 / 메타데이터 전용 분리
     let has_ocr = ocr_engine.is_some();
@@ -397,6 +456,12 @@ pub fn sync_folder_fts(
                         }
                     }
                     batch_count = 0;
+
+                    // 유휴 감지 기반 throttle: 사용자 활동 감지 시 배치당 50ms 대기
+                    // (startup sync가 사용자 작업을 방해하지 않도록)
+                    if !idle_detector::is_user_idle(2000) {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
                 }
             }
             Err(RecvTimeoutError::Timeout) => continue,

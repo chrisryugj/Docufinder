@@ -86,10 +86,10 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         "txt" | "md" => txt::parse(path),
         // HWP5 바이너리: kordoc 전용 (Rust 파서 없음, 위에서 이미 시도했으면 여기서 에러)
         "hwp" => Err(ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())),
-        "hwpx" => parse_with_timeout(path, 30, "HWPX", |p| hwpx::parse(p)),
-        "docx" => parse_with_timeout(path, 30, "DOCX", |p| docx::parse(p)),
-        "pptx" => parse_with_timeout(path, 30, "PPTX", |p| pptx::parse(p)),
-        "xlsx" | "xls" => parse_with_timeout(path, 15, "XLS/XLSX", |p| xlsx::parse(p)),
+        "hwpx" => parse_with_timeout(path, 30, "HWPX", hwpx::parse),
+        "docx" => parse_with_timeout(path, 30, "DOCX", docx::parse),
+        "pptx" => parse_with_timeout(path, 30, "PPTX", pptx::parse),
+        "xlsx" | "xls" => parse_with_timeout(path, 15, "XLS/XLSX", xlsx::parse),
         "pdf" => pdf::parse(path, ocr),
         ext if ocr.is_some() && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
             image_ocr::parse(path, ocr.unwrap())
