@@ -135,16 +135,26 @@ pub async fn add_folder(
         }
     }
 
-    // 드라이브 루트 감지 (C:\, D:\ 등) → 벡터 인덱싱 자동 시작 안 함
+    // 드라이브 루트 감지 (C:\, D:\ 등) → 벡터 인덱싱 자동 시작 안 함 + 경고 알림
     let is_drive_root = {
         let p = canonical_path.to_string_lossy();
         let normalized = p.replace("\\\\?\\", "");
         normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
     };
     if is_drive_root {
-        tracing::info!(
-            "Drive root detected: skipping auto vector indexing for {}",
+        tracing::warn!(
+            "Drive root detected: auto vector indexing disabled for {}. \
+             Large drives may take significant time and memory.",
             path
+        );
+        // 프론트엔드에 경고 알림 (대용량 인덱싱 완료 후)
+        let _ = app_handle.emit(
+            "indexing-warning",
+            &serde_json::json!({
+                "type": "drive_root",
+                "folder_path": path,
+                "message": "드라이브 전체 인덱싱이 완료되었습니다. 시맨틱(벡터) 검색은 대용량 드라이브에서 자동 시작되지 않습니다. 필요 시 설정에서 수동으로 시작하세요."
+            }),
         );
     }
 

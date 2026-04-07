@@ -4,9 +4,9 @@ use super::{chunk_text, DocumentMetadata, ParseError, ParsedDocument};
 use crate::ocr::OcrEngine;
 use std::path::Path;
 
-/// 기본 청크 크기/오버랩 (parsers/mod.rs 기본값 참조)
-const DEFAULT_CHUNK_SIZE: usize = 1024;
-const DEFAULT_CHUNK_OVERLAP: usize = 128;
+/// 기본 청크 크기/오버랩 (parsers/mod.rs 기본값과 통일 — KoSimCSE 512토큰 제한 이내)
+const DEFAULT_CHUNK_SIZE: usize = 600;
+const DEFAULT_CHUNK_OVERLAP: usize = 150;
 
 /// 이미지 파일에서 OCR로 텍스트 추출
 pub fn parse(path: &Path, ocr: &OcrEngine) -> Result<ParsedDocument, ParseError> {

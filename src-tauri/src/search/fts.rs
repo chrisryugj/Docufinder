@@ -69,7 +69,7 @@ fn search_internal(
             f.path,
             f.name,
             c.chunk_index,
-            fts.content,
+            COALESCE(c.content, fts.content) AS content,
             bm25(chunks_fts) as score,
             c.start_offset,
             c.end_offset,

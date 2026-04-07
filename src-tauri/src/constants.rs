@@ -9,6 +9,32 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &[
 /// OCR 대상 이미지 확장자 (ocr_enabled 설정 시에만 인덱싱)
 pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "bmp", "tiff", "tif"];
 
+/// 메타데이터(파일명) 저장에서 제외할 확장자
+///
+/// 전체 드라이브 인덱싱 시 DLL/EXE/SYS 등 수십만 개의 시스템 바이너리가
+/// DB에 저장되어 파일명 검색 노이즈 증가 + DB 급팽창을 유발.
+/// 이 확장자들은 파일명 검색 대상에서 제외하여 DB 크기와 검색 품질을 개선.
+pub const METADATA_EXCLUDED_EXTENSIONS: &[&str] = &[
+    // Windows 바이너리/시스템 파일
+    "dll", "exe", "sys", "drv", "ocx", "cpl", "scr",
+    // 임시/캐시 파일
+    "tmp", "temp", "bak", "old", "cache",
+    // 빌드 아티팩트
+    "obj", "pdb", "ilk", "exp", "lib", "pch",
+    // 로그 파일
+    "log", "etl",
+    // 설정/레지스트리
+    "ini", "reg",
+    // 데이터베이스/인덱스
+    "db", "db-shm", "db-wal", "idx", "ldb",
+    // 미디어 (파일명은 필요할 수 있지만 대량 존재 시 제외)
+    "mp3", "mp4", "avi", "mkv", "mov", "wmv", "flv", "m4v", "m4a", "aac", "wav", "flac",
+    // 압축 파일 (지원 파서 없음)
+    "zip", "rar", "7z", "tar", "gz", "bz2", "xz",
+    // 기타 바이너리
+    "bin", "dat", "iso", "img",
+];
+
 // ============================================
 // 보안 관련 상수
 // ============================================

@@ -91,7 +91,7 @@ pub struct WatchManager {
     worker_thread: Option<JoinHandle<()>>,
     /// 일시 중지 카운터 (인덱싱 중 DB 동시 접근 방지)
     /// > 0 이면 debounce 후 pending_files 처리를 건너뜀.
-    /// AtomicUsize로 중첩 pause/resume 지원.
+    /// > AtomicUsize로 중첩 pause/resume 지원.
     pause_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     /// pause()가 반환될 때 watcher DB 작업이 완전히 끝났음을 보장하는 게이트
     processing_lock: Arc<Mutex<()>>,
@@ -131,7 +131,9 @@ impl WatchManager {
         ctx: IndexContext,
         pause_count: Arc<std::sync::atomic::AtomicUsize>,
     ) -> Result<Self, notify::Error> {
-        let (event_tx, event_rx) = mpsc::channel::<Event>();
+        // bounded 채널: 전체 드라이브 감시 시 이벤트 폭주로 인한 메모리 무한 증가 방지
+        // 10_000: 500ms 디바운스 내 최대 이벤트 수 (초과 시 watcher 백프레셔로 자동 조절)
+        let (event_tx, event_rx) = mpsc::sync_channel::<Event>(10_000);
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
 
         let paused_for_loop = pause_count.clone();
@@ -402,6 +404,8 @@ impl WatchManager {
     }
 
     /// 대기 중인 파일들 처리
+    ///
+    /// 삭제 파일은 개별 처리, 존재 파일은 배치 트랜잭션으로 묶어 fsync 횟수 감소
     fn process_pending_files(pending: &mut HashSet<PathBuf>, ctx: &IndexContext) {
         if pending.is_empty() {
             return;
@@ -420,122 +424,136 @@ impl WatchManager {
         };
         let runtime_settings = (ctx.runtime_settings)();
 
+        // 삭제 파일과 존재 파일 분리
+        let mut to_delete: Vec<PathBuf> = Vec::new();
+        let mut to_index: Vec<PathBuf> = Vec::new();
         for path in pending.drain() {
             if !path.exists() {
-                // 파일이 삭제된 경우 - 벡터 인덱스, DB, FilenameCache에서 삭제
-                let path_str = path.to_string_lossy().to_string();
-
-                // 1. file_id 조회 (캐시 삭제용)
-                let file_id: Option<i64> = conn
-                    .query_row("SELECT id FROM files WHERE path = ?", [&path_str], |row| {
-                        row.get(0)
-                    })
-                    .ok();
-
-                // 2. 벡터 인덱스에서 삭제 (DB 삭제 전에 chunk_ids 조회 필요)
-                if let Some(vi) = &ctx.vector_index {
-                    if let Ok(chunk_ids) = db::get_chunk_ids_for_path(&conn, &path_str) {
-                        for chunk_id in chunk_ids {
-                            if let Err(e) = vi.remove(chunk_id) {
-                                tracing::debug!("Failed to remove vector {}: {}", chunk_id, e);
-                            }
-                        }
-                    }
-                }
-
-                // 3. DB에서 삭제 (SQLITE_BUSY retry 포함)
-                let path_str_ref = &path_str;
-                if let Err(e) = db::retry_on_busy(|| db::delete_file(&conn, path_str_ref)) {
-                    tracing::warn!("Failed to delete file from DB: {}", e);
-                } else {
-                    // 4. FilenameCache에서 삭제
-                    if let Some(fid) = file_id {
-                        ctx.filename_cache.remove(fid);
-                    }
-                    tracing::info!("Deleted from index + cache: {}", path_str);
-                }
-                continue;
-            }
-
-            // 파일 크기 제한 체크 — 초과 시 메타데이터만 저장
-            if runtime_settings.max_file_size_mb > 0 {
-                if let Ok(metadata) = std::fs::metadata(&path) {
-                    let size_mb = metadata.len() / (1024 * 1024);
-                    if size_mb > runtime_settings.max_file_size_mb {
-                        tracing::info!(
-                            "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
-                            size_mb,
-                            runtime_settings.max_file_size_mb,
-                            path.display()
-                        );
-                        // stale 벡터 정리 (metadata-only 전환 시)
-                        Self::cleanup_stale_vectors(&conn, &path, &ctx.vector_index);
-                        match pipeline::save_file_metadata_and_cache(&conn, &path) {
-                            Ok(file_path_str) => {
-                                if let Ok(entry) =
-                                    Self::get_filename_entry_from_db(&conn, &file_path_str)
-                                {
-                                    ctx.filename_cache.upsert(entry);
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("Failed to save metadata for {:?}: {}", path, e)
-                            }
-                        }
-                        continue;
-                    }
-                }
-            }
-
-            // 확장자에 따라 파싱 인덱싱 또는 메타데이터만 저장
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            let is_ocr_image =
-                ctx.ocr_engine.is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
-            if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
-                // 파싱 가능: FTS 인덱싱 (벡터는 백그라운드 워커가 처리)
-                let ocr_ref = ctx.ocr_engine.as_deref();
-                match pipeline::index_file_fts_only(&conn, &path, ocr_ref) {
-                    Ok(result) => {
-                        if let Ok(entry) =
-                            Self::get_filename_entry_from_db(&conn, &result.file_path)
-                        {
-                            ctx.filename_cache.upsert(entry);
-                        }
-                        tracing::info!(
-                            "[FTS] Indexed + cache updated: {} ({} chunks)",
-                            result.file_path,
-                            result.chunks_count
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to index {:?}: {}", path, e);
-                    }
-                }
+                to_delete.push(path);
             } else {
-                // HWP 파일 수집 (변환 알림용)
-                if ext == "hwp" && runtime_settings.hwp_auto_detect {
-                    hwp_files.push(path.to_string_lossy().to_string());
-                }
-                // 파싱 불가: 메타데이터만 저장 (파일명 검색용)
-                // stale 벡터 정리 (metadata-only 전환 시)
-                Self::cleanup_stale_vectors(&conn, &path, &ctx.vector_index);
-                match pipeline::save_file_metadata_and_cache(&conn, &path) {
-                    Ok(file_path_str) => {
-                        if let Ok(entry) = Self::get_filename_entry_from_db(&conn, &file_path_str) {
-                            ctx.filename_cache.upsert(entry);
-                        }
-                        tracing::debug!("[Metadata] Stored: {}", file_path_str);
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
-                    }
-                }
+                to_index.push(path);
             }
         }
+
+        // 1. 삭제 파일 처리 (각각 개별 처리)
+        for path in &to_delete {
+            let path_str = path.to_string_lossy().to_string();
+
+            let file_id: Option<i64> = conn
+                .query_row("SELECT id FROM files WHERE path = ?", [&path_str], |row| {
+                    row.get(0)
+                })
+                .ok();
+
+            if let Some(vi) = &ctx.vector_index {
+                if let Ok(chunk_ids) = db::get_chunk_ids_for_path(&conn, &path_str) {
+                    for chunk_id in chunk_ids {
+                        if let Err(e) = vi.remove(chunk_id) {
+                            tracing::debug!("Failed to remove vector {}: {}", chunk_id, e);
+                        }
+                    }
+                }
+            }
+
+            let path_str_ref = &path_str;
+            if let Err(e) = db::retry_on_busy(|| db::delete_file(&conn, path_str_ref)) {
+                tracing::warn!("Failed to delete file from DB: {}", e);
+            } else {
+                if let Some(fid) = file_id {
+                    ctx.filename_cache.remove(fid);
+                }
+                tracing::info!("Deleted from index + cache: {}", path_str);
+            }
+        }
+
+        // 2. 존재하는 파일들 배치 트랜잭션 (파일당 개별 fsync → 50개 배치 1회 fsync)
+        if !to_index.is_empty() {
+            const INCREMENTAL_BATCH_SIZE: usize = 50;
+            let _ = conn.execute_batch("BEGIN");
+            let mut batch_count = 0;
+            let mut indexed_paths: Vec<String> = Vec::new();
+
+            for path in &to_index {
+                // 파일 크기 제한 체크 — 초과 시 메타데이터만 저장
+                if runtime_settings.max_file_size_mb > 0 {
+                    if let Ok(metadata) = std::fs::metadata(path) {
+                        let size_mb = metadata.len() / (1024 * 1024);
+                        if size_mb > runtime_settings.max_file_size_mb {
+                            tracing::info!(
+                                "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
+                                size_mb, runtime_settings.max_file_size_mb, path.display()
+                            );
+                            Self::cleanup_stale_vectors(&conn, path, &ctx.vector_index);
+                            if let Ok(path_str) = pipeline::save_file_metadata_and_cache(&conn, path) {
+                                indexed_paths.push(path_str);
+                            }
+                            batch_count += 1;
+                            if batch_count >= INCREMENTAL_BATCH_SIZE {
+                                if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                                    tracing::warn!("Incremental batch commit failed: {}", e);
+                                    if conn.is_autocommit() { let _ = conn.execute_batch("BEGIN"); }
+                                }
+                                batch_count = 0;
+                            }
+                            continue;
+                        }
+                    }
+                }
+
+                let ext = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let is_ocr_image =
+                    ctx.ocr_engine.is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+
+                if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
+                    let ocr_ref = ctx.ocr_engine.as_deref();
+                    match pipeline::index_file_fts_only_no_tx(&conn, path, ocr_ref) {
+                        Ok(result) => {
+                            indexed_paths.push(result.file_path.clone());
+                            tracing::info!(
+                                "[FTS] Indexed: {} ({} chunks)", result.file_path, result.chunks_count
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to index {:?}: {}", path, e);
+                        }
+                    }
+                } else {
+                    if ext == "hwp" && runtime_settings.hwp_auto_detect {
+                        hwp_files.push(path.to_string_lossy().to_string());
+                    }
+                    Self::cleanup_stale_vectors(&conn, path, &ctx.vector_index);
+                    if let Ok(path_str) = pipeline::save_file_metadata_and_cache(&conn, path) {
+                        indexed_paths.push(path_str);
+                    }
+                }
+
+                batch_count += 1;
+                if batch_count >= INCREMENTAL_BATCH_SIZE {
+                    if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
+                        tracing::warn!("Incremental batch commit failed: {}", e);
+                        if conn.is_autocommit() { let _ = conn.execute_batch("BEGIN"); }
+                    }
+                    batch_count = 0;
+                }
+            }
+
+            if let Err(e) = conn.execute_batch("COMMIT") {
+                tracing::warn!("Incremental final commit failed: {}", e);
+            }
+
+            // FilenameCache 일괄 갱신 (배치 COMMIT 후)
+            for path_str in &indexed_paths {
+                if let Ok(entry) = Self::get_filename_entry_from_db(&conn, path_str) {
+                    ctx.filename_cache.upsert(entry);
+                }
+            }
+            tracing::info!("[WatchManager] Batch committed {} files", indexed_paths.len());
+        }
+
         // 프론트엔드에 증분 인덱싱 완료 알림
         if let Some(ref callback) = ctx.on_incremental_update {
             callback(file_count);

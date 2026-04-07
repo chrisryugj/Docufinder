@@ -6,7 +6,7 @@
 pub use super::collector::*;
 pub use super::sync::*;
 
-use crate::constants::{OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
+use crate::constants::{METADATA_EXCLUDED_EXTENSIONS, OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
 use crate::db;
 use crate::indexer::exclusions::is_excluded_dir;
 use crate::ocr::OcrEngine;
@@ -721,7 +721,13 @@ pub fn scan_metadata_only(
             }
         };
 
-        // DB에 메타데이터만 저장 (확장자/용량 무관 — 파일명 검색 완전성 보장)
+        // 시스템 바이너리/임시 파일은 메타데이터 저장 제외
+        // (DLL/EXE/SYS 수십만 개로 인한 DB 급팽창 + 검색 노이즈 방지)
+        if METADATA_EXCLUDED_EXTENSIONS.contains(&ext.as_str()) {
+            continue;
+        }
+
+        // DB에 메타데이터만 저장 (문서/데이터 파일 — 파일명 검색용)
         let path_str = path.to_string_lossy().to_string();
         let file_type = ext.clone();
         let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
@@ -782,7 +788,35 @@ pub fn scan_metadata_only(
 
 // ==================== 단일 파일 FTS 인덱싱 (manager용) ====================
 
-/// 단일 파일 FTS 인덱싱 (벡터 제외) - 변경 감시에서 사용
+/// 단일 파일 FTS 인덱싱 (트랜잭션 없음) - WatchManager 배치 처리용
+///
+/// 호출자가 BEGIN/COMMIT을 관리해야 함.
+pub(crate) fn index_file_fts_only_no_tx(
+    conn: &Connection,
+    path: &Path,
+    ocr_engine: Option<&OcrEngine>,
+) -> Result<IndexResult, IndexError> {
+    let document =
+        parse_file(path, ocr_engine).map_err(|e| IndexError::ParseError(e.to_string()))?;
+    let total_chars = document.content.len();
+
+    let chunks_count = save_document_to_db_fts_only_no_tx(
+        conn,
+        path,
+        document,
+        FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+    )?;
+
+    Ok(IndexResult {
+        file_path: path.to_string_lossy().to_string(),
+        chunks_count,
+        vectors_count: 0,
+        total_chars,
+    })
+}
+
+/// 단일 파일 FTS 인덱싱 (벡터 제외) - 트랜잭션 포함 독립 버전
+#[allow(dead_code)]
 pub fn index_file_fts_only(
     conn: &Connection,
     path: &Path,
