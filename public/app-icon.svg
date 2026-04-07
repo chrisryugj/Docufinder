@@ -1,26 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#4F46E5"/>
-      <stop offset="100%" style="stop-color:#7C3AED"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Background -->
-  <rect width="1024" height="1024" rx="180" fill="url(#bg)"/>
-
-  <!-- Document -->
-  <path d="M280 180h320l144 144v520c0 44-36 80-80 80H280c-44 0-80-36-80-80V260c0-44 36-80 80-80z" fill="white" opacity="0.95"/>
-  <path d="M600 180v144h144" fill="none" stroke="white" stroke-width="8" opacity="0.5"/>
-
-  <!-- Document lines -->
-  <rect x="260" y="400" width="280" height="24" rx="12" fill="#4F46E5" opacity="0.3"/>
-  <rect x="260" y="460" width="220" height="24" rx="12" fill="#4F46E5" opacity="0.3"/>
-  <rect x="260" y="520" width="260" height="24" rx="12" fill="#4F46E5" opacity="0.3"/>
-  <rect x="260" y="580" width="180" height="24" rx="12" fill="#4F46E5" opacity="0.3"/>
-
-  <!-- Magnifying glass -->
-  <circle cx="680" cy="680" r="140" fill="none" stroke="white" stroke-width="48"/>
-  <line x1="780" y1="780" x2="900" y2="900" stroke="white" stroke-width="48" stroke-linecap="round"/>
-  <circle cx="680" cy="680" r="80" fill="white" opacity="0.3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Magnifying glass handle -->
+  <line x1="370" y1="370" x2="460" y2="460" stroke="#2EB88A" stroke-width="56" stroke-linecap="round"/>
+  <!-- Magnifying glass ring -->
+  <circle cx="240" cy="240" r="200" fill="none" stroke="#2EB88A" stroke-width="56"/>
+  <!-- Black fill inside lens -->
+  <circle cx="240" cy="240" r="172" fill="#1a1a1a"/>
+  <!-- Letter A -->
+  <path d="M240 90 L140 380 L180 380 L200 320 L280 320 L300 380 L340 380 Z M215 285 L240 200 L265 285 Z" fill="white"/>
+  <!-- Degree dot -->
+  <circle cx="310" cy="145" r="18" fill="white"/>
 </svg>
