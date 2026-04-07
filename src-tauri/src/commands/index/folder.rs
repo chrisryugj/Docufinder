@@ -81,19 +81,16 @@ pub async fn add_folder(
         )
         .await;
 
-    // 3. FilenameCache 즉시 갱신 + 메타 스캔에서 수집한 파일 목록 재사용
-    let pre_collected = if let Ok(ref meta) = metadata_result {
+    // 3. FilenameCache 즉시 갱신
+    if let Ok(ref meta) = metadata_result {
         refresh_filename_cache(&state);
         tracing::info!(
             "FilenameCache ready: {} files (metadata scan)",
             meta.files_found
         );
-        Some(meta.file_paths.clone())
-    } else {
-        None
-    };
+    }
 
-    // 4. FTS 인덱싱 (메타 스캔에서 수집한 파일 목록 재사용 → 이중 FS 순회 방지)
+    // 4. FTS 인덱싱
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match ctx
         .service
@@ -102,7 +99,6 @@ pub async fn add_folder(
             ctx.include_subfolders,
             Some(progress_callback),
             ctx.max_file_size_mb,
-            pre_collected,
             ctx.exclude_dirs.clone(),
         )
         .await

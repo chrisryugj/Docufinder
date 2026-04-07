@@ -87,7 +87,6 @@ pub fn index_folder_fts_only(
     cancel_flag: Arc<AtomicBool>,
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
-    pre_collected_files: Option<Vec<PathBuf>>,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<FolderIndexResult, IndexError> {
@@ -99,7 +98,6 @@ pub fn index_folder_fts_only(
         progress_callback,
         max_file_size_mb,
         false,
-        pre_collected_files,
         excluded_dirs,
         ocr_engine,
     )
@@ -125,7 +123,6 @@ pub fn resume_folder_fts(
         progress_callback,
         max_file_size_mb,
         true,
-        None,
         excluded_dirs,
         ocr_engine,
     )
@@ -140,7 +137,6 @@ fn index_folder_fts_impl(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     skip_indexed: bool,
-    pre_collected_files: Option<Vec<PathBuf>>,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
 ) -> Result<FolderIndexResult, IndexError> {
@@ -197,15 +193,7 @@ fn index_folder_fts_impl(
     } else {
         0
     };
-    let all_files = if let Some(files) = pre_collected_files {
-        tracing::info!(
-            "[FTS] Reusing {} pre-collected file paths (skipping FS walk)",
-            files.len()
-        );
-        files
-    } else {
-        collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs)
-    };
+    let all_files = collect_files(folder_path, recursive, cancel_flag.as_ref(), excluded_dirs);
 
     // 파싱 가능 파일 / 메타데이터 전용 파일 분리
     let has_ocr = ocr_engine.is_some();
@@ -597,8 +585,6 @@ pub struct MetadataScanResult {
     pub folder_path: String,
     pub files_found: usize,
     pub errors: Vec<String>,
-    /// 스캔된 파일 경로 목록 (FTS 인덱싱에서 재사용하여 이중 FS 순회 방지)
-    pub file_paths: Vec<PathBuf>,
 }
 
 /// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
@@ -644,7 +630,6 @@ pub fn scan_metadata_only(
     let mut count = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut suppressed_errors: usize = 0;
-    let mut collected_paths: Vec<PathBuf> = Vec::new();
 
     // 배치 트랜잭션 (성능 최적화)
     conn.execute_batch("BEGIN")
@@ -686,7 +671,6 @@ pub fn scan_metadata_only(
                 folder_path: folder_str,
                 files_found: count,
                 errors: vec!["Cancelled".to_string()],
-                file_paths: collected_paths,
             });
         }
 
@@ -749,7 +733,6 @@ pub fn scan_metadata_only(
             continue;
         }
 
-        collected_paths.push(path.to_path_buf());
         count += 1;
         batch_count += 1;
         send_progress("scanning", count, false);
@@ -782,7 +765,6 @@ pub fn scan_metadata_only(
         folder_path: folder_str,
         files_found: count,
         errors,
-        file_paths: collected_paths,
     })
 }
 

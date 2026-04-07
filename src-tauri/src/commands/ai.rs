@@ -365,7 +365,7 @@ pub async fn summarize_ai(
     })
     .await
     .map_err(|e| ApiError::AiError(format!("태스크 실패: {}", e)))?
-    .map_err(|e| ApiError::AiError(e))?;
+    .map_err(ApiError::AiError)?;
 
     let system_prompt = summary_prompt_for_type(&stype);
     let prompt = format!("{}\n\n--- 문서 ---\n{}", system_prompt, content);
@@ -373,7 +373,7 @@ pub async fn summarize_ai(
     let response = tokio::task::spawn_blocking(move || client.generate(&prompt, &config))
         .await
         .map_err(|e| ApiError::AiError(format!("태스크 실패: {}", e)))?
-        .map_err(|e| ApiError::AiError(e))?;
+        .map_err(ApiError::AiError)?;
 
     let elapsed = start.elapsed().as_millis() as u64;
 

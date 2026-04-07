@@ -74,8 +74,8 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
     let mut prev = vec![0usize; n + 1];
     let mut curr = vec![0usize; n + 1];
 
-    for j in 0..=n {
-        prev[j] = j;
+    for (j, item) in prev.iter_mut().enumerate().take(n + 1) {
+        *item = j;
     }
 
     for i in 1..=m {
@@ -116,8 +116,8 @@ fn weighted_jamo_distance(a: &str, b: &str) -> f64 {
     let mut prev = vec![0.0f64; n + 1];
     let mut curr = vec![0.0f64; n + 1];
 
-    for j in 0..=n {
-        prev[j] = j as f64;
+    for (j, item) in prev.iter_mut().enumerate().take(n + 1) {
+        *item = j as f64;
     }
 
     for i in 1..=m {
@@ -209,7 +209,7 @@ pub async fn suggest_correction(
 
             // 가중 edit distance 계산 후 상위 후보 선택
             let jamo_len = decompose_korean(word).len();
-            let max_dist = (jamo_len as f64 * 0.4).max(2.0).min(5.0); // 자모 길이의 40%까지
+            let max_dist = (jamo_len as f64 * 0.4).clamp(2.0, 5.0); // 자모 길이의 40%까지
 
             let mut scored: Vec<(String, f64, i64)> = candidates
                 .into_iter()

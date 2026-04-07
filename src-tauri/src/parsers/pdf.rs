@@ -239,9 +239,8 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
             });
             if has_scanned {
                 // OCR 경로: cleaned_pages 전체 필요 (lopdf가 페이지 번호로 접근하므로)
-                let cleaned: Vec<String> = raw_text.split('\x0c').map(|p| clean_pdf_text(p)).collect();
-                let result = ocr_scanned_pages(path, &cleaned, ocr_engine);
-                result
+                let cleaned: Vec<String> = raw_text.split('\x0c').map(clean_pdf_text).collect();
+                ocr_scanned_pages(path, &cleaned, ocr_engine)
             } else {
                 vec![]
             }
