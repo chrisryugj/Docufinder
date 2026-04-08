@@ -334,6 +334,19 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           </div>
         )}
 
+        {/* 모드 힌트 (자연어/질문 모드 전환 시) */}
+        {needsEnterToSubmit && !query && (
+          <p
+            className="mt-1.5 text-[11px] leading-relaxed px-1"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            {isQuestion
+              ? "문서를 기반으로 AI가 답변합니다. 질문을 입력하고 Enter를 누르세요."
+              : "날짜, 파일 타입, 제외 조건 등을 자유롭게 입력하세요. 예: \"최근 30일 계약서 PDF만\""
+            }
+          </p>
+        )}
+
         {/* 자동완성 드롭다운 (즉시 모드만) */}
         {!isNatural && !isQuestion && isSuggestionsOpen && suggestions.length > 0 && (
           <div

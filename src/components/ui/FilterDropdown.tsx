@@ -340,14 +340,15 @@ interface FilterChipProps {
 export function FilterChip({ label, onRemove }: FilterChipProps) {
   return (
     <span
-      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium"
+      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium flex-shrink-0"
       style={{
         backgroundColor: "var(--color-accent-light)",
         color: "var(--color-accent)",
         border: "1px solid var(--color-accent)",
+        maxWidth: "160px",
       }}
     >
-      {label}
+      <span className="truncate">{label}</span>
       <button
         onClick={onRemove}
         className="p-0.5 rounded-full hover:bg-blue-200 transition-colors"

@@ -135,7 +135,18 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const previewWidthRef = useRef(previewWidth);
   useEffect(() => { previewWidthRef.current = previewWidth; }, [previewWidth]);
   const isResizingRef = useRef(false);
-  const handlePreviewClose = useCallback(() => setPreviewFilePath(null), []);
+  const handlePreviewClose = useCallback(() => {
+    setPreviewFilePath(null);
+    // 선택된 결과 아이템 또는 검색창으로 포커스 복귀
+    requestAnimationFrame(() => {
+      const selectedEl = document.querySelector<HTMLElement>('[role="option"][aria-selected="true"]');
+      if (selectedEl) {
+        selectedEl.focus();
+      } else {
+        document.querySelector<HTMLInputElement>('[aria-label="검색어 입력"]')?.focus();
+      }
+    });
+  }, []);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isResizingRef.current = true;

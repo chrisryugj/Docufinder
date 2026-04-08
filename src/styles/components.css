@@ -82,14 +82,14 @@
   border: none;
   border-radius: var(--radius-md);
   box-shadow: none;
-  transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: background-color var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
 
 .result-card:hover {
+  /* 파일 타입 stripe가 배경색 담당 → 여기선 fallback만 */
   background-color: var(--color-bg-secondary);
-  box-shadow: var(--shadow-sm);
 }
 
 /* Result list divider container */
@@ -254,7 +254,7 @@ mark.hl-filename {
 .result-stripe-pdf:hover  { background-color: var(--color-file-pdf-bg); }
 .result-stripe-txt:hover  { background-color: var(--color-file-txt-bg); }
 .result-stripe-hwp:hover  { background-color: var(--color-file-hwpx-bg); }
-.result-stripe-pptx:hover { background-color: rgba(233, 122, 31, 0.06); }
+.result-stripe-pptx:hover { background-color: var(--color-file-pptx-bg); }
 
 /* Interactive Elements */
 .btn-primary {

@@ -52,21 +52,19 @@ export function useKeyboardShortcuts(
         return;
       }
 
+      // 화살표 위/아래: 결과 탐색 (자동완성 열려있으면 스킵 — SearchBar가 처리)
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const suggestionsOpen = document.getElementById("suggestion-listbox");
+        if (!suggestionsOpen) {
+          e.preventDefault();
+          if (e.key === "ArrowUp") h.onArrowUp?.();
+          else h.onArrowDown?.();
+        }
+        return;
+      }
+
       // 입력 중이면 아래 단축키 무시
       if (isInputFocused) return;
-
-      // 화살표 위/아래: 결과 탐색
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        h.onArrowUp?.();
-        return;
-      }
-
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        h.onArrowDown?.();
-        return;
-      }
 
       // Enter: 선택된 파일 열기
       if (e.key === "Enter") {

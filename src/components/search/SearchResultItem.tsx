@@ -134,6 +134,13 @@ export const SearchResultItem = memo(function SearchResultItem({
       aria-label={`${result.file_name} 검색 결과`}
       tabIndex={isSelected ? 0 : -1}
       onContextMenu={handleContextMenu}
+      onKeyDown={(e) => {
+        if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          handleContextMenu({ clientX: rect.left + 40, clientY: rect.top + rect.height / 2, preventDefault: () => {} } as React.MouseEvent);
+        }
+      }}
       data-context-menu
     >
       {/* Row 1: Filename + confidence + time */}
@@ -150,7 +157,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
-          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-0 group-hover/filename:opacity-60 transition-opacity" />
+          <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-30 group-hover/filename:opacity-60 transition-opacity" />
         </div>
 
         {/* Right side: confidence % + time + file type */}
@@ -195,7 +202,7 @@ export const SearchResultItem = memo(function SearchResultItem({
 
       {/* Row 2: Content preview (pl-6 = FileIcon 16px + gap 8px 정렬) */}
       <div
-        className="cursor-pointer rounded flex gap-1.5 hover-bg-tertiary -mx-1.5 px-1.5 py-1 pl-6"
+        className="cursor-pointer rounded flex gap-1.5 -mx-1.5 px-1.5 py-1 pl-6"
         onClick={onToggleExpand}
         aria-expanded={isExpanded}
         role="button"

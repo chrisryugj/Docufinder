@@ -43,17 +43,60 @@ export function Tooltip({
   const tooltipId = useId();
   const [isVisible, setIsVisible] = useState(false);
   const [portalPos, setPortalPos] = useState<{ top: number; left: number } | null>(null);
+  const [resolvedPosition, setResolvedPosition] = useState(position);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const portalTooltipRef = useRef<HTMLDivElement>(null);
 
   // 언마운트 시 타이머 정리 (메모리 누수 방지)
   useEffect(() => () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
   }, []);
 
+  // Portal 렌더 후 실제 크기 기반으로 위치 보정
+  useEffect(() => {
+    if (!isVisible || !usePortal || !portalTooltipRef.current || !triggerRef.current) return;
+    const tooltip = portalTooltipRef.current;
+    const rect = triggerRef.current.getBoundingClientRect();
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+    const gap = 8;
+    const margin = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // 최적 방향 결정 (요청 방향에 공간 부족하면 반대로)
+    let pos = position;
+    if (pos === "top" && rect.top - th - gap < margin) pos = "bottom";
+    else if (pos === "bottom" && rect.bottom + th + gap > vh - margin) pos = "top";
+    else if (pos === "left" && rect.left - tw - gap < margin) pos = "right";
+    else if (pos === "right" && rect.right + tw + gap > vw - margin) pos = "left";
+
+    let top = 0, left = 0;
+    switch (pos) {
+      case "top":    top = rect.top - gap;           left = rect.left + rect.width / 2; break;
+      case "bottom": top = rect.bottom + gap;         left = rect.left + rect.width / 2; break;
+      case "left":   top = rect.top + rect.height / 2; left = rect.left - gap; break;
+      case "right":  top = rect.top + rect.height / 2; left = rect.right + gap; break;
+    }
+
+    // 수평/수직 클램핑 (tooltip 크기 고려)
+    if (pos === "top" || pos === "bottom") {
+      left = Math.max(margin + tw / 2, Math.min(left, vw - margin - tw / 2));
+      top = Math.max(margin, Math.min(top, vh - margin));
+    } else {
+      top = Math.max(margin + th / 2, Math.min(top, vh - margin - th / 2));
+      left = Math.max(margin, Math.min(left, vw - margin));
+    }
+
+    setPortalPos({ top, left });
+    setResolvedPosition(pos);
+  }, [isVisible, usePortal, position]);
+
   const showTooltip = () => {
     timeoutRef.current = setTimeout(() => {
       if (usePortal && triggerRef.current) {
+        // 초기 위치 설정 (렌더 후 useEffect에서 보정)
         const rect = triggerRef.current.getBoundingClientRect();
         const gap = 8;
         let top = 0, left = 0;
@@ -63,11 +106,8 @@ export function Tooltip({
           case "left":   top = rect.top + rect.height / 2; left = rect.left - gap; break;
           case "right":  top = rect.top + rect.height / 2; left = rect.right + gap; break;
         }
-        // 뷰포트 경계 클램핑 (화면 밖 방지)
-        const margin = 8;
-        left = Math.max(margin, Math.min(left, window.innerWidth - margin));
-        top = Math.max(margin, Math.min(top, window.innerHeight - margin));
         setPortalPos({ top, left });
+        setResolvedPosition(position);
       }
       setIsVisible(true);
     }, delay);
@@ -90,12 +130,13 @@ export function Tooltip({
   const tooltipContent = isVisible && content && (usePortal ? (
     portalPos && createPortal(
       <div
+        ref={portalTooltipRef}
         id={tooltipId}
         className={`fixed z-[9999] px-2 py-1 text-xs rounded shadow-lg pointer-events-none ${maxWidth ? "" : "whitespace-nowrap"}`}
         style={{
           top: portalPos.top,
           left: portalPos.left,
-          transform: portalTransform[position],
+          transform: portalTransform[resolvedPosition],
           backgroundColor: "var(--color-bg-tertiary)",
           color: "var(--color-text-secondary)",
           ...(maxWidth ? { width: maxWidth, maxWidth, whiteSpace: "normal" as const } : {}),
@@ -104,8 +145,8 @@ export function Tooltip({
       >
         {content}
         <div
-          className={`absolute border-4 ${arrowStyles[position]}`}
-          style={arrowColorStyles[position]}
+          className={`absolute border-4 ${arrowStyles[resolvedPosition]}`}
+          style={arrowColorStyles[resolvedPosition]}
           aria-hidden="true"
         />
       </div>,

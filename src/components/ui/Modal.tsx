@@ -98,8 +98,14 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
       document.body.style.overflow = "hidden";
 
       requestAnimationFrame(() => {
-        const focusableElements = modalRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-        focusableElements?.[0]?.focus();
+        if (!modalRef.current) return;
+        // 우선순위: [data-autofocus] > 콘텐츠 내 첫 input/select/textarea > 첫 focusable
+        const autofocus = modalRef.current.querySelector<HTMLElement>('[data-autofocus]');
+        if (autofocus) { autofocus.focus(); return; }
+        const firstInput = modalRef.current.querySelector<HTMLElement>('input, select, textarea');
+        if (firstInput) { firstInput.focus(); return; }
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+        focusable?.[0]?.focus();
       });
     }
 

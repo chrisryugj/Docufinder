@@ -15,13 +15,13 @@ interface StatusBarProps {
   hasCancelledFolders?: boolean;
 }
 
-const phaseLabels: Record<string, string> = {
-  preparing: "폴더 분석 준비 중",
-  scanning: "파일 검색 중",
-  parsing: "파일 분석 중",
-  indexing: "인덱싱 중",
-  completed: "완료",
-  cancelled: "취소됨",
+const phaseInfo: Record<string, { label: string; desc: string }> = {
+  preparing: { label: "준비 중", desc: "폴더 구조를 분석하고 있습니다" },
+  scanning: { label: "파일 검색", desc: "인덱싱할 파일을 찾고 있습니다" },
+  parsing: { label: "파일 분석", desc: "문서 내용을 읽고 있습니다" },
+  indexing: { label: "인덱싱", desc: "검색 인덱스를 생성하고 있습니다" },
+  completed: { label: "완료", desc: "" },
+  cancelled: { label: "취소됨", desc: "" },
 };
 
 export const StatusBar = memo(function StatusBar({ status, progress, vectorStatus, onCancelIndexing, onCancelVectorIndexing, onStartVectorIndexing, onResumeIndexing, semanticEnabled, hasCancelledFolders }: StatusBarProps) {
@@ -55,19 +55,19 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
       {isIndexing ? (
         <div className="space-y-1.5">
           {/* 진행률 정보 */}
-          <div className="flex items-center gap-1.5 text-xs min-w-0">
-            <span className="w-1.5 h-1.5 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
-            <span className="shrink-0" style={{ color: "var(--color-text-secondary)" }}>
-              {phaseLabels[progress.phase] || progress.phase}
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <span className="w-2 h-2 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
+            <span className="shrink-0 font-medium" style={{ color: "var(--color-text-primary)" }}>
+              {(phaseInfo[progress.phase] || { label: progress.phase }).label}
             </span>
             {progress.phase !== "preparing" && (
-              <span className="shrink-0 tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+              <span className="shrink-0 tabular-nums text-xs" style={{ color: "var(--color-text-muted)" }}>
                 {progress.processed_files}/{progress.total_files}
               </span>
             )}
             {progress.current_file && (
               <span
-                className="truncate text-[11px] min-w-0"
+                className="truncate text-xs min-w-0"
                 style={{ color: "var(--color-text-muted)" }}
                 title={cleanPath(progress.current_file)}
               >
@@ -76,7 +76,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
             )}
             <div className="flex items-center gap-2 ml-auto shrink-0">
               {progress.phase !== "preparing" && (
-                <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{percent}%</span>
+                <span className="font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>{percent}%</span>
               )}
               {onCancelIndexing && (
                 <button onClick={onCancelIndexing} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
@@ -104,15 +104,15 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
       ) : isVectorIndexing ? (
         <div className="space-y-1.5">
           {/* 벡터 인덱싱 진행률 */}
-          <div className="flex items-center gap-1.5 text-xs min-w-0">
-            <span className="w-1.5 h-1.5 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
-            <span className="shrink-0" style={{ color: "var(--color-text-secondary)" }}>시맨틱 인덱싱</span>
-            <span className="shrink-0 tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+          <div className="flex items-center gap-2 text-sm min-w-0">
+            <span className="w-2 h-2 shrink-0 rounded-full animate-pulse" style={{ backgroundColor: "var(--color-accent)" }} />
+            <span className="shrink-0 font-medium" style={{ color: "var(--color-text-primary)" }}>시맨틱 분석</span>
+            <span className="shrink-0 tabular-nums text-xs" style={{ color: "var(--color-text-muted)" }}>
               {vectorStatus.processed_chunks}/{vectorStatus.total_chunks}
             </span>
             {vectorStatus.current_file && (
               <span
-                className="truncate text-[11px] min-w-0"
+                className="truncate text-xs min-w-0"
                 style={{ color: "var(--color-text-muted)" }}
                 title={cleanPath(vectorStatus.current_file)}
               >
@@ -120,7 +120,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, vectorStatu
               </span>
             )}
             <div className="flex items-center gap-2 ml-auto shrink-0">
-              <span className="font-medium tabular-nums" style={{ color: "var(--color-text-muted)" }}>{vectorPercent}%</span>
+              <span className="font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>{vectorPercent}%</span>
               {onCancelVectorIndexing && (
                 <button onClick={onCancelVectorIndexing} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
                   취소
