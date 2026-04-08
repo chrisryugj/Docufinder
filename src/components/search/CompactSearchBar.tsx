@@ -246,12 +246,12 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
               totalResultCount={totalResultCount}
             />
 
-            {/* 활성 필터 칩 (최대 2개만 표시) */}
+            {/* 활성 필터 칩 (최대 2개, 긴 텍스트 truncate) */}
             {activeFilterLabels.slice(0, 2).map((f) => (
               <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
             ))}
             {activeFilterLabels.length > 2 && (
-              <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              <span className="text-xs flex-shrink-0" style={{ color: "var(--color-text-muted)" }}>
                 +{activeFilterLabels.length - 2}
               </span>
             )}

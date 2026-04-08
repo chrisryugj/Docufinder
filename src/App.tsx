@@ -222,7 +222,15 @@ function AppContent() {
         }
       },
       onToggleSidebar: ui.toggleSidebar,
-      onArrowUp: () => search.setSelectedIndex(Math.max(0, search.selectedIndex - 1)),
+      onArrowUp: () => {
+        if (search.selectedIndex <= 0) {
+          // -1 또는 0이면: 선택 해제 → 검색창 포커스
+          search.setSelectedIndex(-1);
+          search.searchInputRef.current?.focus();
+        } else {
+          search.setSelectedIndex(search.selectedIndex - 1);
+        }
+      },
       onArrowDown: () => search.setSelectedIndex(Math.min(search.filteredResults.length - 1, search.selectedIndex + 1)),
       onEnter: () => {
         if (search.selectedIndex >= 0 && search.selectedIndex < search.filteredResults.length) {
@@ -250,6 +258,7 @@ function AppContent() {
     const wasAutoMode = vectorIndexingMode === "auto";
     applySettings(settings);
     clearSearchCache();
+    ui.showToast("설정이 저장되었습니다", "success", 2000);
     const nowEnabled = settings.semantic_search_enabled ?? false;
     const nowAutoMode = (settings.vector_indexing_mode ?? "manual") === "auto";
     if (idx.isVectorIndexing && (!nowEnabled || !nowAutoMode)) {
@@ -434,7 +443,15 @@ function AppContent() {
               </div>
             )}
 
-            {error && <div className="mt-3"><ErrorBanner message={error} onDismiss={clearError} /></div>}
+            {error && (
+              <div className="mt-3">
+                <ErrorBanner
+                  message={error}
+                  onDismiss={clearError}
+                  onRetry={search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -447,7 +464,13 @@ function AppContent() {
             style={{ overflowAnchor: "none" }}
           >
             {search.isCollapsed && error && (
-              <div className="px-6 pt-2"><ErrorBanner message={error} onDismiss={clearError} /></div>
+              <div className="px-6 pt-2">
+                <ErrorBanner
+                  message={error}
+                  onDismiss={clearError}
+                  onRetry={search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
+                />
+              </div>
             )}
 
             <main className="px-5 sm:px-8 pb-20 h-full">

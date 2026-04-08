@@ -73,6 +73,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
             border: "1px solid var(--color-border)",
           }}
           aria-label="폴더 추가"
+          title={isIndexing ? "인덱싱이 완료된 후 폴더를 추가할 수 있습니다" : "폴더 추가"}
         >
           {isIndexing ? (
             <span className="flex items-center gap-1.5 pr-1">

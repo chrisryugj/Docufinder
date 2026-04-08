@@ -316,14 +316,17 @@ export const SearchResultList = memo(function SearchResultList({
   // 자연어 모드: 아직 Enter 안 눌렀을 때 (결과 없고 로딩도 아닌 상태)
   if (paradigm === "natural" && query.trim() && !isLoading && results.length === 0 && !nlSubmitted) {
     return (
-      <div className="text-center py-20">
+      <div className="text-center py-16">
         <div
-          className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
-          style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+          className="w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center"
+          style={{
+            backgroundColor: "var(--color-accent-subtle)",
+            border: "2px solid var(--color-accent)",
+          }}
         >
           <FileSearch
-            className="w-10 h-10 opacity-60"
-            style={{ color: "var(--color-text-muted)" }}
+            className="w-10 h-10"
+            style={{ color: "var(--color-accent)" }}
             strokeWidth={1.5}
             aria-hidden="true"
           />
@@ -332,10 +335,16 @@ export const SearchResultList = memo(function SearchResultList({
           className="text-lg font-semibold mb-2"
           style={{ color: "var(--color-text-primary)" }}
         >
-          Enter를 눌러 검색하세요
+          검색 준비 완료
         </h3>
-        <p style={{ color: "var(--color-text-muted)" }}>
-          자연어로 질문을 완성한 후 Enter 키를 누르면 검색합니다
+        <p className="mb-4" style={{ color: "var(--color-text-muted)" }}>
+          질문을 완성한 후 <kbd
+            className="inline-flex items-center px-2 py-0.5 mx-0.5 rounded text-xs font-semibold"
+            style={{
+              backgroundColor: "var(--color-accent)",
+              color: "white",
+            }}
+          >Enter</kbd> 키를 누르면 검색합니다
         </p>
       </div>
     );
