@@ -3,6 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AiAnalysis } from "../types/search";
 
+interface AiTokenEvent {
+  request_id: string;
+  token: string;
+}
+
+interface AiCompleteEvent extends AiAnalysis {
+  request_id: string;
+}
+
+interface AiErrorEvent {
+  request_id: string;
+  error: string;
+}
+
 export interface UseAiAnswerReturn {
   answer: string;
   isStreaming: boolean;
@@ -20,19 +34,24 @@ export function useAiAnswer(): UseAiAnswerReturn {
   const [error, setError] = useState<string | null>(null);
   const [askedQuery, setAskedQuery] = useState("");
   const unlistenRefs = useRef<UnlistenFn[]>([]);
+  const requestIdRef = useRef("");
 
   // Tauri event 리스너 등록
   useEffect(() => {
     const setup = async () => {
-      const u1 = await listen<string>("ai-token", (e) => {
-        setAnswer((prev) => prev + e.payload);
+      const u1 = await listen<AiTokenEvent>("ai-token", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        setAnswer((prev) => prev + e.payload.token);
       });
-      const u2 = await listen<AiAnalysis>("ai-complete", (e) => {
-        setAnalysis(e.payload);
+      const u2 = await listen<AiCompleteEvent>("ai-complete", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        const { request_id: _, ...analysis } = e.payload;
+        setAnalysis(analysis as AiAnalysis);
         setIsStreaming(false);
       });
-      const u3 = await listen<string>("ai-error", (e) => {
-        setError(e.payload);
+      const u3 = await listen<AiErrorEvent>("ai-error", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        setError(e.payload.error);
         setIsStreaming(false);
       });
       unlistenRefs.current = [u1, u2, u3];
@@ -45,6 +64,8 @@ export function useAiAnswer(): UseAiAnswerReturn {
   }, []);
 
   const ask = useCallback((query: string, folderScope?: string | null) => {
+    const requestId = crypto.randomUUID();
+    requestIdRef.current = requestId;
     setAskedQuery(query);
     setAnswer("");
     setAnalysis(null);
@@ -53,6 +74,7 @@ export function useAiAnswer(): UseAiAnswerReturn {
     invoke("ask_ai", {
       query,
       folderScope: folderScope ?? null,
+      requestId,
     }).catch((e) => {
       const msg = typeof e === "object" && e?.message ? e.message : String(e);
       setError(msg);
@@ -61,6 +83,7 @@ export function useAiAnswer(): UseAiAnswerReturn {
   }, []);
 
   const reset = useCallback(() => {
+    requestIdRef.current = "";
     setAskedQuery("");
     setAnswer("");
     setAnalysis(null);

@@ -52,14 +52,20 @@ export function useKeyboardShortcuts(
         return;
       }
 
-      // 화살표 위/아래: 결과 탐색 (자동완성 열려있으면 스킵 — SearchBar가 처리)
+      // 화살표 위/아래: 결과 탐색
+      // - 자동완성 열려있으면 SearchBar가 처리
+      // - 모달 열려있으면 모달 내 입력에 양보
+      // - 검색창 외 입력 필드(설정, QA 질문 등)에서는 양보
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         const suggestionsOpen = document.getElementById("suggestion-listbox");
-        if (!suggestionsOpen) {
-          e.preventDefault();
-          if (e.key === "ArrowUp") h.onArrowUp?.();
-          else h.onArrowDown?.();
-        }
+        if (suggestionsOpen) return;
+        const modalOpen = document.querySelector("[role='dialog']");
+        if (modalOpen) return;
+        if (isInputFocused && document.activeElement?.tagName === "TEXTAREA") return;
+
+        e.preventDefault();
+        if (e.key === "ArrowUp") h.onArrowUp?.();
+        else h.onArrowDown?.();
         return;
       }
 

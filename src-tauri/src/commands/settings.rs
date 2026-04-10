@@ -180,6 +180,76 @@ fn get_settings_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("settings.json")
 }
 
+/// API 키 전용 파일 경로 (settings.json과 분리)
+fn get_credentials_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("credentials.json")
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct Credentials {
+    #[serde(default)]
+    ai_api_key: Option<String>,
+}
+
+/// credentials.json에서 API 키 로드
+fn load_api_key(app_data_dir: &Path) -> Option<String> {
+    let path = get_credentials_path(app_data_dir);
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Credentials>(&s).ok())
+        .and_then(|c| c.ai_api_key)
+}
+
+/// API 키를 credentials.json에 저장 (atomic write)
+fn save_api_key(app_data_dir: &Path, key: Option<&str>) -> Result<(), std::io::Error> {
+    let path = get_credentials_path(app_data_dir);
+    let creds = Credentials {
+        ai_api_key: key.map(|k| k.to_string()),
+    };
+    let json = serde_json::to_string_pretty(&creds).map_err(|e| {
+        std::io::Error::other(e)
+    })?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &json)?;
+    fs::rename(&tmp, &path)
+}
+
+/// 기존 settings.json에 ai_api_key가 남아있으면 credentials.json으로 마이그레이션
+fn migrate_api_key_if_needed(app_data_dir: &Path) {
+    let settings_path = get_settings_path(app_data_dir);
+    let creds_path = get_credentials_path(app_data_dir);
+
+    // credentials.json이 이미 존재하면 마이그레이션 불필요
+    if creds_path.exists() {
+        return;
+    }
+
+    // settings.json에서 ai_api_key 추출 시도
+    let Ok(content) = fs::read_to_string(&settings_path) else {
+        return;
+    };
+    let Ok(mut json_value) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return;
+    };
+
+    if let Some(key) = json_value.get("ai_api_key").and_then(|v| v.as_str()) {
+        if !key.is_empty() {
+            tracing::info!("Migrating API key from settings.json to credentials.json");
+            let _ = save_api_key(app_data_dir, Some(key));
+        }
+    }
+
+    // settings.json에서 ai_api_key 필드 제거
+    if let Some(obj) = json_value.as_object_mut() {
+        if obj.remove("ai_api_key").is_some() {
+            if let Ok(cleaned) = serde_json::to_string_pretty(&json_value) {
+                let tmp = settings_path.with_extension("json.tmp");
+                let _ = fs::write(&tmp, &cleaned).and_then(|_| fs::rename(&tmp, &settings_path));
+            }
+        }
+    }
+}
+
 /// 설정 조회 (캐시에서 읽기, 디스크 I/O 없음)
 #[tauri::command]
 pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Settings> {
@@ -190,6 +260,9 @@ pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<S
 /// 설정 동기 조회 (내부 사용)
 /// 수동 편집된 설정 파일의 비정상 값에 대비하여 범위 클램핑 적용
 pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
+    // 기존 settings.json에 남은 API 키 → credentials.json으로 마이그레이션
+    migrate_api_key_if_needed(app_data_dir);
+
     let settings_path = get_settings_path(app_data_dir);
 
     let mut settings: Settings = if settings_path.exists() {
@@ -200,6 +273,9 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     } else {
         Settings::default()
     };
+
+    // API 키는 credentials.json에서 로드
+    settings.ai_api_key = load_api_key(app_data_dir);
 
     // 범위 클램핑 (수동 편집된 비정상 값 방어)
     settings.max_results = settings.max_results.clamp(1, 500);
@@ -257,7 +333,7 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
 #[tauri::command]
 pub async fn update_settings(
     app: AppHandle,
-    settings: Settings,
+    mut settings: Settings,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     validate_settings(&settings)?;
@@ -289,8 +365,16 @@ pub async fn update_settings(
         tracing::warn!("Failed to disable autostart: {}", e);
     }
 
+    // API 키를 credentials.json에 분리 저장
+    let api_key_for_cache = settings.ai_api_key.clone();
+    save_api_key(&app_data_dir, settings.ai_api_key.as_deref())
+        .map_err(|e| ApiError::SettingsSave(format!("credentials save failed: {}", e)))?;
+
+    // settings.json에는 API 키 없이 저장
+    let mut settings_for_file = settings.clone();
+    settings_for_file.ai_api_key = None;
     let settings_path = get_settings_path(&app_data_dir);
-    let content = serde_json::to_string_pretty(&settings)
+    let content = serde_json::to_string_pretty(&settings_for_file)
         .map_err(|e| ApiError::SettingsSave(e.to_string()))?;
 
     // atomic write: 크래시 시 설정 파일 손상 방지
@@ -298,7 +382,8 @@ pub async fn update_settings(
     fs::write(&tmp_path, &content).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
     fs::rename(&tmp_path, &settings_path).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
 
-    // 인메모리 캐시 갱신
+    // 인메모리 캐시 갱신 (API 키 포함)
+    settings.ai_api_key = api_key_for_cache;
     {
         let container = state.read()?;
         container.update_settings_cache(settings.clone());

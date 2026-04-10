@@ -201,19 +201,24 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [fileAnswerError, setFileAnswerError] = useState<string | null>(null);
   const [fileAnalysis, setFileAnalysis] = useState<AiAnalysis | null>(null);
   const fileQaUnlistenRef = useRef<UnlistenFn[]>([]);
+  const fileQaRequestIdRef = useRef("");
 
-  // 파일 QA Tauri 이벤트 리스너 (마운트 시 1회)
+  // 파일 QA Tauri 이벤트 리스너 (마운트 시 1회, request_id로 필터링)
   useEffect(() => {
     const setup = async () => {
-      const u1 = await listen<string>("ai-file-token", (e) => {
-        setFileAnswer((prev) => prev + e.payload);
+      const u1 = await listen<{ request_id: string; token: string }>("ai-file-token", (e) => {
+        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
+        setFileAnswer((prev) => prev + e.payload.token);
       });
-      const u2 = await listen<AiAnalysis>("ai-file-complete", (e) => {
-        setFileAnalysis(e.payload);
+      const u2 = await listen<AiAnalysis & { request_id: string }>("ai-file-complete", (e) => {
+        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
+        const { request_id: _, ...analysis } = e.payload;
+        setFileAnalysis(analysis as AiAnalysis);
         setFileAnswerLoading(false);
       });
-      const u3 = await listen<string>("ai-file-error", (e) => {
-        setFileAnswerError(e.payload);
+      const u3 = await listen<{ request_id: string; error: string }>("ai-file-error", (e) => {
+        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
+        setFileAnswerError(e.payload.error);
         setFileAnswerLoading(false);
       });
       fileQaUnlistenRef.current = [u1, u2, u3];
@@ -239,11 +244,14 @@ export const PreviewPanel = memo(function PreviewPanel({
     setFileAnalysis(null);
     setFileAnswerError(null);
     setFileAnswerLoading(false);
+    // 파일 변경 시 이전 파일 QA 스트리밍 무효화
+    fileQaRequestIdRef.current = "";
 
     let cancelled = false;
     setLoading(true);
     setError(null);
 
+    // 빠른 탐색 시 불필요한 파싱 방지를 위해 150ms debounce
     const timer = setTimeout(() => {
       invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
         .then((res) => {
@@ -259,7 +267,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             setLoading(false);
           }
         });
-    }, 80);
+    }, 150);
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
@@ -294,12 +302,14 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 파일 질문 전송
   const handleAskFileQuestion = useCallback(() => {
     if (!filePath || !fileQuestion.trim() || fileAnswerLoading) return;
+    const requestId = crypto.randomUUID();
+    fileQaRequestIdRef.current = requestId;
     setFileAnswer("");
     setFileAnalysis(null);
     setFileAnswerError(null);
     setFileAnswerLoading(true);
 
-    invoke("ask_ai_file", { filePath, query: fileQuestion }).catch((e) => {
+    invoke("ask_ai_file", { filePath, query: fileQuestion, requestId }).catch((e) => {
       const msg = typeof e === "string" ? e : e?.message || "질문 처리 실패";
       setFileAnswerError(msg);
       setFileAnswerLoading(false);

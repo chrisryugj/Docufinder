@@ -21,6 +21,28 @@ use tauri::{AppHandle, Emitter, State};
 const MAX_QUERY_LEN: usize = 1000;
 const RAG_RETRIEVE_LIMIT: usize = 25;
 
+/// 스트리밍 토큰 이벤트 payload (request_id로 요청 구분)
+#[derive(serde::Serialize, Clone)]
+struct AiTokenEvent {
+    request_id: String,
+    token: String,
+}
+
+/// 스트리밍 완료 이벤트 payload
+#[derive(serde::Serialize, Clone)]
+struct AiCompleteEvent {
+    request_id: String,
+    #[serde(flatten)]
+    analysis: AiAnalysis,
+}
+
+/// 에러 이벤트 payload
+#[derive(serde::Serialize, Clone)]
+struct AiErrorEvent {
+    request_id: String,
+    error: String,
+}
+
 /// Settings에서 GeminiClient 생성
 fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
     let settings = container.get_settings();
@@ -147,6 +169,7 @@ fn to_analysis(response: crate::llm::LlmResponse, source_files: Vec<String>, ela
 pub async fn ask_ai(
     query: String,
     folder_scope: Option<String>,
+    request_id: String,
     app: AppHandle,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
@@ -171,6 +194,7 @@ pub async fn ask_ai(
 
     let query_clone = query.clone();
     let app_clone = app.clone();
+    let rid = request_id.clone();
 
     tauri::async_runtime::spawn(async move {
         let start = Instant::now();
@@ -194,16 +218,13 @@ pub async fn ask_ai(
             Ok(resp) => resp.results,
             Err(e) => {
                 tracing::error!("RAG 검색 실패: {}", e);
-                let _ = app_clone.emit("ai-error", format!("검색 실패: {}", e));
+                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: format!("검색 실패: {}", e) });
                 return;
             }
         };
 
         if results.is_empty() {
-            let _ = app_clone.emit(
-                "ai-error",
-                "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string(),
-            );
+            let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string() });
             return;
         }
 
@@ -214,9 +235,10 @@ pub async fn ask_ai(
         );
 
         let app_for_token = app_clone.clone();
+        let rid_for_token = rid.clone();
         let stream_result = tokio::task::spawn_blocking(move || {
             client.generate_stream(&prompt, &config, &|token| {
-                let _ = app_for_token.emit("ai-token", token);
+                let _ = app_for_token.emit("ai-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
             })
         })
         .await;
@@ -225,15 +247,15 @@ pub async fn ask_ai(
 
         match stream_result {
             Ok(Ok(response)) => {
-                let _ = app_clone.emit("ai-complete", &to_analysis(response, source_files, elapsed));
+                let _ = app_clone.emit("ai-complete", AiCompleteEvent { request_id: rid, analysis: to_analysis(response, source_files, elapsed) });
             }
             Ok(Err(e)) => {
                 tracing::error!("LLM 생성 실패: {}", e);
-                let _ = app_clone.emit("ai-error", e);
+                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: e });
             }
             Err(e) => {
                 tracing::error!("LLM 태스크 실패: {}", e);
-                let _ = app_clone.emit("ai-error", format!("처리 중 오류: {}", e));
+                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: format!("처리 중 오류: {}", e) });
             }
         }
     });
@@ -246,6 +268,7 @@ pub async fn ask_ai(
 pub async fn ask_ai_file(
     file_path: String,
     query: String,
+    request_id: String,
     app: AppHandle,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
@@ -273,6 +296,7 @@ pub async fn ask_ai_file(
 
     let app_clone = app.clone();
     let file_path_clone = file_path.clone();
+    let rid = request_id.clone();
 
     tauri::async_runtime::spawn(async move {
         let start = Instant::now();
@@ -288,11 +312,11 @@ pub async fn ask_ai_file(
         let content = match content_result {
             Ok(Ok(text)) => text,
             Ok(Err(e)) => {
-                let _ = app_clone.emit("ai-file-error", e);
+                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: e });
                 return;
             }
             Err(e) => {
-                let _ = app_clone.emit("ai-file-error", format!("태스크 실패: {}", e));
+                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: format!("태스크 실패: {}", e) });
                 return;
             }
         };
@@ -303,9 +327,10 @@ pub async fn ask_ai_file(
         );
 
         let app_for_token = app_clone.clone();
+        let rid_for_token = rid.clone();
         let stream_result = tokio::task::spawn_blocking(move || {
             client.generate_stream(&prompt, &config, &|token| {
-                let _ = app_for_token.emit("ai-file-token", token);
+                let _ = app_for_token.emit("ai-file-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
             })
         })
         .await;
@@ -315,15 +340,15 @@ pub async fn ask_ai_file(
 
         match stream_result {
             Ok(Ok(response)) => {
-                let _ = app_clone.emit("ai-file-complete", &to_analysis(response, source_files, elapsed));
+                let _ = app_clone.emit("ai-file-complete", AiCompleteEvent { request_id: rid, analysis: to_analysis(response, source_files, elapsed) });
             }
             Ok(Err(e)) => {
                 tracing::error!("파일 QA LLM 실패: {}", e);
-                let _ = app_clone.emit("ai-file-error", e);
+                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: e });
             }
             Err(e) => {
                 tracing::error!("파일 QA 태스크 실패: {}", e);
-                let _ = app_clone.emit("ai-file-error", format!("처리 중 오류: {}", e));
+                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: format!("처리 중 오류: {}", e) });
             }
         }
     });

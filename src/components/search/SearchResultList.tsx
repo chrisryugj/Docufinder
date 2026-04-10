@@ -158,10 +158,19 @@ export const SearchResultList = memo(function SearchResultList({
     pendingScrollAnchorRef.current = null;
   }, [results, groupedResults, viewMode]);
 
-  // 키보드로 선택 변경 시 스크롤 따라가기
+  // 키보드 선택이 visibleCount를 넘으면 자동 확장
+  useEffect(() => {
+    if (selectedIndex != null && selectedIndex >= visibleCount) {
+      setVisibleCount(prev => Math.max(prev, selectedIndex + 1));
+    }
+  }, [selectedIndex, visibleCount]);
+
+  // 키보드로 선택 변경 시 스크롤 따라가기 (flat/grouped 뷰 모두 대응)
   useEffect(() => {
     if (selectedIndex == null || selectedIndex < 0) return;
-    const el = document.getElementById(`search-result-${selectedIndex}`);
+    const flatId = `search-result-${selectedIndex}`;
+    const groupedId = `grouped-search-result-${selectedIndex}`;
+    const el = document.getElementById(flatId) || document.getElementById(groupedId);
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedIndex]);
 
@@ -243,7 +252,7 @@ export const SearchResultList = memo(function SearchResultList({
           viewMode === "grouped" && groupedResults.length > 0 ? (
             // 그룹 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `grouped-search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
                 {groupedResults.slice(0, visibleCount).map((group, index) => (
                   <GroupedSearchResultItem
                     key={group.file_path}

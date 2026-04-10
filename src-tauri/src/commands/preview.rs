@@ -280,9 +280,6 @@ pub async fn load_markdown_preview(
             match crate::parsers::kordoc::get_markdown(path) {
                 Ok(md) => {
                     tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
-                    // 디버그: 마크다운 첫 500자 출력
-                    let preview: String = md.chars().take(500).collect();
-                    tracing::info!("preview markdown:\n{}", preview);
                     return Ok(md);
                 }
                 Err(e) => {
