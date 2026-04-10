@@ -83,6 +83,11 @@ function AppContent() {
     }
   }, [search.paradigm, search.submitNaturalQuery, executeAiQuery]);
 
+  // ── Anything 진입점: 현재 검색어 유지하며 Anything 모드로 전환 ──
+  const handleSwitchToAnything = useCallback(() => {
+    search.setParadigm("question");
+  }, [search.setParadigm]);
+
   // ── File Actions (cross-cutting) ──
   const {
     handleOpenFile, handleCopyPath, handleOpenFolder,
@@ -549,6 +554,7 @@ function AppContent() {
                     paradigm={search.paradigm}
                     nlSubmitted={search.nlSubmitted}
                     parsedQuery={search.parsedQuery}
+                    onSwitchToAnything={handleSwitchToAnything}
                   />
                 )}
               </div>

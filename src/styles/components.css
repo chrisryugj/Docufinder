@@ -484,3 +484,59 @@ mark.hl-filename {
 .summary-inline > :first-child {
   margin-top: 0;
 }
+
+/* ── AI 답변 마크다운 스타일 ── */
+.ai-answer-prose p {
+  margin: 0.4em 0;
+}
+.ai-answer-prose p:first-child {
+  margin-top: 0;
+}
+.ai-answer-prose h2,
+.ai-answer-prose h3 {
+  font-weight: 600;
+  margin: 0.8em 0 0.3em;
+  color: var(--color-text-primary);
+}
+.ai-answer-prose h2 { font-size: 14px; }
+.ai-answer-prose h3 { font-size: 13px; }
+.ai-answer-prose ul,
+.ai-answer-prose ol {
+  margin: 0.3em 0;
+  padding-left: 1.4em;
+}
+.ai-answer-prose li {
+  margin: 0.15em 0;
+}
+.ai-answer-prose strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.ai-answer-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 12px;
+}
+.ai-answer-prose th,
+.ai-answer-prose td {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+.ai-answer-prose th {
+  background: var(--color-bg-tertiary);
+  font-weight: 600;
+}
+.ai-answer-prose code {
+  font-size: 0.9em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-bg-tertiary);
+}
+.ai-answer-prose blockquote {
+  margin: 0.4em 0;
+  padding: 0.3em 0.8em;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-secondary);
+}

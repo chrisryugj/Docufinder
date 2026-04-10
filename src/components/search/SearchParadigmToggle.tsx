@@ -15,22 +15,21 @@ const InstantIcon = () => (
 
 const NaturalIcon = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M12.2 6.2l-1.4-1.4M3 21l9-9" />
   </svg>
 );
 
-const QuestionIcon = () => (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />
+// Anything 아이콘 (별 + 스파클)
+const AnythingIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
   </svg>
 );
 
 const modes: { value: SearchParadigm; label: string; Icon: React.ComponentType }[] = [
-  { value: "instant", label: "즉시", Icon: InstantIcon },
-  { value: "natural", label: "자연어", Icon: NaturalIcon },
-  { value: "question", label: "질문", Icon: QuestionIcon },
+  { value: "instant", label: "검색", Icon: InstantIcon },
+  { value: "natural", label: "스마트", Icon: NaturalIcon },
+  { value: "question", label: "Anything", Icon: AnythingIcon },
 ];
 
 export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
@@ -46,10 +45,10 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
         const isQuestionActive = m.value === "question" && isActive;
         const hasGradient = isNaturalActive || isQuestionActive;
         const desc = m.value === "instant"
-          ? "실시간 키워드 검색"
+          ? "키워드 검색"
           : m.value === "natural"
-            ? "자연어로 질문하여 검색"
-            : "AI에게 문서 기반 질문";
+            ? "자연어 스마트 검색"
+            : "AI 문서 분석";
         return (
           <button
             key={m.value}
@@ -71,8 +70,8 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
                 background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
                 boxShadow: "0 1px 4px var(--color-accent-glow)",
               } : isQuestionActive ? {
-                background: "linear-gradient(135deg, #7c3aed 0%, #a855f7 100%)",
-                boxShadow: "0 1px 4px rgba(124, 58, 237, 0.3)",
+                background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)",
+                boxShadow: "0 1px 4px rgba(13, 148, 136, 0.3)",
               } : undefined
             }
             title={desc}

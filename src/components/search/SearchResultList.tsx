@@ -65,6 +65,8 @@ interface SearchResultListProps {
   nlSubmitted?: boolean;
   /** NL 파서 결과 (자연어 모드 결과 없음 시 표시) */
   parsedQuery?: ParsedQueryInfo | null;
+  /** Anything(AI) 모드 전환 콜백 */
+  onSwitchToAnything?: () => void;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -107,6 +109,7 @@ export const SearchResultList = memo(function SearchResultList({
   paradigm = "instant",
   nlSubmitted = false,
   parsedQuery,
+  onSwitchToAnything,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -317,6 +320,38 @@ export const SearchResultList = memo(function SearchResultList({
               )}
             </>
           )
+        )}
+
+        {/* Anything 진입점 배너 */}
+        {onSwitchToAnything && results.length > 0 && (
+          <button
+            onClick={onSwitchToAnything}
+            className="w-full mt-3 flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 hover:scale-[1.005] active:scale-[0.995] group"
+            style={{
+              background: "linear-gradient(135deg, rgba(13,148,136,0.06) 0%, rgba(20,184,166,0.06) 100%)",
+              border: "1px solid rgba(13,148,136,0.15)",
+            }}
+          >
+            <div
+              className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="white" stroke="none">
+                <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
+              </svg>
+            </div>
+            <div className="flex-1 text-left min-w-0">
+              <span className="text-xs font-medium" style={{ color: "#0d9488" }}>
+                Anything에게 물어보기
+              </span>
+              <p className="text-[10px] text-[var(--color-text-muted)] truncate">
+                검색 결과를 AI가 분석하여 답변합니다
+              </p>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
         )}
       </div>
     );
