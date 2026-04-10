@@ -40,6 +40,16 @@ export default defineConfig({
     target: "esnext",
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 마크다운 렌더링 (react-markdown + remark + rehype)
+          markdown: ["react-markdown", "remark-gfm"],
+          // 아이콘 라이브러리
+          icons: ["lucide-react"],
+        },
+      },
+    },
   },
 
   // 프로덕션 빌드에서 console.log 제거 (보안: 디버그 정보 노출 방지)

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Dropdown } from "../../ui/Dropdown";
 import { SettingsToggle } from "../SettingsToggle";
 import type { TabProps } from "./types";
@@ -55,9 +56,7 @@ export function AiTab({ settings, onChange }: TabProps) {
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  import("@tauri-apps/api/core").then(({ invoke }) =>
-                    invoke("open_url", { url: "https://aistudio.google.com/apikey" })
-                  );
+                  invoke("open_url", { url: "https://aistudio.google.com/apikey" });
                 }}
                 className="text-[var(--color-accent)] hover:underline"
               >
