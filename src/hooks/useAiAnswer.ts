@@ -36,28 +36,40 @@ export function useAiAnswer(): UseAiAnswerReturn {
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const requestIdRef = useRef("");
 
-  // Tauri event 리스너 등록
+  // Tauri event 리스너 등록 (StrictMode 중복 방지: cancelled flag)
   useEffect(() => {
+    let cancelled = false;
+
     const setup = async () => {
       const u1 = await listen<AiTokenEvent>("ai-token", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         setAnswer((prev) => prev + e.payload.token);
       });
       const u2 = await listen<AiCompleteEvent>("ai-complete", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         const { request_id: _, ...analysis } = e.payload;
         setAnalysis(analysis as AiAnalysis);
         setIsStreaming(false);
       });
       const u3 = await listen<AiErrorEvent>("ai-error", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         setError(e.payload.error);
         setIsStreaming(false);
       });
-      unlistenRefs.current = [u1, u2, u3];
+
+      // setup 완료 시점에 이미 unmount 됐으면 즉시 해제
+      if (cancelled) {
+        u1(); u2(); u3();
+      } else {
+        unlistenRefs.current = [u1, u2, u3];
+      }
     };
     setup();
     return () => {
+      cancelled = true;
       unlistenRefs.current.forEach((fn) => fn());
       unlistenRefs.current = [];
     };
