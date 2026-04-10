@@ -13,7 +13,7 @@ use crate::llm::{
     QA_SYSTEM_PROMPT, FILE_QA_SYSTEM_PROMPT,
 };
 use crate::application::services::search_service::helpers::{
-    smart_apply_date_filter, smart_apply_exclude_filter, smart_apply_file_type_filter,
+    smart_apply_exclude_filter, smart_apply_file_type_filter,
 };
 use crate::search::nl_query::NlQueryParser;
 use crate::AppContainer;
@@ -232,11 +232,30 @@ pub async fn ask_ai(
             Some(tok) => NlQueryParser::parse_with_tokenizer(&query_clone, tok.as_ref()),
             None => NlQueryParser::parse(&query_clone),
         };
-        let search_query = if parsed.keywords.is_empty() {
+        // RAG에서는 날짜를 키워드에 포함 (문서 내용 연도 검색용)
+        use chrono::Datelike;
+        let mut search_query = if parsed.keywords.is_empty() {
             query_clone.clone()
         } else {
             parsed.keywords.clone()
         };
+        if let Some(ref df) = parsed.date_filter {
+            let year_str = match df {
+                crate::search::nl_query::DateFilter::Year(y) => Some(y.to_string()),
+                crate::search::nl_query::DateFilter::LastYear => {
+                    Some((chrono::Utc::now().naive_utc().date().year() - 1).to_string())
+                }
+                crate::search::nl_query::DateFilter::ThisYear => {
+                    Some(chrono::Utc::now().naive_utc().date().year().to_string())
+                }
+                _ => None,
+            };
+            if let Some(y) = year_str {
+                if !search_query.contains(&y) {
+                    search_query = format!("{} {}", y, search_query);
+                }
+            }
+        }
 
         tracing::debug!("RAG 검색쿼리: '{}' (원본: '{}')", search_query, query_clone);
 
@@ -256,12 +275,14 @@ pub async fn ask_ai(
             }
         };
 
-        // NL 파서가 추출한 필터 적용 (exclude, date, file_type)
-        let now = chrono::Utc::now().timestamp();
+        // NL 파서가 추출한 필터 적용 (exclude, file_type만)
+        // ⚠ date_filter는 RAG에 적용하지 않음:
+        //   "2026년 노인일자리"에서 "2026년"은 문서 내용의 연도이지 파일 수정일이 아님.
+        //   파일 수정일 필터를 걸면 관련 문서를 놓칠 수 있음.
+        //   연도는 키워드로 FTS 검색에 반영됨.
         let results: Vec<_> = results
             .into_iter()
             .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
-            .filter(|r| smart_apply_date_filter(r, &parsed.date_filter, now))
             .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
             .collect();
 
