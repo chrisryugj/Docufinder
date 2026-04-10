@@ -46,6 +46,12 @@ const SendIcon = () => (
   </svg>
 );
 
+const WandIcon = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M12.2 6.2l-1.4-1.4M3 21l9-9" />
+  </svg>
+);
+
 // ── SearchBar ────────────────────────────────────────────
 
 export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
@@ -156,89 +162,44 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           </div>
         )}
 
-        {isQuestion ? (
-          /* ── AI 질문 모드 ── */
-          <div
-            className="flex items-start px-3 py-2.5 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
-            style={{
-              backgroundColor: "var(--color-bg-secondary)",
-              border: "1px solid var(--color-accent)",
-              boxShadow: "var(--shadow-sm), 0 0 0 3px var(--color-accent-subtle)",
-            }}
-          >
-            {/* AI 배지 */}
+        {/* ── 검색바 (3모드 통일 레이아웃) ── */}
+        <div
+          className="group/search flex items-center px-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
+          style={{
+            backgroundColor: "var(--color-bg-secondary)",
+            border: `1px solid ${needsEnterToSubmit ? "var(--color-accent)" : "var(--color-border)"}`,
+            boxShadow: needsEnterToSubmit
+              ? "var(--shadow-sm), 0 0 0 3px var(--color-accent-subtle)"
+              : "var(--shadow-sm)",
+            minHeight: "44px",
+          }}
+        >
+          {/* 모드별 배지/아이콘 */}
+          {isQuestion ? (
             <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 mt-0.5 mr-2.5 select-none"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 mr-2.5 select-none"
               style={{
-                backgroundColor: "var(--color-accent-light)",
-                color: "var(--color-accent)",
+                background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)",
+                color: "white",
               }}
             >
               <SparkleIcon />
-              AI
+              Anything
             </div>
-
-            {/* Textarea */}
-            <textarea
-              ref={textareaRef}
-              defaultValue={query}
-              onChange={handleTextareaChange}
-              onKeyDown={handleTextareaKeyDown}
-              onCompositionStart={onCompositionStart}
-              onCompositionEnd={(e) => onCompositionEnd?.(e.currentTarget.value)}
-              rows={1}
-              placeholder="문서에 대해 질문하세요... (Shift+Enter로 줄바꿈)"
-              className="flex-1 bg-transparent border-none focus:outline-none resize-none overflow-hidden leading-relaxed"
+          ) : isNatural ? (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 mr-2.5 select-none"
               style={{
-                color: "var(--color-text-primary)",
-                fontSize: "var(--text-sm)",
-                fontWeight: 500,
-                minHeight: "22px",
-                maxHeight: "96px",
+                background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
+                color: "white",
               }}
-            />
-
-            {/* 로딩 스피너 */}
-            {isLoading && (
-              <div
-                className="w-4 h-4 rounded-full animate-spin shrink-0 ml-2 mt-0.5"
-                style={{
-                  border: "1.5px solid var(--color-border)",
-                  borderTopColor: "var(--color-accent)",
-                }}
-              />
-            )}
-
-            {/* 전송 버튼 */}
-            {query.trim() && !isLoading && (
-              <button
-                onClick={onSubmitNatural}
-                className="shrink-0 ml-2 mt-0 p-1.5 rounded-md transition-all duration-150 hover:opacity-90 active:scale-95"
-                style={{
-                  backgroundColor: "var(--color-accent)",
-                  color: "white",
-                }}
-                title="질문 전송 (Enter)"
-              >
-                <SendIcon />
-              </button>
-            )}
-          </div>
-        ) : (
-          /* ── 일반 검색 모드 ── */
-          <div
-            className="group/search flex items-center px-4 py-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
-            style={{
-              backgroundColor: "var(--color-bg-secondary)",
-              border: `1px solid ${isNatural ? "var(--color-accent)" : "var(--color-border)"}`,
-              boxShadow: isNatural
-                ? "var(--shadow-sm), 0 0 0 3px var(--color-accent-subtle)"
-                : "var(--shadow-sm)",
-            }}
-          >
-            {/* Search Icon */}
+            >
+              <WandIcon />
+              스마트
+            </div>
+          ) : (
             <svg
-              className="w-4.5 h-4.5 flex-shrink-0"
+              className="flex-shrink-0 mr-2.5"
               fill="none"
               stroke="currentColor"
               strokeWidth={2}
@@ -251,8 +212,30 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
               />
             </svg>
+          )}
 
-            {/* Input */}
+          {/* 입력 필드 */}
+          {isQuestion ? (
+            <textarea
+              ref={textareaRef}
+              defaultValue={query}
+              onChange={handleTextareaChange}
+              onKeyDown={handleTextareaKeyDown}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={(e) => onCompositionEnd?.(e.currentTarget.value)}
+              rows={1}
+              placeholder="문서에 대해 무엇이든 물어보세요..."
+              className="flex-1 bg-transparent border-none focus:outline-none resize-none overflow-hidden py-2.5"
+              style={{
+                color: "var(--color-text-primary)",
+                fontSize: "var(--text-sm)",
+                fontWeight: 500,
+                lineHeight: "1.5",
+                minHeight: "24px",
+                maxHeight: "96px",
+              }}
+            />
+          ) : (
             <input
               ref={innerRef}
               type="text"
@@ -261,10 +244,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               onKeyDown={handleKeyDown}
               onBlur={handleBlur}
               placeholder={isNatural
-                ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만"
-                : "예산 집행현황, 계약서, 인사발령"
+                ? "자연어로 검색 조건을 입력하세요..."
+                : "키워드로 문서 검색..."
               }
-              className="flex-1 bg-transparent border-none focus:outline-none ml-3"
+              className="flex-1 bg-transparent border-none focus:outline-none h-[24px]"
               style={{
                 color: "var(--color-text-primary)",
                 fontSize: "var(--text-sm)",
@@ -283,68 +266,95 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
                   : undefined
               }
             />
+          )}
 
-            {/* Shortcut Hint */}
-            {!query && (
-              <kbd
-                className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
-                style={{
-                  color: "var(--color-text-muted)",
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                Ctrl+K
-              </kbd>
-            )}
+          {/* Shortcut / Enter 힌트 */}
+          {!query && !needsEnterToSubmit && (
+            <kbd
+              className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
+              style={{
+                color: "var(--color-text-muted)",
+                backgroundColor: "var(--color-bg-tertiary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              Ctrl+K
+            </kbd>
+          )}
+          {needsEnterToSubmit && query && !isQuestion && (
+            <kbd
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
+              style={{
+                color: "var(--color-text-muted)",
+                backgroundColor: "var(--color-bg-tertiary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              Enter
+            </kbd>
+          )}
 
-            {/* Loading Spinner */}
-            {isLoading && (
-              <div
-                className="w-4 h-4 rounded-full animate-spin ml-2"
-                style={{
-                  border: "1.5px solid var(--color-border)",
-                  borderTopColor: "var(--color-accent)",
-                }}
-                role="status"
-                aria-label="검색 중"
-              />
-            )}
+          {/* Loading Spinner */}
+          {isLoading && (
+            <div
+              className={`w-4 h-4 rounded-full animate-spin shrink-0 ml-2 ${isQuestion ? "mt-0.5" : ""}`}
+              style={{
+                border: "1.5px solid var(--color-border)",
+                borderTopColor: "var(--color-accent)",
+              }}
+              role="status"
+              aria-label="처리 중"
+            />
+          )}
 
-            {/* Enter 힌트 (자연어 모드) */}
-            {isNatural && query && (
-              <kbd
-                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
-                style={{
-                  color: "var(--color-text-muted)",
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                Enter
-              </kbd>
-            )}
+          {/* 전송 버튼 (Anything 모드) */}
+          {isQuestion && query.trim() && !isLoading && (
+            <button
+              onClick={onSubmitNatural}
+              className="shrink-0 ml-2 mt-0 p-1.5 rounded-md transition-all duration-150 hover:opacity-90 active:scale-95"
+              style={{
+                backgroundColor: "var(--color-accent)",
+                color: "white",
+              }}
+              title="Anything에게 질문 (Enter)"
+            >
+              <SendIcon />
+            </button>
+          )}
 
-            {/* Search Mode Dropdown */}
+          {/* Search Mode Dropdown (검색 모드만) */}
+          {!isNatural && !isQuestion && (
             <SearchModeDropdown
               searchMode={searchMode}
               onSearchModeChange={onSearchModeChange}
               status={status}
             />
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* 모드 힌트 (자연어/질문 모드 전환 시) */}
+        {/* 모드 설명 (스마트/Anything) */}
         {needsEnterToSubmit && !query && (
-          <p
-            className="mt-1.5 text-[11px] leading-relaxed px-1"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            {isQuestion
-              ? "문서를 기반으로 AI가 답변합니다. 질문을 입력하고 Enter를 누르세요."
-              : "날짜, 파일 타입, 제외 조건 등을 자유롭게 입력하세요. 예: \"최근 30일 계약서 PDF만\""
-            }
-          </p>
+          <div className="mt-2 px-1 space-y-1">
+            {isQuestion ? (
+              <>
+                <p className="text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                  Anything이 인덱싱된 문서를 분석하여 답변합니다
+                </p>
+                <p className="text-[10px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+                  예: "계약서 해지 조건이 뭔가요?" · "이 문서 핵심 내용 요약해줘" · Shift+Enter로 줄바꿈
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                  자연어로 검색 조건을 조합합니다
+                </p>
+                <p className="text-[10px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+                  예: "작년 예산 한글 문서" · "최근 30일 계약서 PDF만" · "인사발령 제외하고 검색"
+                </p>
+              </>
+            )}
+          </div>
         )}
 
         {/* 자동완성 드롭다운 (즉시 모드만) */}

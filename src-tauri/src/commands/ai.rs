@@ -80,46 +80,84 @@ fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
     Ok(GeminiClient::new(api_key, settings.ai_model))
 }
 
-/// 검색 결과 → RAG 컨텍스트 문자열 (UTF-8 char boundary 안전)
+/// 검색 결과 → RAG 컨텍스트 문자열
+///
+/// 동일 파일의 청크를 그룹화하여 문맥 연속성 확보.
+/// location_hint(페이지/시트) 포함으로 출처 정확도 향상.
 fn build_rag_context(
     results: &[crate::application::dto::search::SearchResult],
 ) -> (String, Vec<String>) {
+    // 파일별 청크 그룹화 (검색 순서 유지)
+    let mut file_order: Vec<String> = Vec::new();
+    let mut file_groups: std::collections::HashMap<String, Vec<&crate::application::dto::search::SearchResult>> =
+        std::collections::HashMap::new();
+    for r in results {
+        if !file_groups.contains_key(&r.file_path) {
+            file_order.push(r.file_path.clone());
+        }
+        file_groups.entry(r.file_path.clone()).or_default().push(r);
+    }
+
     let mut context = String::new();
     let mut source_files: Vec<String> = Vec::new();
-    let mut seen_files = std::collections::HashSet::new();
 
-    for r in results {
+    for file_path in &file_order {
+        let chunks = match file_groups.get(file_path) {
+            Some(c) => c,
+            None => continue,
+        };
         if context.len() >= MAX_CONTEXT_CHARS {
             break;
         }
 
-        if seen_files.insert(r.file_path.clone()) {
-            source_files.push(r.file_path.clone());
-        }
+        source_files.push(file_path.clone());
+        let doc_num = source_files.len();
+        let file_name = &chunks[0].file_name;
 
-        // 문서 번호 = source_files 내 인덱스 (1-based)
-        let doc_num = source_files.iter().position(|p| p == &r.file_path).unwrap_or(0) + 1;
-        let header = format!("[문서{}: {}]", doc_num, r.file_name);
+        // 문서 헤더 (파일당 1회)
+        context.push_str(&format!("[문서{}: {}]\n", doc_num, file_name));
 
-        context.push_str(&header);
-        context.push('\n');
+        // 파일 내 청크들을 chunk_index 순으로 정렬하여 문맥 연속성 확보
+        let mut sorted_chunks: Vec<_> = chunks.iter().collect();
+        sorted_chunks.sort_by_key(|r| r.chunk_index);
 
-        let content = if r.full_content.is_empty() {
-            &r.content_preview
-        } else {
-            &r.full_content
-        };
-
-        let remaining = MAX_CONTEXT_CHARS.saturating_sub(context.len());
-        if content.len() > remaining {
-            let mut end = remaining;
-            while end > 0 && !content.is_char_boundary(end) {
-                end -= 1;
+        for (i, r) in sorted_chunks.iter().enumerate() {
+            if context.len() >= MAX_CONTEXT_CHARS {
+                break;
             }
-            context.push_str(&content[..end]);
-        } else {
-            context.push_str(content);
+
+            // 위치 정보 (페이지, 시트 등)
+            if let Some(hint) = &r.location_hint {
+                context.push_str(&format!("({})\n", hint));
+            } else if let Some(page) = r.page_number {
+                context.push_str(&format!("(페이지 {})\n", page));
+            }
+
+            let content = if r.full_content.is_empty() {
+                &r.content_preview
+            } else {
+                &r.full_content
+            };
+
+            // UTF-8 char boundary 안전한 자르기
+            let remaining = MAX_CONTEXT_CHARS.saturating_sub(context.len());
+            if content.len() > remaining {
+                let mut end = remaining;
+                while end > 0 && !content.is_char_boundary(end) {
+                    end -= 1;
+                }
+                context.push_str(&content[..end]);
+                break; // 컨텍스트 한계 도달
+            } else {
+                context.push_str(content);
+            }
+
+            // 청크 간 구분 (같은 파일 내)
+            if i + 1 < sorted_chunks.len() {
+                context.push_str("\n...\n");
+            }
         }
+
         context.push_str("\n\n");
     }
 

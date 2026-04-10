@@ -1,5 +1,7 @@
 import { memo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { AiAnalysis } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 
@@ -13,11 +15,11 @@ interface Props {
   onExampleClick?: (text: string) => void;
 }
 
-const EXAMPLE_QUESTIONS = [
-  "이 문서의 핵심 내용을 요약해줘",
-  "계약서 해지 조건이 뭔가요?",
-  "2026년 예산 총액은 얼마인가요?",
-  "주요 일정이나 마감 기한은?",
+const EXAMPLE_CATEGORIES: { label: string; icon: string; questions: string[] }[] = [
+  { label: "요약", icon: "📋", questions: ["이 문서의 핵심 내용을 요약해줘"] },
+  { label: "조건·규정", icon: "📜", questions: ["계약서 해지 조건이 뭔가요?"] },
+  { label: "수치·데이터", icon: "📊", questions: ["2026년 예산 총액은 얼마인가요?"] },
+  { label: "일정·기한", icon: "📅", questions: ["주요 일정이나 마감 기한은?"] },
 ];
 
 function basename(path: string): string {
@@ -76,37 +78,53 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   // 대기 상태 (아직 질문 안 함)
   if (!answer && !isStreaming && !analysis) {
     return (
-      <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+      <div className="flex flex-col items-center justify-center py-8 px-6 text-center">
+        {/* 브랜드 아이콘 */}
         <div
-          className="w-11 h-11 rounded-full flex items-center justify-center mb-3"
-          style={{ backgroundColor: "var(--color-accent-light)" }}
+          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+          style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--color-accent)" stroke="none">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="none">
             <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
           </svg>
         </div>
-        <p className="text-sm font-medium text-[var(--color-text-primary)] mb-1">
-          인덱싱된 문서에 대해 질문하세요
+
+        {/* 타이틀 + 설명 */}
+        <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)] mb-1">
+          Anything
+        </h3>
+        <p className="text-xs text-[var(--color-text-muted)] mb-1.5 max-w-xs leading-relaxed">
+          인덱싱된 문서를 분석하여 질문에 답변합니다
         </p>
-        <p className="text-xs text-[var(--color-text-tertiary)] mb-5">
+        <p className="text-[10px] text-[var(--color-text-tertiary)] mb-5">
           Enter로 전송 · Shift+Enter로 줄바꿈
         </p>
 
-        {/* 예시 질문 칩 */}
+        {/* 카테고리별 예시 질문 */}
         {onExampleClick && (
-          <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-            {EXAMPLE_QUESTIONS.map((q) => (
+          <div className="w-full max-w-sm space-y-1.5">
+            {EXAMPLE_CATEGORIES.map((cat) => (
               <button
-                key={q}
-                onClick={() => onExampleClick(q)}
-                className="px-3 py-1.5 rounded-full text-xs transition-all duration-150 hover:opacity-80 active:scale-95"
+                key={cat.label}
+                onClick={() => onExampleClick(cat.questions[0])}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99]"
                 style={{
-                  backgroundColor: "var(--color-bg-tertiary)",
+                  backgroundColor: "var(--color-bg-secondary)",
                   border: "1px solid var(--color-border)",
-                  color: "var(--color-text-secondary)",
                 }}
               >
-                {q}
+                <span className="text-base shrink-0">{cat.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider">
+                    {cat.label}
+                  </span>
+                  <p className="text-xs text-[var(--color-text-secondary)] truncate">
+                    {cat.questions[0]}
+                  </p>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-40">
+                  <path d="M5 12h14M12 5l7 7-7 7" />
+                </svg>
               </button>
             ))}
           </div>
@@ -115,92 +133,124 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
     );
   }
 
+  const { cleanText, refIndices } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer, refIndices: new Set<number>() };
+
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      {/* AI 답변 영역 */}
-      <div className="flex-1 px-4 py-3">
-        {/* 헤더 */}
-        <div className="flex items-start gap-2 mb-3">
-          <div className="w-5 h-5 rounded shrink-0 flex items-center justify-center mt-0.5" style={{ backgroundColor: "var(--color-accent-light)" }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="var(--color-accent)" stroke="none">
+    <div className="flex flex-col h-full overflow-y-auto px-4 py-4 gap-3">
+      {/* 질문 영역 */}
+      {currentQuestion && (
+        <div
+          className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg"
+          style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        >
+          <div
+            className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center mt-0.5"
+            style={{ backgroundColor: "var(--color-text-muted)", opacity: 0.2 }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+          </div>
+          <p className="text-[13px] text-[var(--color-text-primary)] leading-relaxed" title={currentQuestion}>
+            {currentQuestion}
+          </p>
+        </div>
+      )}
+
+      {/* 답변 영역 */}
+      <div
+        className="flex-1 rounded-lg px-3.5 py-3"
+        style={{
+          backgroundColor: "var(--color-bg-secondary)",
+          border: "1px solid var(--color-border)",
+        }}
+      >
+        {/* 답변 라벨 */}
+        <div className="flex items-center gap-2 mb-2.5">
+          <div
+            className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="white" stroke="none">
               <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
             </svg>
           </div>
-          <div className="flex-1 min-w-0">
-            {currentQuestion && (
-              <p className="text-[13px] text-[var(--color-text-muted)] truncate mb-0.5" title={currentQuestion}>
-                Q. {currentQuestion}
-              </p>
-            )}
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">AI 답변</span>
-              {isStreaming && (
-                <span className="text-[10px] text-[var(--color-accent)] animate-pulse">생성 중...</span>
-              )}
-              {analysis && (
-                <span className="text-[10px] text-[var(--color-text-tertiary)] ml-auto">
-                  {(analysis.processing_time_ms / 1000).toFixed(1)}초
-                  {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens} tokens`}
-                </span>
-              )}
-            </div>
-          </div>
+          <span className="text-[11px] font-medium" style={{ color: "#0d9488" }}>
+            AI 문서 분석 결과
+          </span>
+          {isStreaming && (
+            <span className="text-[10px] animate-pulse" style={{ color: "#0d9488" }}>분석 중...</span>
+          )}
+          {analysis && (
+            <span className="text-[10px] text-[var(--color-text-tertiary)] ml-auto tabular-nums">
+              {(analysis.processing_time_ms / 1000).toFixed(1)}초
+            </span>
+          )}
         </div>
 
-        {/* 답변 텍스트 ([출처: ...] 제거) */}
-        {(() => {
-          const { cleanText } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer };
-          return (
-            <div className="text-[14px] text-[var(--color-text-primary)] leading-[1.7] whitespace-pre-wrap break-words ai-answer-content">
+        {/* 답변 본문 (마크다운 렌더링) */}
+        <div className="text-[13px] text-[var(--color-text-primary)] leading-[1.8] break-words ai-answer-prose">
+          {isStreaming ? (
+            // 스트리밍 중: pre-wrap (마크다운 미완성 상태)
+            <span className="whitespace-pre-wrap">
               {cleanText}
-              {isStreaming && (
-                <span className="inline-block w-1.5 h-4 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-              )}
-            </div>
-          );
-        })()}
+              <span
+                className="inline-block w-1.5 h-3.5 rounded-sm animate-pulse ml-0.5 align-text-bottom"
+                style={{ backgroundColor: "#0d9488" }}
+              />
+            </span>
+          ) : (
+            // 완료: 마크다운 렌더링
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText}</ReactMarkdown>
+          )}
+        </div>
       </div>
 
-      {/* 출처 파일 (근거 문서 우선 표시) */}
+      {/* 참조 문서 */}
       {analysis && analysis.source_files.length > 0 && (
-        <div className="border-t border-[var(--color-border)] px-4 py-3">
-          <p className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
-            참조 문서
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-medium text-[var(--color-text-tertiary)] px-1">
+            참조 문서 {refIndices.size > 0 && <span className="font-normal">· 근거 {refIndices.size}건</span>}
           </p>
           {(() => {
-            const { refIndices } = parseSourceRefs(answer);
             const hasRefs = refIndices.size > 0;
-
-            // 근거 문서를 먼저, 나머지를 뒤에
             const sorted = analysis.source_files
               .map((path, i) => ({ path, i, isRef: refIndices.has(i) }))
               .sort((a, b) => (a.isRef === b.isRef ? 0 : a.isRef ? -1 : 1));
 
             return (
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-0.5">
                 {sorted.map(({ path, isRef }) => {
                   const name = basename(path);
                   return (
                     <div
                       key={path}
-                      className={`flex items-center gap-2 px-2 py-1.5 rounded group cursor-pointer transition-colors ${
-                        hasRefs && !isRef ? "opacity-45" : ""
-                      } hover:bg-[var(--color-bg-tertiary)]`}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg group cursor-pointer transition-all ${
+                        hasRefs && !isRef ? "opacity-40" : ""
+                      }`}
+                      style={{
+                        backgroundColor: isRef ? "var(--color-bg-secondary)" : "transparent",
+                        border: isRef ? "1px solid var(--color-border)" : "1px solid transparent",
+                      }}
                       onClick={() => handleOpenFile(path)}
                       title={path}
                     >
                       <FileIcon fileName={name} size="sm" />
-                      <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">
+                      <span className="text-[12px] text-[var(--color-text-secondary)] truncate flex-1">
                         {name}
                       </span>
                       {isRef && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)] shrink-0">
+                        <span
+                          className="text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0"
+                          style={{ backgroundColor: "rgba(13,148,136,0.1)", color: "#0d9488" }}
+                        >
                           근거
                         </span>
                       )}
                       <button
                         onClick={(e) => { e.stopPropagation(); handleOpenFolder(path); }}
-                        className="text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                         title="폴더 열기"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -216,17 +266,25 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
         </div>
       )}
 
-      {/* 하단 액션 */}
+      {/* 하단 액션 바 */}
       {(analysis || error) && (
-        <div className="border-t border-[var(--color-border)] px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           <button
             onClick={onReset}
-            className="text-xs text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
+            style={{ color: "var(--color-text-muted)" }}
           >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="1 4 1 10 7 10" />
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+            </svg>
             새 질문
           </button>
           {analysis && (
-            <span className="text-[10px] text-[var(--color-text-tertiary)]">{analysis.model}</span>
+            <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums">
+              {analysis.model}
+              {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens}t`}
+            </span>
           )}
         </div>
       )}
