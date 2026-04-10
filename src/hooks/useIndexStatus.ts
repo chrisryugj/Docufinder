@@ -218,7 +218,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const removeFolder = useCallback(async (path: string): Promise<void> => {
     try {
       setError(null);
-      await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.SETTINGS);
+      await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.INDEXING);
       await refreshStatus();
     } catch (err) {
       setError(`폴더 제거 실패: ${err instanceof Error ? err.message : String(err)}`);
