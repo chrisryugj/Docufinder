@@ -4,7 +4,7 @@
 //! 기존 AppState를 대체하여 클린 아키텍처 적용
 
 use crate::application::services::{FolderService, IndexService, SearchService};
-use crate::commands::settings::{self, Settings, VectorIndexingMode};
+use crate::commands::settings::{self, Settings};
 use crate::embedder::Embedder;
 use crate::indexer::manager::{IndexContext, WatchManager, WatchPauseHandle, WatchRuntimeSettings};
 use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};

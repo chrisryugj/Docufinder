@@ -37,6 +37,7 @@ impl WatchPauseHandle {
     }
 
     /// Soft pause: 카운터만 증가 (unwatch 없음, 중첩 가능)
+    #[allow(dead_code)]
     pub fn pause_processing(&self) {
         let prev = self
             .pause_count
@@ -49,6 +50,7 @@ impl WatchPauseHandle {
     }
 
     /// Soft resume: 카운터 감소 (compare_exchange로 underflow 방지)
+    #[allow(dead_code)]
     pub fn resume_processing(&self) {
         loop {
             let current = self.pause_count.load(std::sync::atomic::Ordering::SeqCst);

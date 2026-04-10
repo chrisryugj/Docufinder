@@ -10,7 +10,6 @@ pub use data::*;
 pub use folder::*;
 pub use init::*;
 
-use super::settings::VectorIndexingMode;
 use crate::application::dto::indexing::{
     AddFolderResult, ConvertHwpResult, FolderStats, IndexStatus, WatchedFolderInfo,
 };
@@ -28,7 +27,6 @@ pub(super) struct IndexingContext {
     pub(super) service: crate::application::services::IndexService,
     pub(super) include_subfolders: bool,
     pub(super) semantic_available: bool,
-    pub(super) vector_mode: VectorIndexingMode,
     pub(super) semantic_enabled: bool,
     pub(super) intensity: super::settings::IndexingIntensity,
     pub(super) max_file_size_mb: u64,
@@ -49,7 +47,6 @@ pub(super) fn extract_indexing_context(state: &State<'_, RwLock<AppContainer>>) 
         service: container.index_service(),
         include_subfolders: settings.include_subfolders,
         semantic_available: container.is_semantic_available(),
-        vector_mode: settings.vector_indexing_mode.clone(),
         semantic_enabled: settings.semantic_search_enabled,
         intensity: settings.indexing_intensity.clone(),
         max_file_size_mb: settings.max_file_size_mb,

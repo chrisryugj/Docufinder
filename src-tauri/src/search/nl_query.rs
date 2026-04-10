@@ -459,6 +459,14 @@ impl NlQueryParser {
                     "한글 파일",
                     "한글파일",
                     "한글로 된",
+                    "hwpx 문서",
+                    "hwpx 파일",
+                    "hwpx문서",
+                    "hwpx파일",
+                    "hwp 문서",
+                    "hwp 파일",
+                    "hwp문서",
+                    "hwp파일",
                     "hwpx",
                     "hwp",
                 ],
@@ -471,6 +479,10 @@ impl NlQueryParser {
                     "워드문서",
                     "워드 파일",
                     "워드파일",
+                    "docx 문서",
+                    "docx 파일",
+                    "docx문서",
+                    "docx파일",
                     "docx",
                     "doc",
                     "word",
@@ -485,6 +497,10 @@ impl NlQueryParser {
                     "엑셀문서",
                     "엑셀 파일",
                     "엑셀파일",
+                    "xlsx 문서",
+                    "xlsx 파일",
+                    "xlsx문서",
+                    "xlsx파일",
                     "xlsx",
                     "xls",
                     "excel",
@@ -541,15 +557,18 @@ impl NlQueryParser {
                         || remaining[after_pos..].starts_with("만")
                         || remaining[after_pos..].starts_with("으로")
                         || remaining[after_pos..].starts_with("로")
-                        || remaining[after_pos..].starts_with("에서");
+                        || remaining[after_pos..].starts_with("에서")
+                        || remaining[after_pos..].starts_with("문서")
+                        || remaining[after_pos..].starts_with("파일");
 
                     if before_ok && after_ok {
-                        // 패턴 + 뒤의 조사 제거
+                        // 패턴 + 뒤의 접미 표현 제거 (긴 패턴부터)
                         let mut end = after_pos;
                         let rest = &remaining[end..];
-                        // 긴 패턴부터 매칭 ("으로 된" > "으로" > "로 된" > "로")
-                        for postfix in &["으로 된", "으로", "로 된", "로", "만", "에서"]
-                        {
+                        for postfix in &[
+                            " 문서", " 파일", "문서", "파일",
+                            "으로 된", "으로", "로 된", "로", "만", "에서",
+                        ] {
                             if rest.starts_with(postfix) {
                                 end += postfix.len();
                                 break;
