@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import type { useToast } from "./useToast";
 import type { useIndexStatus } from "./useIndexStatus";
+import type { AddFolderResult } from "../types/index";
 
 interface UseFileActionsOptions {
   query: string;
@@ -26,6 +27,11 @@ export function useFileActions({
   invalidateSearch,
   refreshVectorStatus,
 }: UseFileActionsOptions) {
+  // ── 추천 폴더 큐 (연속 클릭 → 순차 실행 → 통합 토스트) ──
+  const folderQueueRef = useRef<string[]>([]);
+  const isProcessingRef = useRef(false);
+  const queueResultsRef = useRef<AddFolderResult[]>([]);
+
   const handleOpenFile = useCallback(
     async (filePath: string, page?: number | null) => {
       const trimmedQuery = query.trim();
@@ -73,41 +79,50 @@ export function useFileActions({
   const handleAddFolder = useCallback(async () => {
     const results = await addFolder();
     if (results && results.length > 0) {
-      const totalIndexed = results.reduce((sum, r) => sum + r.indexed_count, 0);
-      const totalFailed = results.reduce((sum, r) => sum + r.failed_count, 0);
-
-      if (totalFailed > 0) {
-        showToast(
-          `${totalIndexed}개 인덱싱 완료, ${totalFailed}개 파싱 실패`,
-          "error",
-          5000
-        );
-      } else if (totalIndexed > 0) {
-        const folderCount = results.length;
-        const msg = folderCount > 1
-          ? `${folderCount}개 폴더, ${totalIndexed}개 파일 인덱싱 완료`
-          : `${totalIndexed}개 파일 인덱싱 완료`;
-        showToast(msg, "success");
-      }
+      showFolderResultToast(results, showToast);
     }
     return results;
   }, [addFolder, showToast]);
 
-  const handleAddFolderByPath = useCallback(async (path: string) => {
-    const result = await addFolderByPath(path);
-    if (result) {
-      if (result.failed_count > 0) {
-        showToast(
-          `${result.indexed_count}개 인덱싱 완료, ${result.failed_count}개 파싱 실패`,
-          "error",
-          5000
-        );
-      } else if (result.indexed_count > 0) {
-        showToast(`${result.indexed_count}개 파일 인덱싱 완료`, "success");
+  // 큐 처리 루프 — 큐가 빌 때까지 순차 실행 후 통합 토스트
+  const processQueue = useCallback(async () => {
+    if (isProcessingRef.current) return; // 이미 처리 중
+    isProcessingRef.current = true;
+
+    while (folderQueueRef.current.length > 0) {
+      const path = folderQueueRef.current.shift()!;
+      const result = await addFolderByPath(path);
+      if (result) {
+        queueResultsRef.current.push(result);
+      } else {
+        queueResultsRef.current.push({
+          success: false,
+          indexed_count: 0,
+          failed_count: 0,
+          vectors_count: 0,
+          message: "인덱싱 실패",
+          errors: [],
+        });
       }
     }
-    return result;
+
+    // 전부 끝남 → 통합 토스트
+    const results = queueResultsRef.current;
+    if (results.length > 0) {
+      showFolderResultToast(results, showToast);
+    }
+    queueResultsRef.current = [];
+    isProcessingRef.current = false;
   }, [addFolderByPath, showToast]);
+
+  const handleAddFolderByPath = useCallback(async (path: string) => {
+    folderQueueRef.current.push(path);
+
+    // 이미 처리 중이면 큐에만 추가하고 리턴 (루프가 알아서 처리)
+    if (!isProcessingRef.current) {
+      await processQueue();
+    }
+  }, [processQueue]);
 
   const handleRemoveFolder = useCallback(
     async (path: string) => {
@@ -132,4 +147,27 @@ export function useFileActions({
     handleAddFolderByPath,
     handleRemoveFolder,
   };
+}
+
+/** 인덱싱 결과 배열 → 통합 토스트 1번 */
+function showFolderResultToast(
+  results: AddFolderResult[],
+  showToast: ReturnType<typeof useToast>["showToast"],
+) {
+  const totalIndexed = results.reduce((sum, r) => sum + r.indexed_count, 0);
+  const totalFailed = results.reduce((sum, r) => sum + r.failed_count, 0);
+  const folderCount = results.length;
+
+  if (totalFailed > 0) {
+    showToast(
+      `${totalIndexed}개 인덱싱 완료, ${totalFailed}개 파싱 실패`,
+      "error",
+      5000,
+    );
+  } else if (totalIndexed > 0) {
+    const msg = folderCount > 1
+      ? `${folderCount}개 폴더, ${totalIndexed}개 파일 인덱싱 완료`
+      : `${totalIndexed}개 파일 인덱싱 완료`;
+    showToast(msg, "success");
+  }
 }

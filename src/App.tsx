@@ -115,10 +115,8 @@ function AppContent() {
   }, [rawHandleAddFolder, showReportIfNeeded]);
 
   const handleAddFolderByPath = useCallback(async (path: string) => {
-    const result = await rawHandleAddFolderByPath(path);
-    if (result) showReportIfNeeded([result]);
-    return result;
-  }, [rawHandleAddFolderByPath, showReportIfNeeded]);
+    await rawHandleAddFolderByPath(path);
+  }, [rawHandleAddFolderByPath]);
 
   // ── Global setup effects ──
   useEffect(() => { setupGlobalErrorHandlers(); }, []);
