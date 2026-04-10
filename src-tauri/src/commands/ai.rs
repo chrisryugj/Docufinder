@@ -89,12 +89,12 @@ fn build_rag_context(
     let mut seen_files = std::collections::HashSet::new();
 
     for r in results {
-        if seen_files.insert(r.file_path.clone()) {
-            source_files.push(r.file_path.clone());
-        }
-
         if context.len() >= MAX_CONTEXT_CHARS {
             break;
+        }
+
+        if seen_files.insert(r.file_path.clone()) {
+            source_files.push(r.file_path.clone());
         }
 
         let header = if let Some(page) = r.page_number {

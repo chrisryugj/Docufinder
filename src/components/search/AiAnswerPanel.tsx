@@ -112,12 +112,12 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
           </div>
           <div className="flex-1 min-w-0">
             {currentQuestion && (
-              <p className="text-xs text-[var(--color-text-muted)] truncate mb-0.5" title={currentQuestion}>
+              <p className="text-[13px] text-[var(--color-text-muted)] truncate mb-0.5" title={currentQuestion}>
                 Q. {currentQuestion}
               </p>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">AI 답변</span>
+              <span className="text-[13px] font-medium text-[var(--color-text-secondary)]">AI 답변</span>
               {isStreaming && (
                 <span className="text-[10px] text-[var(--color-accent)] animate-pulse">생성 중...</span>
               )}
@@ -132,7 +132,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
         </div>
 
         {/* 답변 텍스트 */}
-        <div className="text-sm text-[var(--color-text-primary)] leading-relaxed whitespace-pre-wrap break-words ai-answer-content">
+        <div className="text-[14px] text-[var(--color-text-primary)] leading-[1.7] whitespace-pre-wrap break-words ai-answer-content">
           {answer}
           {isStreaming && (
             <span className="inline-block w-1.5 h-4 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
@@ -157,7 +157,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
                   title={path}
                 >
                   <FileIcon fileName={name} size="sm" />
-                  <span className="text-xs text-[var(--color-text-secondary)] truncate flex-1">{name}</span>
+                  <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">{name}</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); handleOpenFolder(path); }}
                     className="text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity"
