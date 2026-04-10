@@ -19,6 +19,7 @@ impl SearchService {
             folder_scope
         {
             let escaped = s
+                .to_lowercase()
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
@@ -26,7 +27,7 @@ impl SearchService {
             (
                 "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
                  FROM files f
-                 WHERE f.modified_at IS NOT NULL AND f.path LIKE ?2 ESCAPE '\\'
+                 WHERE f.modified_at IS NOT NULL AND LOWER(f.path) LIKE ?2 ESCAPE '\\'
                  ORDER BY f.modified_at DESC
                  LIMIT ?1"
                     .to_string(),

@@ -4,6 +4,7 @@
 
 use super::{GenerateConfig, LlmProvider, LlmResponse};
 use std::io::BufRead;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -122,6 +123,7 @@ impl LlmProvider for GeminiClient {
         prompt: &str,
         config: &GenerateConfig,
         on_token: &dyn Fn(&str),
+        cancel: &AtomicBool,
     ) -> Result<LlmResponse, String> {
         let url = format!(
             "{}:streamGenerateContent?alt=sse&key={}",
@@ -142,6 +144,11 @@ impl LlmProvider for GeminiClient {
         let mut completion_tokens = None;
 
         for line in reader.lines() {
+            if cancel.load(Ordering::Relaxed) {
+                tracing::debug!("LLM 스트리밍 취소됨");
+                break;
+            }
+
             let line = line.map_err(|e| format!("스트림 읽기 실패: {}", e))?;
             let trimmed = line.trim();
 

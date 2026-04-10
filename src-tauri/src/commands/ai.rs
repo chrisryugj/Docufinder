@@ -12,14 +12,37 @@ use crate::llm::{
     summary_prompt_for_type, GenerateConfig, LlmProvider, MAX_CONTEXT_CHARS,
     QA_SYSTEM_PROMPT, FILE_QA_SYSTEM_PROMPT,
 };
+use crate::application::services::search_service::helpers::{
+    smart_apply_date_filter, smart_apply_exclude_filter, smart_apply_file_type_filter,
+};
 use crate::search::nl_query::NlQueryParser;
 use crate::AppContainer;
-use std::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State};
 
 const MAX_QUERY_LEN: usize = 1000;
 const RAG_RETRIEVE_LIMIT: usize = 25;
+
+/// 현재 진행 중인 AI 스트리밍의 취소 토큰
+/// 새 요청이 오면 이전 토큰을 cancel하고 새 토큰으로 교체
+static AI_CANCEL: std::sync::LazyLock<std::sync::Mutex<Arc<AtomicBool>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Arc::new(AtomicBool::new(false))));
+
+static AI_FILE_CANCEL: std::sync::LazyLock<std::sync::Mutex<Arc<AtomicBool>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Arc::new(AtomicBool::new(false))));
+
+/// 이전 요청 취소 + 새 취소 토큰 발급
+fn rotate_cancel_token(slot: &std::sync::Mutex<Arc<AtomicBool>>) -> Arc<AtomicBool> {
+    let mut guard = slot.lock().unwrap_or_else(|p| p.into_inner());
+    // 이전 요청 취소
+    guard.store(true, Ordering::Release);
+    // 새 토큰 발급
+    let new_token = Arc::new(AtomicBool::new(false));
+    *guard = Arc::clone(&new_token);
+    new_token
+}
 
 /// 스트리밍 토큰 이벤트 payload (request_id로 요청 구분)
 #[derive(serde::Serialize, Clone)]
@@ -192,6 +215,9 @@ pub async fn ask_ai(
         (client, service, config)
     };
 
+    // 이전 요청 취소 + 새 취소 토큰 발급
+    let cancel_token = rotate_cancel_token(&AI_CANCEL);
+
     let query_clone = query.clone();
     let app_clone = app.clone();
     let rid = request_id.clone();
@@ -210,6 +236,9 @@ pub async fn ask_ai(
 
         tracing::debug!("RAG 검색쿼리: '{}' (원본: '{}')", search_query, query_clone);
 
+        // 검색 전 취소 확인
+        if cancel_token.load(Ordering::Relaxed) { return; }
+
         let search_result = service
             .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
             .await;
@@ -223,10 +252,22 @@ pub async fn ask_ai(
             }
         };
 
+        // NL 파서가 추출한 필터 적용 (exclude, date, file_type)
+        let now = chrono::Utc::now().timestamp();
+        let results: Vec<_> = results
+            .into_iter()
+            .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+            .filter(|r| smart_apply_date_filter(r, &parsed.date_filter, now))
+            .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+            .collect();
+
         if results.is_empty() {
             let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string() });
             return;
         }
+
+        // LLM 호출 전 취소 확인
+        if cancel_token.load(Ordering::Relaxed) { return; }
 
         let (context, source_files) = build_rag_context(&results);
         let prompt = format!(
@@ -236,14 +277,18 @@ pub async fn ask_ai(
 
         let app_for_token = app_clone.clone();
         let rid_for_token = rid.clone();
+        let cancel_for_stream = Arc::clone(&cancel_token);
         let stream_result = tokio::task::spawn_blocking(move || {
             client.generate_stream(&prompt, &config, &|token| {
                 let _ = app_for_token.emit("ai-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
-            })
+            }, &cancel_for_stream)
         })
         .await;
 
         let elapsed = start.elapsed().as_millis() as u64;
+
+        // 취소된 요청은 이벤트 발행하지 않음
+        if cancel_token.load(Ordering::Relaxed) { return; }
 
         match stream_result {
             Ok(Ok(response)) => {
@@ -294,6 +339,9 @@ pub async fn ask_ai_file(
         (client, db_path, config)
     };
 
+    // 이전 파일 QA 요청 취소 + 새 취소 토큰 발급
+    let cancel_token = rotate_cancel_token(&AI_FILE_CANCEL);
+
     let app_clone = app.clone();
     let file_path_clone = file_path.clone();
     let rid = request_id.clone();
@@ -308,6 +356,8 @@ pub async fn ask_ai_file(
             load_file_chunks_text(&conn, &file_path_clone)
         })
         .await;
+
+        if cancel_token.load(Ordering::Relaxed) { return; }
 
         let content = match content_result {
             Ok(Ok(text)) => text,
@@ -328,14 +378,18 @@ pub async fn ask_ai_file(
 
         let app_for_token = app_clone.clone();
         let rid_for_token = rid.clone();
+        let cancel_for_stream = Arc::clone(&cancel_token);
         let stream_result = tokio::task::spawn_blocking(move || {
             client.generate_stream(&prompt, &config, &|token| {
                 let _ = app_for_token.emit("ai-file-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
-            })
+            }, &cancel_for_stream)
         })
         .await;
 
         let elapsed = start.elapsed().as_millis() as u64;
+
+        if cancel_token.load(Ordering::Relaxed) { return; }
+
         let source_files = vec![file_path.clone()];
 
         match stream_result {

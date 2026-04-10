@@ -4,6 +4,8 @@
 
 pub mod gemini;
 
+use std::sync::atomic::AtomicBool;
+
 /// LLM 생성 설정
 pub struct GenerateConfig {
     pub temperature: f32,
@@ -22,12 +24,13 @@ pub trait LlmProvider: Send + Sync {
     /// 비스트리밍 생성 (요약 등)
     fn generate(&self, prompt: &str, config: &GenerateConfig) -> Result<LlmResponse, String>;
 
-    /// 스트리밍 생성 (RAG QA)
+    /// 스트리밍 생성 (RAG QA) — cancel 플래그로 조기 종료 가능
     fn generate_stream(
         &self,
         prompt: &str,
         config: &GenerateConfig,
         on_token: &dyn Fn(&str),
+        cancel: &AtomicBool,
     ) -> Result<LlmResponse, String>;
 }
 

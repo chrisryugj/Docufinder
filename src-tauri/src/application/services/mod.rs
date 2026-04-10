@@ -7,7 +7,7 @@
 
 mod folder_service;
 mod index_service;
-mod search_service;
+pub(crate) mod search_service;
 
 pub use folder_service::FolderService;
 pub use index_service::IndexService;

@@ -3,7 +3,7 @@
 //! 다양한 검색 모드 (keyword, semantic, hybrid, filename)를 처리하고
 //! 결과를 정규화된 DTO로 반환합니다.
 
-mod helpers;
+pub(crate) mod helpers;
 mod hybrid;
 mod keyword;
 mod semantic;
