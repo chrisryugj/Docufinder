@@ -97,13 +97,7 @@ fn build_rag_context(
             source_files.push(r.file_path.clone());
         }
 
-        let header = if let Some(page) = r.page_number {
-            format!("[문서: {}, 페이지 {}]", r.file_name, page)
-        } else if let Some(ref hint) = r.location_hint {
-            format!("[문서: {}, {}]", r.file_name, hint)
-        } else {
-            format!("[문서: {}]", r.file_name)
-        };
+        let header = format!("[문서: {}]", r.file_name);
 
         context.push_str(&header);
         context.push('\n');
