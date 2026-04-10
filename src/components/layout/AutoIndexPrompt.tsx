@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
-import type { AddFolderResult } from "../../types/index";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -19,7 +18,7 @@ interface AutoIndexPromptProps {
   onClose: () => void;
   onAutoIndex: () => Promise<unknown>;
   onSelectFolder: () => Promise<unknown>;
-  onIndexFolderByPath?: (path: string) => Promise<AddFolderResult | null>;
+  onIndexFolderByPath?: (path: string) => Promise<void>;
 }
 
 type View = "main" | "folder-select";
