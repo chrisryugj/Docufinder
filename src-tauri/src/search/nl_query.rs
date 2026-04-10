@@ -1054,7 +1054,7 @@ mod tests {
             },
             Case {
                 input: "작년 hwpx 문서",
-                must_have: &[],  // 키워드 빈 문자열 가능 (날짜+파일타입만)
+                must_have: &[],
                 must_not_have: &["문서"],
             },
             Case {
@@ -1072,7 +1072,7 @@ mod tests {
         for (i, case) in cases.iter().enumerate() {
             let result = NlQueryParser::parse_with_tokenizer(case.input, &tok);
             let keywords = &result.keywords;
-            println!("[{}] '{}' → keywords='{}', date={:?}, file_type={:?}",
+            println!("[{}] '{}' -> keywords='{}', date={:?}, file_type={:?}",
                 i, case.input, keywords, result.date_filter, result.file_type);
 
             for must in case.must_have {
@@ -1084,6 +1084,88 @@ mod tests {
                 assert!(!keywords.contains(must_not),
                     "[{}] '{}': 키워드에 '{}' 포함되면 안 됨 (got: '{}')",
                     i, case.input, must_not, keywords);
+            }
+        }
+    }
+
+    /// 실제 DB 대상 FTS 검색 테스트 (DB가 없으면 자동 스킵)
+    #[test]
+    fn test_real_db_noun_fts_search() {
+        use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
+
+        let appdata = match std::env::var("APPDATA") {
+            Ok(v) => v,
+            Err(_) => { println!("SKIP: APPDATA not set"); return; }
+        };
+        let db_path = std::path::PathBuf::from(appdata)
+            .join("com.anything.app")
+            .join("docufinder.db");
+        if !db_path.exists() {
+            println!("SKIP: DB not found at {:?}", db_path);
+            return;
+        }
+
+        let tok = LinderaKoTokenizer::new().unwrap();
+        let conn = rusqlite::Connection::open(&db_path).expect("DB open failed");
+
+        let queries = [
+            "2026년 노인일자리 참여자가 몇명이야",
+            "예산 집행률은 얼마인가요",
+            "공무원 복지포인트 사용 기준을 알려줘",
+            "올해 사업계획서 어디있어",
+            "보조금 지급 현황 보여줘",
+            "인사이동 내역이 궁금해",
+            "계약서 검토 결과",
+        ];
+
+        println!("\n========== 실제 DB FTS 검색 테스트 ==========\n");
+
+        for query in &queries {
+            let parsed = NlQueryParser::parse_with_tokenizer(query, &tok);
+            print!("Q: '{}' -> kw='{}' ", query, parsed.keywords);
+
+            if parsed.keywords.is_empty() {
+                println!("(키워드 없음)");
+                continue;
+            }
+
+            let fts_query = tok.tokenize_query(&parsed.keywords);
+
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH ?",
+                [&fts_query],
+                |row| row.get(0),
+            ).unwrap_or(0);
+
+            println!("-> {}건", count);
+
+            // 상위 3개
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT f.name, snippet(chunks_fts, 0, '>>', '<<', '...', 20)
+                 FROM chunks_fts fts
+                 JOIN chunks c ON c.id = fts.rowid
+                 JOIN files f ON f.id = c.file_id
+                 WHERE chunks_fts MATCH ?
+                 ORDER BY bm25(chunks_fts)
+                 LIMIT 3"
+            ) {
+                if let Ok(rows) = stmt.query_map([&fts_query], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                }) {
+                    for row in rows.flatten() {
+                        let snip = if row.1.chars().count() > 60 {
+                            format!("{}...", row.1.chars().take(60).collect::<String>())
+                        } else {
+                            row.1
+                        };
+                        println!("   - {} | {}", row.0, snip);
+                    }
+                }
+            }
+            println!();
+
+            if count == 0 {
+                println!("   ⚠ 0건 (DB에 관련 문서 없을 수 있음)");
             }
         }
     }

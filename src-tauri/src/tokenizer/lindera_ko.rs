@@ -167,6 +167,27 @@ impl TextTokenizer for LinderaKoTokenizer {
             }
         }
 
+        // 보완: 원본 어절에서 흔한 조사 제거한 형태도 추가
+        // (형태소 분석기가 복합어를 잘못 분해하는 케이스 커버)
+        let common_suffixes = ["이", "가", "을", "를", "은", "는", "의", "에", "에서", "으로", "로"];
+        for word in text.split_whitespace() {
+            let clean = Self::clean_token(word);
+            if clean.chars().count() < 3 {
+                continue;
+            }
+            for suffix in &common_suffixes {
+                if let Some(stem) = clean.strip_suffix(suffix) {
+                    if stem.chars().count() >= 2
+                        && !nouns.contains(&stem.to_string())
+                        && !NOUN_STOPWORDS.contains(&stem)
+                    {
+                        nouns.push(stem.to_string());
+                    }
+                    break; // 가장 긴 매칭만
+                }
+            }
+        }
+
         nouns
     }
 
