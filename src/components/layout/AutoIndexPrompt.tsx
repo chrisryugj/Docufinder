@@ -154,7 +154,7 @@ export function AutoIndexPrompt({
             {/* 전체 인덱싱 카드 */}
             <button
               onClick={handleAutoIndex}
-              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:scale-[1.02] active:scale-[0.99] text-left group"
+              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:shadow-md active:scale-[0.98] text-left group"
               style={{
                 borderColor: "var(--color-accent)",
                 backgroundColor: "var(--color-accent-light)",
@@ -180,7 +180,7 @@ export function AutoIndexPrompt({
             {/* 폴더 선택 카드 */}
             <button
               onClick={() => setView("folder-select")}
-              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:scale-[1.02] active:scale-[0.99] text-left group"
+              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:shadow-md hover:border-[var(--color-accent)] active:scale-[0.98] text-left group"
               style={{
                 borderColor: "var(--color-border)",
                 backgroundColor: "var(--color-bg-secondary)",
