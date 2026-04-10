@@ -44,6 +44,24 @@ pub struct NlQueryParser;
 impl NlQueryParser {
     /// 자연어 쿼리를 파싱하여 구조화된 검색 조건으로 변환
     pub fn parse(query: &str) -> ParsedQuery {
+        Self::parse_inner(query, None)
+    }
+
+    /// 토크나이저를 사용한 파싱 (명사 추출 기반 키워드 생성)
+    ///
+    /// 형태소 분석으로 명사만 추출하여 의문 표현/조사/어미를 자동 제거.
+    /// 패턴 블랙리스트 없이도 "참여자가 몇명이야" → "참여자" 추출 가능.
+    pub fn parse_with_tokenizer(
+        query: &str,
+        tokenizer: &dyn crate::tokenizer::TextTokenizer,
+    ) -> ParsedQuery {
+        Self::parse_inner(query, Some(tokenizer))
+    }
+
+    fn parse_inner(
+        query: &str,
+        tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
+    ) -> ParsedQuery {
         let mut remaining = query.trim().to_string();
         let mut parse_log = Vec::new();
         let original = remaining.clone();
@@ -61,7 +79,8 @@ impl NlQueryParser {
 
         // 규칙 순서대로 적용 (각 규칙이 매칭 부분을 remaining에서 제거)
 
-        // 1. Intent 제거 (문장 끝의 UI 의도 표현)
+        // 1. Intent 제거 (문장 끝의 UI 의도 표현) — 토크나이저 유무와 무관하게 적용
+        //    "찾아줘", "보여줘" 등 명확한 패턴만 (명사 추출이 이걸 대체하진 않음)
         remaining = Self::remove_intent(&remaining);
 
         // 2. 부정어 추출 (날짜/파일타입보다 먼저 — "지난주 빼고" 방지)
@@ -73,13 +92,20 @@ impl NlQueryParser {
         // 4. 파일타입 추출
         let file_type = Self::extract_file_type(&mut remaining, &mut parse_log);
 
-        // 5. 잔여 필러 단어 제거 + 토큰 정리 → keywords
-        let filler_words = ["중에서", "중에", "좀"];
-        let keywords = remaining
-            .split_whitespace()
-            .filter(|w| !filler_words.contains(w))
-            .collect::<Vec<_>>()
-            .join(" ");
+        // 5. 키워드 추출
+        let keywords = if let Some(tok) = tokenizer {
+            // 형태소 분석 기반: 명사만 추출 → 의문사/조사/어미 자동 제거
+            let nouns = tok.extract_nouns(&remaining);
+            nouns.join(" ")
+        } else {
+            // 기존 방식: 필러 단어만 제거
+            let filler_words = ["중에서", "중에", "좀"];
+            remaining
+                .split_whitespace()
+                .filter(|w| !filler_words.contains(w))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
 
         if !keywords.is_empty() {
             parse_log.insert(0, format!("검색어: {}", keywords));
@@ -1000,5 +1026,65 @@ mod tests {
         let result = NlQueryParser::parse("예산안");
         assert!(result.exclude_keywords.is_empty());
         assert_eq!(result.keywords, "예산안");
+    }
+
+    // === parse_with_tokenizer 통합 테스트 ===
+
+    #[test]
+    fn test_tokenizer_rag_queries() {
+        use crate::tokenizer::LinderaKoTokenizer;
+        let tok = LinderaKoTokenizer::new().unwrap();
+
+        struct Case {
+            input: &'static str,
+            must_have: &'static [&'static str],
+            must_not_have: &'static [&'static str],
+        }
+
+        let cases = vec![
+            Case {
+                input: "2026년 노인일자리 참여자가 몇명이야",
+                must_have: &["노인", "일자리", "참여"],
+                must_not_have: &["몇명이야", "이야"],
+            },
+            Case {
+                input: "예산 집행률은 얼마인가요",
+                must_have: &["예산", "집행"],
+                must_not_have: &["얼마", "인가요"],
+            },
+            Case {
+                input: "작년 hwpx 문서",
+                must_have: &[],  // 키워드 빈 문자열 가능 (날짜+파일타입만)
+                must_not_have: &["문서"],
+            },
+            Case {
+                input: "공무원 복지포인트 사용 기준을 알려줘",
+                must_have: &["공무원", "복지", "사용", "기준"],
+                must_not_have: &["알려줘"],
+            },
+            Case {
+                input: "올해 사업계획서 어디있어",
+                must_have: &["사업", "계획"],
+                must_not_have: &["어디있어", "어디"],
+            },
+        ];
+
+        for (i, case) in cases.iter().enumerate() {
+            let result = NlQueryParser::parse_with_tokenizer(case.input, &tok);
+            let keywords = &result.keywords;
+            println!("[{}] '{}' → keywords='{}', date={:?}, file_type={:?}",
+                i, case.input, keywords, result.date_filter, result.file_type);
+
+            for must in case.must_have {
+                assert!(keywords.contains(must),
+                    "[{}] '{}': 키워드에 '{}' 포함되어야 함 (got: '{}')",
+                    i, case.input, must, keywords);
+            }
+            for must_not in case.must_not_have {
+                assert!(!keywords.contains(must_not),
+                    "[{}] '{}': 키워드에 '{}' 포함되면 안 됨 (got: '{}')",
+                    i, case.input, must_not, keywords);
+            }
+        }
     }
 }

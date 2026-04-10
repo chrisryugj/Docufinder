@@ -203,7 +203,7 @@ pub async fn ask_ai(
         return Err(ApiError::Validation(format!("질문이 너무 깁니다 (최대 {}자)", MAX_QUERY_LEN)));
     }
 
-    let (client, service, config) = {
+    let (client, service, config, tokenizer) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
         let service = container.search_service();
@@ -212,7 +212,8 @@ pub async fn ask_ai(
             temperature: settings.ai_temperature,
             max_tokens: settings.ai_max_tokens,
         };
-        (client, service, config)
+        let tokenizer = container.get_tokenizer().ok();
+        (client, service, config, tokenizer)
     };
 
     // 이전 요청 취소 + 새 취소 토큰 발급
@@ -225,9 +226,12 @@ pub async fn ask_ai(
     tauri::async_runtime::spawn(async move {
         let start = Instant::now();
 
-        // 자연어 질문에서 FTS 키워드 추출 ("얼마야", "뭔가요" 등 의문 표현 제거)
-        // NlQueryParser: intent 제거 + 날짜("2026년") 분리 → keywords만 FTS에 사용
-        let parsed = NlQueryParser::parse(&query_clone);
+        // 자연어 질문에서 키워드 추출
+        // 토크나이저가 있으면 형태소 분석으로 명사만 추출 (의문사/조사 자동 제거)
+        let parsed = match tokenizer.as_ref() {
+            Some(tok) => NlQueryParser::parse_with_tokenizer(&query_clone, tok.as_ref()),
+            None => NlQueryParser::parse(&query_clone),
+        };
         let search_query = if parsed.keywords.is_empty() {
             query_clone.clone()
         } else {

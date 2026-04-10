@@ -97,7 +97,10 @@ impl SearchService {
         use crate::search::nl_query::NlQueryParser;
 
         let start = Instant::now();
-        let parsed = NlQueryParser::parse(query);
+        let parsed = match self.tokenizer.as_ref() {
+            Some(tok) => NlQueryParser::parse_with_tokenizer(query, tok.as_ref()),
+            None => NlQueryParser::parse(query),
+        };
 
         let has_filters = parsed.date_filter.is_some()
             || parsed.file_type.is_some()

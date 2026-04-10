@@ -121,7 +121,55 @@ impl LinderaKoTokenizer {
     }
 }
 
+/// ko-dic 품사 태그 중 명사 계열
+/// NNG: 일반명사, NNP: 고유명사, SL: 외래어, SH: 한자
+const NOUN_POS_TAGS: &[&str] = &["NNG", "NNP", "SL", "SH"];
+
+/// 명사지만 검색 키워드로 무의미한 불용어 (대명사/의문사/형식명사)
+const NOUN_STOPWORDS: &[&str] = &[
+    "얼마", "무엇", "어디", "언제", "누구", "어떤", "어느",
+    "몇", "뭐", "왜",
+    "것", "거", "수", "때", "데", "바", "점", "중",
+    "이", "그", "저",
+];
+
 impl TextTokenizer for LinderaKoTokenizer {
+    fn extract_nouns(&self, text: &str) -> Vec<String> {
+        let mut nouns = Vec::new();
+
+        if let Ok(tokenizer) = self.tokenizer.lock() {
+            if let Ok(mut tokens) = tokenizer.tokenize(text) {
+                for token in &mut tokens {
+                    let details = token.details();
+                    // ko-dic details[0] = 품사 태그
+                    if details.is_empty() {
+                        continue;
+                    }
+                    let pos = &details[0];
+                    if NOUN_POS_TAGS.iter().any(|tag| pos.starts_with(tag)) {
+                        let surface = token.surface.as_ref().to_string();
+                        // 1글자 명사 제외 + 불용어 제외
+                        if surface.chars().count() >= 2
+                            && !NOUN_STOPWORDS.contains(&surface.as_str())
+                            && !nouns.contains(&surface)
+                        {
+                            nouns.push(surface);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 숫자+한글 복합어도 보존 (예: "1종", "2차", "3분기")
+        for token in Self::extract_number_korean_tokens(text) {
+            if !nouns.contains(&token) {
+                nouns.push(token);
+            }
+        }
+
+        nouns
+    }
+
     fn tokenize(&self, text: &str) -> Vec<String> {
         // 한글이 포함된 경우에만 형태소 분석
         if Self::contains_korean(text) {
@@ -415,5 +463,48 @@ mod tests {
             query.contains("\"고용보험료\"*"),
             "Should contain original word"
         );
+    }
+
+    // ── extract_nouns 테스트 ──────────────────────────
+
+    #[test]
+    fn test_extract_nouns_basic() {
+        let tok = LinderaKoTokenizer::new().unwrap();
+        let nouns = tok.extract_nouns("노인일자리 참여자가 몇명이야");
+        println!("nouns: {:?}", nouns);
+        // 명사만 남아야 함: "노인", "일자리", "참여자" 등
+        // "몇", "명", "이야" 같은 건 제외
+        assert!(nouns.iter().any(|n| n.contains("참여")), "참여자 계열 명사 포함");
+        assert!(!nouns.iter().any(|n| n == "몇명" || n == "이야"), "의문 표현 제외");
+    }
+
+    #[test]
+    fn test_extract_nouns_question() {
+        let tok = LinderaKoTokenizer::new().unwrap();
+        let nouns = tok.extract_nouns("예산 집행률은 얼마인가요");
+        println!("nouns: {:?}", nouns);
+        assert!(nouns.iter().any(|n| n.contains("예산")));
+        assert!(nouns.iter().any(|n| n.contains("집행")));
+        assert!(!nouns.iter().any(|n| n == "얼마" || n == "인가요"));
+    }
+
+    #[test]
+    fn test_extract_nouns_administrative() {
+        let tok = LinderaKoTokenizer::new().unwrap();
+        let nouns = tok.extract_nouns("공무원 복지포인트 사용 기준을 알려줘");
+        println!("nouns: {:?}", nouns);
+        assert!(nouns.iter().any(|n| n.contains("공무원")));
+        assert!(nouns.iter().any(|n| n.contains("복지")));
+        // "알려줘"는 명사가 아님
+        assert!(!nouns.iter().any(|n| n == "알려줘"));
+    }
+
+    #[test]
+    fn test_extract_nouns_with_number_korean() {
+        let tok = LinderaKoTokenizer::new().unwrap();
+        let nouns = tok.extract_nouns("1종 운전면허 취득 절차");
+        println!("nouns: {:?}", nouns);
+        assert!(nouns.contains(&"1종".to_string()), "숫자+한글 복합어 보존");
+        assert!(nouns.iter().any(|n| n.contains("운전")));
     }
 }

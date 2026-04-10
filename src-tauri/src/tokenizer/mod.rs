@@ -23,4 +23,10 @@ pub trait TextTokenizer: Send + Sync {
     /// 각 토큰에 쌍따옴표와 와일드카드를 적용합니다.
     /// 예: "사용했습니다" → "\"사용\"* \"하\"* \"았\"* \"습니다\"*"
     fn tokenize_query(&self, query: &str) -> String;
+
+    /// 텍스트에서 명사만 추출 (NNG: 일반명사, NNP: 고유명사)
+    ///
+    /// 자연어 질의에서 핵심 키워드를 추출할 때 사용.
+    /// 조사, 어미, 의문사 등 문법 요소를 자동으로 제거합니다.
+    fn extract_nouns(&self, text: &str) -> Vec<String>;
 }
