@@ -281,63 +281,8 @@ impl AppContainer {
                     }
                 });
                 let watch_pause_handle = WatchPauseHandle::new();
-                // 벡터 워커 트리거 콜백: watcher 증분 인덱싱 후 pending 벡터 자동 백필
-                // embedder/vector_index는 lazy로 참조 — WatchManager 초기화 시 모델 로드 안 함
-                let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = {
-                    let vw = self.vector_worker.clone();
-                    let db = self.db_path.clone();
-                    let settings_cache = self.settings_cache.clone();
-                    let watch_pause_handle = watch_pause_handle.clone();
-                    let vector_progress_callback = self.vector_progress_callback.clone();
-                    let embedder_cell = self.embedder.clone();
-                    let vector_index_cell = self.vector_index.clone();
-                    Some(Arc::new(move || {
-                        let settings = settings_cache
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .clone();
-                        if !settings.semantic_search_enabled
-                            || settings.vector_indexing_mode != VectorIndexingMode::Auto
-                        {
-                            return;
-                        }
-                        // 이미 로드된 경우에만 사용 (lazy: 모델 로드 트리거 안 함)
-                        let embedder = match embedder_cell.get().cloned() {
-                            Some(e) => e,
-                            None => return,
-                        };
-                        let vector_index = match vector_index_cell.get().cloned() {
-                            Some(vi) => vi,
-                            None => return,
-                        };
-
-                        // 단일 write lock 스코프 (TOCTOU 방지)
-                        if let Ok(mut worker) = vw.write() {
-                            if !worker.is_running() {
-                                let progress_callback = vector_progress_callback
-                                    .read()
-                                    .ok()
-                                    .and_then(|cb| cb.clone());
-                                watch_pause_handle.pause_processing();
-                                if let Err(e) = worker.start(
-                                    db.clone(),
-                                    embedder,
-                                    vector_index,
-                                    progress_callback,
-                                    Some(settings.indexing_intensity.clone()),
-                                ) {
-                                    watch_pause_handle.resume_processing();
-                                    tracing::warn!(
-                                        "[WatchManager] Failed to trigger vector worker after incremental update: {}",
-                                        e
-                                    );
-                                } else {
-                                    tracing::debug!("[WatchManager] Vector worker triggered after incremental update");
-                                }
-                            }
-                        }
-                    }))
-                };
+                // 벡터 인덱싱은 AI RAG 전용 → incremental update 후 자동 벡터 트리거 비활성화
+                let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = None;
                 let hwp_callback = self
                     .hwp_detected_callback
                     .read()

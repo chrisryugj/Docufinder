@@ -55,7 +55,9 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
     const loadSettings = async () => {
       try {
         const settings = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
-        setSearchMode(settings.search_mode ?? ("keyword" as SearchMode));
+        // hybrid/semantic은 UI에서 제거됨 → keyword로 폴백
+        const mode = settings.search_mode ?? "keyword";
+        setSearchMode((mode === "hybrid" || mode === "semantic") ? "keyword" as SearchMode : mode);
         setMinConfidence(settings.min_confidence ?? 0);
         setViewDensity(settings.view_density ?? "compact");
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
@@ -72,7 +74,8 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
 
   const applySettings = useCallback(
     (settings: Settings) => {
-      setSearchMode(settings.search_mode ?? ("keyword" as SearchMode));
+      const mode = settings.search_mode ?? "keyword";
+      setSearchMode((mode === "hybrid" || mode === "semantic") ? "keyword" as SearchMode : mode);
       setMinConfidence(settings.min_confidence ?? 0);
       setViewDensity(settings.view_density ?? "compact");
       setSemanticEnabled(settings.semantic_search_enabled ?? false);

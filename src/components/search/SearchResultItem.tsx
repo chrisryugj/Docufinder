@@ -126,7 +126,9 @@ export const SearchResultItem = memo(function SearchResultItem({
         padding: isCompact ? "0.5rem 0.625rem" : "0.75rem 0.875rem",
         ...(isSelected && {
           backgroundColor: "var(--color-accent-light)",
-          boxShadow: "inset 3px 0 0 var(--color-accent)",
+          outline: "1.5px solid var(--color-accent)",
+          outlineOffset: "-1.5px",
+          borderRadius: "8px",
         }),
       } as React.CSSProperties}
       role="option"

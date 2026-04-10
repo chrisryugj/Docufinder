@@ -59,17 +59,14 @@ pub(super) fn extract_indexing_context(state: &State<'_, RwLock<AppContainer>>) 
 }
 
 pub(super) fn should_auto_vector(
-    ctx: &IndexingContext,
-    was_cancelled: bool,
-    indexed_count: usize,
-    skip_drive_root: bool,
+    _ctx: &IndexingContext,
+    _was_cancelled: bool,
+    _indexed_count: usize,
+    _skip_drive_root: bool,
 ) -> bool {
-    ctx.semantic_enabled
-        && ctx.semantic_available
-        && ctx.vector_mode == VectorIndexingMode::Auto
-        && !was_cancelled
-        && indexed_count > 0
-        && !skip_drive_root
+    // 벡터 인덱싱은 AI RAG 전용 → 자동 시작 비활성화
+    // 사용자가 명시적으로 start_vector_indexing 커맨드를 호출할 때만 실행
+    false
 }
 
 /// 인덱싱 완료 후 벡터 자동 시작 여부 판단 + 실행

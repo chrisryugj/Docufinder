@@ -591,13 +591,9 @@ function AppContent() {
         <StatusBar
           status={idx.status}
           progress={idx.progress}
-          vectorStatus={idx.vectorStatus}
           onCancelIndexing={idx.cancelIndexing}
-          onCancelVectorIndexing={idx.cancelVectorIndexing}
-          onStartVectorIndexing={idx.startVectorIndexing}
           onResumeIndexing={handleResumeIndexing}
           hasCancelledFolders={!!idx.cancelledFolderPath}
-          semanticEnabled={semanticEnabled}
         />
       </div>
 

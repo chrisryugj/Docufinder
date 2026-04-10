@@ -78,9 +78,23 @@ impl SearchService {
         let hybrid_results = hybrid::merge_results(&fts_results, &vector_results, RRF_K);
 
         // 5. 벡터 전용 결과 DB 조회
+        // 벡터 전용 결과는 유사도 임계값 적용 (FTS 미매칭 = 키워드 관련성 없음)
+        // 벡터 유사도 0.5 미만이면 무관한 결과로 판단하여 제외
+        const VECTOR_ONLY_MIN_SCORE: f32 = 0.5;
+        let vector_score_map: HashMap<i64, f32> = vector_results
+            .iter()
+            .map(|r| (r.chunk_id, r.score))
+            .collect();
         let vector_only_ids: Vec<i64> = hybrid_results
             .iter()
             .filter(|r| !fts_map.contains_key(&r.chunk_id))
+            .filter(|r| {
+                vector_score_map
+                    .get(&r.chunk_id)
+                    .copied()
+                    .unwrap_or(0.0)
+                    >= VECTOR_ONLY_MIN_SCORE
+            })
             .map(|r| r.chunk_id)
             .collect();
 

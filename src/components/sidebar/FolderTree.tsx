@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
+import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
@@ -240,9 +240,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   const totalIndexed = isFullPcMode
     ? Object.values(folderStats).reduce((sum, s) => sum + s.indexed_count, 0)
     : 0;
-  const driveLetters = isFullPcMode
-    ? folders.map((f) => f.replace(/^\\\\\?\\/, "").charAt(0).toUpperCase()).sort().join(", ")
-    : "";
+  // driveLetters는 전체 PC 모드에서 드라이브별 행으로 대체됨
 
   if (folders.length === 0) {
     return (
@@ -255,9 +253,10 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     );
   }
 
-  // 전체 PC 인덱싱 모드: 요약 표시
+  // 전체 PC 인덱싱 모드: 요약 + 드라이브별 표시 (우클릭 삭제 지원)
   if (isFullPcMode) {
     return (
+      <>
       <div className="px-3 py-2 space-y-1.5">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 flex-shrink-0" style={{ color: "var(--color-success)" }} />
@@ -266,10 +265,60 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           </span>
         </div>
         <div className="text-xs space-y-0.5 pl-6" style={{ color: "var(--color-sidebar-muted)" }}>
-          <div>드라이브: {driveLetters}</div>
           {totalIndexed > 0 && <div>{totalIndexed.toLocaleString()}개 문서</div>}
         </div>
+        {/* 드라이브별 행 (우클릭 삭제 가능) */}
+        <ul className="space-y-0.5 pl-4">
+          {folders.map((folder) => {
+            const drive = folder.replace(/^\\\\\?\\/, "").charAt(0).toUpperCase();
+            const stats = folderStats[folder];
+            return (
+              <li
+                key={folder}
+                className="flex items-center gap-1.5 px-2 py-1 rounded cursor-default text-xs hover-sidebar-item"
+                onContextMenu={(e) => handleContextMenu(e, folder)}
+                data-context-menu
+              >
+                <HardDrive className="w-3 h-3 flex-shrink-0" style={{ color: "var(--color-sidebar-muted)" }} />
+                <span style={{ color: "var(--color-sidebar-text)" }}>{drive}:</span>
+                {stats && (
+                  <span style={{ color: "var(--color-sidebar-muted)" }}>
+                    {stats.indexed_count.toLocaleString()}개
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </div>
+      {contextMenu.isOpen && createPortal(
+        <div
+          role="menu"
+          className="ctx-menu fixed z-50 min-w-[160px] py-1 rounded-lg shadow-lg"
+          style={{ top: contextMenu.y, left: contextMenu.x, backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
+        >
+          <button
+            onClick={async () => { const path = contextMenu.folderPath; closeContextMenu(); try { await invoke("open_folder", { path }); } catch {} }}
+            role="menuitem"
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          >
+            <FolderOpen className="w-4 h-4 clr-warning" />
+            탐색기에서 열기
+          </button>
+          {onRemoveFolder && (
+            <button
+              onClick={() => { const path = contextMenu.folderPath; closeContextMenu(); onRemoveFolder(path); }}
+              role="menuitem"
+              className="ctx-menu-item-danger w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              드라이브 제거
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+      </>
     );
   }
 

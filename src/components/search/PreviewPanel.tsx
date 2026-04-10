@@ -89,6 +89,46 @@ function highlightTextWithLegal(
   return <>{segments}</>;
 }
 
+// ─── HTML 태그 전처리 (kordoc이 HTML 표를 반환하는 경우 대응) ──
+
+/** HTML 표를 마크다운 테이블로 변환, 기타 HTML 태그 제거 */
+function stripHtmlForMarkdown(md: string): string {
+  // HTML <table>을 마크다운 테이블로 변환
+  const result = md.replace(/<table[^>]*>[\s\S]*?<\/table>/gi, (table) => {
+    const rows: string[][] = [];
+    // 각 행 추출
+    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch;
+    while ((trMatch = trRegex.exec(table)) !== null) {
+      const cells: string[] = [];
+      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+      let cellMatch;
+      while ((cellMatch = cellRegex.exec(trMatch[1])) !== null) {
+        // 셀 내부 HTML 태그 제거 + 트림
+        cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
+      }
+      if (cells.length > 0) rows.push(cells);
+    }
+    if (rows.length === 0) return "";
+
+    // 최대 열 수에 맞춰 정규화
+    const maxCols = Math.max(...rows.map((r) => r.length));
+    const normalized = rows.map((r) => {
+      while (r.length < maxCols) r.push("");
+      return r;
+    });
+
+    // 마크다운 테이블 생성
+    const header = `| ${normalized[0].join(" | ")} |`;
+    const separator = `| ${normalized[0].map(() => "---").join(" | ")} |`;
+    const body = normalized.slice(1).map((r) => `| ${r.join(" | ")} |`).join("\n");
+    return `\n${header}\n${separator}\n${body}\n`;
+  });
+
+  // 나머지 <br> 태그 처리
+  return result.replace(/<br\s*\/?>/gi, " ");
+}
+
 // ─── 마크다운 커스텀 컴포넌트 ──────────────────────────
 
 function createMarkdownComponents(
@@ -609,7 +649,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         {!loading && !error && markdown && (
           <div className="doc-preview px-6 py-5">
             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-              {markdown.replace(/<br\s*\/?>/gi, " ")}
+              {stripHtmlForMarkdown(markdown)}
             </ReactMarkdown>
           </div>
         )}
