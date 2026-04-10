@@ -109,6 +109,33 @@ export function useIndexStatus(): UseIndexStatusReturn {
     };
   }, []);
 
+  // folder-removed 이벤트 리스너 (백그라운드 삭제 완료/실패 알림)
+  useEffect(() => {
+    let unlisten: UnlistenFn | null = null;
+
+    const setup = async () => {
+      try {
+        unlisten = await listen<{ path: string; success: boolean; error?: string }>(
+          "folder-removed",
+          (event) => {
+            const { success, path, error } = event.payload;
+            if (success) {
+              refreshStatus();
+            } else {
+              setError(`폴더 제거 실패 (${path}): ${error ?? "알 수 없는 오류"}`);
+              refreshStatus(); // 실패해도 상태는 갱신
+            }
+          },
+        );
+      } catch {
+        // 리스너 등록 실패
+      }
+    };
+
+    setup();
+    return () => { if (unlisten) unlisten(); };
+  }, [refreshStatus]);
+
   // 초기 로드
   useEffect(() => {
     refreshStatus();
@@ -214,11 +241,12 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, [refreshStatus, indexSingleFolder]);
 
-  // 폴더 제거
+  // 폴더 제거 (즉시 반환, 백그라운드 삭제 — folder-removed 이벤트로 완료 알림)
   const removeFolder = useCallback(async (path: string): Promise<void> => {
     try {
       setError(null);
-      await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.INDEXING);
+      await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.SETTINGS);
+      // 즉시 반환됨 — optimistic UI 갱신
       await refreshStatus();
     } catch (err) {
       setError(`폴더 제거 실패: ${err instanceof Error ? err.message : String(err)}`);

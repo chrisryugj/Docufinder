@@ -187,26 +187,55 @@ pub async fn add_folder(
     })
 }
 
-/// 감시 폴더 제거
+/// 감시 폴더 제거 (비동기 — 즉시 응답 후 백그라운드 삭제)
 #[tauri::command]
-pub async fn remove_folder(path: String, state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
+pub async fn remove_folder(
+    path: String,
+    app_handle: AppHandle,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
     tracing::info!("Removing folder from watch: {}", path);
 
-    // 파일 감시 중지
+    // 파일 감시 즉시 중지 (동기, 빠름)
     stop_file_watching(&state, Path::new(&path))?;
 
-    // FolderService로 DB/벡터 삭제 위임
-    let service = {
+    // DB/벡터 삭제에 필요한 것들을 미리 추출 (State는 spawn 안으로 못 넘김)
+    let (service, db_path, filename_cache) = {
         let container = state.read()?;
-        container.folder_service()
+        (
+            container.folder_service(),
+            container.db_path.clone(),
+            container.get_filename_cache(),
+        )
     };
 
-    let result = service.remove_folder(&path).await.map_err(ApiError::from);
+    // 즉시 응답 — 무거운 삭제는 백그라운드
+    let path_clone = path.clone();
+    tauri::async_runtime::spawn(async move {
+        match service.remove_folder(&path_clone).await {
+            Ok(()) => {
+                // FilenameCache 갱신
+                if let Ok(conn) = crate::db::get_connection(&db_path) {
+                    let _ = filename_cache.load_from_db(&conn);
+                }
+                let _ = app_handle.emit("folder-removed", serde_json::json!({
+                    "path": path_clone,
+                    "success": true,
+                }));
+                tracing::info!("Folder removed successfully: {}", path_clone);
+            }
+            Err(e) => {
+                tracing::error!("Folder removal failed: {}: {}", path_clone, e);
+                let _ = app_handle.emit("folder-removed", serde_json::json!({
+                    "path": path_clone,
+                    "success": false,
+                    "error": e.to_string(),
+                }));
+            }
+        }
+    });
 
-    // FilenameCache 갱신
-    refresh_filename_cache(&state);
-
-    result
+    Ok(())
 }
 
 /// 폴더 재인덱싱
