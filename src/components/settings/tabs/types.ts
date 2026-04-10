@@ -8,8 +8,6 @@ export interface TabProps {
 
 export const SEARCH_MODE_OPTIONS = [
   { value: "keyword", label: "키워드 검색 (권장)" },
-  { value: "hybrid", label: "하이브리드 (모델 필요)" },
-  { value: "semantic", label: "의미 검색 (모델 필요)" },
   { value: "filename", label: "파일명 검색" },
 ];
 

@@ -31,10 +31,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const originalDataRootRef = useRef<string | undefined>(undefined);
-  const [adminCodeInput, setAdminCodeInput] = useState("");
-  const [showAdminCodePrompt, setShowAdminCodePrompt] = useState(false);
-  const [adminCodeError, setAdminCodeError] = useState<string | null>(null);
-  const pendingConfirmRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -85,17 +81,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     if (!settings) return;
 
-    if (
-      key === "search_mode" &&
-      (value === "hybrid" || value === "semantic") &&
-      !(settings.semantic_search_enabled ?? false)
-    ) {
-      enableSemanticWithConfirm(() => {
-        setSettings((prev) => prev ? { ...prev, [key]: value, semantic_search_enabled: true } : prev);
-      });
-      return;
-    }
-
     setSettings({ ...settings, [key]: value });
 
     if (key === "theme" && onThemeChange) {
@@ -103,44 +88,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     }
   };
 
-  const enableSemanticWithConfirm = (onConfirm: () => void) => {
-    pendingConfirmRef.current = onConfirm;
-    setAdminCodeInput("");
-    setAdminCodeError(null);
-    setShowAdminCodePrompt(true);
-  };
-
-  const handleAdminCodeSubmit = async () => {
-    if (!adminCodeInput.trim()) return;
-    try {
-      const isValid = await invokeWithTimeout<boolean>("verify_admin_code", { code: adminCodeInput }, IPC_TIMEOUT.SETTINGS);
-      if (!isValid) {
-        setAdminCodeError("관리자 코드가 올바르지 않습니다.");
-        return;
-      }
-      setShowAdminCodePrompt(false);
-      const confirmed = await ask(
-        "시맨틱 검색은 ONNX 모델 다운로드가 필요하며, 추가 디스크 공간과 메모리를 사용합니다.\n활성화하시겠습니까?",
-        { title: "시맨틱 검색 활성화", kind: "info", okLabel: "활성화", cancelLabel: "취소" }
-      );
-      if (confirmed) {
-        pendingConfirmRef.current?.();
-      }
-    } catch {
-      setAdminCodeError("검증 중 오류가 발생했습니다.");
-    }
-  };
-
-  const handleSemanticToggle = (enabled: boolean) => {
-    if (!settings) return;
-    if (enabled) {
-      enableSemanticWithConfirm(() => {
-        setSettings((prev) => prev ? { ...prev, semantic_search_enabled: true } : prev);
-      });
-    } else {
-      setSettings({ ...settings, semantic_search_enabled: false });
-    }
-  };
 
   if (isLoading) {
     return (
@@ -214,38 +161,6 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         </div>
       )}
 
-      {showAdminCodePrompt && (
-        <div
-          className="mb-3 p-3 rounded-lg border"
-          style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}
-        >
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-primary)" }}>
-            시맨틱 검색을 활성화하려면 관리자 코드를 입력하세요.
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              autoFocus
-              value={adminCodeInput}
-              onChange={(e) => { setAdminCodeInput(e.target.value); setAdminCodeError(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleAdminCodeSubmit(); if (e.key === "Escape") setShowAdminCodePrompt(false); }}
-              className="flex-1 px-2.5 py-1.5 text-sm rounded-md border outline-none focus:ring-1"
-              style={{
-                backgroundColor: "var(--color-bg-primary)",
-                borderColor: adminCodeError ? "var(--color-error)" : "var(--color-border)",
-                color: "var(--color-text-primary)",
-              }}
-              placeholder="관리자 코드"
-            />
-            <Button size="sm" onClick={handleAdminCodeSubmit}>확인</Button>
-            <Button size="sm" variant="ghost" onClick={() => setShowAdminCodePrompt(false)}>취소</Button>
-          </div>
-          {adminCodeError && (
-            <p className="mt-1 text-xs" style={{ color: "var(--color-error)" }}>{adminCodeError}</p>
-          )}
-        </div>
-      )}
-
       {settings && (
         <div className="space-y-3">
           {activeTab === "general" && (
@@ -255,7 +170,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
           )}
           {activeTab === "search" && (
             <div role="tabpanel" id="settings-panel-search" aria-labelledby="settings-tab-search">
-              <SearchTab settings={settings} onChange={handleChange} onSemanticToggle={handleSemanticToggle} />
+              <SearchTab settings={settings} onChange={handleChange} />
             </div>
           )}
           {activeTab === "ai" && (

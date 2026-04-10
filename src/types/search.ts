@@ -46,7 +46,7 @@ export interface SearchResponse {
   search_time_ms: number;
 }
 
-/** 검색 모드 */
+/** 검색 모드 (hybrid/semantic은 내부 RAG 전용, UI 미노출) */
 export type SearchMode = "keyword" | "semantic" | "hybrid" | "filename";
 
 /** 최근 검색 기록 */
@@ -62,11 +62,9 @@ export interface SearchModeInfo {
   desc: string;
 }
 
-/** 검색 모드 목록 */
+/** 검색 모드 목록 (UI에 노출되는 것만) */
 export const SEARCH_MODES: SearchModeInfo[] = [
-  { value: "hybrid", label: "하이브리드", desc: "키워드 + AI 통합" },
   { value: "keyword", label: "키워드", desc: "FTS5 전문검색" },
-  { value: "semantic", label: "시맨틱", desc: "AI 의미 검색" },
   { value: "filename", label: "파일명", desc: "파일명 검색" },
 ];
 

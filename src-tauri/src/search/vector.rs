@@ -460,8 +460,9 @@ impl VectorIndex {
         limit: usize,
     ) -> Result<Vec<VectorResult>, VectorError> {
         /// 최소 코사인 유사도 임계값 (이 미만은 무관한 결과로 판단)
-        /// KoSimCSE-roberta에서 의미적 관련 쌍은 보통 0.5+, 0.35 미만은 노이즈
-        const MIN_SIMILARITY: f32 = 0.35;
+        /// KoSimCSE-roberta: 의미적 관련 쌍은 보통 0.5+, 영문 콘텐츠에 대해
+        /// 한국어 쿼리가 0.35~0.45 허위 양성 발생 → 0.45로 상향
+        const MIN_SIMILARITY: f32 = 0.45;
 
         // 읽기 락으로 인덱스 검색 (병렬 검색 가능)
         let results = {

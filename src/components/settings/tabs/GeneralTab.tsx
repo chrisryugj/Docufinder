@@ -38,7 +38,7 @@ export function GeneralTab({ settings, onChange }: TabProps) {
         </div>
       </div>
       <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-        키워드: FTS5 전문 검색 / 하이브리드: 키워드 + 의미 검색 (시맨틱 활성화 필요)
+        키워드: FTS5 전문 검색 / 파일명: 파일 이름으로 검색
       </p>
 
       {/* 최대 결과 + 표시 단위 (2열) */}

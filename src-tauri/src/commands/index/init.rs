@@ -11,15 +11,11 @@ pub async fn initialize_app(
 ) -> ApiResult<()> {
     tracing::info!("Initializing app after disclaimer acceptance");
 
-    // 미완료 벡터 인덱싱 자동 재개
-    // 단, FTS 미완료 폴더가 존재하면 벡터 인덱싱 스킵
-    // (FolderTree의 resume_indexing이 FTS → 벡터 순서로 처리하므로 동시 실행 시 DB Lock 발생)
+    // 벡터 인덱싱은 AI RAG 전용 → 앱 시작 시 자동 재개 비활성화
+    // 사용자가 명시적으로 start_vector_indexing 커맨드를 호출할 때만 실행
     let has_pending_chunks = {
         let container = state.read()?;
-        let startup_settings = container.get_settings();
-        let should_auto_resume = container.is_semantic_available()
-            && startup_settings.semantic_search_enabled
-            && startup_settings.vector_indexing_mode == VectorIndexingMode::Auto;
+        let should_auto_resume = false;
 
         if should_auto_resume {
             let Ok(conn) = crate::db::get_connection(&container.db_path) else {

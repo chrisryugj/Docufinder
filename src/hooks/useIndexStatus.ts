@@ -49,6 +49,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const [error, setError] = useState<string | null>(null);
   const [cancelledFolderPath, setCancelledFolderPath] = useState<string | null>(null);
   const autoIndexingRef = useRef(false);
+  // 멀티 드라이브 인덱싱 시 이전 드라이브 누적 수치
+  const cumulativeRef = useRef({ processedOffset: 0, totalOffset: 0 });
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -70,7 +72,17 @@ export function useIndexStatus(): UseIndexStatusReturn {
       try {
         unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
           const p = event.payload;
-          setProgress(p);
+          // 멀티 드라이브 인덱싱 중이면 누적 수치 반영
+          if (autoIndexingRef.current) {
+            const cum = cumulativeRef.current;
+            setProgress({
+              ...p,
+              total_files: p.total_files + cum.totalOffset,
+              processed_files: p.processed_files + cum.processedOffset,
+            });
+          } else {
+            setProgress(p);
+          }
 
           if (p.phase === "cancelled") {
             setCancelledFolderPath(p.folder_path);
@@ -235,18 +247,25 @@ export function useIndexStatus(): UseIndexStatusReturn {
       if (drives.length === 0) return;
 
       autoIndexingRef.current = true;
+      cumulativeRef.current = { processedOffset: 0, totalOffset: 0 };
       setIsIndexing(true);
       setError(null);
 
       for (const drive of drives) {
         try {
-          await indexSingleFolder(drive.path);
+          const result = await indexSingleFolder(drive.path);
+          // 다음 드라이브 시작 전 누적 오프셋 갱신
+          cumulativeRef.current = {
+            processedOffset: cumulativeRef.current.processedOffset + (result.indexed_count + result.failed_count),
+            totalOffset: cumulativeRef.current.totalOffset + (result.indexed_count + result.failed_count),
+          };
         } catch {
           // 개별 드라이브 인덱싱 실패 시 다음 드라이브 계속
         }
         await refreshStatus();
       }
 
+      cumulativeRef.current = { processedOffset: 0, totalOffset: 0 };
       autoIndexingRef.current = false;
       setIsIndexing(false);
     } catch {
