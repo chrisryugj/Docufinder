@@ -24,6 +24,22 @@ function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() || path;
 }
 
+/** 답변 끝의 [출처: 1, 3] 패턴에서 문서 번호(0-based) 추출 + 답변 텍스트 정리 */
+function parseSourceRefs(text: string): { cleanText: string; refIndices: Set<number> } {
+  const match = text.match(/\[출처:\s*([\d,\s]+)\]\s*$/);
+  if (!match) return { cleanText: text, refIndices: new Set() };
+
+  const indices = match[1]
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10) - 1) // 1-based → 0-based
+    .filter((n) => !isNaN(n) && n >= 0);
+
+  return {
+    cleanText: text.slice(0, match.index).trimEnd(),
+    refIndices: new Set(indices),
+  };
+}
+
 function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, onExampleClick }: Props) {
   const handleOpenFile = useCallback((path: string) => {
     invoke("open_file", { path }).catch(() => {});
@@ -131,46 +147,72 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
           </div>
         </div>
 
-        {/* 답변 텍스트 */}
-        <div className="text-[14px] text-[var(--color-text-primary)] leading-[1.7] whitespace-pre-wrap break-words ai-answer-content">
-          {answer}
-          {isStreaming && (
-            <span className="inline-block w-1.5 h-4 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-          )}
-        </div>
+        {/* 답변 텍스트 ([출처: ...] 제거) */}
+        {(() => {
+          const { cleanText } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer };
+          return (
+            <div className="text-[14px] text-[var(--color-text-primary)] leading-[1.7] whitespace-pre-wrap break-words ai-answer-content">
+              {cleanText}
+              {isStreaming && (
+                <span className="inline-block w-1.5 h-4 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+              )}
+            </div>
+          );
+        })()}
       </div>
 
-      {/* 출처 파일 */}
+      {/* 출처 파일 (근거 문서 우선 표시) */}
       {analysis && analysis.source_files.length > 0 && (
         <div className="border-t border-[var(--color-border)] px-4 py-3">
           <p className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider mb-2">
             참조 문서
           </p>
-          <div className="flex flex-col gap-1">
-            {analysis.source_files.map((path) => {
-              const name = basename(path);
-              return (
-                <div
-                  key={path}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--color-bg-tertiary)] group cursor-pointer transition-colors"
-                  onClick={() => handleOpenFile(path)}
-                  title={path}
-                >
-                  <FileIcon fileName={name} size="sm" />
-                  <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">{name}</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleOpenFolder(path); }}
-                    className="text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="폴더 열기"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          {(() => {
+            const { refIndices } = parseSourceRefs(answer);
+            const hasRefs = refIndices.size > 0;
+
+            // 근거 문서를 먼저, 나머지를 뒤에
+            const sorted = analysis.source_files
+              .map((path, i) => ({ path, i, isRef: refIndices.has(i) }))
+              .sort((a, b) => (a.isRef === b.isRef ? 0 : a.isRef ? -1 : 1));
+
+            return (
+              <div className="flex flex-col gap-1">
+                {sorted.map(({ path, isRef }) => {
+                  const name = basename(path);
+                  return (
+                    <div
+                      key={path}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded group cursor-pointer transition-colors ${
+                        hasRefs && !isRef ? "opacity-45" : ""
+                      } hover:bg-[var(--color-bg-tertiary)]`}
+                      onClick={() => handleOpenFile(path)}
+                      title={path}
+                    >
+                      <FileIcon fileName={name} size="sm" />
+                      <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">
+                        {name}
+                      </span>
+                      {isRef && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--color-accent-light)] text-[var(--color-accent)] shrink-0">
+                          근거
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleOpenFolder(path); }}
+                        className="text-[10px] text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="폴더 열기"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

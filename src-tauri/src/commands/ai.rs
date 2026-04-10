@@ -97,7 +97,9 @@ fn build_rag_context(
             source_files.push(r.file_path.clone());
         }
 
-        let header = format!("[문서: {}]", r.file_name);
+        // 문서 번호 = source_files 내 인덱스 (1-based)
+        let doc_num = source_files.iter().position(|p| p == &r.file_path).unwrap_or(0) + 1;
+        let header = format!("[문서{}: {}]", doc_num, r.file_name);
 
         context.push_str(&header);
         context.push('\n');
