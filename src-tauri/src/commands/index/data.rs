@@ -175,7 +175,7 @@ pub async fn convert_hwp_to_hwpx(
         };
 
         match result {
-            Ok(output) if hwpx_path.exists() => {
+            Ok(_output) if hwpx_path.exists() => {
                 success_count += 1;
                 converted_paths.push(hwpx_path.to_string_lossy().to_string());
                 tracing::info!("Converted: {} → .hwpx", hwp_path);

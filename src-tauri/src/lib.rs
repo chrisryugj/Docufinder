@@ -294,10 +294,9 @@ fn cleanup_tmp_files(models_dir: &std::path::Path) {
                 let sub_path = sub.path();
                 if sub_path.is_file()
                     && sub_path.extension().and_then(|e| e.to_str()) == Some("tmp")
+                    && std::fs::remove_file(&sub_path).is_ok()
                 {
-                    if std::fs::remove_file(&sub_path).is_ok() {
-                        cleaned += 1;
-                    }
+                    cleaned += 1;
                 }
             }
         }
