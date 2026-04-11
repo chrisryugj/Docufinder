@@ -325,18 +325,23 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
         </div>
       )}
 
-      {/* 답변 스트리밍 */}
+      {/* 답변 스트리밍 / 완료 */}
       {(answer || loading) && (
         <div className="px-3 pb-3 max-h-48 overflow-y-auto">
-          <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
-            {answer}
-            {loading && !answer && (
-              <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>
-            )}
-            {loading && answer && (
-              <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-            )}
-          </div>
+          {loading ? (
+            /* 스트리밍 중: plain text */
+            <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
+              {answer || <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>}
+              {answer && (
+                <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+              )}
+            </div>
+          ) : (
+            /* 완료: 마크다운 렌더링 */
+            <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+            </div>
+          )}
           {analysis && (
             <div className="mt-1.5 flex items-center justify-between">
               <button
