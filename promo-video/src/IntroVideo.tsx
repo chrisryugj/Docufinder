@@ -193,22 +193,26 @@ const FeatureCard: React.FC<{
   );
 };
 
-// ─── Search result row ───
+// ─── Search result row (with content snippet) ───
 const ResultRow: React.FC<{
   icon: string;
   name: string;
   path: string;
+  snippet: string;
+  hlWord: string;
   score: string;
   frame: number;
   delay: number;
-}> = ({ icon, name, path, score, frame, delay }) => {
+}> = ({ icon, name, path, snippet, hlWord, score, frame, delay }) => {
   const o = ease(frame, 0, 1, [delay, delay + 10]);
   const x = ease(frame, 30, 0, [delay, delay + 10]);
+  // Highlight matched word in snippet
+  const parts = snippet.split(hlWord);
   return (
     <div
       style={{
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         gap: 20,
         padding: "16px 24px",
         borderRadius: 12,
@@ -218,10 +222,41 @@ const ResultRow: React.FC<{
         fontFamily: C.sans,
       }}
     >
-      <span style={{ fontSize: 28 }}>{icon}</span>
+      <span style={{ fontSize: 28, marginTop: 4 }}>{icon}</span>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 24, fontWeight: 600, color: C.text }}>{name}</div>
-        <div style={{ fontSize: 18, color: C.textDim }}>{path}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 24, fontWeight: 600, color: C.text }}>{name}</div>
+          <div style={{ fontSize: 16, color: C.textDim }}>{path}</div>
+        </div>
+        <div
+          style={{
+            fontSize: 19,
+            color: C.textMuted,
+            marginTop: 6,
+            lineHeight: 1.4,
+            borderLeft: `2px solid ${C.accent}40`,
+            paddingLeft: 12,
+          }}
+        >
+          {parts.map((part, i) => (
+            <React.Fragment key={i}>
+              {part}
+              {i < parts.length - 1 && (
+                <span
+                  style={{
+                    color: C.amber,
+                    fontWeight: 700,
+                    background: `${C.amber}15`,
+                    padding: "0 2px",
+                    borderRadius: 3,
+                  }}
+                >
+                  {hlWord}
+                </span>
+              )}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
       <Badge color={C.emerald} style={{ fontSize: 18 }}>
         {score}
@@ -290,7 +325,7 @@ export const IntroVideo: React.FC = () => {
             }}
           >
             {(() => {
-              const fullText = "내 컴퓨터의 모든 문서를 한 번에 검색";
+              const fullText = "파일명이 아닌, 문서 내용을 검색합니다";
               const chars = Math.floor(
                 ease(frame, 0, fullText.length, [35, 80])
               );
@@ -351,6 +386,19 @@ export const IntroVideo: React.FC = () => {
         >
           <DotGrid opacity={0.05} />
           <Glow x="70%" y="30%" color={C.cyan} size={600} opacity={0.12} />
+
+          {/* Section header */}
+          <div style={{ ...fadeUp(frame, 122), marginBottom: 36, textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 600, color: C.cyan, letterSpacing: 3, textTransform: "uppercase", marginBottom: 10, fontFamily: C.sans }}>
+              Content Search
+            </div>
+            <div style={{ fontSize: 52, fontWeight: 800, color: C.text, letterSpacing: -1, fontFamily: C.sans }}>
+              문서 <span style={{ color: C.cyan }}>내용</span>을 검색합니다
+            </div>
+            <div style={{ fontSize: 26, color: C.textMuted, marginTop: 10, fontFamily: C.sans }}>
+              파일명만 찾는 게 아닙니다 --- HWPX, DOCX, XLSX, PDF 안의 텍스트까지
+            </div>
+          </div>
 
           <div
             style={{
@@ -472,6 +520,8 @@ export const IntroVideo: React.FC = () => {
                   icon={"\u{1F4C4}"}
                   name="2026 예산집행현황.hwpx"
                   path="C:/업무/재정/"
+                  snippet="...3분기 예산 집행률 87.3%로 전년 대비 12%p 상승하였으며, 예산 잔액은..."
+                  hlWord="예산 집행"
                   score="98%"
                   frame={frame}
                   delay={175}
@@ -480,17 +530,21 @@ export const IntroVideo: React.FC = () => {
                   icon={"\u{1F4CA}"}
                   name="1분기_집행실적.xlsx"
                   path="C:/업무/재정/"
+                  snippet="...사업별 예산 집행 현황: 인건비 92%, 운영비 78%, 사업비 집행 잔액 4.2억..."
+                  hlWord="예산 집행"
                   score="94%"
                   frame={frame}
-                  delay={180}
+                  delay={182}
                 />
                 <ResultRow
                   icon={"\u{1F4D1}"}
                   name="예산운용계획_보고.pdf"
                   path="C:/업무/기획/"
+                  snippet="...차년도 예산 집행 계획 수립 시 전년도 집행률을 기반으로 조정..."
+                  hlWord="예산 집행"
                   score="91%"
                   frame={frame}
-                  delay={185}
+                  delay={189}
                 />
               </div>
             </Glass>
