@@ -76,25 +76,67 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-/* Result Row — borderless, divider-separated */
+/* Result Row — subtle border, elevation on hover */
 .result-card {
   background-color: transparent;
-  border: none;
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   box-shadow: none;
-  transition: background-color var(--transition-fast);
+  transition: background-color var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
   position: relative;
   overflow: hidden;
 }
 
 .result-card:hover {
-  /* 파일 타입 stripe가 배경색 담당 → 여기선 fallback만 */
   background-color: var(--color-bg-secondary);
+  border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-md);
+}
+
+/* Content max-width container */
+.content-column {
+  max-width: var(--content-max-width);
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 /* Result list divider container */
 .result-list-divided > .group + .group {
   border-top: 1px solid var(--color-border);
+}
+
+/* HTML Table Preview — 검색 결과 펼침 시 표 렌더링 */
+.html-table-preview {
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  overflow-x: auto;
+  margin: 4px 0;
+}
+
+.html-table-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.html-table-preview th,
+.html-table-preview td {
+  border: 1px solid var(--color-border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.html-table-preview th {
+  background-color: var(--color-bg-tertiary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.html-table-preview tr:hover td {
+  background-color: var(--color-bg-secondary);
 }
 
 /* Search Highlight Marks */

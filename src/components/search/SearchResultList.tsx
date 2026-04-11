@@ -255,7 +255,7 @@ export const SearchResultList = memo(function SearchResultList({
           viewMode === "grouped" && groupedResults.length > 0 ? (
             // 그룹 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `grouped-search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `grouped-search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "space-y-0.5" : "space-y-1.5"}`}>
                 {groupedResults.slice(0, visibleCount).map((group, index) => (
                   <GroupedSearchResultItem
                     key={group.file_path}
@@ -282,7 +282,7 @@ export const SearchResultList = memo(function SearchResultList({
           ) : (
             // 플랫 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "" : "space-y-0.5"}`}>
+              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "space-y-0.5" : "space-y-1.5"}`}>
                 {results.slice(0, visibleCount).map((result, index) => (
                   <div
                     key={`${result.file_path}-${result.chunk_index ?? 0}-${result.start_offset ?? index}`}
@@ -328,27 +328,27 @@ export const SearchResultList = memo(function SearchResultList({
             onClick={onSwitchToAnything}
             className="w-full mt-3 flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 hover:scale-[1.005] active:scale-[0.995] group"
             style={{
-              background: "linear-gradient(135deg, rgba(13,148,136,0.06) 0%, rgba(20,184,166,0.06) 100%)",
-              border: "1px solid rgba(13,148,136,0.15)",
+              background: "linear-gradient(135deg, var(--color-accent-ai-subtle) 0%, rgba(99,102,241,0.04) 100%)",
+              border: "1px solid color-mix(in srgb, var(--color-accent-ai) 15%, transparent)",
             }}
           >
             <div
               className="w-7 h-7 rounded-lg shrink-0 flex items-center justify-center"
-              style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
+              style={{ background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)" }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="white" stroke="none">
                 <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
               </svg>
             </div>
             <div className="flex-1 text-left min-w-0">
-              <span className="text-xs font-medium" style={{ color: "#0d9488" }}>
+              <span className="text-xs font-medium" style={{ color: "var(--color-accent-ai)" }}>
                 Anything에게 물어보기
               </span>
               <p className="text-[10px] text-[var(--color-text-muted)] truncate">
                 검색 결과를 AI가 분석하여 답변합니다
               </p>
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0d9488" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-ai)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>

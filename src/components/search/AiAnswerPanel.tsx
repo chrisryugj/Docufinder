@@ -180,17 +180,17 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
         <div className="flex items-center gap-2 mb-2.5">
           <div
             className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center"
-            style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
+            style={{ background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)" }}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="white" stroke="none">
               <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
             </svg>
           </div>
-          <span className="text-[11px] font-medium" style={{ color: "#0d9488" }}>
+          <span className="text-[11px] font-medium" style={{ color: "var(--color-accent-ai)" }}>
             AI 문서 분석 결과
           </span>
           {isStreaming && (
-            <span className="text-[10px] animate-pulse" style={{ color: "#0d9488" }}>분석 중...</span>
+            <span className="text-[10px] animate-pulse" style={{ color: "var(--color-accent-ai)" }}>분석 중...</span>
           )}
           {analysis && (
             <span className="text-[10px] text-[var(--color-text-tertiary)] ml-auto tabular-nums">
@@ -207,7 +207,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               {cleanText}
               <span
                 className="inline-block w-1.5 h-3.5 rounded-sm animate-pulse ml-0.5 align-text-bottom"
-                style={{ backgroundColor: "#0d9488" }}
+                style={{ backgroundColor: "var(--color-accent-ai)" }}
               />
             </span>
           ) : (
@@ -301,7 +301,7 @@ function SourceFileItem({
         {isRef && (
           <span
             className="text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: "rgba(13,148,136,0.1)", color: "#0d9488" }}
+            style={{ backgroundColor: "var(--color-accent-ai-subtle)", color: "var(--color-accent-ai)" }}
           >
             근거
           </span>

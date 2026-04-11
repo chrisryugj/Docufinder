@@ -5,6 +5,18 @@
 const EXPANDED_CONTEXT_BEFORE_CHARS = 300;
 const EXPANDED_CONTEXT_AFTER_CHARS = 300;
 
+// ── HTML 태그 처리 유틸 ──────────────────────────────
+
+/** HTML 태그 제거 (텍스트 콘텐츠만 유지, [[HL]] 마커 보존) */
+export function stripHtmlTags(text: string): string {
+  return text
+    .replace(/<\/?[a-zA-Z][^>]*>/g, " ")                    // Full tags: <td>, </tr>, <th colspan="4">
+    .replace(/\w+="[^"]*"(?:\s+\w+="[^"]*")*\s*>/g, "")     // Partial attrs: colspan="4">
+    .replace(/\b(?:t[dhr]|table|thead|tbody|tfoot|\/t[dhr]|\/table|\/thead|\/tbody)>/gi, "") // Bare tag names: td>, /tr>
+    .replace(/\b(?:rowspan|colspan)="[^"]*"/gi, "")          // Stray attributes: rowspan="3"
+    .replace(/\s{2,}/g, " ");
+}
+
 export function formatPathSegments(path: string): { label: string; fullPath: string }[] {
   const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
   const parts = cleanPath.split(/[/\\]/).filter(Boolean);

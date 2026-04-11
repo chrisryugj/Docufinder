@@ -1,3 +1,4 @@
+use crate::search::KeywordMode;
 use crate::tokenizer::TextTokenizer;
 use rusqlite::{params, Connection};
 
@@ -9,9 +10,10 @@ pub fn search(
     query: &str,
     limit: usize,
     folder_scope: Option<&str>,
+    mode: KeywordMode,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (특수문자 이스케이프, 토크나이저 미사용)
-    let safe_query = sanitize_fts_query(query, None);
+    let safe_query = sanitize_fts_query(query, None, mode);
 
     if safe_query.is_empty() {
         return Ok(vec![]);
@@ -37,9 +39,10 @@ pub fn search_with_tokenizer(
     limit: usize,
     tokenizer: &dyn TextTokenizer,
     folder_scope: Option<&str>,
+    mode: KeywordMode,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // FTS5 쿼리 전처리 (형태소 분석 포함)
-    let safe_query = sanitize_fts_query(query, Some(tokenizer));
+    let safe_query = sanitize_fts_query(query, Some(tokenizer), mode);
 
     if safe_query.is_empty() {
         return Ok(vec![]);
@@ -135,23 +138,43 @@ fn search_internal(
     Ok(results)
 }
 
-/// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + AND 검색)
+/// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + 검색 모드)
 ///
 /// tokenizer가 Some이면 한국어 형태소 분석을 수행합니다.
-/// 어절 간 AND, 같은 어절 내 형태소는 OR로 연결합니다.
-fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> String {
-    // 빈 쿼리 처리
+/// mode에 따라 AND, OR, 구문 검색(EXACT)을 생성합니다.
+fn sanitize_fts_query(
+    query: &str,
+    tokenizer: Option<&dyn TextTokenizer>,
+    mode: KeywordMode,
+) -> String {
     let trimmed = query.trim();
     if trimmed.is_empty() {
         return String::new();
     }
 
-    // 토크나이저가 있으면 형태소 분석 사용
-    if let Some(tok) = tokenizer {
-        return tok.tokenize_query(trimmed);
+    // EXACT 모드: 구문 검색 (형태소 분석 없이 따옴표로 감싸기)
+    if mode == KeywordMode::Exact {
+        let escaped = trimmed.replace('"', "\"\"");
+        return format!("\"{}\"", escaped);
     }
 
-    // 기본 처리: 각 단어를 쌍따옴표로 감싸고 와일드카드 추가 (prefix match)
+    let join_op = match mode {
+        KeywordMode::Or => " OR ",
+        _ => " AND ",
+    };
+
+    // 토크나이저 사용 시 형태소 분석
+    if let Some(tok) = tokenizer {
+        let result = tok.tokenize_query(trimmed);
+        if mode == KeywordMode::Or {
+            // 토크나이저 출력에서 어절 간 AND → OR 전환
+            // (어절 내 형태소 OR은 유지)
+            return result.replace(" AND ", " OR ");
+        }
+        return result;
+    }
+
+    // 기본 처리: 각 단어를 쌍따옴표로 감싸고 와일드카드 추가
     let terms: Vec<String> = trimmed
         .split_whitespace()
         .map(|word| {
@@ -164,8 +187,7 @@ fn sanitize_fts_query(query: &str, tokenizer: Option<&dyn TextTokenizer>) -> Str
         return terms[0].clone();
     }
 
-    // 여러 토큰이면 AND로 연결 (단어 추가 시 결과가 줄어야 정상)
-    terms.join(" AND ")
+    terms.join(join_op)
 }
 
 /// ParsedQuery 기반 FTS5 쿼리 생성 (NOT 연산자 지원)
@@ -178,7 +200,7 @@ pub fn build_fts_query(
     exclude: &[String],
     tokenizer: Option<&dyn TextTokenizer>,
 ) -> String {
-    let positive = sanitize_fts_query(keywords, tokenizer);
+    let positive = sanitize_fts_query(keywords, tokenizer, KeywordMode::And);
 
     if positive.is_empty() || exclude.is_empty() {
         return positive;

@@ -119,10 +119,27 @@
   animation: pulse-glow 2s infinite;
 }
 
-/* Staggered Animation Helper (use with style={{ animationDelay: '...' }}) */
+/* Staggered Animation Helper — result items fade in sequentially */
 .stagger-item {
   opacity: 0;
-  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.3s var(--ease-out-expo) forwards;
+}
+
+/* Skeleton shimmer effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-subtle) 25%,
+    var(--color-bg-tertiary) 37%,
+    var(--color-bg-subtle) 63%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s var(--ease-in-out-sine) infinite;
 }
 
 /* ============================================
@@ -260,47 +277,6 @@
 .ctx-menu-animate {
   animation: ctx-menu-in 0.12s var(--ease-out-expo);
   transform-origin: top left;
-}
-
-/* ============================================
-   WelcomeHero Bento Animations
-   ============================================ */
-
-@keyframes bento-item-in {
-  from { opacity: 0; transform: translateY(30px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.animate-bento-item {
-  opacity: 0;
-  animation: bento-item-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-@keyframes breathe {
-  0%, 100% { transform: scale(1); opacity: 0.15; }
-  50% { transform: scale(1.2); opacity: 0.25; }
-}
-
-.animate-breathe {
-  animation: breathe 10s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(-5px); }
-  50% { transform: translateY(5px); }
-}
-
-.animate-float {
-  animation: float 4s ease-in-out infinite;
-}
-
-@keyframes bob {
-  0%, 100% { transform: translateY(-10px); }
-  50% { transform: translateY(10px); }
-}
-
-.animate-bob {
-  animation: bob 6s ease-in-out infinite;
 }
 
 /* ============================================

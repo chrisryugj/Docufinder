@@ -49,6 +49,23 @@ export interface SearchResponse {
 /** 검색 모드 (hybrid/semantic은 내부 RAG 전용, UI 미노출) */
 export type SearchMode = "keyword" | "semantic" | "hybrid" | "filename";
 
+/** 키워드 매칭 모드 (AND / OR / EXACT) */
+export type KeywordMatchMode = "and" | "or" | "exact";
+
+/** 키워드 매칭 모드 정보 */
+export interface KeywordMatchModeInfo {
+  value: KeywordMatchMode;
+  label: string;
+  desc: string;
+}
+
+/** 키워드 매칭 모드 목록 */
+export const KEYWORD_MATCH_MODES: KeywordMatchModeInfo[] = [
+  { value: "and", label: "모두 포함", desc: "모든 키워드가 포함된 문서" },
+  { value: "or", label: "하나 이상", desc: "키워드 중 하나라도 포함된 문서" },
+  { value: "exact", label: "정확히 일치", desc: "입력한 구문이 그대로 포함된 문서" },
+];
+
 /** 최근 검색 기록 */
 export interface RecentSearch {
   query: string;

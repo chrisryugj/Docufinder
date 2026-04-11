@@ -3,7 +3,7 @@ import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lu
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext } from "./searchTextUtils";
-import { formatPathSegments, buildExpandedContext } from "../../utils/searchTextUtils";
+import { formatPathSegments, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -75,27 +75,34 @@ export const SearchResultItem = memo(function SearchResultItem({
   // Context menu
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
 
-  // Text processing
+  // Text processing — HTML 태그 제거
   const cleanSnippet = result.snippet?.replace(/\[\[HL\]\]/g, '').replace(/\[\[\/HL\]\]/g, '');
-  const effectiveFullText = cleanSnippet || result.content_preview;
+  const rawFullText = cleanSnippet || result.content_preview;
+
+  const clean = {
+    snippet: result.snippet ? stripHtmlTags(result.snippet) : undefined,
+    preview: stripHtmlTags(result.content_preview),
+    fullText: stripHtmlTags(rawFullText),
+  };
+
   const expandedView = isExpanded
-    ? buildExpandedContext(effectiveFullText, result.highlight_ranges, result.snippet)
+    ? buildExpandedContext(clean.fullText, result.highlight_ranges, clean.snippet)
     : null;
   const previewView = !isExpanded
     ? buildPreviewContext({
-        previewText: result.content_preview,
-        fullText: effectiveFullText,
+        previewText: clean.preview,
+        fullText: clean.fullText,
         highlightRanges: result.highlight_ranges,
-        snippet: result.snippet,
+        snippet: clean.snippet,
         query,
       })
     : null;
   const displayText = isExpanded
-    ? expandedView?.text ?? effectiveFullText
-    : previewView?.text ?? result.content_preview;
+    ? (expandedView?.text ?? clean.fullText)
+    : (previewView?.text ?? clean.preview);
   const displayRanges = isExpanded
-    ? expandedView?.ranges ?? result.highlight_ranges
-    : previewView?.ranges ?? [];
+    ? (expandedView?.ranges ?? result.highlight_ranges)
+    : (previewView?.ranges ?? []);
 
   const handleCopyPath = useCallback(
     (e: React.MouseEvent) => {
@@ -155,7 +162,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           <FileIcon fileName={result.file_name} size="sm" />
           <span
             className="truncate ts-base"
-            style={{ fontWeight: 700, letterSpacing: "-0.01em" }}
+            style={{ fontWeight: 600, letterSpacing: "-0.01em" }}
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
@@ -171,7 +178,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               color: result.confidence >= 70
                 ? "var(--color-success)"
                 : result.confidence >= 40
-                  ? "var(--color-warning)"
+                  ? "var(--color-accent-warm)"
                   : "var(--color-text-muted)",
             }}
             aria-label={`신뢰도 ${Math.round(result.confidence)}% (${result.confidence >= 70 ? "높음" : result.confidence >= 40 ? "보통" : "낮음"})`}
@@ -319,7 +326,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 title="폴더 열기"
                 aria-label="상위 폴더 열기"
               >
-                <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-warning)" }} />
+                <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-accent-warm)" }} />
               </button>
             )}
             {onFindSimilar && (
