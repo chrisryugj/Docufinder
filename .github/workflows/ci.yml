@@ -88,15 +88,7 @@ jobs:
 
       - name: Security audit (cargo)
         working-directory: src-tauri
+        shell: bash
         run: |
           cargo install cargo-audit --quiet
-          cargo audit \
-            --ignore RUSTSEC-2026-0044 \
-            --ignore RUSTSEC-2026-0045 \
-            --ignore RUSTSEC-2026-0046 \
-            --ignore RUSTSEC-2026-0047 \
-            --ignore RUSTSEC-2026-0048 \
-            --ignore RUSTSEC-2026-0037 \
-            --ignore RUSTSEC-2026-0049 \
-            --ignore RUSTSEC-2026-0067 \
-            --ignore RUSTSEC-2026-0068
+          cargo audit --ignore RUSTSEC-2026-0044 --ignore RUSTSEC-2026-0045 --ignore RUSTSEC-2026-0046 --ignore RUSTSEC-2026-0047 --ignore RUSTSEC-2026-0048 --ignore RUSTSEC-2026-0037 --ignore RUSTSEC-2026-0049 --ignore RUSTSEC-2026-0067 --ignore RUSTSEC-2026-0068
