@@ -1,7 +1,10 @@
 use std::path::Path;
 use std::process::Command;
+use std::sync::RwLock;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
+
+use crate::AppContainer;
 
 /// 플랫폼별 기본 앱으로 경로 열기 (공통 헬퍼)
 fn open_with_default(path_str: &str) -> Result<(), String> {
@@ -64,7 +67,11 @@ fn validate_extension(path: &Path) -> Result<(), String> {
 
 /// 파일을 기본 앱으로 열기 (페이지 지정 가능)
 #[tauri::command]
-pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
+pub async fn open_file(
+    path: String,
+    page: Option<i64>,
+    state: State<'_, RwLock<AppContainer>>,
+) -> Result<(), String> {
     // 경로 검증
     let canonical_path = validate_path(&path)?;
 
@@ -84,7 +91,39 @@ pub async fn open_file(path: String, page: Option<i64>) -> Result<(), String> {
         }
     }
 
-    let path_str = canonical_path.to_string_lossy().to_string();
+    // 감시 폴더 내 파일인지 검증 (경로 순회 방지)
+    {
+        let db_path = {
+            let container = state.read().map_err(|_| "내부 오류".to_string())?;
+            container.db_path.to_string_lossy().to_string()
+        };
+        if let Ok(conn) = crate::db::get_connection(std::path::Path::new(&db_path)) {
+            if let Ok(folders) = crate::db::get_watched_folders(&conn) {
+                if !folders.is_empty() {
+                    // 감시 폴더가 1개 이상 등록된 경우에만 범위 검증 수행.
+                    // 폴더 미등록 상태(최초 실행 등)에서는 제한 없이 열기 허용.
+                    let strip = |p: &str| -> String {
+                        p.strip_prefix(r"\\?\")
+                            .unwrap_or(p)
+                            .replace('\\', "/")
+                            .to_lowercase()
+                    };
+                    let normalized = strip(&canonical_path.to_string_lossy());
+                    let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
+                    if !in_scope {
+                        return Err("감시 폴더 외부 파일은 열 수 없습니다".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Windows canonicalize()가 \\?\ 접두사를 추가하는데, explorer.exe가 이해 못함
+    let path_str = canonical_path
+        .to_string_lossy()
+        .to_string()
+        .trim_start_matches("\\\\?\\")
+        .to_string();
 
     #[cfg(target_os = "windows")]
     {
@@ -282,7 +321,11 @@ pub async fn open_folder(path: String) -> Result<(), String> {
         }
     }
 
-    let path_str = canonical_path.to_string_lossy().to_string();
+    let path_str = canonical_path
+        .to_string_lossy()
+        .to_string()
+        .trim_start_matches("\\\\?\\")
+        .to_string();
     open_with_default(&path_str)?;
     Ok(())
 }

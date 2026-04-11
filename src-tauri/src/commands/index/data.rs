@@ -155,11 +155,24 @@ pub async fn convert_hwp_to_hwpx(
             }),
         );
 
-        // HwpxConverter.exe 실행 (파일 경로를 인수로 전달)
-        let result = tokio::process::Command::new(&converter_exe)
-            .arg(canonical.as_os_str())
-            .output()
-            .await;
+        // HwpxConverter.exe 실행 (120초 타임아웃 — 모달 다이얼로그 hang 방지)
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            tokio::process::Command::new(&converter_exe)
+                .arg(canonical.as_os_str())
+                .output(),
+        )
+        .await;
+
+        // 타임아웃 처리
+        let result = match result {
+            Ok(inner) => inner,
+            Err(_) => {
+                errors.push(format!("{}: 변환 시간 초과 (120초)", hwp_path));
+                failed_count += 1;
+                continue;
+            }
+        };
 
         match result {
             Ok(output) if hwpx_path.exists() => {

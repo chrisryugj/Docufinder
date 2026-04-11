@@ -25,8 +25,14 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         }
     }
 
-    let mut workbook =
-        open_workbook_auto(path).map_err(|e| ParseError::ParseError(e.to_string()))?;
+    let mut workbook = open_workbook_auto(path).map_err(|e| {
+        let msg = e.to_string().to_lowercase();
+        if msg.contains("password") || msg.contains("encrypt") || msg.contains("cfb") {
+            ParseError::PasswordProtected("암호로 보호된 엑셀 파일입니다".to_string())
+        } else {
+            ParseError::ParseError(e.to_string())
+        }
+    })?;
 
     let mut all_text = String::new();
     let mut chunks = Vec::new();
@@ -34,6 +40,16 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     let mut global_offset = 0;
 
     for sheet_name in sheet_names {
+        // 전체 문서 문자 수 제한: 시트 간 누적 체크
+        if all_text.len() > MAX_TOTAL_CHARS {
+            tracing::warn!(
+                "XLSX truncated at {} chars (max {}), remaining sheets skipped",
+                all_text.len(),
+                MAX_TOTAL_CHARS
+            );
+            break;
+        }
+
         if let Ok(range) = workbook.worksheet_range(&sheet_name) {
             let (sheet_text, sheet_chunks) =
                 extract_text_with_location(&range, &sheet_name, global_offset);

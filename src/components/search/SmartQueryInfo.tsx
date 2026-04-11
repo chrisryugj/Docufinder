@@ -72,6 +72,7 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
         onClick={onClear}
         className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] ml-1"
         title="필터 초기화"
+        aria-label="필터 초기화"
       >
         ✕
       </button>

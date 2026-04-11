@@ -16,7 +16,7 @@ $RERANK_TOKENIZER_URL = "https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2/re
 
 # === ONNX Runtime ===
 $ONNX_RUNTIME_URL = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip"
-$ONNX_RUNTIME_SHA256 = ""  # TODO: 첫 다운로드 후 해시 기록 (Get-FileHash로 계산)
+$ONNX_RUNTIME_SHA256 = "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581"
 
 # models 폴더 생성
 if (-not (Test-Path $EMBED_MODEL_DIR)) {

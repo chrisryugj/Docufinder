@@ -67,12 +67,18 @@ fn find_kordoc_cli() -> Option<PathBuf> {
         }
     }
 
-    // 3. 프로덕션: 앱 리소스 디렉토리
+    // 3. 프로덕션: 번들된 리소스 디렉토리 (node.exe와 함께 배포됨)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
+            // Tauri 번들: resources/kordoc/cli.js
             let prod = dir.join("resources").join("kordoc").join("cli.js");
             if prod.exists() {
                 return Some(prod);
+            }
+            // 개발 모드: resources/ 없이 직접
+            let dev_prod = dir.join("kordoc").join("cli.js");
+            if dev_prod.exists() {
+                return Some(dev_prod);
             }
         }
     }
@@ -170,8 +176,24 @@ pub fn is_available() -> bool {
 
 // ─── 내부 헬퍼 ────────────────────────────────────────
 
-/// node 실행 파일 탐색
+/// node 실행 파일 탐색 (번들 node.exe 우선 → 시스템 PATH)
 fn which_node() -> Option<PathBuf> {
+    // 1. 번들된 node.exe (인스톨러에 포함됨)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join("resources").join("node.exe");
+            if bundled.exists() {
+                return Some(bundled);
+            }
+            // 개발 모드
+            let dev_bundled = dir.join("node.exe");
+            if dev_bundled.exists() {
+                return Some(dev_bundled);
+            }
+        }
+    }
+
+    // 2. 시스템 PATH
     which::which("node").ok()
 }
 

@@ -6,7 +6,6 @@ export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export {
   useLocalStorage,
   useRecentSearches,
-  useFavorites,
 } from "./useLocalStorage";
 export { useExport } from "./useExport";
 export { useToast } from "./useToast";

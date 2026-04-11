@@ -75,7 +75,7 @@ export const RecentSearches = memo(function RecentSearches({
                   e.stopPropagation();
                   onRemove(search.query);
                 }}
-                className="hidden group-hover:flex p-1 rounded transition-all duration-200 hover:scale-110 flex-shrink-0"
+                className="hidden group-hover:flex group-focus-within:flex p-1 rounded transition-all duration-200 hover:scale-110 flex-shrink-0"
                 style={{ color: "var(--color-sidebar-muted)" }}
                 aria-label={`"${search.query}" 검색 기록 삭제`}
               >

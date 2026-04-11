@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Anything",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "identifier": "com.anything.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -38,6 +38,8 @@
     ],
     "resources": {
       "resources/HwpxConverterSetup.exe": "HwpxConverterSetup.exe",
+      "resources/node.exe": "node.exe",
+      "resources/kordoc/**/*": "kordoc/",
       "icons/tray-icon.png": "icons/tray-icon.png"
     },
     "windows": {

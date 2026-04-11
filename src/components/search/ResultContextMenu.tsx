@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FolderOpen, ClipboardCopy } from "lucide-react";
+import { ExternalLink, FolderOpen, ClipboardCopy, Search } from "lucide-react";
 
 interface ContextMenuState {
   isOpen: boolean;
@@ -15,6 +15,7 @@ interface ResultContextMenuProps {
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  onFindSimilar?: (filePath: string) => void;
 }
 
 /** 컨텍스트 메뉴 표시를 위한 훅 */
@@ -61,6 +62,7 @@ export function ResultContextMenu({
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  onFindSimilar,
   contextMenu,
   closeContextMenu,
 }: ResultContextMenuProps & {
@@ -82,6 +84,64 @@ export function ResultContextMenu({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
+  }, [contextMenu.isOpen, closeContextMenu]);
+
+  // 메뉴 열릴 때 첫 번째 아이템 포커스 + 키보드 내비게이션 + 닫힌 후 포커스 복귀
+  useEffect(() => {
+    if (!contextMenu.isOpen || !contextMenuRef.current) return;
+
+    const menu = contextMenuRef.current;
+    const items = () => menu.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    const triggerElement = document.activeElement as HTMLElement | null;
+
+    // 첫 번째 아이템 포커스
+    requestAnimationFrame(() => items()[0]?.focus());
+
+    const restoreAndClose = () => {
+      closeContextMenu();
+      // 트리거 요소로 포커스 복귀
+      requestAnimationFrame(() => triggerElement?.focus());
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const menuItems = items();
+      const current = document.activeElement as HTMLElement;
+      const idx = Array.from(menuItems).indexOf(current);
+
+      switch (e.key) {
+        case "ArrowDown": {
+          e.preventDefault();
+          const next = idx < menuItems.length - 1 ? idx + 1 : 0;
+          menuItems[next]?.focus();
+          break;
+        }
+        case "ArrowUp": {
+          e.preventDefault();
+          const prev = idx > 0 ? idx - 1 : menuItems.length - 1;
+          menuItems[prev]?.focus();
+          break;
+        }
+        case "Home":
+          e.preventDefault();
+          menuItems[0]?.focus();
+          break;
+        case "End":
+          e.preventDefault();
+          menuItems[menuItems.length - 1]?.focus();
+          break;
+        case "Escape":
+          e.preventDefault();
+          restoreAndClose();
+          break;
+        case "Tab":
+          e.preventDefault();
+          restoreAndClose();
+          break;
+      }
+    };
+
+    menu.addEventListener("keydown", handleKeyDown);
+    return () => menu.removeEventListener("keydown", handleKeyDown);
   }, [contextMenu.isOpen, closeContextMenu]);
 
   if (!contextMenu.isOpen) return null;
@@ -137,6 +197,20 @@ export function ResultContextMenu({
         <span className="flex-1">경로 복사</span>
         <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>
+
+      {onFindSimilar && (
+        <>
+          <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+          <button
+            role="menuitem"
+            onClick={() => { closeContextMenu(); onFindSimilar(filePath); }}
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          >
+            <Search className="w-4 h-4 clr-info" />
+            <span className="flex-1">유사 문서 찾기</span>
+          </button>
+        </>
+      )}
     </div>,
     document.body
   );

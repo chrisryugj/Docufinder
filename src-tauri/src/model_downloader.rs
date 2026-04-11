@@ -51,11 +51,9 @@ const OCR_REC_KO_URL: &str =
     "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/rec.onnx";
 const OCR_DICT_KO_URL: &str =
     "https://huggingface.co/monkt/paddleocr-onnx/resolve/main/languages/korean/dict.txt";
-// SHA-256: 최초 다운로드 후 compute_sha256()으로 계산하여 채울 것
-// 현재는 빈 문자열 → 검증 스킵
-const OCR_DET_SHA256: &str = "";
-const OCR_REC_KO_SHA256: &str = "";
-const OCR_DICT_KO_SHA256: &str = "";
+const OCR_DET_SHA256: &str = "ee40e80071ba3a320d4efda75f3e22047a7d049e9bf7bcaaf9daea23fc21b935";
+const OCR_REC_KO_SHA256: &str = "322f140154c820fcb83c3d24cfe42c9ec70dd1a1834163306a7338136e4f1eaa";
+const OCR_DICT_KO_SHA256: &str = "a88071c68c01707489baa79ebe0405b7beb5cca229f4fc94cc3ef992328802d7";
 
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
@@ -149,6 +147,8 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
         download_file_optional_hash(OCR_DET_URL, &det_path, OCR_DET_SHA256)?;
         det_downloaded = true;
         tracing::info!("OCR Detection 모델 다운로드 완료");
+    } else if !OCR_DET_SHA256.is_empty() {
+        verify_existing_file(&det_path, OCR_DET_SHA256, "OCR Detection")?;
     }
 
     if !rec_path.exists() {
@@ -156,6 +156,8 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
         download_file_optional_hash(OCR_REC_KO_URL, &rec_path, OCR_REC_KO_SHA256)?;
         rec_downloaded = true;
         tracing::info!("OCR Recognition 모델 다운로드 완료");
+    } else if !OCR_REC_KO_SHA256.is_empty() {
+        verify_existing_file(&rec_path, OCR_REC_KO_SHA256, "OCR Recognition")?;
     }
 
     if !dict_path.exists() {
@@ -163,6 +165,8 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
         download_file_optional_hash(OCR_DICT_KO_URL, &dict_path, OCR_DICT_KO_SHA256)?;
         dict_downloaded = true;
         tracing::info!("OCR 한국어 사전 다운로드 완료");
+    } else if !OCR_DICT_KO_SHA256.is_empty() {
+        verify_existing_file(&dict_path, OCR_DICT_KO_SHA256, "OCR Dictionary")?;
     }
 
     Ok((det_downloaded, rec_downloaded, dict_downloaded))

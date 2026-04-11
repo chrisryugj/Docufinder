@@ -285,6 +285,9 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
         .min(settings.chunk_size.saturating_sub(1));
     settings.results_per_page = settings.results_per_page.clamp(1, 200);
     settings.max_file_size_mb = settings.max_file_size_mb.min(500);
+    settings.min_confidence = settings.min_confidence.min(100);
+    settings.ai_temperature = settings.ai_temperature.clamp(0.0, 2.0);
+    settings.ai_max_tokens = settings.ai_max_tokens.clamp(1, 8192);
 
     settings
 }
@@ -324,6 +327,11 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
     if settings.ai_max_tokens == 0 || settings.ai_max_tokens > 8192 {
         return Err(ApiError::Validation(
             "ai_max_tokens는 1~8192 범위여야 합니다".into(),
+        ));
+    }
+    if settings.min_confidence > 100 {
+        return Err(ApiError::Validation(
+            "min_confidence는 0~100 범위여야 합니다".into(),
         ));
     }
     Ok(())

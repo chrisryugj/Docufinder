@@ -68,6 +68,15 @@ export function useToast() {
         timersRef.current.set(id, timer);
       }
 
+      // loading 타입: 30초 안전망 (백엔드 hang 시 영구 표시 방지)
+      if (type === "loading") {
+        const safetyTimer = setTimeout(() => {
+          timersRef.current.delete(id);
+          setToasts((prev) => prev.filter((toast) => toast.id !== id));
+        }, 30000);
+        timersRef.current.set(id, safetyTimer);
+      }
+
       return id;
     },
     []

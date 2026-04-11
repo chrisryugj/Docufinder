@@ -1,168 +1,251 @@
 # Anything
 
-**내 컴퓨터의 모든 문서를 한 번에 검색하세요!**
+**내 컴퓨터의 모든 문서를 한 번에 검색** --- 키워드 + AI 시맨틱 + RAG 질의응답
 
-Anything은 컴퓨터에 있는 문서 파일들을 빠르게 찾아주는 데스크톱 앱입니다. 한글(HWPX), 워드(DOCX), 엑셀(XLSX), PDF, 텍스트 파일까지 - 파일 이름뿐만 아니라 **문서 내용까지** 검색할 수 있습니다.
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/chrisryugj/Docufinder/releases)
+[![Tauri 2](https://img.shields.io/badge/Tauri-2.10-24C8D8.svg)](https://tauri.app)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+![Anything 데모](./promo-video/out/video.mp4)
 
 ---
 
-## 이런 분께 추천해요
+## What's New in v2.1.0
 
-- 수백 개의 문서 중에서 원하는 내용을 찾기 힘드셨던 분
-- "그 내용 어디서 봤더라?" 하고 문서를 하나하나 열어보셨던 분
-- 파일 이름이 기억 안 나서 답답하셨던 분
+> 프로덕션 감사 34개 이슈 수정 + RAG 품질 대폭 개선
+
+<details>
+<summary><b>v2.1.0 (2026-04-11)</b> — 프로덕션 감사 + RAG 고도화</summary>
+
+### Added
+- AI RAG 출처 문서 번호 매칭 (근거 파일 강조)
+- 파일 태그 시스템 (분류/검색용 커스텀 태그)
+- 검색 결과 CSV/JSON 내보내기
+- 폴더 트리 드래그&드롭 정렬
+- 시스템 트레이 최소화 + 자동 시작 옵션
+- 윈도우 상태 복원 (크기/위치 기억)
+
+### Changed
+- Anything 브랜딩 전면 적용
+- RAG 프롬프트 개선 (출처 인라인 제거 + 수치 정확 인용)
+- RAG 참조 파일을 실제 컨텍스트 사용분만 표시
+- AI 패널 글자 크기 증가 (가독성)
+- FTS 쿼리 최적화 (스마트 쿼리 파싱)
+
+### Fixed
+- DB 동시성 34개 이슈 일괄 수정
+- 파서 안정성 강화 (DOCX/XLSX/PDF/TXT 에러 핸들링)
+- 인덱싱 중 파일 삭제 시 크래시 방지
+- 대용량 폴더 추가 시 UI 멈춤 해결
+
+### Security
+- 프로덕션 감사 전체 통과
+- kordoc 번들링 (node.exe + cli.js MSI 포함)
+
+</details>
+
+<details>
+<summary><b>v2.0.0 (2026-04-11)</b> — AI 문서 분석 + OCR</summary>
+
+- AI 문서 분석 (Gemini RAG), AI 파일 QA, AI 요약
+- OCR 지원 (PaddleOCR 기반 스캔 PDF)
+- HWP 파일 변환 (kordoc 번들링)
+- 전체 PC 인덱싱, 검색 범위 필터링, 유사 문서 찾기
+- 중복 파일 탐지, 문서 통계, 법령 참조 링크
+- OTA 자동 업데이트
+
+</details>
+
+<details>
+<summary><b>v1.0.0 (2026-02-22)</b> — 초기 릴리스</summary>
+
+- 하이브리드 검색 (FTS5 + 벡터 + RRF + Cross-Encoder)
+- Everything 스타일 파일명 검색
+- 실시간 폴더 감시 + 증분 인덱싱
+- HWPX, DOCX, XLSX, PDF, TXT 지원
+- 다크/라이트 테마, 색상 프리셋
+
+</details>
 
 ---
 
 ## 주요 기능
 
-### 1. 똑똑한 검색
-- **키워드 검색**: 정확한 단어로 검색 (한국어 형태소 분석 지원)
-- **의미 검색**: 비슷한 의미의 내용도 찾아줍니다 (예: "예산"을 검색하면 "세출", "세입", "결산", "지출" 관련 문서도 표시)
-- **하이브리드 검색**: 키워드 + 의미 검색을 결합하여 최적 결과 제공
-- **파일명 검색**: Everything처럼 빠른 파일명 검색
+| 기능 | 설명 |
+|------|------|
+| **하이브리드 검색** | 키워드(FTS5) + 시맨틱(벡터) + RRF 병합 + Cross-Encoder 재정렬 |
+| **AI RAG 질의응답** | Gemini 기반 문맥 Q&A — 출처 문서 번호 매칭 |
+| **AI 요약** | TextRank 추출적 요약 (오프라인) + LLM 요약 |
+| **파일명 검색** | Everything 스타일 인메모리 캐시 검색 |
+| **실시간 감시** | 폴더 변경 자동 감지 + 증분 인덱싱 |
+| **OCR** | PaddleOCR 기반 스캔 PDF 텍스트 추출 |
+| **HWP 변환** | kordoc 번들링 — .hwp → .hwpx 자동 변환 |
+| **법령 링크** | 정규식 기반 법령 자동 감지 → law.go.kr 연결 |
+| **파일 태그** | 커스텀 태그로 문서 분류/검색 |
+| **내보내기** | 검색 결과 CSV/JSON 다운로드 |
 
-### 2. 다양한 문서 지원
-| 문서 종류 | 확장자 |
-|----------|--------|
-| 한글 | `.hwpx` |
-| 워드 | `.docx` |
-| 엑셀 | `.xlsx` |
-| PDF | `.pdf` |
-| 텍스트 | `.txt` |
+### 지원 문서 형식
 
-### 3. 자동 인덱싱
-- 폴더를 등록하면 자동으로 문서 내용을 분석합니다
-- 새 파일이 추가되거나 수정되면 **실시간으로 감지**해서 자동 업데이트
-- 인덱싱 진행률을 실시간으로 확인 가능 (취소도 가능)
-- HDD/SSD를 자동 감지하여 최적화된 속도로 처리
-
-### 4. 편리한 사용
-- 자주 쓰는 폴더는 **즐겨찾기**로 고정
-- 최근 검색어 자동 저장
-- 검색 결과에서 바로 파일 열기/폴더 열기
-- 파일 수정일 확인 (호버 시 표시)
-- 라이트/다크 테마 지원
+| 형식 | 확장자 | 비고 |
+|------|--------|------|
+| 한글 | `.hwpx`, `.hwp` | HWP는 자동 변환 |
+| 워드 | `.docx` | |
+| 엑셀 | `.xlsx` | |
+| PDF | `.pdf` | 스캔 PDF OCR 지원 |
+| 텍스트 | `.txt` | EUC-KR/CP949 자동 감지 |
 
 ---
 
-## 설치 방법
+## 설치
 
 ### Windows 사용자
-1. [Releases](../../releases) 페이지에서 최신 `.msi` 파일을 다운로드
-2. 다운로드한 파일을 실행하여 설치
-3. 설치 완료 후 Anything 실행
+
+1. [Releases](https://github.com/chrisryugj/Docufinder/releases) 페이지에서 최신 `.msi` 다운로드
+2. 설치 파일 실행
+3. 첫 실행 시 ONNX 모델 자동 다운로드 (약 420MB, 1회)
+
+**요구사항**: Windows 10 21H2+ / Windows 11, 4GB RAM 권장
+
+### 자동 업데이트
+
+설치 후 앱이 자동으로 새 버전을 감지하여 업데이트 배너를 표시합니다.
 
 ---
 
-## 사용 방법
+## 사용법
 
-### 1단계: 폴더 등록하기
-1. 앱을 실행하면 왼쪽에 폴더 목록이 보입니다
-2. **"폴더 추가"** 버튼을 클릭
-3. 검색하고 싶은 문서들이 있는 폴더를 선택
-4. 자동으로 인덱싱이 시작됩니다 (진행률 표시됨)
+### 1단계: 폴더 등록
+앱 실행 → 좌측 "폴더 추가" → 문서 폴더 선택 → 자동 인덱싱 시작
 
-### 2단계: 검색하기
-1. 상단 검색창에 찾고 싶은 내용 입력
-2. Enter를 누르거나 검색 버튼 클릭
-3. 검색 결과에서:
-   - 클릭: 문서 내용 미리보기
-   - 더블클릭: 문서 파일 열기
-   - 우클릭: 컨텍스트 메뉴 (파일 열기, 폴더 열기, 경로 복사)
+### 2단계: 검색
+상단 검색창에 입력 → Enter → 결과 클릭(미리보기) / 더블클릭(열기)
 
-### 3단계: 검색 필터 활용하기
-- **파일 종류**: 특정 확장자만 검색 (예: PDF만)
-- **검색 모드**: 키워드/의미/하이브리드/파일명 검색 선택
+### 3단계: AI 활용
+- **RAG 질의**: 검색 후 AI 패널에서 문서 기반 질문
+- **파일 QA**: 단일 파일 우클릭 → AI에게 질문
+- **요약**: 파일 우클릭 → AI 요약
 
----
+### 검색 모드
 
-## 자주 묻는 질문
-
-### Q. 인덱싱이 뭔가요?
-**A.** 문서 내용을 미리 분석해서 저장해두는 과정입니다. 처음 한 번만 시간이 걸리고, 이후에는 빠르게 검색할 수 있습니다.
-
-### Q. 어떤 폴더를 등록해야 하나요?
-**A.** 자주 사용하는 문서가 있는 폴더를 등록하세요. 예: 내 문서, 프로젝트 폴더, 다운로드 폴더 등
-
-### Q. 파일을 수정하면 다시 인덱싱해야 하나요?
-**A.** 아니요! Anything이 폴더를 실시간으로 감시하고 있어서, 파일이 추가/수정/삭제되면 자동으로 업데이트됩니다.
-
-### Q. 검색이 느린 것 같아요
-**A.** 인덱싱이 완료되었는지 확인해주세요. 하단 상태바에서 인덱싱 상태를 확인할 수 있습니다.
-
-### Q. 한글 파일(.hwp)은 지원하나요?
-**A.** 현재는 새로운 한글 형식인 `.hwpx`만 지원합니다. 기존 `.hwp` 파일은 한글에서 `.hwpx`로 다시 저장하면 검색할 수 있습니다.
-
-### Q. 인터넷 연결이 필요한가요?
-**A.** 아니요! 모든 검색과 AI 분석은 컴퓨터에서 로컬로 처리됩니다. 인터넷 연결 없이도 모든 기능을 사용할 수 있습니다.
+| 모드 | 단축키 | 설명 |
+|------|--------|------|
+| 하이브리드 | 기본 | 키워드 + 의미 검색 결합 |
+| 키워드 | - | 정확한 단어 매칭 (형태소 분석) |
+| 시맨틱 | - | 의미 기반 유사 문서 검색 |
+| 파일명 | - | Everything 스타일 파일명 검색 |
 
 ---
 
-## 개발자용 정보
+## 기술 스택
 
-### 기술 스택
-- **프론트엔드**: React 19 + TypeScript 5.9 + Tailwind CSS 4
-- **백엔드**: Rust 2021 + Tauri 2.10
-- **검색 엔진**: SQLite FTS5 (키워드) + usearch (벡터) + RRF 하이브리드
-- **AI 임베딩**: ONNX Runtime + KoSimCSE-roberta-multitask (768차원)
-- **형태소 분석**: Lindera 2.0 (한국어)
-- **결과 재정렬**: ms-marco-MiniLM-L6-v2 (Cross-Encoder)
+| 영역 | 기술 |
+|------|------|
+| Frontend | React 19 + TypeScript 5.9 + Tailwind CSS 4 |
+| Backend | Rust 2021 + Tauri 2.10 |
+| 검색 | SQLite FTS5 + usearch (HNSW) + RRF 하이브리드 |
+| 임베딩 | ONNX Runtime + KoSimCSE-roberta-multitask (768차원) |
+| 형태소 분석 | Lindera 2.0 (한국어) |
+| 재정렬 | ms-marco-MiniLM-L6-v2 (Cross-Encoder) |
+| AI | Gemini API (RAG 질의응답) |
+| OCR | PaddleOCR (스캔 PDF) |
+| 파싱 | zip, quick-xml, calamine, pdf-extract, kordoc |
+| 파일 감시 | notify 8 (증분 인덱싱) |
 
-### 로컬 개발 환경 설정
+---
+
+## 개발
+
+### 로컬 개발 환경
 
 ```bash
 # 의존성 설치
 pnpm install
 
-# ONNX 모델 다운로드
+# ONNX 모델 다운로드 (첫 빌드 시)
 pnpm run download-model
 
 # 개발 서버 실행
 pnpm tauri:dev
 
-# 프로덕션 빌드
+# 프로덕션 빌드 (MSI 생성)
 pnpm tauri:build
 ```
 
+### 빌드 요구사항
+
+- Windows 10/11 x64
+- Node.js 22 LTS + pnpm 10
+- Rust 1.92+ (stable)
+- Visual Studio Build Tools 2022 (C++ workload)
+
 ### 프로젝트 구조
+
 ```
 Anything/
-├── src/              # React 프론트엔드
-├── src-tauri/        # Rust 백엔드 (Clean Architecture)
+├── src/                    # React 프론트엔드
+│   ├── components/         # UI 컴포넌트
+│   ├── hooks/              # 커스텀 훅 (14개)
+│   ├── types/              # TypeScript 타입
+│   └── utils/              # 유틸리티
+├── src-tauri/              # Rust 백엔드 (Clean Architecture)
 │   ├── src/
-│   │   ├── commands/ # Tauri IPC 커맨드
-│   │   ├── application/ # 응용 계층 (services, container)
-│   │   ├── domain/   # 도메인 계층 (entities, repositories)
-│   │   ├── parsers/  # 문서 파서
-│   │   ├── search/   # 검색 엔진
-│   │   ├── indexer/  # 인덱싱 시스템
-│   │   ├── embedder/ # ONNX 임베딩
-│   │   ├── tokenizer/# 형태소 분석
-│   │   └── reranker/ # 결과 재정렬
+│   │   ├── commands/       # Tauri IPC 커맨드
+│   │   ├── application/    # 응용 계층 (services, container)
+│   │   ├── domain/         # 도메인 계층 (entities, repositories)
+│   │   ├── infrastructure/ # 인프라 계층
+│   │   ├── parsers/        # 문서 파서 (hwpx, docx, xlsx, pdf, txt, kordoc)
+│   │   ├── search/         # 검색 엔진 (fts, vector, hybrid, filename)
+│   │   ├── indexer/        # 인덱싱 (pipeline, sync, vector_worker)
+│   │   ├── embedder/       # ONNX 임베딩
+│   │   ├── tokenizer/      # 형태소 분석 (Lindera)
+│   │   └── reranker/       # 결과 재정렬
 │   └── Cargo.toml
-├── .github/workflows/ # CI/CD
-└── package.json
+├── .github/workflows/      # CI (ci.yml) + Release (publish.yml)
+├── scripts/                # 빌드 스크립트 (PowerShell)
+└── promo-video/            # 소개 영상 (Remotion)
 ```
 
-자세한 빌드 방법은 [BUILD_GUIDE.md](BUILD_GUIDE.md)를 참고하세요.
+자세한 내용: [BUILD_GUIDE.md](BUILD_GUIDE.md) | [DEPLOYMENT.md](DEPLOYMENT.md) | [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## FAQ
+
+<details>
+<summary><b>인터넷 연결이 필요한가요?</b></summary>
+검색과 인덱싱은 100% 로컬 처리. AI RAG 질의응답만 Gemini API 연결이 필요합니다.
+</details>
+
+<details>
+<summary><b>HWP 파일도 검색되나요?</b></summary>
+네! kordoc 엔진이 .hwp를 자동으로 .hwpx로 변환하여 검색합니다. 별도 설치 불필요.
+</details>
+
+<details>
+<summary><b>인덱싱에 시간이 얼마나 걸리나요?</b></summary>
+SSD 기준 약 1,000개 문서에 2-5분. HDD는 자동 감지하여 적응형 스레딩으로 최적화합니다.
+</details>
+
+<details>
+<summary><b>파일을 수정하면 다시 인덱싱해야 하나요?</b></summary>
+아니요. 실시간 폴더 감시로 파일 추가/수정/삭제를 자동 반영합니다.
+</details>
 
 ---
 
 ## 라이선스
 
-MIT License
+[MIT License](LICENSE) - Copyright 2025-2026 Chris
 
 ---
 
-## 기여하기
+## 기여
 
 버그 리포트, 기능 제안, PR 모두 환영합니다!
 
-1. 이슈를 먼저 등록해주세요
-2. Fork 후 기능 개발
-3. PR 제출
+1. [Issues](https://github.com/chrisryugj/Docufinder/issues)에서 이슈 등록
+2. Fork → 기능 개발 → PR 제출
 
 ---
 
-**Made with Tauri + React**
+**Made with [Tauri](https://tauri.app) + [React](https://react.dev)**

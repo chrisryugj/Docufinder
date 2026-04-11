@@ -296,6 +296,14 @@ function AppContent() {
 
   return (
     <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '1920px' }}>
+      {/* Skip-to-main-content for keyboard/screen reader users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[10000] focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
+        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+      >
+        본문으로 건너뛰기
+      </a>
       <div className="noise-overlay" aria-hidden="true" />
 
 
@@ -476,7 +484,7 @@ function AppContent() {
               </div>
             )}
 
-            <main className="px-5 sm:px-8 pb-20 h-full">
+            <main id="main-content" tabIndex={-1} className="px-5 sm:px-8 pb-20 h-full outline-none">
               <div className="mt-4 h-full">
                 {/* 유사 문서 배너 */}
                 {search.similarResults.length > 0 && (

@@ -9,13 +9,14 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// SQLITE_BUSY 시 재시도하는 래퍼 (busy_timeout으로 부족한 경우를 위한 application-level retry)
-/// 최대 3회 시도, 각 시도 사이 1초 대기
+/// 최대 3회, 지수 백오프 100→200→400ms.
+/// ⚠️ sync-only: std::thread::sleep 사용. async 컨텍스트에서는 spawn_blocking 내에서 호출할 것.
 pub fn retry_on_busy<F, T>(f: F) -> Result<T>
 where
     F: Fn() -> Result<T>,
 {
     const MAX_RETRIES: u32 = 3;
-    const RETRY_DELAY_MS: u64 = 1000;
+    const RETRY_BASE_MS: u64 = 100; // 지수 백오프: 100ms → 200ms → 400ms
 
     for attempt in 0..MAX_RETRIES {
         match f() {
@@ -32,13 +33,14 @@ where
                     )
                 );
                 if is_busy && attempt < MAX_RETRIES - 1 {
+                    let delay_ms = RETRY_BASE_MS << attempt; // 100, 200, 400
                     tracing::warn!(
                         "[DB retry] SQLITE_BUSY on attempt {}/{}, retrying in {}ms...",
                         attempt + 1,
                         MAX_RETRIES,
-                        RETRY_DELAY_MS
+                        delay_ms
                     );
-                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                     continue;
                 }
                 return Err(e);
@@ -205,7 +207,8 @@ pub fn upsert_file(
 ) -> Result<i64> {
     let now = current_timestamp();
 
-    conn.execute(
+    // RETURNING으로 INSERT/UPDATE 모두에서 id를 1회 쿼리로 획득
+    let file_id: i64 = conn.query_row(
         "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at)
          VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
@@ -213,14 +216,9 @@ pub fn upsert_file(
            file_type = excluded.file_type,
            size = excluded.size,
            modified_at = excluded.modified_at,
-           indexed_at = excluded.indexed_at",
+           indexed_at = excluded.indexed_at
+         RETURNING id",
         params![path, name, file_type, size, modified_at, now],
-    )?;
-
-    // 파일 ID 조회
-    let file_id: i64 = conn.query_row(
-        "SELECT id FROM files WHERE path = ?",
-        params![path],
         |row| row.get(0),
     )?;
 
@@ -307,28 +305,44 @@ pub fn get_file_and_chunk_ids_in_folder(
     let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
     let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
 
-    let mut stmt = conn
-        .prepare("SELECT id FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'")?;
-
     // Windows/Unix 경로 모두 지원
     let pattern_unix = format!("{}/%", escaped_unix);
-    let pattern_win = format!("{}\\\\%", escaped_win); // \\ → \\\\ (escaped backslash)
+    let pattern_win = format!("{}\\\\%", escaped_win);
 
-    let file_ids: Vec<i64> = stmt
-        .query_map(params![pattern_unix, pattern_win], |row| row.get(0))?
-        .filter_map(|r| match r {
-            Ok(id) => Some(id),
+    // 단일 JOIN 쿼리로 N+1 문제 해결
+    let mut stmt = conn.prepare(
+        "SELECT f.id, c.id FROM files f
+         LEFT JOIN chunks c ON c.file_id = f.id
+         WHERE f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\'
+         ORDER BY f.id",
+    )?;
+
+    let rows = stmt.query_map(params![pattern_unix, pattern_win], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+    })?;
+
+    let mut results: Vec<(i64, Vec<i64>)> = Vec::new();
+    let mut last_file_id: Option<i64> = None;
+
+    for row in rows {
+        let (file_id, chunk_id) = match row {
+            Ok(r) => r,
             Err(e) => {
                 tracing::trace!("Skipping row in folder query: {}", e);
-                None
+                continue;
             }
-        })
-        .collect();
+        };
 
-    let mut results = Vec::new();
-    for file_id in file_ids {
-        let chunk_ids = get_chunk_ids_for_file(conn, file_id)?;
-        results.push((file_id, chunk_ids));
+        if last_file_id != Some(file_id) {
+            results.push((file_id, Vec::new()));
+            last_file_id = Some(file_id);
+        }
+
+        if let Some(cid) = chunk_id {
+            if let Some(last) = results.last_mut() {
+                last.1.push(cid);
+            }
+        }
     }
 
     Ok(results)
@@ -403,6 +417,12 @@ pub fn clear_all_data(conn: &Connection) -> Result<()> {
 
         // watched_folders
         conn.execute("DELETE FROM watched_folders", [])?;
+
+        // bookmarks
+        let _ = conn.execute("DELETE FROM bookmarks", []);
+
+        // file_tags
+        let _ = conn.execute("DELETE FROM file_tags", []);
 
         // search_queries (자동완성 히스토리)
         let _ = conn.execute("DELETE FROM search_queries", []);
@@ -585,13 +605,6 @@ pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<Hash
     Ok(map)
 }
 
-/// 파일의 모든 청크 ID 조회
-pub fn get_chunk_ids_for_file(conn: &Connection, file_id: i64) -> Result<Vec<i64>> {
-    let mut stmt = conn.prepare("SELECT id FROM chunks WHERE file_id = ?")?;
-    let rows = stmt.query_map(params![file_id], |row| row.get(0))?;
-    rows.collect()
-}
-
 /// 파일 경로로 chunk ID들 조회 (벡터 인덱스 삭제용)
 pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare(
@@ -668,7 +681,8 @@ pub fn upsert_file_fts_only(
 ) -> Result<i64> {
     let now = current_timestamp();
 
-    conn.execute(
+    // RETURNING으로 INSERT/UPDATE 모두에서 id를 1회 쿼리로 획득
+    let file_id: i64 = conn.query_row(
         "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at, fts_indexed_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
@@ -678,14 +692,9 @@ pub fn upsert_file_fts_only(
            modified_at = excluded.modified_at,
            indexed_at = excluded.indexed_at,
            fts_indexed_at = excluded.fts_indexed_at,
-           vector_indexed_at = NULL",
+           vector_indexed_at = NULL
+         RETURNING id",
         params![path, name, file_type, size, modified_at, now, now],
-    )?;
-
-    // 파일 ID 조회
-    let file_id: i64 = conn.query_row(
-        "SELECT id FROM files WHERE path = ?",
-        params![path],
         |row| row.get(0),
     )?;
 
@@ -710,20 +719,17 @@ pub fn insert_file_metadata_only(
     modified_at: i64,
 ) -> Result<i64> {
     // fts_indexed_at = NULL, vector_indexed_at = NULL (파싱 대기 상태)
-    conn.execute(
+    // RETURNING으로 INSERT/UPDATE 모두에서 id를 1회 쿼리로 획득
+    let file_id: i64 = conn.query_row(
         "INSERT INTO files (path, name, file_type, size, modified_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
            name = excluded.name,
            file_type = excluded.file_type,
            size = excluded.size,
-           modified_at = excluded.modified_at",
+           modified_at = excluded.modified_at
+         RETURNING id",
         params![path, name, file_type, size, modified_at],
-    )?;
-
-    let file_id: i64 = conn.query_row(
-        "SELECT id FROM files WHERE path = ?",
-        params![path],
         |row| row.get(0),
     )?;
 

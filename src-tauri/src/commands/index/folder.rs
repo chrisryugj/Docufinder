@@ -116,7 +116,7 @@ pub async fn add_folder(
     // 5. FilenameCache 최종 갱신 (FTS 인덱싱 후)
     refresh_filename_cache(&state);
 
-    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
+    let was_cancelled = result.was_cancelled;
 
     // 인덱싱 상태 업데이트
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
@@ -292,7 +292,7 @@ pub async fn reindex_folder(
 
     refresh_filename_cache(&state);
 
-    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
+    let was_cancelled = result.was_cancelled;
 
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         let status = if was_cancelled {
@@ -406,7 +406,7 @@ pub async fn resume_indexing(
 
     refresh_filename_cache(&state);
 
-    let was_cancelled = result.errors.iter().any(|e| e.contains("Cancelled"));
+    let was_cancelled = result.was_cancelled;
 
     if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
         let status = if was_cancelled {

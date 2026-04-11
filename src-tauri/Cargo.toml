@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.0.0"
+version = "2.1.0"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -65,6 +65,9 @@ sha2 = "0.10"
 
 # Base64 (PowerShell EncodedCommand)
 base64 = "0.22"
+
+# Text encoding detection (EUC-KR, CP949 etc.)
+encoding_rs = "0.8"
 
 # Utilities
 which = "7"

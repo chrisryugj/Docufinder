@@ -116,8 +116,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
 
     const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const ta = e.currentTarget;
+      // 1000자 제한 (백엔드 MAX_QUERY_LEN과 일치)
+      if (ta.value.length > 1000) {
+        ta.value = ta.value.slice(0, 1000);
+      }
       ta.style.height = "auto";
-      ta.style.height = `${Math.min(ta.scrollHeight, 96)}px`;
+      ta.style.height = `${Math.min(ta.scrollHeight, 160)}px`;
       onQueryChange(ta.value);
     }, [onQueryChange]);
 
@@ -240,6 +244,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               ref={innerRef}
               type="text"
               defaultValue={query}
+              maxLength={1000}
               {...imeHandlers}
               onKeyDown={handleKeyDown}
               onBlur={handleBlur}

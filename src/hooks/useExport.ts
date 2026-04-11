@@ -50,7 +50,7 @@ export function useExport(options?: UseExportOptions): UseExportReturn {
         await invoke("export_csv", { rows, query, outputPath });
         showToast(`${results.length}건 CSV 내보내기 완료`, "success");
       } catch (e) {
-        showToast(`CSV 내보내기 실패: ${e}`, "error");
+        showToast("CSV 내보내기에 실패했습니다", "error");
       } finally {
         setIsExporting(false);
       }

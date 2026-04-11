@@ -10,6 +10,8 @@ export function VectorIndexingBanner({ isVisible, progress, onCancel }: VectorIn
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className="max-w-4xl mx-auto mt-2 px-3 py-2 rounded-lg flex items-center justify-between text-xs"
       style={{
         backgroundColor: "var(--color-accent-subtle, rgba(59, 130, 246, 0.1))",

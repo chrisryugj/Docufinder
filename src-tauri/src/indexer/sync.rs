@@ -35,6 +35,8 @@ pub struct SyncResult {
     pub failed: usize,
     pub unchanged: usize,
     pub errors: Vec<String>,
+    /// 사용자에 의해 취소되었는지 여부
+    pub was_cancelled: bool,
 }
 
 /// 폴더 동기화 - 변경분만 인덱싱 (추가/수정/삭제 감지)
@@ -112,7 +114,8 @@ pub fn sync_folder_fts(
                 deleted: 0,
                 failed: 0,
                 unchanged: 0,
-                errors: vec!["Cancelled".to_string()],
+                errors: vec![],
+                was_cancelled: true,
             });
         }
 
@@ -296,6 +299,7 @@ pub fn sync_folder_fts(
             failed: 0,
             unchanged,
             errors: vec![],
+            was_cancelled: false,
         });
     }
 
@@ -488,5 +492,6 @@ pub fn sync_folder_fts(
         failed,
         unchanged,
         errors,
+        was_cancelled: false,
     })
 }

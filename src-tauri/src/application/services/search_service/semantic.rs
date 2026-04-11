@@ -149,7 +149,7 @@ impl SearchService {
             };
             let sentences = sentence::split_sentences(source);
             for sent in sentences {
-                all_sentences.push((idx, sent.text, sent.start, sent.end));
+                all_sentences.push((idx, sent.text, sent.char_start, sent.char_end));
             }
         }
 

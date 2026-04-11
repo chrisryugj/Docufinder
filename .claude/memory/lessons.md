@@ -24,3 +24,4 @@
 | 계획 품질 피드백 | 첫 계획이 너무 표면적 → "대충 쓴 거 같다" 피드백 | 계획 작성 시 비판적 검토 섹션 포함, 설계 결정 근거+대안+리스크 명시 필수 | "왜 이 방식인가" + "다른 방식은 왜 안 되나" + "FTS5 NOT 제약 같은 기술적 한계" 반드시 포함 |
 | std::sync::OnceLock 마이그레이션 | once_cell → OnceLock 전환 시도 → `get_or_try_init` unstable (feature gate `once_cell_try`) | Rust 표준 라이브러리 API 안정화 상태 확인 필수 | OnceLock은 `get_or_init`만 stable, `get_or_try_init`은 nightly. fallible init 필요 시 once_cell 유지 |
 | 기능 상태 판단 | Explore 에이전트가 "스텁"이라 보고 → 실제로는 전부 완전 구현체 | 에이전트 보고서를 맹신하면 안 됨, 핵심 파일은 직접 Read로 확인 | 기능 존재/스텁 판단 시 반드시 (1) 프론트 hook (2) 백엔드 command (3) DB 스키마 세 곳 직접 확인 |
+| 외부 프로젝트 수정 | kordoc 번들링 위해 kordoc/tsup.config.ts 직접 수정 → 사용자 "다른 프로젝트 건드리지 마라" | 의존하는 외부 프로젝트 코드를 직접 수정하면 안 됨 | 외부 프로젝트 변경 필요 시 → 현재 프로젝트 내에서 빌드 스크립트/래퍼로 해결. 불가능하면 사용자에게 별도 작업 요청 |

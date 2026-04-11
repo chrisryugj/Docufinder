@@ -31,6 +31,10 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
 pub fn init_database(db_path: &Path) -> Result<()> {
     let conn = get_connection(db_path)?;
 
+    // auto_vacuum은 테이블 생성 전에만 설정 가능 (새 DB에서만 효과)
+    // 기존 DB에서는 무시되므로 항상 호출해도 안전
+    conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL;")?;
+
     // 스키마 버전 테이블 (항상 먼저 생성)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS schema_version (

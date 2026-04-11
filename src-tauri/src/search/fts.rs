@@ -3,6 +3,7 @@ use rusqlite::{params, Connection};
 
 /// FTS5 키워드 검색 (파일 정보 포함)
 /// snippet()으로 매칭 컨텍스트 자동 추출
+/// 짧은 한글 쿼리(1~2자)에서 FTS5가 빈 결과 반환 시 LIKE 폴백
 pub fn search(
     conn: &Connection,
     query: &str,
@@ -16,7 +17,14 @@ pub fn search(
         return Ok(vec![]);
     }
 
-    search_internal(conn, &safe_query, limit, folder_scope)
+    let results = search_internal(conn, &safe_query, limit, folder_scope)?;
+
+    // 짧은 쿼리(한글 1~2자)에서 FTS가 빈 결과이면 LIKE 폴백
+    if results.is_empty() && query.trim().chars().count() <= 2 {
+        return search_like_fallback(conn, query.trim(), limit, folder_scope);
+    }
+
+    Ok(results)
 }
 
 /// FTS5 키워드 검색 (한국어 형태소 분석 포함)
@@ -37,7 +45,14 @@ pub fn search_with_tokenizer(
         return Ok(vec![]);
     }
 
-    search_internal(conn, &safe_query, limit, folder_scope)
+    let results = search_internal(conn, &safe_query, limit, folder_scope)?;
+
+    // 짧은 쿼리에서 FTS가 빈 결과이면 LIKE 폴백
+    if results.is_empty() && query.trim().chars().count() <= 2 {
+        return search_like_fallback(conn, query.trim(), limit, folder_scope);
+    }
+
+    Ok(results)
 }
 
 /// FTS5 검색 내부 구현
@@ -199,4 +214,70 @@ pub struct FtsResult {
     pub snippet: String,
     /// 파일 수정 시간 (Unix timestamp, 초)
     pub modified_at: Option<i64>,
+}
+
+/// 짧은 쿼리용 LIKE 폴백 검색 (FTS5가 못 잡는 한글 1~2자 대응)
+fn search_like_fallback(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    folder_scope: Option<&str>,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    let like_pattern = format!("%{}%", query);
+
+    let (scope_clause, scope_pattern) = match folder_scope {
+        Some(scope) if !scope.is_empty() => {
+            let escaped = crate::db::escape_like_pattern(&scope.to_lowercase());
+            (
+                "AND LOWER(f.path) LIKE ? ESCAPE '\\'",
+                Some(format!("{}%", escaped)),
+            )
+        }
+        _ => ("", None),
+    };
+
+    let sql = format!(
+        "SELECT
+            c.id, f.path, f.name, c.chunk_index, c.content,
+            1.0 as score, c.start_offset, c.end_offset,
+            c.page_number, c.page_end, c.location_hint,
+            '' as snippet, f.modified_at
+         FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         WHERE c.content LIKE ?
+         {}
+         ORDER BY f.modified_at DESC
+         LIMIT ?",
+        scope_clause
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let map_row = |row: &rusqlite::Row| {
+        Ok(FtsResult {
+            chunk_id: row.get(0)?,
+            file_path: row.get(1)?,
+            file_name: row.get(2)?,
+            chunk_index: row.get(3)?,
+            content: row.get(4)?,
+            score: row.get(5)?,
+            start_offset: row.get(6)?,
+            end_offset: row.get(7)?,
+            page_number: row.get(8)?,
+            page_end: row.get(9)?,
+            location_hint: row.get(10)?,
+            snippet: row.get(11)?,
+            modified_at: row.get(12)?,
+        })
+    };
+
+    let results: Vec<FtsResult> = if let Some(ref pattern) = scope_pattern {
+        stmt.query_map(rusqlite::params![like_pattern, pattern, limit as i64], map_row)?
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        stmt.query_map(params![like_pattern, limit as i64], map_row)?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+
+    Ok(results)
 }

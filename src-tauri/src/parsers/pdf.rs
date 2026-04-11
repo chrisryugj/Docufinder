@@ -143,6 +143,12 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
     let raw_text = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
         Ok(Ok(Ok(text))) => text,
         Ok(Ok(Err(e))) => {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("password") || msg.contains("encrypt") {
+                return Err(ParseError::PasswordProtected(
+                    "암호로 보호된 PDF 파일입니다".to_string(),
+                ));
+            }
             return Err(ParseError::ParseError(format!(
                 "PDF extraction failed: {}",
                 e

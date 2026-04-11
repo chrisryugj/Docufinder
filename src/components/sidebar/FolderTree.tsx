@@ -292,30 +292,33 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         </ul>
       </div>
       {contextMenu.isOpen && createPortal(
-        <div
-          role="menu"
-          className="ctx-menu fixed z-50 min-w-[160px] py-1 rounded-lg shadow-lg"
-          style={{ top: contextMenu.y, left: contextMenu.x, backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
-        >
-          <button
-            onClick={async () => { const path = contextMenu.folderPath; closeContextMenu(); try { await invoke("open_folder", { path }); } catch {} }}
-            role="menuitem"
-            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+        <ContextMenuKeyboard onClose={closeContextMenu}>
+          <div
+            role="menu"
+            aria-label="드라이브 메뉴"
+            className="ctx-menu fixed z-50 min-w-[160px] py-1 rounded-lg shadow-lg"
+            style={{ top: contextMenu.y, left: contextMenu.x, backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
           >
-            <FolderOpen className="w-4 h-4 clr-warning" />
-            탐색기에서 열기
-          </button>
-          {onRemoveFolder && (
             <button
-              onClick={() => { const path = contextMenu.folderPath; closeContextMenu(); onRemoveFolder(path); }}
+              onClick={async () => { const path = contextMenu.folderPath; closeContextMenu(); try { await invoke("open_folder", { path }); } catch {} }}
               role="menuitem"
-              className="ctx-menu-item-danger w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+              className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
             >
-              <Trash2 className="w-4 h-4" />
-              드라이브 제거
+              <FolderOpen className="w-4 h-4 clr-warning" />
+              탐색기에서 열기
             </button>
-          )}
-        </div>,
+            {onRemoveFolder && (
+              <button
+                onClick={() => { const path = contextMenu.folderPath; closeContextMenu(); onRemoveFolder(path); }}
+                role="menuitem"
+                className="ctx-menu-item-danger w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                드라이브 제거
+              </button>
+            )}
+          </div>
+        </ContextMenuKeyboard>,
         document.body
       )}
       </>
@@ -324,14 +327,54 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
   return (
     <>
-    <ul className="space-y-1" role="tree" aria-label="인덱싱된 폴더">
+    <ul
+      className="space-y-1"
+      role="tree"
+      aria-label="인덱싱된 폴더"
+      onKeyDown={(e) => {
+        const items = e.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"] > div[tabindex]');
+        const current = document.activeElement as HTMLElement;
+        const idx = Array.from(items).indexOf(current);
+        if (idx === -1) return;
+
+        switch (e.key) {
+          case "ArrowDown":
+            e.preventDefault();
+            items[Math.min(idx + 1, items.length - 1)]?.focus();
+            break;
+          case "ArrowUp":
+            e.preventDefault();
+            items[Math.max(idx - 1, 0)]?.focus();
+            break;
+          case "ArrowRight": {
+            e.preventDefault();
+            const folder = current.dataset.folderPath;
+            if (folder && !expandedFolders.has(folder)) toggleExpand(folder);
+            break;
+          }
+          case "ArrowLeft": {
+            e.preventDefault();
+            const folder = current.dataset.folderPath;
+            if (folder && expandedFolders.has(folder)) toggleExpand(folder);
+            break;
+          }
+          case "Enter":
+          case " ":
+            e.preventDefault();
+            current.click();
+            break;
+        }
+      }}
+    >
       {sortedFolders.map((folder) => {
         const isExpanded = expandedFolders.has(folder);
         const displayPath = cleanPath(folder);
         const isFavorite = folderInfo[folder]?.is_favorite ?? false;
         return (
-          <li key={folder} role="treeitem" aria-expanded={isExpanded}>
+          <li key={folder} role="treeitem" aria-expanded={isExpanded} aria-selected={isExpanded}>
             <div
+              tabIndex={0}
+              data-folder-path={folder}
               className="group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-lg cursor-pointer transition-all duration-200 hover-sidebar-item"
               onClick={() => toggleExpand(folder)}
               onContextMenu={(e) => handleContextMenu(e, folder)}
@@ -404,6 +447,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     </ul>
     {/* 컨텍스트 메뉴 - Portal로 body에 렌더링 (사이드바 overflow 회피) */}
     {contextMenu.isOpen && createPortal(
+      <ContextMenuKeyboard onClose={closeContextMenu}>
       <div
         ref={contextMenuRef}
         className="fixed z-[9999] min-w-[160px] py-1 rounded-lg shadow-xl border"
@@ -461,9 +505,64 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             폴더 제거
           </button>
         )}
-      </div>,
+      </div>
+      </ContextMenuKeyboard>,
       document.body
     )}
     </>
   );
+}
+
+/** 컨텍스트 메뉴 키보드 내비게이션 래퍼 */
+function ContextMenuKeyboard({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const trigger = document.activeElement as HTMLElement | null;
+    const items = () => el.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    requestAnimationFrame(() => items()[0]?.focus());
+
+    const restoreAndClose = () => {
+      onClose();
+      requestAnimationFrame(() => trigger?.focus());
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const menuItems = items();
+      const current = document.activeElement as HTMLElement;
+      const idx = Array.from(menuItems).indexOf(current);
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          menuItems[idx < menuItems.length - 1 ? idx + 1 : 0]?.focus();
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          menuItems[idx > 0 ? idx - 1 : menuItems.length - 1]?.focus();
+          break;
+        case "Home":
+          e.preventDefault();
+          menuItems[0]?.focus();
+          break;
+        case "End":
+          e.preventDefault();
+          menuItems[menuItems.length - 1]?.focus();
+          break;
+        case "Escape":
+        case "Tab":
+          e.preventDefault();
+          restoreAndClose();
+          break;
+      }
+    };
+
+    el.addEventListener("keydown", handleKeyDown);
+    return () => el.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return <div ref={wrapperRef}>{children}</div>;
 }

@@ -28,8 +28,15 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
       if (menuBtnRef.current?.contains(e.target as Node)) return;
       closeMenu();
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
   }, [menuOpen, closeMenu]);
 
   const menuItems = [
@@ -103,6 +110,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
             onClick={() => setMenuOpen((v) => !v)}
             className="p-1.5 rounded-md transition-colors btn-icon-hover"
             aria-label="더보기"
+            aria-expanded={menuOpen}
             title="더보기"
           >
             <MoreHorizontal className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />

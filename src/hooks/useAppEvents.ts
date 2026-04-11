@@ -62,22 +62,42 @@ export function useAppEvents({
 
   // 모델 다운로드 상태 이벤트 — ref 패턴으로 listener 재등록 방지
   useEffect(() => {
-    let toastId: string | null = null;
+    let semanticToastId: string | null = null;
+    let ocrToastId: string | null = null;
     let unlistenFn: UnlistenFn | null = null;
     listen<string>("model-download-status", (event) => {
       const cb = cbRef.current;
       switch (event.payload) {
+        // 시맨틱 모델
         case "downloading":
-          toastId = cb.showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
+          semanticToastId = cb.showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
           break;
         case "completed":
-          if (toastId) {
-            cb.updateToast(toastId, { message: "AI 모델 다운로드 완료!", type: "success" });
+          if (semanticToastId) {
+            cb.updateToast(semanticToastId, { message: "AI 모델 다운로드 완료!", type: "success" });
           }
           break;
         case "failed":
-          if (toastId) {
-            cb.updateToast(toastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 5000);
+          if (semanticToastId) {
+            cb.updateToast(semanticToastId, { message: "AI 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 8000);
+          } else {
+            cb.showToast("AI 모델 다운로드 실패. 설정에서 시맨틱 검색을 확인하세요.", "error", 8000);
+          }
+          break;
+        // OCR 모델
+        case "downloading-ocr":
+          ocrToastId = cb.showToast("OCR 모델 다운로드 중...", "loading");
+          break;
+        case "completed-ocr":
+          if (ocrToastId) {
+            cb.updateToast(ocrToastId, { message: "OCR 모델 다운로드 완료!", type: "success" });
+          }
+          break;
+        case "failed-ocr":
+          if (ocrToastId) {
+            cb.updateToast(ocrToastId, { message: "OCR 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 8000);
+          } else {
+            cb.showToast("OCR 모델 다운로드 실패. 설정에서 OCR을 확인하세요.", "error", 8000);
           }
           break;
       }
@@ -93,6 +113,16 @@ export function useAppEvents({
     let unlistenFn: UnlistenFn | null = null;
     listen<string[]>("hwp-files-detected", (event) => {
       onHwpDetectedRef.current?.(event.payload);
+    }).then((fn) => { unlistenFn = fn; });
+
+    return () => { unlistenFn?.(); };
+  }, []);
+
+  // DB 무결성 경고 이벤트
+  useEffect(() => {
+    let unlistenFn: UnlistenFn | null = null;
+    listen<string>("db-integrity-warning", (event) => {
+      cbRef.current.showToast(event.payload, "error", 15000);
     }).then((fn) => { unlistenFn = fn; });
 
     return () => { unlistenFn?.(); };

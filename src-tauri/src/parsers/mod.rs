@@ -27,6 +27,8 @@ pub enum ParseError {
     IoError(#[from] std::io::Error),
     #[error("Parse error: {0}")]
     ParseError(String),
+    #[error("Password protected: {0}")]
+    PasswordProtected(String),
 }
 
 /// 파싱 결과
@@ -166,8 +168,9 @@ pub const MAX_TOTAL_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
 pub const MAX_ZIP_ENTRIES: usize = 1000;
 /// 압축 비율 제한 (uncompressed/compressed > 100 = 의심)
 pub const MAX_COMPRESSION_RATIO: u64 = 100;
-/// 최대 파일 크기 (200MB) - 8GB RAM PC OOM 방지
-pub const MAX_FILE_SIZE: u64 = 200 * 1024 * 1024;
+/// 최대 파일 크기 (500MB) - 설정 max_file_size_mb 최대값과 동기화
+/// 실제 필터링은 인덱서 파이프라인에서 설정값 기반으로 수행, 이 상수는 안전망
+pub const MAX_FILE_SIZE: u64 = 500 * 1024 * 1024;
 
 /// ZIP 아카이브 압축 폭탄 방어 검증 (docx, hwpx 공통)
 pub fn validate_zip_archive<R: std::io::Read + std::io::Seek>(

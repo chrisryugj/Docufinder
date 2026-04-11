@@ -16,10 +16,16 @@ const SENTENCE_DELIMITERS: &[char] = &['.', '!', '?', '。', '！', '？'];
 pub struct Sentence {
     /// 문장 텍스트
     pub text: String,
-    /// 원본 텍스트 내 시작 위치 (바이트)
+    /// 원본 텍스트 내 시작 위치 (바이트 — 내부 슬라이싱용)
+    #[allow(dead_code)]
     pub start: usize,
-    /// 원본 텍스트 내 끝 위치 (바이트)
+    /// 원본 텍스트 내 끝 위치 (바이트 — 내부 슬라이싱용)
+    #[allow(dead_code)]
     pub end: usize,
+    /// 원본 텍스트 내 시작 위치 (char index — 프론트엔드 JS 호환)
+    pub char_start: usize,
+    /// 원본 텍스트 내 끝 위치 (char index — 프론트엔드 JS 호환)
+    pub char_end: usize,
 }
 
 /// 텍스트를 문장으로 분리
@@ -37,6 +43,7 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
 
     let mut sentences = Vec::new();
     let mut current_start = 0;
+    let mut current_char_start = 0; // char index 기반 시작점
     let chars: Vec<char> = trimmed.chars().collect();
     let mut byte_pos = 0;
     let mut char_idx = 0;
@@ -62,10 +69,13 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
                 if sentence_trimmed.len() >= MIN_SENTENCE_LEN {
                     // 원본 텍스트 내 실제 위치 계산
                     let offset = text.find(trimmed).unwrap_or(0);
+                    let char_offset = text[..offset].chars().count();
                     sentences.push(Sentence {
                         text: sentence_trimmed.to_string(),
                         start: offset + current_start,
                         end: offset + sentence_end,
+                        char_start: char_offset + current_char_start,
+                        char_end: char_offset + char_idx + 1,
                     });
 
                     if sentences.len() >= MAX_SENTENCES_PER_CHUNK {
@@ -81,6 +91,7 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
                     char_idx += 1;
                 }
                 current_start = byte_pos;
+                current_char_start = char_idx;
                 continue;
             }
         }
@@ -96,10 +107,13 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
 
         if sentence_trimmed.len() >= MIN_SENTENCE_LEN && sentences.len() < MAX_SENTENCES_PER_CHUNK {
             let offset = text.find(trimmed).unwrap_or(0);
+            let char_offset = text[..offset].chars().count();
             sentences.push(Sentence {
                 text: sentence_trimmed.to_string(),
                 start: offset + current_start,
                 end: offset + trimmed.len(),
+                char_start: char_offset + current_char_start,
+                char_end: char_offset + chars.len(),
             });
         }
     }
@@ -107,10 +121,13 @@ pub fn split_sentences(text: &str) -> Vec<Sentence> {
     // 문장이 하나도 없으면 전체 텍스트를 하나의 문장으로 취급
     if sentences.is_empty() && trimmed.len() >= MIN_SENTENCE_LEN {
         let offset = text.find(trimmed).unwrap_or(0);
+        let char_offset = text[..offset].chars().count();
         sentences.push(Sentence {
             text: trimmed.to_string(),
             start: offset,
             end: offset + trimmed.len(),
+            char_start: char_offset,
+            char_end: char_offset + trimmed.chars().count(),
         });
     }
 

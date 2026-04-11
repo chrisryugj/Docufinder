@@ -19,6 +19,7 @@ export const TagInput = memo(function TagInput({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -49,6 +50,31 @@ export const TagInput = memo(function TagInput({
   }, [value, tags, maxTags, onAdd]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showSuggestions && filteredSuggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((prev) =>
+          prev < filteredSuggestions.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((prev) =>
+          prev > 0 ? prev - 1 : filteredSuggestions.length - 1
+        );
+        return;
+      }
+      if (e.key === "Enter" && highlightedIndex >= 0) {
+        e.preventDefault();
+        const selected = filteredSuggestions[highlightedIndex];
+        onAdd(selected);
+        setValue("");
+        setShowSuggestions(false);
+        setHighlightedIndex(-1);
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       handleSubmit();
@@ -56,12 +82,18 @@ export const TagInput = memo(function TagInput({
       setEditing(false);
       setValue("");
       setShowSuggestions(false);
+      setHighlightedIndex(-1);
     }
   };
 
   const filteredSuggestions = suggestions.filter(
     (s) => !tags.includes(s) && s.toLowerCase().includes(value.toLowerCase())
   ).slice(0, 8);
+
+  // Reset highlighted index when suggestions change
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [value]);
 
   return (
     <div ref={containerRef} className="flex flex-wrap items-center gap-1">
@@ -92,7 +124,7 @@ export const TagInput = memo(function TagInput({
             ref={inputRef}
             type="text"
             value={value}
-            onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); }}
+            onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); setHighlightedIndex(-1); }}
             onKeyDown={handleKeyDown}
             placeholder="태그 입력..."
             maxLength={50}
@@ -111,11 +143,11 @@ export const TagInput = memo(function TagInput({
                 borderColor: "var(--color-border)",
               }}
             >
-              {filteredSuggestions.map((s) => (
+              {filteredSuggestions.map((s, i) => (
                 <button
                   key={s}
-                  onClick={() => { onAdd(s); setValue(""); setShowSuggestions(false); }}
-                  className="w-full px-2 py-1 text-[11px] text-left hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+                  onClick={() => { onAdd(s); setValue(""); setShowSuggestions(false); setHighlightedIndex(-1); }}
+                  className={`w-full px-2 py-1 text-[11px] text-left text-[var(--color-text-primary)] ${i === highlightedIndex ? "bg-[var(--color-bg-tertiary)]" : "hover:bg-[var(--color-bg-tertiary)]"}`}
                 >
                   {s}
                 </button>

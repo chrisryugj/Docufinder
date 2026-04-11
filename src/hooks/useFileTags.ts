@@ -50,7 +50,7 @@ export function useFileTags(showToast?: ShowToastFn): UseFileTagsReturn {
       await invoke("add_file_tag", { filePath, tag });
       await refreshAllTags();
     } catch (e) {
-      showToast?.(`태그 추가 실패: ${e}`, "error");
+      showToast?.("태그 추가에 실패했습니다", "error");
     }
   }, [refreshAllTags, showToast]);
 
@@ -59,7 +59,7 @@ export function useFileTags(showToast?: ShowToastFn): UseFileTagsReturn {
       await invoke("remove_file_tag", { filePath, tag });
       await refreshAllTags();
     } catch (e) {
-      showToast?.(`태그 제거 실패: ${e}`, "error");
+      showToast?.("태그 제거에 실패했습니다", "error");
     }
   }, [refreshAllTags, showToast]);
 

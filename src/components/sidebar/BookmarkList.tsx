@@ -61,7 +61,7 @@ export const BookmarkList = memo(function BookmarkList({
                       e.stopPropagation();
                       onRemove(bm.id);
                     }}
-                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-[var(--color-bg-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-all"
+                    className="p-0.5 rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-[var(--color-bg-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-all"
                     title="삭제"
                   >
                     <Trash2 size={11} />

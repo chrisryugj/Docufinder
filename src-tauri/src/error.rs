@@ -117,7 +117,7 @@ impl<T> From<std::sync::PoisonError<T>> for ApiError {
 
 impl From<std::io::Error> for ApiError {
     fn from(e: std::io::Error) -> Self {
-        ApiError::InvalidPath(e.to_string())
+        ApiError::IndexingFailed(format!("파일 처리 오류: {}", e))
     }
 }
 
@@ -131,7 +131,7 @@ impl From<crate::application::errors::AppError> for ApiError {
     fn from(e: crate::application::errors::AppError) -> Self {
         use crate::application::errors::AppError;
         match e {
-            AppError::Domain(d) => ApiError::InvalidPath(d.to_string()),
+            AppError::Domain(d) => ApiError::IndexingFailed(d.to_string()),
             AppError::EmptyQuery => ApiError::SearchFailed("검색어가 비어있습니다".to_string()),
             AppError::PathNotFound(p) => ApiError::PathNotFound(p),
             AppError::InvalidPath(p) => ApiError::InvalidPath(p),

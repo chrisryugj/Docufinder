@@ -1,4 +1,5 @@
 import { ButtonHTMLAttributes, forwardRef, CSSProperties } from "react";
+import { Spinner } from "./Spinner";
 
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
@@ -7,6 +8,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   isLoading?: boolean;
+  loadingText?: string;
 }
 
 const getVariantStyles = (variant: ButtonVariant): CSSProperties => {
@@ -58,6 +60,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = "primary",
       size = "md",
       isLoading = false,
+      loadingText,
       disabled,
       className = "",
       children,
@@ -87,11 +90,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {isLoading ? (
           <span className="flex items-center justify-center gap-2">
-            <span
-              className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"
-              style={{ borderTopColor: "transparent" }}
-            />
-            {isLoading && children ? "로딩 중..." : null}
+            <Spinner size="sm" />
+            <span aria-live="polite">
+              {loadingText || (children ? "로딩 중..." : null)}
+            </span>
           </span>
         ) : (
           children

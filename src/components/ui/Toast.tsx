@@ -24,6 +24,15 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     requestAnimationFrame(() => setIsVisible(true));
   }, []);
 
+  // loading 토스트 30초 안전망 자동 닫기
+  useEffect(() => {
+    if (toast.type !== "loading") return;
+    const timer = setTimeout(() => {
+      handleDismiss();
+    }, 30_000);
+    return () => clearTimeout(timer);
+  }, [toast.type, toast.id]);
+
   const handleDismiss = () => {
     setIsVisible(false);
     setTimeout(() => onDismiss(toast.id), 200);

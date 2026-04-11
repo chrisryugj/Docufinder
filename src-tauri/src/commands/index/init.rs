@@ -218,6 +218,7 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
 
         let mut total_added = 0usize;
         let mut total_deleted = 0usize;
+        let mut synced_folders: Vec<String> = Vec::new();
 
         for folder in &folders_to_sync {
             let path = std::path::Path::new(folder);
@@ -239,9 +240,7 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
                 Ok(result) => {
                     total_added += result.added;
                     total_deleted += result.deleted;
-                    if let Ok(conn) = crate::db::get_connection(&db_path) {
-                        let _ = crate::db::update_last_synced_at(&conn, folder);
-                    }
+                    synced_folders.push(folder.to_string());
                     if result.added > 0 || result.deleted > 0 {
                         tracing::info!(
                             "[Startup Sync] {}: +{} added, -{} deleted, {} unchanged",
@@ -254,6 +253,15 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
                 }
                 Err(e) => {
                     tracing::warn!("[Startup Sync] Sync failed for {}: {}", folder, e);
+                }
+            }
+        }
+
+        // 동기화 완료된 폴더들의 last_synced_at 일괄 업데이트 (커넥션 1회)
+        if !synced_folders.is_empty() {
+            if let Ok(conn) = crate::db::get_connection(&db_path) {
+                for folder in &synced_folders {
+                    let _ = crate::db::update_last_synced_at(&conn, folder);
                 }
             }
         }

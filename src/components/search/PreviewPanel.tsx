@@ -291,7 +291,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     setLoading(true);
     setError(null);
 
-    // 빠른 탐색 시 불필요한 파싱 방지를 위해 150ms debounce
+    // 빠른 탐색 시 불필요한 파싱 방지를 위해 300ms debounce (화살표 키 고속 이동 대응)
     const timer = setTimeout(() => {
       invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
         .then((res) => {
@@ -307,7 +307,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             setLoading(false);
           }
         });
-    }, 150);
+    }, 300);
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
@@ -393,7 +393,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         <Badge variant={getFileTypeBadgeVariant(fileName)}>
           {ext.toUpperCase()}
         </Badge>
-        <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors" title="닫기">
+        <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors" title="닫기" aria-label="닫기">
           <X size={14} />
         </button>
       </div>

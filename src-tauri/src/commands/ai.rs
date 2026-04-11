@@ -24,6 +24,12 @@ use tauri::{AppHandle, Emitter, State};
 
 const MAX_QUERY_LEN: usize = 1000;
 const RAG_RETRIEVE_LIMIT: usize = 25;
+/// 동시 AI 요청 제한 (API 비용 폭발 방지)
+const MAX_CONCURRENT_AI_REQUESTS: usize = 3;
+
+/// AI 동시 요청 세마포어
+static AI_SEMAPHORE: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_AI_REQUESTS));
 
 /// 현재 진행 중인 AI 스트리밍의 취소 토큰
 /// 새 요청이 오면 이전 토큰을 cancel하고 새 토큰으로 교체
@@ -237,6 +243,11 @@ pub async fn ask_ai(
         return Err(ApiError::Validation(format!("질문이 너무 깁니다 (최대 {}자)", MAX_QUERY_LEN)));
     }
 
+    // 동시 AI 요청 제한
+    let _permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
+        ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
+    })?;
+
     let (client, service, config, tokenizer) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
@@ -386,6 +397,11 @@ pub async fn ask_ai_file(
         return Err(ApiError::Validation("파일 경로가 비어있습니다.".to_string()));
     }
 
+    // 동시 AI 요청 제한
+    let _permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
+        ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
+    })?;
+
     let (client, db_path, config) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
@@ -470,6 +486,8 @@ pub async fn ask_ai_file(
 }
 
 /// AI 요약 (비스트리밍, 유형 선택 가능)
+/// 취소 토큰 미적용: non-streaming + spawn_blocking이라 중간 취소 불가.
+/// Semaphore로 동시 요청만 제한.
 #[tauri::command]
 pub async fn summarize_ai(
     file_path: String,
@@ -479,6 +497,11 @@ pub async fn summarize_ai(
     if file_path.trim().is_empty() {
         return Err(ApiError::Validation("파일 경로가 비어있습니다.".to_string()));
     }
+
+    // 동시 AI 요청 제한
+    let _permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
+        ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
+    })?;
 
     let (client, db_path, config) = {
         let container = state.read()?;

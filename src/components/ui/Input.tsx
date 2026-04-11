@@ -8,7 +8,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ leftIcon, rightIcon, error, className = "", ...props }, ref) => {
+  ({ leftIcon, rightIcon, error, className = "", id, ...props }, ref) => {
+    const errorId = error && id ? `${id}-error` : undefined;
     return (
       <div className="relative">
         {leftIcon && (
@@ -18,6 +19,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           ref={ref}
+          id={id}
+          aria-describedby={errorId}
           className={`
             w-full rounded-lg border
             focus:outline-none focus:ring-2 focus:border-transparent
@@ -41,7 +44,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {rightIcon}
           </div>
         )}
-        {error && <p className="mt-1 text-sm clr-error">{error}</p>}
+        {error && <p id={errorId} className="mt-1 text-sm clr-error">{error}</p>}
       </div>
     );
   }

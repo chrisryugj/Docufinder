@@ -289,7 +289,8 @@ fn index_folder_fts_impl(
             indexed_count: 0,
             failed_count: 0,
             vectors_count: 0,
-            errors: vec!["Cancelled by user".to_string()],
+            errors: vec![],
+            was_cancelled: true,
             hwp_files: vec![],
             ocr_image_count: 0,
         });
@@ -383,7 +384,6 @@ fn index_folder_fts_impl(
                 // 취소 시 현재까지 커밋
                 let _ = conn.execute_batch("COMMIT");
                 send_progress("cancelled", total, processed, None, true); // force: 취소
-                errors.push("Cancelled by user".to_string());
                 was_cancelled = true;
                 break;
             }
@@ -494,6 +494,7 @@ fn index_folder_fts_impl(
         failed_count: failed,
         vectors_count: 0, // FTS만이므로 0
         errors,
+        was_cancelled,
         hwp_files,
         ocr_image_count,
     })
@@ -585,6 +586,7 @@ pub struct MetadataScanResult {
     pub folder_path: String,
     pub files_found: usize,
     pub errors: Vec<String>,
+    pub was_cancelled: bool,
 }
 
 /// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
@@ -670,7 +672,8 @@ pub fn scan_metadata_only(
             return Ok(MetadataScanResult {
                 folder_path: folder_str,
                 files_found: count,
-                errors: vec!["Cancelled".to_string()],
+                errors: vec![],
+                was_cancelled: true,
             });
         }
 
@@ -765,6 +768,7 @@ pub fn scan_metadata_only(
         folder_path: folder_str,
         files_found: count,
         errors,
+        was_cancelled: false,
     })
 }
 
@@ -848,6 +852,8 @@ pub struct FolderIndexResult {
     pub failed_count: usize,
     pub vectors_count: usize,
     pub errors: Vec<String>,
+    /// 사용자에 의해 취소되었는지 여부
+    pub was_cancelled: bool,
     /// 변환 대상 HWP 파일 경로 목록
     pub hwp_files: Vec<String>,
     /// OCR로 인덱싱된 이미지 파일 수

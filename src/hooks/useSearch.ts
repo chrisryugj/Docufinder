@@ -294,10 +294,13 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             throw contentResult.reason;
           }
           const contentResponse = contentResult.value;
-          // 파일명 검색 실패 시 graceful degrade
+          // 파일명 검색 실패 시 graceful degrade (경고 로그)
           const filenameResponse = filenameResult.status === "fulfilled"
             ? filenameResult.value
             : { results: [], search_time_ms: 0, total_count: 0 };
+          if (filenameResult.status === "rejected") {
+            console.warn("[Search] 파일명 검색 실패:", filenameResult.reason);
+          }
 
           // 캐시 저장
           setToCache(cacheKey, {
@@ -337,12 +340,11 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, [query, setQuery]);
 
-  // paradigm 전환 (localStorage 저장 + 상태 초기화 + 캐시 클리어)
+  // paradigm 전환 (localStorage 저장 + 결과 초기화, 쿼리 보존)
   const setParadigm = useCallback((p: SearchParadigm) => {
     setParadigmInternal(p);
     try { localStorage.setItem("docufinder_paradigm", p); } catch {}
-    // 전환 시 상태 초기화
-    setQuery("");
+    // 결과/파싱 상태만 초기화 — 쿼리는 보존하여 전환 후 바로 사용 가능
     setParsedQuery(null);
     setNlSubmitted(false);
     clearSearchCache();

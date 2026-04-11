@@ -3,79 +3,117 @@
 ## 프로젝트 상태
 - **Phase 1~5**: 완료
 - **Phase 6**: 완료 (3대 기능 + 프로덕션 리뷰 + 리팩토링)
-- **v2.1~v2.8**: 모두 커밋+푸시 완료
-- **고도화 Phase A+B**: 완료 (이번 세션)
+- **Phase 7 리팩토링**: 완료 (Context 분리 + God File 해체 + framer-motion 제거)
+- **고도화 Phase A~D**: 완료
+- **다이어트 (Phase 1)**: 완료
+- **kordoc 사이드카 통합 + 마크다운 미리보기**: 완료
+- **인덱싱 시스템 전체 개선**: 완료 (2026-04-07)
+- **프로덕션 100점 감사 + 34개 이슈 수정**: 완료 (2026-04-11)
+- **kordoc + Node.js 번들링**: 완료 (2026-04-11)
 
 ## 마지막 업데이트
-2026-03-28 (고도화 Phase A+B — DB 안정성 + UI/UX 폴리시)
+2026-04-11 (프로덕션 감사 34개 이슈 수정 + kordoc 번들링 구조 완성)
 
 ---
 
 ## 현재 상태 요약
 
-**빌드 상태**: cargo check 통과 + tsc --noEmit 통과
-**커밋 상태**: Phase A+B 미커밋 (커밋 예정)
-**통합 테스트**: 미실행 (`pnpm tauri:dev` 실제 동작 확인 필요)
+**빌드 상태**: cargo check 0 warning, tsc 0 error
+**커밋 상태**: 미커밋 (대규모 변경사항 34개 + kordoc 번들링)
+**통합 테스트**: 미실행 (`pnpm tauri:dev` 필요)
+**검증 상태**: verify-work 서브에이전트 25/25 PASS
 
-### ✅ Phase A: 다이어트 + 안정화 (이번 세션)
+---
 
-| # | 항목 | 변경 내용 |
-|---|------|----------|
-| 1 | 앱 종료 DB 최적화 | `cleanup_database()` 추가 — WAL checkpoint(TRUNCATE) + PRAGMA optimize |
-| 2 | 북마크 고아 레코드 정리 | `get_bookmarks()` 호출 시 파일 미존재 북마크 자동 삭제 |
-| 3 | once_cell 마이그레이션 취소 | `OnceLock::get_or_try_init` 아직 unstable → once_cell 유지 |
+### ✅ 이번 세션 완료 (프로덕션 100점 감사 + 수정)
 
-### ✅ Phase B: UI/UX 폴리시 (이번 세션)
+#### P0 — 데이터 무결성 (4개)
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| 취소 감지 bool 필드 | `pipeline.rs`, `sync.rs`, `folder.rs` | 문자열 검색("Cancelled") → `was_cancelled: bool` |
+| clear_all_data 완전 초기화 | `db/mod.rs:419` | bookmarks, file_tags 삭제 추가 |
+| N+1 쿼리 제거 | `db/mod.rs:311` | 단일 JOIN 쿼리 + dead code 삭제 |
+| MAX_FILE_SIZE 동기화 | `parsers/mod.rs:173` | 200MB→500MB (설정 최대값과 일치) |
 
-| # | 항목 | 변경 내용 |
-|---|------|----------|
-| 1 | 필터 드롭다운 통일 | `CustomSelect` 컴포넌트 생성, SearchFilters + FilterDropdown 교체 |
-| 2 | 결과 확장 애니메이션 | grid `0fr→1fr` 트랜지션 + duration-200 |
-| 3 | 접근성: 신뢰도 점수 | `aria-label="신뢰도 X% (높음/보통/낮음)"` + title 추가 |
-| 4 | 접근성: 파일 타입 배지 | Badge에 aria-label prop 추가, 파일 형식 라벨 전달 |
-| 5 | 접근성: 패러다임 토글 | `role="radiogroup"` + `role="radio"` + `aria-checked` |
-| 6 | 접근성: 확장 버튼 | `aria-expanded` + `role="button"` + aria-label |
+#### P1 — UX 핵심 (6개)
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| PasswordProtected 에러 | `docx.rs`, `xlsx.rs`, `pdf.rs` | 암호 파일 감지 + 사용자 안내 |
+| 한글 1~2자 LIKE 폴백 | `search/fts.rs:220` | FTS 빈 결과 시 LIKE 검색 |
+| Explorer \\?\ strip | `commands/file.rs:91,293` | 파일 열기 무음 실패 방지 |
+| HWP 변환 120초 타임아웃 | `commands/index/data.rs:160` | 모달 hang 방지 |
+| EUC-KR charset 폴백 | `parsers/txt.rs` + Cargo.toml | encoding_rs로 관공서 문서 지원 |
+| 진행률 바 | 이미 올바름 확인 | skip_indexed 후 total 계산 |
 
-**수정 파일:**
-- `src-tauri/src/lib.rs` — cleanup_database() 추가
-- `src-tauri/src/commands/preview.rs` — 북마크 고아 레코드 정리
-- `src/components/ui/CustomSelect.tsx` — 새 컴포넌트
-- `src/components/ui/Badge.tsx` — aria-label prop 추가
-- `src/components/ui/FilterDropdown.tsx` — CustomSelect 사용
-- `src/components/search/SearchFilters.tsx` — CustomSelect 사용
-- `src/components/search/SearchResultItem.tsx` — 확장 애니메이션 + 접근성
-- `src/components/search/SearchParadigmToggle.tsx` — 접근성 개선
+#### P2 — 접근성 (8개)
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| hover 전용 버튼 | `BookmarkList.tsx`, `RecentSearches.tsx` | group-focus-within 추가 |
+| AI 스트리밍 aria-live | `AiAnswerPanel.tsx:196` | 스크린리더 공지 |
+| 접근성 일관성 (6곳) | Header, PreviewPanel, SmartQueryInfo, VectorIndexingBanner, UpdateBanner, Input | aria-expanded, aria-label, aria-describedby, role="status" |
+| TagInput 키보드 | `TagInput.tsx:54` | ArrowUp/Down/Enter/Escape |
 
-### 🔍 보류 항목 (이전 세션부터)
+#### P3 — 안정성 (4개)
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| 에러 타입 매핑 | `error.rs:118,134` | Domain→IndexingFailed, IO→IndexingFailed |
+| raw 에러 정제 | `useFileTags.ts`, `useExport.ts` | 한국어 메시지로 대체 |
+| 로깅 초기화 순서 | `lib.rs:392` | 콘솔 폴백 먼저 |
+| ~$ 임시파일 필터 | 이미 구현 확인 | manager.rs:376 |
 
-- **H-2**: OCR 모델 SHA-256 해시 채우기
-- **SEC-H2**: 하드코딩 admin code 9812
-- **SEC-M4**: API 키 plaintext 저장
+#### P4 — 완성도 (8개)
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| Button loadingText | `Button.tsx:10` | 커스텀 로딩 텍스트 |
+| Toast 30초 타임아웃 | `useToast.ts:72` | loading 토스트 안전망 |
+| useFavorites 삭제 | `useLocalStorage.ts` | 데드코드 제거 |
+| XLSX MAX_TOTAL_CHARS | `xlsx.rs:44` | 5M 문자 제한 가드 |
+| auto_vacuum | `migration.rs:36`, `lib.rs:285` | INCREMENTAL + cleanup |
+| startup sync 최적화 | `init.rs:149` | 루프 밖 단일 DB 연결 |
+| upsert RETURNING | `db/mod.rs:218,694,729` | 2쿼리→1쿼리 |
+| ResultContextMenu | `ResultContextMenu.tsx` | 유사문서 찾기 메뉴 추가 |
 
-### 📋 다음 할 일
+#### KR — kordoc 번들링
+| 수정 | 파일 | 효과 |
+|------|------|------|
+| 번들 스크립트 | `scripts/bundle-kordoc.ps1` | node.exe + kordoc dist + node_modules 준비 |
+| 리소스 등록 | `tauri.conf.json:40-42` | node.exe, kordoc/* 번들 |
+| 번들 node.exe 우선 탐색 | `kordoc.rs:184` | 시스템 Node.js 불필요 |
+| 번들 cli.js 우선 탐색 | `kordoc.rs:74` | 리소스 디렉토리 우선 |
+| .gitignore | `.gitignore:56-57` | 바이너리 제외 |
 
-**다음 세션 (Phase C: 성능 고도화):**
-1. DB 커넥션 풀 최적화 (현재도 6개 풀 있지만 retry_on_busy 개선)
-2. 벡터 검색 스코프 프리필터 (전체 결과 후처리 → 폴더별 프리필터)
-3. 증분 인덱싱 (mtime 기반 변경 파일만 재인덱싱)
-4. 리랭커 배치 제한 (Top-100만 리랭킹)
-5. Lindera 토크나이저 캐싱
+---
 
-**후속:**
-- Phase D: 킬러 피처 (문서 미리보기 패널, 내보내기 고도화, 오타교정)
-- `pnpm tauri:dev` 통합 테스트
-- MSI 빌드 테스트
+### 📋 잔여 이슈 (다음 세션)
 
-## 핵심 설계 결정
+#### 구조적 변경 필요 (High)
+- [ ] `sync.rs: db_files HashMap` (~200MB) → DB-side 임시 테이블 diff로 추가 절감
+- [ ] `collector.rs collect_files()` → channel-based 스트리밍
 
-### CustomSelect 설계
-- 네이티브 `<select>` 대체: 다크모드 옵션 목록 완전 스타일링
-- 키보드 네비게이션: ArrowUp/Down, Enter, Escape, Home/End
-- CSS grid `0fr→1fr` 트랜지션: line-clamp 대신 부드러운 확장
+#### kordoc 번들링 마무리 (High)
+- [ ] `bundle-kordoc.ps1` 실행 테스트 → 실제 번들 크기 확인
+- [ ] kordoc `resources/kordoc/*` glob → 서브디렉토리(node_modules) 포함 여부 테스트
+- [ ] `pnpm tauri:build` 프로덕션 빌드 + MSI 설치 테스트
+- [ ] kordoc standalone 번들 검토 (tsup noExternal로 node_modules 인라인 → node.exe만 필요)
 
-### once_cell 유지 결정
-- `std::sync::OnceLock::get_or_try_init`이 Rust nightly에서만 사용 가능 (feature `once_cell_try`)
-- stable Rust에서는 `once_cell` 크레이트 계속 사용
+#### 기능 개선 (Medium)
+- [ ] 벡터 인덱스 RAM 관리: 500만 청크 시 ~7.5GB
+- [ ] `idle_detector` 통합
+- [ ] startup sync 전체 드라이브 최적화
+
+---
+
+## 핵심 파일
+| 파일 | 역할 |
+|------|------|
+| `src-tauri/src/parsers/kordoc.rs` | kordoc 사이드카 (번들 node.exe + cli.js 탐색) |
+| `src-tauri/src/parsers/mod.rs` | 파서 라우팅 (kordoc 우선 → Rust 폴백) |
+| `src-tauri/src/error.rs` | 에러 타입 매핑 (Domain→IndexingFailed) |
+| `src-tauri/src/db/mod.rs` | DB 함수 (JOIN 쿼리, RETURNING id, clear_all) |
+| `src-tauri/src/search/fts.rs` | FTS5 검색 (LIKE 폴백 추가) |
+| `src-tauri/src/indexer/pipeline.rs` | 인덱싱 파이프라인 (was_cancelled 필드) |
+| `scripts/bundle-kordoc.ps1` | kordoc 번들 준비 스크립트 |
+| `src-tauri/tauri.conf.json` | Tauri 번들 리소스 설정 |
 
 ---
 
@@ -84,16 +122,25 @@
 ```
 Docufinder(Anything) 프로젝트 — 로컬 문서 검색 앱 (Tauri 2 + React).
 
-고도화 Phase A+B 완료, Phase C 시작 예정.
-- Phase A: DB 안정성 (WAL checkpoint on exit, 북마크 고아 정리)
-- Phase B: UI/UX (커스텀 드롭다운, 확장 애니메이션, 접근성)
+이전 세션: 프로덕션 100점 감사 → 34개 이슈 수정 + kordoc 번들링 구조 완성.
+빌드: cargo check 0 warn, tsc 0 err. verify-work 25/25 PASS. 미커밋.
 
-다음 할 일 (Phase C: 성능 고도화):
-1. 벡터 검색 스코프 프리필터 — 현재 전체 결과 로드 후 후처리 → 폴더별 필터링 선적용
-2. 증분 인덱싱 — mtime 기반 변경 파일만 재인덱싱 (현재 전체 재처리)
-3. 리랭커 배치 제한 — 전체가 아닌 Top-100만 리랭킹
-4. Lindera 토크나이저 캐싱 — 매 검색마다 재생성 → 싱글턴
+주요 수정:
+- was_cancelled bool 필드 (문자열 검색 제거)
+- clear_all_data 완전 초기화 (bookmarks/file_tags 추가)
+- N+1 쿼리 → 단일 JOIN, upsert RETURNING id
+- PasswordProtected 에러 (DOCX CFB 감지, XLSX, PDF)
+- 한글 1~2자 LIKE 폴백 검색
+- EUC-KR charset 감지 (encoding_rs)
+- Explorer \\?\ strip, HWP 변환 타임아웃
+- 접근성 8개소 (aria-live, aria-expanded, focus-within, TagInput 키보드)
+- kordoc + node.exe 번들링 (bundle-kordoc.ps1, tauri.conf.json)
+
+다음 할 일:
+1. 미커밋 변경사항 커밋
+2. bundle-kordoc.ps1 실행 테스트 + 프로덕션 빌드 검증
+3. kordoc standalone 번들 검토 (node_modules 인라인)
+4. sync.rs DB 임시 테이블 diff 최적화
 
 컨텍스트: .claude/memory/activeContext.md
-고도화 전략: .claude/plans/distributed-swimming-willow.md
 ```

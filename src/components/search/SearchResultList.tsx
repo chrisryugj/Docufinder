@@ -402,7 +402,7 @@ export const SearchResultList = memo(function SearchResultList({
     const hasNlFilters = parsedQuery && (parsedQuery.date_filter || parsedQuery.file_type || parsedQuery.exclude_keywords.length > 0);
 
     return (
-      <div className="text-center py-16">
+      <div className="text-center py-16" role="status" aria-live="polite">
         <div
           className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
           style={{ backgroundColor: "var(--color-bg-tertiary)" }}
@@ -574,7 +574,7 @@ function ResultsToolbar({
           </div>
         )}
         {resultCount !== undefined && resultCount > 0 && (
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-0.5" role="status" aria-live="polite" aria-atomic="true">
             <Badge variant="secondary">
               {totalResultCount !== undefined && totalResultCount !== resultCount
                 ? `${totalResultCount}개 중 ${resultCount}개`

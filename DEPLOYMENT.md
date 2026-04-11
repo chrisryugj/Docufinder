@@ -1,8 +1,21 @@
 # Anything 사내 배포 가이드
 
+## 시스템 요구사항 (설치 대상 PC)
+
+| 항목 | 요구사항 | 비고 |
+|------|---------|------|
+| **OS** | Windows 10 21H2 이상 / Windows 11 | WebView2 런타임 기본 탑재 |
+| **WebView2** | 자동 포함 (21H2+) | 구형 Windows 10은 [수동 설치](https://developer.microsoft.com/ko-kr/microsoft-edge/webview2/) 필요 |
+| **VC++ Runtime** | 2015-2022 x64 | MSI 설치 시 자동 포함 |
+| **디스크** | 최소 500MB 여유 | 앱 ~300MB + DB/인덱스 가변 |
+| **RAM** | 4GB 이상 권장 | ONNX 모델 로드 시 ~500MB 사용 |
+| **인터넷** | 최초 실행 시 불필요 | 모델은 MSI에 번들됨. OTA 업데이트에만 필요 |
+
+---
+
 ## 빌드 & 배포
 
-### 1. 사전 요구사항
+### 1. 사전 요구사항 (빌드 PC)
 - Node.js 22+ (LTS)
 - Rust 1.92+
 - pnpm 10+

@@ -26,7 +26,24 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     let file = File::open(path)?;
     let reader = BufReader::new(file);
-    let mut archive = ZipArchive::new(reader).map_err(|e| ParseError::ParseError(e.to_string()))?;
+    let mut archive = ZipArchive::new(reader).map_err(|e| {
+        let msg = e.to_string().to_lowercase();
+        if msg.contains("password") || msg.contains("encrypt") {
+            ParseError::PasswordProtected("암호로 보호된 DOCX 파일입니다".to_string())
+        } else {
+            // Office 암호화 파일은 ZIP이 아닌 CFB 포맷 → "invalid Zip archive" 에러
+            // 확장자가 .docx인데 ZIP이 아니면 암호 파일일 가능성 높음
+            let is_cfb = std::fs::read(path)
+                .ok()
+                .map(|b| b.len() >= 8 && b[0..8] == [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+                .unwrap_or(false);
+            if is_cfb {
+                ParseError::PasswordProtected("암호로 보호된 DOCX 파일입니다".to_string())
+            } else {
+                ParseError::ParseError(e.to_string())
+            }
+        }
+    })?;
 
     // ========================================================================
     // 압축 폭탄 방어

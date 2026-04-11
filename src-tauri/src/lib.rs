@@ -30,6 +30,9 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// 로깅 초기화 (파일 + 콘솔)
+///
+/// app_data_dir이 Some이면 파일 로깅도 활성화.
+/// None이면 콘솔만 (app_data_dir 확보 실패 시 fallback).
 fn init_logging(app_data_dir: Option<&PathBuf>) {
     // 기본 필터: 릴리즈에서는 info, 디버그에서는 debug
     let default_filter = if cfg!(debug_assertions) {
@@ -269,6 +272,34 @@ fn cleanup_vector_resources(container: &AppContainer) {
     cleanup_database(&container.db_path);
 }
 
+/// 모델 디렉토리 내 .tmp 잔여 파일 정리 (다운로드 중 크래시 시 생성됨)
+fn cleanup_tmp_files(models_dir: &std::path::Path) {
+    let mut cleaned = 0usize;
+    // models/ 하위 2단계까지 탐색 (e.g., models/kosimcse-roberta-multitask/*.tmp)
+    for entry in std::fs::read_dir(models_dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("tmp") {
+            if std::fs::remove_file(&path).is_ok() {
+                cleaned += 1;
+            }
+        } else if path.is_dir() {
+            for sub in std::fs::read_dir(&path).into_iter().flatten().flatten() {
+                let sub_path = sub.path();
+                if sub_path.is_file()
+                    && sub_path.extension().and_then(|e| e.to_str()) == Some("tmp")
+                {
+                    if std::fs::remove_file(&sub_path).is_ok() {
+                        cleaned += 1;
+                    }
+                }
+            }
+        }
+    }
+    if cleaned > 0 {
+        tracing::info!("Cleaned up {} stale .tmp model file(s)", cleaned);
+    }
+}
+
 /// 앱 종료 시 DB 정리: 풀 drain → WAL 체크포인트 + PRAGMA optimize
 fn cleanup_database(db_path: &std::path::Path) {
     // 풀의 모든 커넥션을 먼저 닫아야 WAL 체크포인트가 완전히 적용됨
@@ -278,9 +309,10 @@ fn cleanup_database(db_path: &std::path::Path) {
     if let Ok(conn) = crate::db::get_connection(db_path) {
         match conn.execute_batch(
             "PRAGMA wal_checkpoint(TRUNCATE);
-             PRAGMA optimize;",
+             PRAGMA optimize;
+             PRAGMA incremental_vacuum;",
         ) {
-            Ok(_) => tracing::info!("DB cleanup completed (WAL checkpoint + optimize)"),
+            Ok(_) => tracing::info!("DB cleanup completed (WAL checkpoint + optimize + incremental vacuum)"),
             Err(e) => tracing::warn!("DB cleanup partial failure: {}", e),
         }
     }
@@ -315,13 +347,33 @@ pub fn run() {
         eprintln!("Message: {}", message);
         eprintln!("Please contact the development team to report this issue.");
 
-        // 긴급 로그 flush (append 모드로 이전 크래시 기록 보존)
+        // 긴급 로그 flush — 날짜 기반 로테이션 (최대 3개 파일 유지)
         if let Some(data_dir) = dirs::data_dir() {
             let crash_dir = data_dir.join("com.anything.app");
             let _ = std::fs::create_dir_all(&crash_dir);
-            let crash_log = crash_dir.join("crash.log");
 
-            // 크기 제한: 1MB 초과 시 truncate (디스크 무한 증가 방지)
+            // 날짜별 crash log 파일
+            let today = chrono::Local::now().format("%Y-%m-%d");
+            let crash_log = crash_dir.join(format!("crash-{}.log", today));
+
+            // 오래된 crash log 정리 (최대 3개 유지)
+            const MAX_CRASH_LOGS: usize = 3;
+            if let Ok(entries) = std::fs::read_dir(&crash_dir) {
+                let mut crash_files: Vec<_> = entries
+                    .filter_map(|e| e.ok())
+                    .filter(|e| {
+                        e.file_name()
+                            .to_string_lossy()
+                            .starts_with("crash-")
+                    })
+                    .collect();
+                crash_files.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+                for old_file in crash_files.into_iter().skip(MAX_CRASH_LOGS) {
+                    let _ = std::fs::remove_file(old_file.path());
+                }
+            }
+
+            // 단일 파일 크기 제한 (1MB)
             const MAX_CRASH_LOG_SIZE: u64 = 1024 * 1024;
             if let Ok(meta) = std::fs::metadata(&crash_log) {
                 if meta.len() > MAX_CRASH_LOG_SIZE {
@@ -342,6 +394,7 @@ pub fn run() {
                 .open(&crash_log)
             {
                 let _ = file.write_all(entry.as_bytes());
+                let _ = file.sync_all(); // 전원 차단 시 유실 방지
             }
         }
     }));
@@ -385,19 +438,29 @@ pub fn run() {
         )
         .setup(move |app| {
             // Initialize app data directory
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-            std::fs::create_dir_all(&app_data_dir)
-                .map_err(|e| format!("Failed to create app data dir: {}", e))?;
-
-            // 로깅 초기화 (콘솔 + 파일)
-            init_logging(Some(&app_data_dir));
+            // 로깅 초기화를 위해 먼저 시도하되, 실패해도 콘솔 로깅은 확보
+            let app_data_dir = match app.path().app_data_dir() {
+                Ok(dir) => {
+                    std::fs::create_dir_all(&dir)
+                        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+                    // 로깅 초기화 (콘솔 + 파일)
+                    init_logging(Some(&dir));
+                    dir
+                }
+                Err(e) => {
+                    // app_data_dir 실패 시 콘솔 전용 로깅으로 fallback
+                    init_logging(None);
+                    tracing::error!("Failed to get app data dir: {}", e);
+                    return Err(format!("Failed to get app data dir: {}", e).into());
+                }
+            };
 
             // Create models directory
             let models_dir = app_data_dir.join("models");
             std::fs::create_dir_all(&models_dir).ok();
+
+            // 이전 다운로드 중 크래시로 남은 .tmp 파일 정리
+            cleanup_tmp_files(&models_dir);
 
             // ORT_DYLIB_PATH 설정: 단일 스레드(setup) 시점에서 환경변수 설정
             // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
@@ -430,6 +493,27 @@ pub fn run() {
             let container = AppContainer::new(&app_data_dir);
             db::init_database(&container.db_path)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
+
+            // DB 무결성 검사 (부팅 시 1회)
+            if let Ok(conn) = db::get_connection(&container.db_path) {
+                match conn.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0)) {
+                    Ok(result) if result == "ok" => {
+                        tracing::info!("DB integrity check passed");
+                    }
+                    Ok(result) => {
+                        tracing::error!("DB integrity check failed: {}", result);
+                        // WAL 복구 시도
+                        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+                        tracing::warn!("Attempted WAL recovery after integrity check failure");
+                        // 프론트엔드에 경고 알림
+                        let _ = app.emit("db-integrity-warning", "데이터베이스 무결성 검사에 실패했습니다. 데이터가 손상되었을 수 있습니다.");
+                    }
+                    Err(e) => {
+                        tracing::error!("DB integrity check error: {}", e);
+                        let _ = app.emit("db-integrity-warning", format!("데이터베이스 검사 오류: {}", e));
+                    }
+                }
+            }
 
             tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);
 
