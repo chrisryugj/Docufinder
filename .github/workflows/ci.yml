@@ -65,6 +65,9 @@ jobs:
           New-Item -ItemType File -Force -Path models/kosimcse-roberta-multitask/.gitkeep
           New-Item -ItemType Directory -Force -Path resources
           New-Item -ItemType File -Force -Path resources/HwpxConverterSetup.exe
+          New-Item -ItemType File -Force -Path resources/node.exe
+          New-Item -ItemType Directory -Force -Path resources/kordoc
+          New-Item -ItemType File -Force -Path resources/kordoc/.gitkeep
           New-Item -ItemType File -Force -Path icons/tray-icon.png -ErrorAction SilentlyContinue
 
       - name: Cargo fmt
