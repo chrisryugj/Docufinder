@@ -3,7 +3,7 @@ import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, us
 import { clearSearchCache } from "../hooks/useSearch";
 import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
-import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch, AiAnalysis } from "../types/search";
+import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch, AiAnalysis, KeywordMatchMode } from "../types/search";
 import { useUIContext } from "./UIContext";
 
 // ── Types ──────────────────────────────────────────────
@@ -36,6 +36,8 @@ export interface SearchContextValue {
   submitNaturalQuery: () => void;
   parsedQuery: ParsedQueryInfo | null;
   nlSubmitted: boolean;
+  keywordMatchMode: KeywordMatchMode;
+  setKeywordMatchMode: (mode: KeywordMatchMode) => void;
 
   // Collapsible search area
   isCollapsed: boolean;
@@ -137,6 +139,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     refineQuery, setRefineQuery, clearRefine, setComposing,
     invalidate: invalidateSearch, paradigm, setParadigm,
     submitNaturalQuery, parsedQuery, nlSubmitted,
+    keywordMatchMode, setKeywordMatchMode,
   } = useSearch({ minConfidence: 0 });
 
   // ── Collapsible ──
@@ -232,6 +235,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     searchMode, setSearchMode, filters, setFilters, viewMode, setViewMode,
     refineQuery, setRefineQuery, clearRefine, setComposing,
     invalidateSearch, paradigm, setParadigm, submitNaturalQuery, parsedQuery, nlSubmitted,
+    keywordMatchMode, setKeywordMatchMode,
     isCollapsed, handleScroll, scrollToTop, scrollContainerRef, showScrollTop, expand, handleExpand,
     autoComplete, handleSuggestionSelect,
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,

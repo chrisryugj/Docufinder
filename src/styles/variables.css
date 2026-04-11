@@ -68,6 +68,16 @@
   --color-accent-light: rgba(1, 175, 122, 0.06);
   --color-accent-glow: rgba(1, 175, 122, 0.25);
 
+  /* Secondary Accent — Indigo (AI/시맨틱 기능) */
+  --color-accent-ai: #6366F1;
+  --color-accent-ai-hover: #4F46E5;
+  --color-accent-ai-subtle: rgba(99, 102, 241, 0.08);
+  --color-accent-ai-glow: rgba(99, 102, 241, 0.25);
+
+  /* Tertiary Accent — Amber (알림/하이라이트) */
+  --color-accent-warm: #D97706;
+  --color-accent-warm-subtle: rgba(217, 119, 6, 0.08);
+
   /* Functional Colors */
   --color-success: #059669;
   --color-warning: #D97706;
@@ -136,16 +146,19 @@
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
 
-  /* Type Scale (1.25 ratio) */
-  --text-2xs: 0.625rem;   /* 10px — 버전, 최소 메타 */
-  --text-xs: 0.6875rem;   /* 11px — 배지, 타임스탬프 */
+  /* Type Scale (1.25 ratio, 15px base) */
+  --text-2xs: 0.6875rem;  /* 11px — 버전, 최소 메타 */
+  --text-xs: 0.75rem;     /* 12px — 배지, 타임스탬프 */
   --text-sm: 0.8125rem;   /* 13px — 보조 텍스트, 경로 */
-  --text-base: 0.875rem;  /* 14px — 본문 기본 */
-  --text-md: 0.9375rem;   /* 15px — 검색바 입력 */
+  --text-base: 0.9375rem; /* 15px — 본문 기본 */
+  --text-md: 1rem;        /* 16px — 검색바 입력 */
   --text-lg: 1.125rem;    /* 18px — 서브헤딩 */
   --text-xl: 1.5625rem;   /* 25px — 섹션 타이틀 */
   --text-2xl: 1.953rem;   /* 31px — 페이지 타이틀 */
   --text-hero: 2.75rem;   /* 44px — 히어로 */
+
+  /* Layout Constraints */
+  --content-max-width: 820px;  /* 검색 결과 최대 너비 */
 
   /* Micro-typography & Fluid Space */
   --space-fluid-screen: clamp(2rem, 5vw, 4rem);
@@ -202,6 +215,16 @@
   --color-accent-subtle: rgba(16, 196, 142, 0.10);
   --color-accent-light: rgba(16, 196, 142, 0.10);
   --color-accent-glow: rgba(16, 196, 142, 0.25);
+
+  /* Secondary Accent — Indigo (AI/시맨틱 기능) */
+  --color-accent-ai: #818CF8;
+  --color-accent-ai-hover: #6366F1;
+  --color-accent-ai-subtle: rgba(129, 140, 248, 0.12);
+  --color-accent-ai-glow: rgba(129, 140, 248, 0.25);
+
+  /* Tertiary Accent — Amber */
+  --color-accent-warm: #FBBF24;
+  --color-accent-warm-subtle: rgba(251, 191, 36, 0.12);
 
   /* Functional */
   --color-error-hover: #B91C1C;

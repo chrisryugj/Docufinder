@@ -440,6 +440,8 @@ function AppContent() {
                     onRefineQueryChange={search.setRefineQuery}
                     onRefineQueryClear={search.clearRefine}
                     watchedFolders={idx.status?.watched_folders ?? []}
+                    keywordMatchMode={search.keywordMatchMode}
+                    onKeywordMatchModeChange={search.setKeywordMatchMode}
                     presets={search.presets}
                     onSavePreset={search.handleSavePreset}
                     onApplyPreset={search.handleApplyPreset}
@@ -490,7 +492,7 @@ function AppContent() {
             )}
 
             <main id="main-content" tabIndex={-1} className={`h-full outline-none ${search.paradigm === "question" ? "px-2 sm:px-4 pb-4" : "px-5 sm:px-8 pb-20"}`}>
-              <div className={`h-full ${search.paradigm === "question" ? "mt-1" : "mt-4"}`}>
+              <div className={`h-full content-column ${search.paradigm === "question" ? "mt-1" : "mt-4"}`}>
                 {/* 유사 문서 배너 */}
                 {search.similarResults.length > 0 && (
                   <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>

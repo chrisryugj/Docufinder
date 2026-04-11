@@ -5,7 +5,7 @@ use super::SearchService;
 use crate::application::dto::search::{MatchType, SearchResponse, SearchResult};
 use crate::application::errors::{AppError, AppResult};
 use crate::db;
-use crate::search::{fts, hybrid};
+use crate::search::{fts, hybrid, KeywordMode};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -17,18 +17,35 @@ impl SearchService {
         max_results: usize,
         folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
+        self.search_hybrid_with_mode(query, max_results, folder_scope, KeywordMode::And)
+            .await
+    }
+
+    /// 하이브리드 검색 — 검색 모드 지정
+    pub async fn search_hybrid_with_mode(
+        &self,
+        query: &str,
+        max_results: usize,
+        folder_scope: Option<&str>,
+        mode: KeywordMode,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
 
         let conn = self.get_connection()?;
 
-        // 1. FTS5 검색
+        // 1. FTS5 검색 (mode 적용)
         let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => {
-                fts::search_with_tokenizer(&conn, query, max_results, tok.as_ref(), folder_scope)
-                    .map_err(|e| AppError::SearchFailed(e.to_string()))?
-            }
-            None => fts::search(&conn, query, max_results, folder_scope)
+            Some(tok) => fts::search_with_tokenizer(
+                &conn,
+                query,
+                max_results,
+                tok.as_ref(),
+                folder_scope,
+                mode,
+            )
+            .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            None => fts::search(&conn, query, max_results, folder_scope, mode)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 

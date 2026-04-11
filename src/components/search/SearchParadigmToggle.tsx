@@ -70,8 +70,8 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
                 background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
                 boxShadow: "0 1px 4px var(--color-accent-glow)",
               } : isQuestionActive ? {
-                background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)",
-                boxShadow: "0 1px 4px rgba(13, 148, 136, 0.3)",
+                background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)",
+                boxShadow: "0 1px 4px var(--color-accent-ai-glow)",
               } : undefined
             }
             title={desc}

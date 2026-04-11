@@ -5,12 +5,14 @@ import type {
   FileTypeFilter,
   DateRangeFilter,
   SearchMode,
+  KeywordMatchMode,
 } from "../../types/search";
 import {
   SORT_OPTIONS,
   FILE_TYPE_OPTIONS,
   DATE_RANGE_OPTIONS,
   DEFAULT_FILTERS,
+  KEYWORD_MATCH_MODES,
 } from "../../types/search";
 import { CustomSelect } from "../ui/CustomSelect";
 import type { FilterPreset } from "../../hooks/useFilterPresets";
@@ -26,6 +28,9 @@ interface SearchFiltersProps {
   onRefineQueryChange?: (query: string) => void;
   onRefineQueryClear?: () => void;
   watchedFolders?: string[];
+  /** 키워드 매칭 모드 (AND/OR/EXACT) */
+  keywordMatchMode?: KeywordMatchMode;
+  onKeywordMatchModeChange?: (mode: KeywordMatchMode) => void;
   /** 필터 프리셋 */
   presets?: FilterPreset[];
   onSavePreset?: (name: string) => void;
@@ -45,6 +50,8 @@ export const SearchFilters = memo(function SearchFilters({
   onRefineQueryChange,
   onRefineQueryClear,
   watchedFolders = [],
+  keywordMatchMode = "and",
+  onKeywordMatchModeChange,
   presets = [],
   onSavePreset,
   onApplyPreset,
@@ -86,6 +93,31 @@ export const SearchFilters = memo(function SearchFilters({
       role="toolbar"
       aria-label="검색 필터"
     >
+      {/* 키워드 매칭 모드 (AND/OR/EXACT) */}
+      {onKeywordMatchModeChange && searchMode !== "filename" && (
+        <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          {KEYWORD_MATCH_MODES.map((m) => {
+            const isActive = keywordMatchMode === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => onKeywordMatchModeChange(m.value)}
+                className="px-2 py-0.5 text-xs font-medium transition-colors"
+                style={{
+                  backgroundColor: isActive ? "var(--color-accent)" : "var(--color-bg-secondary)",
+                  color: isActive ? "white" : "var(--color-text-muted)",
+                }}
+                title={m.desc}
+                aria-pressed={isActive}
+                aria-label={m.desc}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* 정렬 */}
       <InlineFilterDropdown
         label="정렬"
@@ -612,7 +644,7 @@ function PresetDropdown({
 
           <div className="border-t" style={{ borderColor: "var(--color-border)" }}>
             {saving ? (
-              <div className="flex items-center gap-1 p-2">
+              <div className="flex items-center gap-1.5 p-2">
                 <input
                   ref={inputRef}
                   type="text"
@@ -621,7 +653,7 @@ function PresetDropdown({
                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setSaving(false); }}
                   placeholder="프리셋 이름..."
                   maxLength={30}
-                  className="flex-1 px-2 py-1 text-xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+                  className="flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
                   style={{
                     backgroundColor: "var(--color-bg-secondary)",
                     borderColor: "var(--color-border)",
@@ -631,7 +663,7 @@ function PresetDropdown({
                 <button
                   onClick={handleSave}
                   disabled={!name.trim()}
-                  className="px-2 py-1 text-xs rounded font-medium text-white disabled:opacity-40"
+                  className="px-2 py-1 text-xs rounded font-medium text-white disabled:opacity-40 shrink-0"
                   style={{ backgroundColor: "var(--color-accent)" }}
                 >
                   저장

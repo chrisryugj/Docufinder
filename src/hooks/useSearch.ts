@@ -12,6 +12,7 @@ import type {
   SearchParadigm,
   SmartSearchResponse,
   ParsedQueryInfo,
+  KeywordMatchMode,
 } from "../types/search";
 import { DEFAULT_FILTERS } from "../types/search";
 import { SEARCH_COMMANDS } from "../types/api";
@@ -74,8 +75,8 @@ export function clearSearchCache(): void {
   }
 }
 
-function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean, searchScope: string | null): string {
-  return JSON.stringify([mode, excludeFilename, searchScope, query.trim().toLowerCase()]);
+function getCacheKey(query: string, mode: SearchMode, excludeFilename: boolean, searchScope: string | null, kwMode?: KeywordMatchMode): string {
+  return JSON.stringify([mode, excludeFilename, searchScope, kwMode ?? "and", query.trim().toLowerCase()]);
 }
 
 function getFromCache(key: string): CacheEntry | null {
@@ -142,6 +143,9 @@ interface UseSearchReturn {
   parsedQuery: ParsedQueryInfo | null;
   /** 자연어 검색 실행 여부 (결과 0건 vs 미실행 구분) */
   nlSubmitted: boolean;
+  /** 키워드 매칭 모드 (AND/OR/EXACT) */
+  keywordMatchMode: KeywordMatchMode;
+  setKeywordMatchMode: (mode: KeywordMatchMode) => void;
 }
 
 /**
@@ -159,6 +163,8 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>("keyword");
+  const [keywordMatchMode, setKeywordMatchModeInternal] = useState<KeywordMatchMode>("and");
+  const keywordMatchModeRef = useRef<KeywordMatchMode>("and");
 
   // 검색 패러다임 (즉시/자연어)
   const [paradigm, setParadigmInternal] = useState<SearchParadigm>(() => {
@@ -222,6 +228,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     });
   }, []);
 
+  // keywordMatchMode 변경 래퍼 (ref 동기화 + 재검색 트리거)
+  const setKeywordMatchMode = useCallback((mode: KeywordMatchMode) => {
+    setKeywordMatchModeInternal(mode);
+    keywordMatchModeRef.current = mode;
+  }, []);
+
   // 검색 실행 함수 (결과 업데이트는 startTransition으로 입력 블로킹 방지)
   const executeSearch = useCallback(
     async (searchQuery: string, mode: SearchMode) => {
@@ -239,7 +251,8 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       }
 
       // LRU 캐시 확인
-      const cacheKey = getCacheKey(searchQuery, mode, filters.excludeFilename, filters.searchScope);
+      const kwMode = keywordMatchModeRef.current;
+      const cacheKey = getCacheKey(searchQuery, mode, filters.excludeFilename, filters.searchScope, kwMode);
       const cached = getFromCache(cacheKey);
       if (cached) {
         startTransition(() => {
@@ -276,7 +289,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           return;
         } else {
           // excludeFilename이면 파일명 검색 스킵 (불필요한 백엔드 호출 방지)
-          const ipcArgs = { query: searchQuery, folderScope: filters.searchScope };
+          const ipcArgs = {
+            query: searchQuery,
+            folderScope: filters.searchScope,
+            // keyword/hybrid 검색에 키워드 매칭 모드 전달 (AND/OR/EXACT)
+            ...(kwMode !== "and" && (mode === "keyword" || mode === "hybrid") && { keywordMode: kwMode }),
+          };
           const contentPromise = invokeWithTimeout<SearchResponse>(SEARCH_COMMANDS[mode], ipcArgs, IPC_TIMEOUT.SEARCH);
           const filenamePromise = filters.excludeFilename
             ? Promise.resolve({ results: [], search_time_ms: 0, total_count: 0 })
@@ -411,7 +429,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [query, searchMode, debounceMs, executeSearch, paradigm]);
+  }, [query, searchMode, keywordMatchMode, debounceMs, executeSearch, paradigm]);
 
   // 필터링된 결과
   const filteredResults = useMemo(() => {
@@ -600,5 +618,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     submitNaturalQuery,
     parsedQuery,
     nlSubmitted,
+    keywordMatchMode,
+    setKeywordMatchMode,
   };
 }

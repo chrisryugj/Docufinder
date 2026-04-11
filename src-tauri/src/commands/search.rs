@@ -5,11 +5,20 @@
 
 use crate::application::dto::search::SearchResponse;
 use crate::error::{ApiError, ApiResult};
+use crate::search::KeywordMode;
 use crate::AppContainer;
 use std::sync::RwLock;
 use tauri::State;
 
 const MAX_QUERY_LEN: usize = 1000;
+
+fn parse_keyword_mode(mode: Option<&str>) -> KeywordMode {
+    match mode {
+        Some("or") => KeywordMode::Or,
+        Some("exact") => KeywordMode::Exact,
+        _ => KeywordMode::And,
+    }
+}
 
 fn validate_query(query: &str) -> ApiResult<()> {
     if query.chars().count() > MAX_QUERY_LEN {
@@ -26,6 +35,7 @@ fn validate_query(query: &str) -> ApiResult<()> {
 pub async fn search_keyword(
     query: String,
     folder_scope: Option<String>,
+    keyword_mode: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -38,6 +48,8 @@ pub async fn search_keyword(
         });
     }
 
+    let mode = parse_keyword_mode(keyword_mode.as_deref());
+
     let (service, max_results) = {
         let container = state.read()?;
         let max_results = container.get_settings().max_results;
@@ -45,7 +57,7 @@ pub async fn search_keyword(
     };
 
     service
-        .search_keyword(&query, max_results, folder_scope.as_deref())
+        .search_keyword_with_mode(&query, max_results, folder_scope.as_deref(), mode)
         .await
         .map_err(ApiError::from)
 }
@@ -122,6 +134,7 @@ pub async fn search_semantic(
 pub async fn search_hybrid(
     query: String,
     folder_scope: Option<String>,
+    keyword_mode: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<SearchResponse> {
     validate_query(&query)?;
@@ -133,6 +146,8 @@ pub async fn search_hybrid(
             search_mode: "hybrid".to_string(),
         });
     }
+
+    let mode = parse_keyword_mode(keyword_mode.as_deref());
 
     let (service, max_results, semantic_enabled) = {
         let container = state.read()?;
@@ -147,13 +162,13 @@ pub async fn search_hybrid(
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
     if !semantic_enabled {
         return service
-            .search_keyword(&query, max_results, folder_scope.as_deref())
+            .search_keyword_with_mode(&query, max_results, folder_scope.as_deref(), mode)
             .await
             .map_err(ApiError::from);
     }
 
     service
-        .search_hybrid(&query, max_results, folder_scope.as_deref())
+        .search_hybrid_with_mode(&query, max_results, folder_scope.as_deref(), mode)
         .await
         .map_err(ApiError::from)
 }
