@@ -66,7 +66,8 @@ function AppContent() {
   // ── Preview Overlay 감지 (결과 영역 < 400px이면 overlay 전환) ──
   const contentFlexRef = useRef<HTMLDivElement>(null);
   const [previewOverlay, setPreviewOverlay] = useState(false);
-  const MIN_RESULTS_WIDTH = 400;
+  const MIN_RESULTS_WIDTH = 480;
+  const MIN_PREVIEW_WIDTH = 380;
 
   useEffect(() => {
     const el = contentFlexRef.current;
@@ -75,7 +76,8 @@ function AppContent() {
       return;
     }
     const check = () => {
-      setPreviewOverlay(el.clientWidth < ui.previewWidth + MIN_RESULTS_WIDTH);
+      const pw = Math.max(ui.previewWidth, MIN_PREVIEW_WIDTH);
+      setPreviewOverlay(el.clientWidth < pw + MIN_RESULTS_WIDTH);
     };
     check();
     const ro = new ResizeObserver(check);
@@ -607,7 +609,7 @@ function AppContent() {
               >
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
-              <div className="shrink-0" style={{ width: ui.previewWidth, minWidth: 280, maxWidth: '50%' }}>
+              <div className="shrink-0" style={{ width: Math.max(ui.previewWidth, MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH, maxWidth: '50%' }}>
                 <PreviewPanel
                   filePath={ui.previewFilePath}
                   highlightQuery={search.query}
@@ -633,7 +635,7 @@ function AppContent() {
               />
               <div
                 className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
-                style={{ width: Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), minWidth: 320 }}
+                style={{ width: Math.max(Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH }}
               >
                 <PreviewPanel
                   filePath={ui.previewFilePath}

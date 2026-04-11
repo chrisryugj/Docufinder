@@ -131,7 +131,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
 
   // Preview
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
-  const [previewWidth, setPreviewWidth] = useState(() => Math.round(window.innerWidth * 0.3));
+  const [previewWidth, setPreviewWidth] = useState(() => Math.max(380, Math.round(window.innerWidth * 0.3)));
   const previewWidthRef = useRef(previewWidth);
   useEffect(() => { previewWidthRef.current = previewWidth; }, [previewWidth]);
   const isResizingRef = useRef(false);
@@ -155,7 +155,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
     const onMove = (ev: MouseEvent) => {
       if (!isResizingRef.current) return;
       const delta = startX - ev.clientX;
-      setPreviewWidth(Math.max(280, Math.min(Math.round(window.innerWidth * 0.5), startWidth + delta)));
+      setPreviewWidth(Math.max(380, Math.min(Math.round(window.innerWidth * 0.5), startWidth + delta)));
     };
     const onUp = () => {
       isResizingRef.current = false;
