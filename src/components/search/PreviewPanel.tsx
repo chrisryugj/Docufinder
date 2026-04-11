@@ -485,48 +485,46 @@ export const PreviewPanel = memo(function PreviewPanel({
         </button>
       </div>
 
-      {/* 액션 바 */}
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b text-xs overflow-x-auto" style={{ borderColor: "var(--color-border)" }}>
-        <button onClick={() => onOpenFile?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="파일 열기">
-          <ExternalLink size={12} />열기
+      {/* 액션 바 — 아이콘 전용, 컴팩트 */}
+      <div className="flex items-center gap-0.5 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
+        <button onClick={() => onOpenFile?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
+          <ExternalLink size={13} />
         </button>
-        <button onClick={() => onCopyPath?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="경로 복사">
-          <Copy size={12} />복사
+        <button onClick={() => onCopyPath?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="경로 복사">
+          <Copy size={13} />
         </button>
-        <button onClick={() => onOpenFolder?.(dirPath)} className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors shrink-0 whitespace-nowrap" title="폴더 열기">
-          <FolderOpen size={12} />폴더
+        <button onClick={() => onOpenFolder?.(dirPath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="폴더 열기">
+          <FolderOpen size={13} />
         </button>
         {onBookmark && (
           <button
             onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
-            className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${isBookmarked ? "text-[var(--color-accent)] bg-[var(--color-accent-bg)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+            className={`p-1.5 rounded transition-colors ${isBookmarked ? "text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
             title={isBookmarked ? "북마크 해제" : "북마크 추가"}
           >
-            <Bookmark size={12} fill={isBookmarked ? "currentColor" : "none"} />북마크
+            <Bookmark size={13} fill={isBookmarked ? "currentColor" : "none"} />
           </button>
         )}
 
+        <div className="w-px h-4 mx-0.5" style={{ backgroundColor: "var(--color-border)" }} />
+
         {markdown && (
           <>
-            {/* AI 요약 버튼 */}
             <button
               onClick={() => setShowSummaryMenu((v) => !v)}
               disabled={summaryLoading}
-              className="flex items-center gap-1 px-1.5 py-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50 shrink-0 whitespace-nowrap"
-              title="AI 요약 생성"
+              className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+              title="AI 요약"
             >
               {summaryLoading
                 ? <div className="w-3 h-3 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
                 : <Sparkles size={12} />
               }
-              AI 요약
-              <ChevronDown size={10} className={`transition-transform ${showSummaryMenu ? "rotate-180" : ""}`} />
+              요약
             </button>
-
-            {/* 파일 질문 버튼 */}
             <button
               onClick={() => setShowFileQa((v) => !v)}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded transition-colors shrink-0 whitespace-nowrap ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
               title="이 파일에 대해 질문"
             >
               <MessageSquare size={12} />질문
@@ -535,7 +533,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         )}
 
         {markdown && (
-          <span className="ml-auto text-[var(--color-text-muted)] shrink-0 whitespace-nowrap">
+          <span className="ml-auto text-[10px] text-[var(--color-text-muted)] tabular-nums">
             {markdown.length.toLocaleString()}자
           </span>
         )}
