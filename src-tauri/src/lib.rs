@@ -230,7 +230,9 @@ fn validate_vector_index(container: &AppContainer) {
             if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
                 tracing::info!(
                     "[VectorValidate] DB: total={}, vector_indexed={}, pending_chunks={}",
-                    stats.total_files, stats.vector_indexed_files, stats.pending_chunks
+                    stats.total_files,
+                    stats.vector_indexed_files,
+                    stats.pending_chunks
                 );
                 if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
                     tracing::warn!(
@@ -238,12 +240,13 @@ fn validate_vector_index(container: &AppContainer) {
                         stats.vector_indexed_files
                     );
                     if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
-                        tracing::info!("[VectorValidate] Reset vector_indexed_at for {} files", reset_count);
+                        tracing::info!(
+                            "[VectorValidate] Reset vector_indexed_at for {} files",
+                            reset_count
+                        );
                     }
                 } else if vector_file_exists && map_file_exists {
-                    tracing::info!(
-                        "[VectorValidate] Both files present — no reset needed"
-                    );
+                    tracing::info!("[VectorValidate] Both files present — no reset needed");
                 }
             }
         }
@@ -276,7 +279,11 @@ fn cleanup_vector_resources(container: &AppContainer) {
 fn cleanup_tmp_files(models_dir: &std::path::Path) {
     let mut cleaned = 0usize;
     // models/ 하위 2단계까지 탐색 (e.g., models/kosimcse-roberta-multitask/*.tmp)
-    for entry in std::fs::read_dir(models_dir).into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir(models_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let path = entry.path();
         if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("tmp") {
             if std::fs::remove_file(&path).is_ok() {
@@ -312,7 +319,9 @@ fn cleanup_database(db_path: &std::path::Path) {
              PRAGMA optimize;
              PRAGMA incremental_vacuum;",
         ) {
-            Ok(_) => tracing::info!("DB cleanup completed (WAL checkpoint + optimize + incremental vacuum)"),
+            Ok(_) => tracing::info!(
+                "DB cleanup completed (WAL checkpoint + optimize + incremental vacuum)"
+            ),
             Err(e) => tracing::warn!("DB cleanup partial failure: {}", e),
         }
     }
@@ -361,11 +370,7 @@ pub fn run() {
             if let Ok(entries) = std::fs::read_dir(&crash_dir) {
                 let mut crash_files: Vec<_> = entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .starts_with("crash-")
-                    })
+                    .filter(|e| e.file_name().to_string_lossy().starts_with("crash-"))
                     .collect();
                 crash_files.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
                 for old_file in crash_files.into_iter().skip(MAX_CRASH_LOGS) {

@@ -427,7 +427,12 @@ pub fn sync_folder_fts(
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
                         send_progress("indexing", total, processed, Some(file_name), false);
-                        match save_document_to_db_fts_only_no_tx(conn, &path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
+                        match save_document_to_db_fts_only_no_tx(
+                            conn,
+                            &path,
+                            document,
+                            FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+                        ) {
                             Ok(_) => indexed += 1,
                             Err(e) => {
                                 failed += 1;

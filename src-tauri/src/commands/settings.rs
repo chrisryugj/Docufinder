@@ -206,9 +206,7 @@ fn save_api_key(app_data_dir: &Path, key: Option<&str>) -> Result<(), std::io::E
     let creds = Credentials {
         ai_api_key: key.map(|k| k.to_string()),
     };
-    let json = serde_json::to_string_pretty(&creds).map_err(|e| {
-        std::io::Error::other(e)
-    })?;
+    let json = serde_json::to_string_pretty(&creds).map_err(|e| std::io::Error::other(e))?;
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, &json)?;
     fs::rename(&tmp, &path)

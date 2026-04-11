@@ -35,7 +35,9 @@ pub(super) struct IndexingContext {
 }
 
 /// 단일 lock 스코프에서 인덱싱에 필요한 모든 설정/서비스를 추출
-pub(super) fn extract_indexing_context(state: &State<'_, RwLock<AppContainer>>) -> ApiResult<IndexingContext> {
+pub(super) fn extract_indexing_context(
+    state: &State<'_, RwLock<AppContainer>>,
+) -> ApiResult<IndexingContext> {
     let container = state.read()?;
     let settings = container.get_settings();
     let mut dirs: Vec<String> = crate::constants::DEFAULT_EXCLUDED_DIRS
@@ -183,7 +185,10 @@ pub(super) fn create_vector_progress_callback(
     })
 }
 
-pub(super) fn stop_file_watching(state: &State<'_, RwLock<AppContainer>>, path: &Path) -> ApiResult<()> {
+pub(super) fn stop_file_watching(
+    state: &State<'_, RwLock<AppContainer>>,
+    path: &Path,
+) -> ApiResult<()> {
     let container = state.read()?;
     if let Ok(wm) = container.get_watch_manager() {
         if let Ok(mut wm) = wm.write() {

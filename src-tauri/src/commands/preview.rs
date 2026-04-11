@@ -120,7 +120,12 @@ pub async fn load_document_preview(
         // 2. 청크 데이터 조회 (대용량 문서 보호: 최대 500 청크)
         const MAX_PREVIEW_CHUNKS: usize = 500;
         let limited_ids = if chunk_ids.len() > MAX_PREVIEW_CHUNKS {
-            tracing::info!("Preview truncated: {} → {} chunks for {}", chunk_ids.len(), MAX_PREVIEW_CHUNKS, file_path);
+            tracing::info!(
+                "Preview truncated: {} → {} chunks for {}",
+                chunk_ids.len(),
+                MAX_PREVIEW_CHUNKS,
+                file_path
+            );
             chunk_ids[..MAX_PREVIEW_CHUNKS].to_vec()
         } else {
             chunk_ids
@@ -287,7 +292,12 @@ pub async fn load_markdown_preview(
                 }
             }
         } else {
-            tracing::debug!("preview: kordoc 미사용 (ext={}, available={}) — {}", ext, crate::parsers::kordoc::is_available(), fp);
+            tracing::debug!(
+                "preview: kordoc 미사용 (ext={}, available={}) — {}",
+                ext,
+                crate::parsers::kordoc::is_available(),
+                fp
+            );
         }
 
         // fallback: DB 청크 병합

@@ -71,7 +71,10 @@ impl SearchService {
 
         tracing::debug!(
             "Keyword search '{}': {} results in {}ms (tokenizer={})",
-            query, total_count, search_time_ms, use_tokenizer
+            query,
+            total_count,
+            search_time_ms,
+            use_tokenizer
         );
 
         Ok(SearchResponse {
@@ -169,7 +172,10 @@ impl SearchService {
 
         tracing::debug!(
             "Filename search '{}': {} results in {}ms (cache={})",
-            query, total_count, search_time_ms, use_cache
+            query,
+            total_count,
+            search_time_ms,
+            use_cache
         );
 
         Ok(SearchResponse {

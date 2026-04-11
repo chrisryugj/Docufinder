@@ -399,4 +399,3 @@ pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
         e5_dir.join("tokenizer.json").exists(),
     )
 }
-

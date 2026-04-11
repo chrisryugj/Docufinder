@@ -89,4 +89,3 @@ pub async fn export_csv(
     .await
     .map_err(|e| ApiError::IndexingFailed(e.to_string()))?
 }
-

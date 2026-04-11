@@ -127,10 +127,8 @@ const NOUN_POS_TAGS: &[&str] = &["NNG", "NNP", "SL", "SH"];
 
 /// 명사지만 검색 키워드로 무의미한 불용어 (대명사/의문사/형식명사)
 const NOUN_STOPWORDS: &[&str] = &[
-    "얼마", "무엇", "어디", "언제", "누구", "어떤", "어느",
-    "몇", "뭐", "왜",
-    "것", "거", "수", "때", "데", "바", "점", "중",
-    "이", "그", "저",
+    "얼마", "무엇", "어디", "언제", "누구", "어떤", "어느", "몇", "뭐", "왜", "것", "거", "수",
+    "때", "데", "바", "점", "중", "이", "그", "저",
 ];
 
 impl TextTokenizer for LinderaKoTokenizer {
@@ -169,7 +167,9 @@ impl TextTokenizer for LinderaKoTokenizer {
 
         // 보완: 원본 어절에서 흔한 조사 제거한 형태도 추가
         // (형태소 분석기가 복합어를 잘못 분해하는 케이스 커버)
-        let common_suffixes = ["이", "가", "을", "를", "은", "는", "의", "에", "에서", "으로", "로"];
+        let common_suffixes = [
+            "이", "가", "을", "를", "은", "는", "의", "에", "에서", "으로", "로",
+        ];
         for word in text.split_whitespace() {
             let clean = Self::clean_token(word);
             if clean.chars().count() < 3 {
@@ -495,8 +495,14 @@ mod tests {
         println!("nouns: {:?}", nouns);
         // 명사만 남아야 함: "노인", "일자리", "참여자" 등
         // "몇", "명", "이야" 같은 건 제외
-        assert!(nouns.iter().any(|n| n.contains("참여")), "참여자 계열 명사 포함");
-        assert!(!nouns.iter().any(|n| n == "몇명" || n == "이야"), "의문 표현 제외");
+        assert!(
+            nouns.iter().any(|n| n.contains("참여")),
+            "참여자 계열 명사 포함"
+        );
+        assert!(
+            !nouns.iter().any(|n| n == "몇명" || n == "이야"),
+            "의문 표현 제외"
+        );
     }
 
     #[test]

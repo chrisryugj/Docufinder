@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use super::models::{DefaultStyle, PageSettings, ParagraphNode, StyleData};
 use super::char_weight_units;
+use super::models::{DefaultStyle, PageSettings, ParagraphNode, StyleData};
 
 /// 가상 레이아웃 시뮬레이터 (Y좌표 추적 기반)
 pub(super) struct LayoutSimulator {

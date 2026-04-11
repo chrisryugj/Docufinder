@@ -107,7 +107,9 @@ impl SearchService {
 
         tracing::debug!(
             "Semantic search '{}': {} results in {}ms",
-            query, total_count, search_time_ms
+            query,
+            total_count,
+            search_time_ms
         );
 
         Ok(SearchResponse {
@@ -350,7 +352,9 @@ impl SearchService {
 
         tracing::debug!(
             "Similar search for '{}': {} results in {}ms",
-            file_path, total_count, search_time_ms
+            file_path,
+            total_count,
+            search_time_ms
         );
 
         Ok(SearchResponse {

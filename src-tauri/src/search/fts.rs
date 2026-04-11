@@ -272,8 +272,11 @@ fn search_like_fallback(
     };
 
     let results: Vec<FtsResult> = if let Some(ref pattern) = scope_pattern {
-        stmt.query_map(rusqlite::params![like_pattern, pattern, limit as i64], map_row)?
-            .collect::<Result<Vec<_>, _>>()?
+        stmt.query_map(
+            rusqlite::params![like_pattern, pattern, limit as i64],
+            map_row,
+        )?
+        .collect::<Result<Vec<_>, _>>()?
     } else {
         stmt.query_map(params![like_pattern, limit as i64], map_row)?
             .collect::<Result<Vec<_>, _>>()?

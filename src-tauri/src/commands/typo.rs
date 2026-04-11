@@ -24,19 +24,18 @@ pub struct SuggestedWord {
 // ==================== 한국어 자모 분해 ====================
 
 const CHOSEONG: [char; 19] = [
-    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ',
-    'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+    'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ',
+    'ㅌ', 'ㅍ', 'ㅎ',
 ];
 
 const JUNGSEONG: [char; 21] = [
-    'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ',
-    'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
+    'ㅏ', 'ㅐ', 'ㅑ', 'ㅒ', 'ㅓ', 'ㅔ', 'ㅕ', 'ㅖ', 'ㅗ', 'ㅘ', 'ㅙ', 'ㅚ', 'ㅛ', 'ㅜ', 'ㅝ', 'ㅞ',
+    'ㅟ', 'ㅠ', 'ㅡ', 'ㅢ', 'ㅣ',
 ];
 
 const JONGSEONG: [char; 28] = [
-    '\0', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ',
-    'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ', 'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ',
-    'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+    '\0', 'ㄱ', 'ㄲ', 'ㄳ', 'ㄴ', 'ㄵ', 'ㄶ', 'ㄷ', 'ㄹ', 'ㄺ', 'ㄻ', 'ㄼ', 'ㄽ', 'ㄾ', 'ㄿ', 'ㅀ',
+    'ㅁ', 'ㅂ', 'ㅄ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
 ];
 
 /// 한글 음절을 자모로 분해
@@ -82,9 +81,7 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
         curr[0] = i;
         for j in 1..=n {
             let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-            curr[j] = (prev[j] + 1)
-                .min(curr[j - 1] + 1)
-                .min(prev[j - 1] + cost);
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
         }
         std::mem::swap(&mut prev, &mut curr);
     }
@@ -96,14 +93,29 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
 fn is_adjacent_key(a: char, b: char) -> bool {
     // 두벌식 키보드 인접 키 매핑 (주요 오타 패턴)
     const ADJACENT: &[(char, char)] = &[
-        ('ㄱ', 'ㄲ'), ('ㄷ', 'ㄸ'), ('ㅂ', 'ㅃ'), ('ㅅ', 'ㅆ'), ('ㅈ', 'ㅉ'),
-        ('ㅏ', 'ㅑ'), ('ㅓ', 'ㅕ'), ('ㅗ', 'ㅛ'), ('ㅜ', 'ㅠ'),
-        ('ㅐ', 'ㅔ'), ('ㅒ', 'ㅖ'),
+        ('ㄱ', 'ㄲ'),
+        ('ㄷ', 'ㄸ'),
+        ('ㅂ', 'ㅃ'),
+        ('ㅅ', 'ㅆ'),
+        ('ㅈ', 'ㅉ'),
+        ('ㅏ', 'ㅑ'),
+        ('ㅓ', 'ㅕ'),
+        ('ㅗ', 'ㅛ'),
+        ('ㅜ', 'ㅠ'),
+        ('ㅐ', 'ㅔ'),
+        ('ㅒ', 'ㅖ'),
         // 자주 혼동되는 자모
-        ('ㄱ', 'ㅋ'), ('ㄷ', 'ㅌ'), ('ㅂ', 'ㅍ'), ('ㅅ', 'ㅎ'),
-        ('ㅗ', 'ㅓ'), ('ㅜ', 'ㅡ'), ('ㅡ', 'ㅣ'),
+        ('ㄱ', 'ㅋ'),
+        ('ㄷ', 'ㅌ'),
+        ('ㅂ', 'ㅍ'),
+        ('ㅅ', 'ㅎ'),
+        ('ㅗ', 'ㅓ'),
+        ('ㅜ', 'ㅡ'),
+        ('ㅡ', 'ㅣ'),
     ];
-    ADJACENT.iter().any(|&(x, y)| (x == a && y == b) || (x == b && y == a))
+    ADJACENT
+        .iter()
+        .any(|&(x, y)| (x == a && y == b) || (x == b && y == a))
 }
 
 /// 가중 edit distance (인접 키보드 오타는 비용 감소)
@@ -199,10 +211,9 @@ pub async fn suggest_correction(
                 .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
             let candidates: Vec<(String, i64)> = stmt
-                .query_map(
-                    rusqlite::params![min_len as i64, max_len as i64],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-                )
+                .query_map(rusqlite::params![min_len as i64, max_len as i64], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })
                 .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?
                 .filter_map(|r| r.ok())
                 .collect();
@@ -269,7 +280,11 @@ pub async fn suggest_correction(
                     });
                 }
             }
-            all_suggestions.sort_by(|a, b| a.distance.cmp(&b.distance).then(b.frequency.cmp(&a.frequency)));
+            all_suggestions.sort_by(|a, b| {
+                a.distance
+                    .cmp(&b.distance)
+                    .then(b.frequency.cmp(&a.frequency))
+            });
             all_suggestions.truncate(3);
         }
 

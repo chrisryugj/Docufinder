@@ -218,19 +218,25 @@ pub async fn remove_folder(
                 if let Ok(conn) = crate::db::get_connection(&db_path) {
                     let _ = filename_cache.load_from_db(&conn);
                 }
-                let _ = app_handle.emit("folder-removed", serde_json::json!({
-                    "path": path_clone,
-                    "success": true,
-                }));
+                let _ = app_handle.emit(
+                    "folder-removed",
+                    serde_json::json!({
+                        "path": path_clone,
+                        "success": true,
+                    }),
+                );
                 tracing::info!("Folder removed successfully: {}", path_clone);
             }
             Err(e) => {
                 tracing::error!("Folder removal failed: {}: {}", path_clone, e);
-                let _ = app_handle.emit("folder-removed", serde_json::json!({
-                    "path": path_clone,
-                    "success": false,
-                    "error": e.to_string(),
-                }));
+                let _ = app_handle.emit(
+                    "folder-removed",
+                    serde_json::json!({
+                        "path": path_clone,
+                        "success": false,
+                        "error": e.to_string(),
+                    }),
+                );
             }
         }
     });

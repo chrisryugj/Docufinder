@@ -161,7 +161,9 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
     // .take()로 디컴프레션 크기 제한 (ZIP 헤더 위조 시 OOM 방어)
     {
         use std::io::Read;
-        entry.take(super::MAX_ENTRY_UNCOMPRESSED_SIZE).read_to_string(&mut xml_content)?;
+        entry
+            .take(super::MAX_ENTRY_UNCOMPRESSED_SIZE)
+            .read_to_string(&mut xml_content)?;
     }
 
     let mut reader = Reader::from_str(&xml_content);

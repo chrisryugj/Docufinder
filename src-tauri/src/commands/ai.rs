@@ -5,15 +5,15 @@
 //! - summarize_ai: 파일 청크 → LLM 요약 (유형 선택 가능)
 
 use crate::application::dto::search::{AiAnalysis, TokenUsage};
+use crate::application::services::search_service::helpers::{
+    smart_apply_exclude_filter, smart_apply_file_type_filter,
+};
 use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::llm::gemini::GeminiClient;
 use crate::llm::{
-    summary_prompt_for_type, GenerateConfig, LlmProvider, MAX_CONTEXT_CHARS,
-    QA_SYSTEM_PROMPT, FILE_QA_SYSTEM_PROMPT,
-};
-use crate::application::services::search_service::helpers::{
-    smart_apply_exclude_filter, smart_apply_file_type_filter,
+    summary_prompt_for_type, GenerateConfig, LlmProvider, FILE_QA_SYSTEM_PROMPT, MAX_CONTEXT_CHARS,
+    QA_SYSTEM_PROMPT,
 };
 use crate::search::nl_query::NlQueryParser;
 use crate::AppContainer;
@@ -80,9 +80,14 @@ fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
             "AI 기능이 비활성화되어 있습니다. 설정에서 활성화해주세요.".to_string(),
         ));
     }
-    let api_key = settings.ai_api_key.filter(|k| !k.is_empty()).ok_or_else(|| {
-        ApiError::AiError("API 키가 설정되지 않았습니다. 설정 > AI에서 입력해주세요.".to_string())
-    })?;
+    let api_key = settings
+        .ai_api_key
+        .filter(|k| !k.is_empty())
+        .ok_or_else(|| {
+            ApiError::AiError(
+                "API 키가 설정되지 않았습니다. 설정 > AI에서 입력해주세요.".to_string(),
+            )
+        })?;
     Ok(GeminiClient::new(api_key, settings.ai_model))
 }
 
@@ -95,8 +100,10 @@ fn build_rag_context(
 ) -> (String, Vec<String>) {
     // 파일별 청크 그룹화 (검색 순서 유지)
     let mut file_order: Vec<String> = Vec::new();
-    let mut file_groups: std::collections::HashMap<String, Vec<&crate::application::dto::search::SearchResult>> =
-        std::collections::HashMap::new();
+    let mut file_groups: std::collections::HashMap<
+        String,
+        Vec<&crate::application::dto::search::SearchResult>,
+    > = std::collections::HashMap::new();
     for r in results {
         if !file_groups.contains_key(&r.file_path) {
             file_order.push(r.file_path.clone());
@@ -179,8 +186,8 @@ fn load_file_chunks_text(conn: &rusqlite::Connection, file_path: &str) -> Result
         return Err("이 파일의 인덱스가 없습니다. 폴더를 인덱싱해주세요.".to_string());
     }
 
-    let chunks = db::get_chunks_by_ids(conn, &chunk_ids)
-        .map_err(|e| format!("청크 로드 실패: {}", e))?;
+    let chunks =
+        db::get_chunks_by_ids(conn, &chunk_ids).map_err(|e| format!("청크 로드 실패: {}", e))?;
 
     let mut sorted = chunks;
     sorted.sort_by_key(|c| c.chunk_index);
@@ -208,7 +215,11 @@ fn load_file_chunks_text(conn: &rusqlite::Connection, file_path: &str) -> Result
 }
 
 /// 스트리밍 결과를 AiAnalysis DTO로 변환 헬퍼
-fn to_analysis(response: crate::llm::LlmResponse, source_files: Vec<String>, elapsed: u64) -> AiAnalysis {
+fn to_analysis(
+    response: crate::llm::LlmResponse,
+    source_files: Vec<String>,
+    elapsed: u64,
+) -> AiAnalysis {
     AiAnalysis {
         answer: response.text,
         source_files,
@@ -240,7 +251,10 @@ pub async fn ask_ai(
         return Err(ApiError::Validation("질문을 입력해주세요.".to_string()));
     }
     if query.chars().count() > MAX_QUERY_LEN {
-        return Err(ApiError::Validation(format!("질문이 너무 깁니다 (최대 {}자)", MAX_QUERY_LEN)));
+        return Err(ApiError::Validation(format!(
+            "질문이 너무 깁니다 (최대 {}자)",
+            MAX_QUERY_LEN
+        )));
     }
 
     // 동시 AI 요청 제한
@@ -305,7 +319,9 @@ pub async fn ask_ai(
         tracing::debug!("RAG 검색쿼리: '{}' (원본: '{}')", search_query, query_clone);
 
         // 검색 전 취소 확인
-        if cancel_token.load(Ordering::Relaxed) { return; }
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
 
         let search_result = service
             .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
@@ -315,7 +331,13 @@ pub async fn ask_ai(
             Ok(resp) => resp.results,
             Err(e) => {
                 tracing::error!("RAG 검색 실패: {}", e);
-                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: format!("검색 실패: {}", e) });
+                let _ = app_clone.emit(
+                    "ai-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: format!("검색 실패: {}", e),
+                    },
+                );
                 return;
             }
         };
@@ -332,12 +354,20 @@ pub async fn ask_ai(
             .collect();
 
         if results.is_empty() {
-            let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string() });
+            let _ = app_clone.emit(
+                "ai-error",
+                AiErrorEvent {
+                    request_id: rid,
+                    error: "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string(),
+                },
+            );
             return;
         }
 
         // LLM 호출 전 취소 확인
-        if cancel_token.load(Ordering::Relaxed) { return; }
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
 
         let (context, source_files) = build_rag_context(&results);
         let prompt = format!(
@@ -349,28 +379,59 @@ pub async fn ask_ai(
         let rid_for_token = rid.clone();
         let cancel_for_stream = Arc::clone(&cancel_token);
         let stream_result = tokio::task::spawn_blocking(move || {
-            client.generate_stream(&prompt, &config, &|token| {
-                let _ = app_for_token.emit("ai-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
-            }, &cancel_for_stream)
+            client.generate_stream(
+                &prompt,
+                &config,
+                &|token| {
+                    let _ = app_for_token.emit(
+                        "ai-token",
+                        AiTokenEvent {
+                            request_id: rid_for_token.clone(),
+                            token: token.to_string(),
+                        },
+                    );
+                },
+                &cancel_for_stream,
+            )
         })
         .await;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
         // 취소된 요청은 이벤트 발행하지 않음
-        if cancel_token.load(Ordering::Relaxed) { return; }
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
 
         match stream_result {
             Ok(Ok(response)) => {
-                let _ = app_clone.emit("ai-complete", AiCompleteEvent { request_id: rid, analysis: to_analysis(response, source_files, elapsed) });
+                let _ = app_clone.emit(
+                    "ai-complete",
+                    AiCompleteEvent {
+                        request_id: rid,
+                        analysis: to_analysis(response, source_files, elapsed),
+                    },
+                );
             }
             Ok(Err(e)) => {
                 tracing::error!("LLM 생성 실패: {}", e);
-                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: e });
+                let _ = app_clone.emit(
+                    "ai-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: e,
+                    },
+                );
             }
             Err(e) => {
                 tracing::error!("LLM 태스크 실패: {}", e);
-                let _ = app_clone.emit("ai-error", AiErrorEvent { request_id: rid, error: format!("처리 중 오류: {}", e) });
+                let _ = app_clone.emit(
+                    "ai-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: format!("처리 중 오류: {}", e),
+                    },
+                );
             }
         }
     });
@@ -391,10 +452,15 @@ pub async fn ask_ai_file(
         return Err(ApiError::Validation("질문을 입력해주세요.".to_string()));
     }
     if query.chars().count() > MAX_QUERY_LEN {
-        return Err(ApiError::Validation(format!("질문이 너무 깁니다 (최대 {}자)", MAX_QUERY_LEN)));
+        return Err(ApiError::Validation(format!(
+            "질문이 너무 깁니다 (최대 {}자)",
+            MAX_QUERY_LEN
+        )));
     }
     if file_path.trim().is_empty() {
-        return Err(ApiError::Validation("파일 경로가 비어있습니다.".to_string()));
+        return Err(ApiError::Validation(
+            "파일 경로가 비어있습니다.".to_string(),
+        ));
     }
 
     // 동시 AI 요청 제한
@@ -426,22 +492,35 @@ pub async fn ask_ai_file(
 
         // 청크 로드
         let content_result = tokio::task::spawn_blocking(move || {
-            let conn = db::get_connection(&db_path)
-                .map_err(|e| format!("DB 연결 실패: {}", e))?;
+            let conn = db::get_connection(&db_path).map_err(|e| format!("DB 연결 실패: {}", e))?;
             load_file_chunks_text(&conn, &file_path_clone)
         })
         .await;
 
-        if cancel_token.load(Ordering::Relaxed) { return; }
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
 
         let content = match content_result {
             Ok(Ok(text)) => text,
             Ok(Err(e)) => {
-                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: e });
+                let _ = app_clone.emit(
+                    "ai-file-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: e,
+                    },
+                );
                 return;
             }
             Err(e) => {
-                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: format!("태스크 실패: {}", e) });
+                let _ = app_clone.emit(
+                    "ai-file-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: format!("태스크 실패: {}", e),
+                    },
+                );
                 return;
             }
         };
@@ -455,29 +534,60 @@ pub async fn ask_ai_file(
         let rid_for_token = rid.clone();
         let cancel_for_stream = Arc::clone(&cancel_token);
         let stream_result = tokio::task::spawn_blocking(move || {
-            client.generate_stream(&prompt, &config, &|token| {
-                let _ = app_for_token.emit("ai-file-token", AiTokenEvent { request_id: rid_for_token.clone(), token: token.to_string() });
-            }, &cancel_for_stream)
+            client.generate_stream(
+                &prompt,
+                &config,
+                &|token| {
+                    let _ = app_for_token.emit(
+                        "ai-file-token",
+                        AiTokenEvent {
+                            request_id: rid_for_token.clone(),
+                            token: token.to_string(),
+                        },
+                    );
+                },
+                &cancel_for_stream,
+            )
         })
         .await;
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        if cancel_token.load(Ordering::Relaxed) { return; }
+        if cancel_token.load(Ordering::Relaxed) {
+            return;
+        }
 
         let source_files = vec![file_path.clone()];
 
         match stream_result {
             Ok(Ok(response)) => {
-                let _ = app_clone.emit("ai-file-complete", AiCompleteEvent { request_id: rid, analysis: to_analysis(response, source_files, elapsed) });
+                let _ = app_clone.emit(
+                    "ai-file-complete",
+                    AiCompleteEvent {
+                        request_id: rid,
+                        analysis: to_analysis(response, source_files, elapsed),
+                    },
+                );
             }
             Ok(Err(e)) => {
                 tracing::error!("파일 QA LLM 실패: {}", e);
-                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: e });
+                let _ = app_clone.emit(
+                    "ai-file-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: e,
+                    },
+                );
             }
             Err(e) => {
                 tracing::error!("파일 QA 태스크 실패: {}", e);
-                let _ = app_clone.emit("ai-file-error", AiErrorEvent { request_id: rid, error: format!("처리 중 오류: {}", e) });
+                let _ = app_clone.emit(
+                    "ai-file-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: format!("처리 중 오류: {}", e),
+                    },
+                );
             }
         }
     });
@@ -495,7 +605,9 @@ pub async fn summarize_ai(
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<AiAnalysis> {
     if file_path.trim().is_empty() {
-        return Err(ApiError::Validation("파일 경로가 비어있습니다.".to_string()));
+        return Err(ApiError::Validation(
+            "파일 경로가 비어있습니다.".to_string(),
+        ));
     }
 
     // 동시 AI 요청 제한
@@ -520,8 +632,7 @@ pub async fn summarize_ai(
     let stype = summary_type.unwrap_or_else(|| "brief".to_string());
 
     let content = tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)
-            .map_err(|e| format!("DB 연결 실패: {}", e))?;
+        let conn = db::get_connection(&db_path).map_err(|e| format!("DB 연결 실패: {}", e))?;
         load_file_chunks_text(&conn, &file_path)
     })
     .await

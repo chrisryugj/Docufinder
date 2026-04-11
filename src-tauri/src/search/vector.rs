@@ -68,8 +68,8 @@ impl VectorIndex {
             dimensions: EMBEDDING_DIM,
             metric: MetricKind::Cos, // 코사인 유사도
             quantization: ScalarKind::F16,
-            connectivity: 16,     // HNSW M parameter
-            expansion_add: 128,   // efConstruction
+            connectivity: 16,      // HNSW M parameter
+            expansion_add: 128,    // efConstruction
             expansion_search: 128, // efSearch: 64→128 대규모 인덱스 재현율 개선
             multi: false,
         }

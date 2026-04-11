@@ -83,14 +83,10 @@ impl GeminiClient {
     fn map_http_error(e: &ureq::Error) -> String {
         if let ureq::Error::StatusCode(status) = e {
             match *status {
-                401 | 403 => {
-                    "API 키가 유효하지 않습니다. 설정에서 확인해주세요.".to_string()
-                }
+                401 | 403 => "API 키가 유효하지 않습니다. 설정에서 확인해주세요.".to_string(),
                 429 => "API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.".to_string(),
                 404 => "모델을 찾을 수 없습니다. 모델 ID를 확인해주세요.".to_string(),
-                500..=599 => {
-                    "Gemini API 서버 오류입니다. 잠시 후 다시 시도해주세요.".to_string()
-                }
+                500..=599 => "Gemini API 서버 오류입니다. 잠시 후 다시 시도해주세요.".to_string(),
                 _ => format!("API 요청 실패 (HTTP {})", status),
             }
         } else {

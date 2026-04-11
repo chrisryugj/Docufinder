@@ -20,9 +20,7 @@ pub async fn add_file_tag(
 ) -> ApiResult<()> {
     let tag = tag.trim().to_string();
     if tag.is_empty() || tag.len() > 50 {
-        return Err(ApiError::Validation(
-            "태그는 1~50자여야 합니다".to_string(),
-        ));
+        return Err(ApiError::Validation("태그는 1~50자여야 합니다".to_string()));
     }
 
     let db_path = {
@@ -98,9 +96,7 @@ pub async fn get_file_tags(
 
 /// 전체 태그 목록 (사용 횟수 포함)
 #[tauri::command]
-pub async fn get_all_tags(
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<Vec<TagInfo>> {
+pub async fn get_all_tags(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Vec<TagInfo>> {
     let db_path = {
         let container = state.read()?;
         container.db_path.to_string_lossy().to_string()
@@ -109,7 +105,9 @@ pub async fn get_all_tags(
     tokio::task::spawn_blocking(move || -> ApiResult<Vec<TagInfo>> {
         let conn = db::get_connection(std::path::Path::new(&db_path))?;
         let mut stmt = conn
-            .prepare("SELECT tag, COUNT(*) as cnt FROM file_tags GROUP BY tag ORDER BY cnt DESC, tag")
+            .prepare(
+                "SELECT tag, COUNT(*) as cnt FROM file_tags GROUP BY tag ORDER BY cnt DESC, tag",
+            )
             .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
         let tags: Vec<TagInfo> = stmt
             .query_map([], |row| {

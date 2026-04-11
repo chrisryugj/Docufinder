@@ -27,8 +27,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use super::collector::{collect_files, save_file_metadata_only};
 
 /// FTS 인덱싱 시 형태소 토큰 생성용 글로벌 토크나이저 (lazy init)
-pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> = Lazy::new(|| {
-    match LinderaKoTokenizer::new() {
+pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> =
+    Lazy::new(|| match LinderaKoTokenizer::new() {
         Ok(t) => {
             tracing::info!("FTS 형태소 분석기 초기화 완료");
             Some(t)
@@ -37,8 +37,7 @@ pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> = Lazy::new(||
             tracing::warn!("FTS 형태소 분석기 초기화 실패 (형태소 없이 인덱싱): {}", e);
             None
         }
-    }
-});
+    });
 
 /// 스트리밍 파이프라인 채널 버퍼 크기
 /// 32: 8GB RAM PC에서 대용량 문서(XLSX/PDF) 동시 버퍼링 시 메모리 피크 억제
@@ -401,7 +400,12 @@ fn index_folder_fts_impl(
                                 .unwrap_or("unknown");
                             send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
-                            match save_document_to_db_fts_only_no_tx(conn, &path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
+                            match save_document_to_db_fts_only_no_tx(
+                                conn,
+                                &path,
+                                document,
+                                FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+                            ) {
                                 Ok(_) => {
                                     indexed += 1;
                                     // OCR 이미지 파일 카운트
@@ -815,7 +819,12 @@ pub fn index_file_fts_only(
     conn.execute_batch("BEGIN")
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
-    let chunks_count = match save_document_to_db_fts_only_no_tx(conn, path, document, FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer)) {
+    let chunks_count = match save_document_to_db_fts_only_no_tx(
+        conn,
+        path,
+        document,
+        FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+    ) {
         Ok(c) => c,
         Err(e) => {
             let _ = conn.execute_batch("ROLLBACK");

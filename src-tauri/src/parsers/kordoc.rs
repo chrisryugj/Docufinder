@@ -49,9 +49,7 @@ fn find_kordoc_cli() -> Option<PathBuf> {
     #[cfg(debug_assertions)]
     if let Ok(p) = std::env::var("KORDOC_CLI_PATH") {
         let path = PathBuf::from(&p);
-        if path.exists()
-            && path.extension().and_then(|e| e.to_str()) == Some("js")
-        {
+        if path.exists() && path.extension().and_then(|e| e.to_str()) == Some("js") {
             return Some(path);
         } else {
             warn!("KORDOC_CLI_PATH 무시: 유효하지 않은 경로 {:?}", path);
@@ -93,9 +91,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     // 파일 크기 제한 (기존 Rust 파서와 동일)
     validate_file_size(path)?;
 
-    let cli_path = find_kordoc_cli().ok_or_else(|| {
-        ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string())
-    })?;
+    let cli_path = find_kordoc_cli()
+        .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
 
     let json = call_kordoc_sync(&cli_path, path)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
@@ -148,9 +145,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 pub fn get_markdown(path: &Path) -> Result<String, ParseError> {
     validate_file_size(path)?;
 
-    let cli_path = find_kordoc_cli().ok_or_else(|| {
-        ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string())
-    })?;
+    let cli_path = find_kordoc_cli()
+        .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
 
     let json = call_kordoc_sync(&cli_path, path)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
@@ -212,9 +208,8 @@ fn validate_file_size(path: &Path) -> Result<(), ParseError> {
 
 /// kordoc CLI 동기 호출 (blocking thread에서 사용, 60초 타임아웃)
 fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseError> {
-    let node = which_node().ok_or_else(|| {
-        ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string())
-    })?;
+    let node = which_node()
+        .ok_or_else(|| ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string()))?;
 
     // Windows \\?\ prefix 제거 (Node.js/kordoc가 처리하지 못함)
     let file_str = file_path.to_string_lossy();
@@ -239,9 +234,9 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let child = cmd.spawn().map_err(|e| {
-        ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}"))
-    })?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}")))?;
 
     // wait_with_output()을 별도 스레드에서 실행하여 stdout 데드락 방지
     // (try_wait 폴링은 stdout 파이프 버퍼가 차면 데드락 발생 가능)
@@ -289,15 +284,14 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         )));
     }
 
-    String::from_utf8(output.stdout).map_err(|_| {
-        ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string())
-    })
+    String::from_utf8(output.stdout)
+        .map_err(|_| ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string()))
 }
 
 /// ISO 8601 → Unix timestamp (chrono 활용)
 fn parse_iso_timestamp(s: &str) -> Option<i64> {
     // chrono는 이미 Cargo.toml에 의존성으로 포함되어 있음
-    use chrono::{NaiveDateTime, DateTime};
+    use chrono::{DateTime, NaiveDateTime};
 
     // "2024-01-15T09:30:00Z" 또는 "2024-01-15T09:30:00+09:00"
     if let Ok(dt) = DateTime::parse_from_rfc3339(s.trim()) {

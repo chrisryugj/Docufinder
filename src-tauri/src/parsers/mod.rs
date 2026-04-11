@@ -75,11 +75,7 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         match kordoc::parse(path) {
             Ok(doc) => return Ok(doc),
             Err(e) => {
-                tracing::warn!(
-                    "kordoc fallback → Rust 파서: {} ({})",
-                    path.display(),
-                    e
-                );
+                tracing::warn!("kordoc fallback → Rust 파서: {} ({})", path.display(), e);
             }
         }
     }
@@ -87,7 +83,9 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
     match extension.as_str() {
         "txt" | "md" => txt::parse(path),
         // HWP5 바이너리: kordoc 전용 (Rust 파서 없음, 위에서 이미 시도했으면 여기서 에러)
-        "hwp" => Err(ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())),
+        "hwp" => Err(ParseError::UnsupportedFileType(
+            "hwp (kordoc 필요)".to_string(),
+        )),
         "hwpx" => parse_with_timeout(path, 30, "HWPX", hwpx::parse),
         "docx" => parse_with_timeout(path, 30, "DOCX", docx::parse),
         "pptx" => parse_with_timeout(path, 30, "PPTX", pptx::parse),

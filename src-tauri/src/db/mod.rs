@@ -167,7 +167,6 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
     )
 }
 
-
 /// 폴더 내 이미 FTS 인덱싱 완료된 파일 경로 조회 (resume 시 스킵용)
 pub fn get_fts_indexed_paths_in_folder(
     conn: &Connection,

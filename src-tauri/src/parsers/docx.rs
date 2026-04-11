@@ -35,7 +35,9 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             // 확장자가 .docx인데 ZIP이 아니면 암호 파일일 가능성 높음
             let is_cfb = std::fs::read(path)
                 .ok()
-                .map(|b| b.len() >= 8 && b[0..8] == [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1])
+                .map(|b| {
+                    b.len() >= 8 && b[0..8] == [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
+                })
                 .unwrap_or(false);
             if is_cfb {
                 ParseError::PasswordProtected("암호로 보호된 DOCX 파일입니다".to_string())
@@ -59,7 +61,9 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     // .take()로 디컴프레션 크기 제한 (ZIP 헤더 위조 시 OOM 방어)
     {
         use std::io::Read;
-        document_xml.take(super::MAX_ENTRY_UNCOMPRESSED_SIZE).read_to_string(&mut contents)?;
+        document_xml
+            .take(super::MAX_ENTRY_UNCOMPRESSED_SIZE)
+            .read_to_string(&mut contents)?;
     }
 
     let (pages, total_text) = extract_text_with_pages(&contents)?;

@@ -103,7 +103,12 @@ fn extract_text_with_location(
     let mut total_chars = 0usize;
     for (row_idx, row) in range.rows().enumerate() {
         if row_idx >= MAX_ROWS_PER_SHEET {
-            tracing::warn!("Sheet '{}' truncated at {} rows (max {})", sheet_name, row_idx, MAX_ROWS_PER_SHEET);
+            tracing::warn!(
+                "Sheet '{}' truncated at {} rows (max {})",
+                sheet_name,
+                row_idx,
+                MAX_ROWS_PER_SHEET
+            );
             break;
         }
 
@@ -115,7 +120,12 @@ fn extract_text_with_location(
             let row_text = cells.join("\t");
             total_chars += row_text.len();
             if total_chars > MAX_TOTAL_CHARS {
-                tracing::warn!("Sheet '{}' truncated at {} chars (max {})", sheet_name, total_chars, MAX_TOTAL_CHARS);
+                tracing::warn!(
+                    "Sheet '{}' truncated at {} chars (max {})",
+                    sheet_name,
+                    total_chars,
+                    MAX_TOTAL_CHARS
+                );
                 break;
             }
             all_rows_text.push(row_text.clone());

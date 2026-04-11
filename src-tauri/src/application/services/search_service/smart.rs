@@ -2,7 +2,9 @@
 
 use super::helpers::*;
 use super::SearchService;
-use crate::application::dto::search::{MatchType, SearchResponse, SearchResult, SmartSearchResponse};
+use crate::application::dto::search::{
+    MatchType, SearchResponse, SearchResult, SmartSearchResponse,
+};
 use crate::application::errors::{AppError, AppResult};
 use std::time::Instant;
 
@@ -15,38 +17,37 @@ impl SearchService {
     ) -> AppResult<SearchResponse> {
         let conn = self.get_connection()?;
 
-        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(s) =
-            folder_scope
-        {
-            let escaped = s
-                .to_lowercase()
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            let scope_pattern = format!("{}%", escaped);
-            (
-                "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
+        let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+            if let Some(s) = folder_scope {
+                let escaped = s
+                    .to_lowercase()
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
+                let scope_pattern = format!("{}%", escaped);
+                (
+                    "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
                  FROM files f
                  WHERE f.modified_at IS NOT NULL AND LOWER(f.path) LIKE ?2 ESCAPE '\\'
                  ORDER BY f.modified_at DESC
                  LIMIT ?1"
-                    .to_string(),
-                vec![
-                    Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>,
-                    Box::new(scope_pattern),
-                ],
-            )
-        } else {
-            (
-                "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
+                        .to_string(),
+                    vec![
+                        Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>,
+                        Box::new(scope_pattern),
+                    ],
+                )
+            } else {
+                (
+                    "SELECT f.path, f.name, f.file_type, f.size, f.modified_at
                  FROM files f
                  WHERE f.modified_at IS NOT NULL
                  ORDER BY f.modified_at DESC
                  LIMIT ?1"
-                    .to_string(),
-                vec![Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>],
-            )
-        };
+                        .to_string(),
+                    vec![Box::new(max_results as i64) as Box<dyn rusqlite::types::ToSql>],
+                )
+            };
 
         let mut stmt = conn
             .prepare(&sql)
@@ -146,7 +147,10 @@ impl SearchService {
 
         tracing::debug!(
             "Smart search '{}': parsed keywords='{}', {} results in {}ms",
-            query, parsed.keywords, total_count, search_time_ms
+            query,
+            parsed.keywords,
+            total_count,
+            search_time_ms
         );
 
         Ok(SmartSearchResponse {
@@ -169,12 +173,28 @@ impl SearchService {
         let rules: &[(&str, &[&str], usize)] = &[
             (
                 "법령",
-                &["시행령", "시행규칙", "조례", "법률 제", "별표", "동법", "같은 법"],
+                &[
+                    "시행령",
+                    "시행규칙",
+                    "조례",
+                    "법률 제",
+                    "별표",
+                    "동법",
+                    "같은 법",
+                ],
                 2,
             ),
             (
                 "공문",
-                &["수신 :", "수신:", "발신 :", "발신:", "관인생략", "시행 20", "경유 :"],
+                &[
+                    "수신 :",
+                    "수신:",
+                    "발신 :",
+                    "발신:",
+                    "관인생략",
+                    "시행 20",
+                    "경유 :",
+                ],
                 2,
             ),
             (
@@ -184,7 +204,14 @@ impl SearchService {
             ),
             (
                 "회의록",
-                &["회의록", "참석자", "안건", "결정사항", "회의일시", "회의 장소"],
+                &[
+                    "회의록",
+                    "참석자",
+                    "안건",
+                    "결정사항",
+                    "회의일시",
+                    "회의 장소",
+                ],
                 2,
             ),
             (

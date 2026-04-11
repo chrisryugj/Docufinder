@@ -289,9 +289,7 @@ pub fn init_database(db_path: &Path) -> Result<()> {
     // FTS 테이블에는 형태소 토큰이 추가된 텍스트가 저장되므로
     // 미리보기용 원본 텍스트를 별도 보관
     if get_schema_version(&conn) < 11 {
-        if let Err(e) =
-            conn.execute("ALTER TABLE chunks ADD COLUMN content TEXT", [])
-        {
+        if let Err(e) = conn.execute("ALTER TABLE chunks ADD COLUMN content TEXT", []) {
             tracing::trace!("Migration v11: content column already exists: {}", e);
         }
         set_schema_version(&conn, 11)?;

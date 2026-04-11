@@ -22,10 +22,11 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         Ok(s) => s,
         Err(_) => {
             let bytes = fs::read(path)?;
-            decode_with_fallback(&bytes)
-                .ok_or_else(|| ParseError::ParseError(
+            decode_with_fallback(&bytes).ok_or_else(|| {
+                ParseError::ParseError(
                     "인코딩을 인식할 수 없습니다 (UTF-8, EUC-KR 모두 실패)".to_string(),
-                ))?
+                )
+            })?
         }
     };
 

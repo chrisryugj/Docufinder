@@ -45,7 +45,8 @@ impl SearchService {
                         let raw_results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
                         let results = if folder_scope.is_some() && !raw_results.is_empty() {
                             let ids: Vec<i64> = raw_results.iter().map(|r| r.chunk_id).collect();
-                            let path_map = db::get_chunk_file_paths(&conn, &ids).unwrap_or_default();
+                            let path_map =
+                                db::get_chunk_file_paths(&conn, &ids).unwrap_or_default();
                             raw_results
                                 .into_iter()
                                 .filter(|r| {
@@ -89,11 +90,7 @@ impl SearchService {
             .iter()
             .filter(|r| !fts_map.contains_key(&r.chunk_id))
             .filter(|r| {
-                vector_score_map
-                    .get(&r.chunk_id)
-                    .copied()
-                    .unwrap_or(0.0)
-                    >= VECTOR_ONLY_MIN_SCORE
+                vector_score_map.get(&r.chunk_id).copied().unwrap_or(0.0) >= VECTOR_ONLY_MIN_SCORE
             })
             .map(|r| r.chunk_id)
             .collect();
@@ -129,8 +126,7 @@ impl SearchService {
                         &fts_r.content,
                         &fts_r.snippet,
                     );
-                    let improved =
-                        ensure_keyword_in_snippet(&fts_r.snippet, &fts_r.content, query);
+                    let improved = ensure_keyword_in_snippet(&fts_r.snippet, &fts_r.content, query);
                     let content_preview = strip_highlight_markers(&improved);
                     let highlight_ranges = parse_highlight_ranges(&improved);
 
@@ -201,7 +197,10 @@ impl SearchService {
 
         tracing::debug!(
             "Hybrid search '{}': {} results in {}ms (tokenizer={})",
-            query, total_count, search_time_ms, use_tokenizer
+            query,
+            total_count,
+            search_time_ms,
+            use_tokenizer
         );
 
         Ok(SearchResponse {

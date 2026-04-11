@@ -483,17 +483,23 @@ impl WatchManager {
                         if size_mb > runtime_settings.max_file_size_mb {
                             tracing::info!(
                                 "[WatchManager] File too large ({}MB > {}MB), metadata only: {}",
-                                size_mb, runtime_settings.max_file_size_mb, path.display()
+                                size_mb,
+                                runtime_settings.max_file_size_mb,
+                                path.display()
                             );
                             Self::cleanup_stale_vectors(&conn, path, &ctx.vector_index);
-                            if let Ok(path_str) = pipeline::save_file_metadata_and_cache(&conn, path) {
+                            if let Ok(path_str) =
+                                pipeline::save_file_metadata_and_cache(&conn, path)
+                            {
                                 indexed_paths.push(path_str);
                             }
                             batch_count += 1;
                             if batch_count >= INCREMENTAL_BATCH_SIZE {
                                 if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                                     tracing::warn!("Incremental batch commit failed: {}", e);
-                                    if conn.is_autocommit() { let _ = conn.execute_batch("BEGIN"); }
+                                    if conn.is_autocommit() {
+                                        let _ = conn.execute_batch("BEGIN");
+                                    }
                                 }
                                 batch_count = 0;
                             }
@@ -516,7 +522,9 @@ impl WatchManager {
                         Ok(result) => {
                             indexed_paths.push(result.file_path.clone());
                             tracing::info!(
-                                "[FTS] Indexed: {} ({} chunks)", result.file_path, result.chunks_count
+                                "[FTS] Indexed: {} ({} chunks)",
+                                result.file_path,
+                                result.chunks_count
                             );
                         }
                         Err(e) => {
@@ -537,7 +545,9 @@ impl WatchManager {
                 if batch_count >= INCREMENTAL_BATCH_SIZE {
                     if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                         tracing::warn!("Incremental batch commit failed: {}", e);
-                        if conn.is_autocommit() { let _ = conn.execute_batch("BEGIN"); }
+                        if conn.is_autocommit() {
+                            let _ = conn.execute_batch("BEGIN");
+                        }
                     }
                     batch_count = 0;
                 }
@@ -553,7 +563,10 @@ impl WatchManager {
                     ctx.filename_cache.upsert(entry);
                 }
             }
-            tracing::info!("[WatchManager] Batch committed {} files", indexed_paths.len());
+            tracing::info!(
+                "[WatchManager] Batch committed {} files",
+                indexed_paths.len()
+            );
         }
 
         // 프론트엔드에 증분 인덱싱 완료 알림
