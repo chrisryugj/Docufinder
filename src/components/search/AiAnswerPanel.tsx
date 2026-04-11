@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AiAnalysis } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
+import { ResultContextMenu, useContextMenu } from "./ResultContextMenu";
 
 interface Props {
   answer: string;
@@ -15,15 +16,22 @@ interface Props {
   onExampleClick?: (text: string) => void;
 }
 
-const EXAMPLE_CATEGORIES: { label: string; icon: string; questions: string[] }[] = [
-  { label: "요약", icon: "📋", questions: ["이 문서의 핵심 내용을 요약해줘"] },
-  { label: "조건·규정", icon: "📜", questions: ["계약서 해지 조건이 뭔가요?"] },
-  { label: "수치·데이터", icon: "📊", questions: ["2026년 예산 총액은 얼마인가요?"] },
-  { label: "일정·기한", icon: "📅", questions: ["주요 일정이나 마감 기한은?"] },
+const EXAMPLE_CATEGORIES: { label: string; icon: string; examples: string[] }[] = [
+  { label: "요약", icon: "📋", examples: ["인사규정 핵심 조항을 요약해줘", "회의록에서 결정된 사항만 정리해줘", "보고서의 주요 결론은 뭐야?"] },
+  { label: "조건·규정", icon: "📜", examples: ["연차 사용 조건이 어떻게 되나요?", "계약 해지 시 위약금 조항은?", "재택근무 신청 자격 요건은?"] },
+  { label: "수치·데이터", icon: "📊", examples: ["2026년 예산 총액은 얼마인가요?", "프로젝트별 투입 인원 현황은?", "매출 목표 달성률이 어떻게 돼?"] },
+  { label: "일정·기한", icon: "📅", examples: ["계약 만료일이 언제야?", "분기별 제출 마감일 정리해줘", "2026년 주요 일정을 알려줘"] },
+  { label: "절차·방법", icon: "📝", examples: ["출장비 정산 절차가 어떻게 돼?", "신규 입사자 등록 방법은?", "장비 반납 프로세스 알려줘"] },
+  { label: "내용 확인", icon: "🔍", examples: ["보안 교육 이수 기준이 뭐야?", "납품 검수 기준을 알려줘", "개인정보 처리방침 내용은?"] },
 ];
 
 function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() || path;
+}
+
+/** Windows extended-length path prefix (\\?\) 제거 */
+function cleanPath(path: string): string {
+  return path.replace(/^\\\\\?\\/, "");
 }
 
 /** 답변 끝의 [출처: 1, 3] 패턴에서 문서 번호(0-based) 추출 + 답변 텍스트 정리 */
@@ -42,7 +50,7 @@ function parseSourceRefs(text: string): { cleanText: string; refIndices: Set<num
   };
 }
 
-function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, onExampleClick }: Props) {
+function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion }: Props) {
   const handleOpenFile = useCallback((path: string) => {
     invoke("open_file", { path }).catch(() => {});
   }, []);
@@ -78,57 +86,48 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   // 대기 상태 (아직 질문 안 함)
   if (!answer && !isStreaming && !analysis) {
     return (
-      <div className="flex flex-col items-center justify-center py-8 px-6 text-center">
-        {/* 브랜드 아이콘 */}
-        <div
-          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-          style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)" }}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="none">
-            <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
-          </svg>
+      <div className="flex flex-col h-full px-4 sm:px-8 pt-2">
+        {/* 검색 범위: 검색창 ScopeChip으로 이동 */}
+
+        {/* 예시 질문 그리드 — 표시 전용 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          {EXAMPLE_CATEGORIES.map((cat) => (
+            <div
+              key={cat.label}
+              className="flex flex-col gap-2.5 px-4 py-3.5 rounded-xl"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">{cat.icon}</span>
+                <span className="text-xs font-semibold text-[var(--color-text-secondary)]">
+                  {cat.label}
+                </span>
+              </div>
+              <ul className="space-y-1.5">
+                {cat.examples.map((ex) => (
+                  <li key={ex} className="text-[13px] leading-snug text-[var(--color-text-muted)]">
+                    "{ex}"
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
 
-        {/* 타이틀 + 설명 */}
-        <h3 className="text-[15px] font-semibold text-[var(--color-text-primary)] mb-1">
-          Anything
-        </h3>
-        <p className="text-xs text-[var(--color-text-muted)] mb-1.5 max-w-xs leading-relaxed">
-          인덱싱된 문서를 분석하여 질문에 답변합니다
-        </p>
-        <p className="text-[10px] text-[var(--color-text-tertiary)] mb-5">
-          Enter로 전송 · Shift+Enter로 줄바꿈
-        </p>
-
-        {/* 카테고리별 예시 질문 */}
-        {onExampleClick && (
-          <div className="w-full max-w-sm space-y-1.5">
-            {EXAMPLE_CATEGORIES.map((cat) => (
-              <button
-                key={cat.label}
-                onClick={() => onExampleClick(cat.questions[0])}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-left transition-all duration-150 hover:scale-[1.01] active:scale-[0.99]"
-                style={{
-                  backgroundColor: "var(--color-bg-secondary)",
-                  border: "1px solid var(--color-border)",
-                }}
-              >
-                <span className="text-base shrink-0">{cat.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <span className="text-[10px] font-medium text-[var(--color-text-tertiary)] uppercase tracking-wider">
-                    {cat.label}
-                  </span>
-                  <p className="text-xs text-[var(--color-text-secondary)] truncate">
-                    {cat.questions[0]}
-                  </p>
-                </div>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-40">
-                  <path d="M5 12h14M12 5l7 7-7 7" />
-                </svg>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* 하단 안내 */}
+        <div className="mt-auto pb-4 flex items-center justify-center gap-4 text-xs text-[var(--color-text-tertiary)]">
+          <span>Enter로 전송 · Shift+Enter로 줄바꿈</span>
+          <span className="opacity-30">|</span>
+          <span className="flex items-center gap-1.5 opacity-70">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning, #f59e0b)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+            </svg>
+            문서 내용이 외부 AI 서버로 전송됩니다
+          </span>
+        </div>
       </div>
     );
   }
@@ -136,7 +135,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   const { cleanText, refIndices } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer, refIndices: new Set<number>() };
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto px-4 py-4 gap-3">
+    <div className="flex flex-col h-full overflow-y-auto px-2 py-2 gap-3">
       {/* 질문 영역 */}
       {currentQuestion && (
         <div
@@ -152,9 +151,20 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               <circle cx="12" cy="7" r="4" />
             </svg>
           </div>
-          <p className="text-[13px] text-[var(--color-text-primary)] leading-relaxed" title={currentQuestion}>
+          <p className="text-sm text-[var(--color-text-primary)] leading-relaxed flex-1" title={currentQuestion}>
             {currentQuestion}
           </p>
+          <button
+            onClick={onReset}
+            className="shrink-0 p-1 rounded hover:bg-[var(--color-bg-secondary)] transition-colors"
+            style={{ color: "var(--color-text-muted)" }}
+            title="초기화"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
         </div>
       )}
 
@@ -190,7 +200,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
         </div>
 
         {/* 답변 본문 (마크다운 렌더링) */}
-        <div className="text-[13px] text-[var(--color-text-primary)] leading-[1.8] break-words ai-answer-prose">
+        <div className="text-sm text-[var(--color-text-primary)] leading-[1.8] break-words ai-answer-prose">
           {isStreaming ? (
             // 스트리밍 중: pre-wrap (마크다운 미완성 상태)
             <span className="whitespace-pre-wrap" aria-live="polite" role="status">
@@ -221,45 +231,16 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
 
             return (
               <div className="flex flex-col gap-0.5">
-                {sorted.map(({ path, isRef }) => {
-                  const name = basename(path);
-                  return (
-                    <div
-                      key={path}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg group cursor-pointer transition-all ${
-                        hasRefs && !isRef ? "opacity-40" : ""
-                      }`}
-                      style={{
-                        backgroundColor: isRef ? "var(--color-bg-secondary)" : "transparent",
-                        border: isRef ? "1px solid var(--color-border)" : "1px solid transparent",
-                      }}
-                      onClick={() => handleOpenFile(path)}
-                      title={path}
-                    >
-                      <FileIcon fileName={name} size="sm" />
-                      <span className="text-[12px] text-[var(--color-text-secondary)] truncate flex-1">
-                        {name}
-                      </span>
-                      {isRef && (
-                        <span
-                          className="text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0"
-                          style={{ backgroundColor: "rgba(13,148,136,0.1)", color: "#0d9488" }}
-                        >
-                          근거
-                        </span>
-                      )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleOpenFolder(path); }}
-                        className="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        title="폴더 열기"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                        </svg>
-                      </button>
-                    </div>
-                  );
-                })}
+                {sorted.map(({ path, isRef }) => (
+                  <SourceFileItem
+                    key={path}
+                    path={path}
+                    isRef={isRef}
+                    dimmed={hasRefs && !isRef}
+                    onOpenFile={handleOpenFile}
+                    onOpenFolder={handleOpenFolder}
+                  />
+                ))}
               </div>
             );
           })()}
@@ -272,6 +253,79 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
 
       )}
     </div>
+  );
+}
+
+/** 참조 문서 아이템 — 우클릭 컨텍스트 메뉴 지원 */
+function SourceFileItem({
+  path,
+  isRef,
+  dimmed,
+  onOpenFile,
+  onOpenFolder,
+}: {
+  path: string;
+  isRef: boolean;
+  dimmed: boolean;
+  onOpenFile: (path: string) => void;
+  onOpenFolder: (path: string) => void;
+}) {
+  const name = basename(path);
+  const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
+
+  const handleCopyPath = useCallback((p: string) => {
+    navigator.clipboard.writeText(cleanPath(p));
+  }, []);
+
+  const folderPath = cleanPath(path).replace(/\\/g, "/").split("/").slice(0, -1).join("/");
+
+  return (
+    <>
+      <div
+        data-context-menu
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg group cursor-pointer transition-all ${
+          dimmed ? "opacity-40" : ""
+        }`}
+        style={{
+          backgroundColor: isRef ? "var(--color-bg-secondary)" : "transparent",
+          border: isRef ? "1px solid var(--color-border)" : "1px solid transparent",
+        }}
+        onClick={() => onOpenFile(path)}
+        onContextMenu={handleContextMenu}
+        title={cleanPath(path)}
+      >
+        <FileIcon fileName={name} size="sm" />
+        <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">
+          {name}
+        </span>
+        {isRef && (
+          <span
+            className="text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0"
+            style={{ backgroundColor: "rgba(13,148,136,0.1)", color: "#0d9488" }}
+          >
+            근거
+          </span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onOpenFolder(path); }}
+          className="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          title="폴더 열기"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+        </button>
+      </div>
+      <ResultContextMenu
+        filePath={cleanPath(path)}
+        folderPath={folderPath}
+        onOpenFile={() => onOpenFile(path)}
+        onCopyPath={handleCopyPath}
+        onOpenFolder={() => onOpenFolder(path)}
+        contextMenu={contextMenu}
+        closeContextMenu={closeContextMenu}
+      />
+    </>
   );
 }
 

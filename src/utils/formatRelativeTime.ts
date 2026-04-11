@@ -17,19 +17,19 @@ export function formatRelativeTime(timestamp: number, compact = false): string {
   }
 
   if (minutes < 60) {
-    return compact ? `${minutes}분전` : `${minutes}분 전`;
+    return compact ? `${minutes}m` : `${minutes}분 전`;
   }
 
   if (hours < 24) {
-    return compact ? `${hours}시간전` : `${hours}시간 전`;
+    return compact ? `${hours}h` : `${hours}시간 전`;
   }
 
   if (days === 1) {
-    return "어제";
+    return compact ? "1d" : "어제";
   }
 
   if (days < 7) {
-    return compact ? `${days}일전` : `${days}일 전`;
+    return compact ? `${days}d` : `${days}일 전`;
   }
 
   // 7일 이상은 날짜 표시

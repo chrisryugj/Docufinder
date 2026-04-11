@@ -379,6 +379,8 @@ function AppContent() {
               onGoHome={() => {
                 search.setQuery("");
                 search.setSelectedIndex(-1);
+                search.setParadigm("instant");
+                search.resetAi();
                 search.searchInputRef.current?.focus();
               }}
               isIndexing={idx.isIndexing}
@@ -413,6 +415,9 @@ function AppContent() {
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
               onSubmitNatural={handleSubmitQuery}
+              watchedFolders={idx.status?.watched_folders ?? []}
+              searchScope={search.filters.searchScope}
+              onSearchScopeChange={(scope) => search.setFilters((prev) => ({ ...prev, searchScope: scope }))}
             />
 
             <VectorIndexingBanner
@@ -484,8 +489,8 @@ function AppContent() {
               </div>
             )}
 
-            <main id="main-content" tabIndex={-1} className="px-5 sm:px-8 pb-20 h-full outline-none">
-              <div className="mt-4 h-full">
+            <main id="main-content" tabIndex={-1} className={`h-full outline-none ${search.paradigm === "question" ? "px-2 sm:px-4 pb-4" : "px-5 sm:px-8 pb-20"}`}>
+              <div className={`h-full ${search.paradigm === "question" ? "mt-1" : "mt-4"}`}>
                 {/* 유사 문서 배너 */}
                 {search.similarResults.length > 0 && (
                   <div className="mb-4 p-3 rounded-lg border" style={{ backgroundColor: "var(--color-bg-secondary)", borderColor: "var(--color-border)" }}>

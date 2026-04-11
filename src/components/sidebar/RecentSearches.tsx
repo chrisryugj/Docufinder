@@ -32,51 +32,44 @@ export const RecentSearches = memo(function RecentSearches({
       <ul className="space-y-0.5" role="list" aria-label="최근 검색어">
         {searches.map((search, index) => (
           <li key={`${search.query}-${index}`}>
-            <div className="group flex items-center gap-2 px-3 py-2 mx-2 rounded-lg transition-all duration-200 cursor-pointer" style={{ ["--hover-bg" as string]: "var(--color-sidebar-hover)" }}>
-              {/* 검색 아이콘 */}
-              <svg
-                className="w-3.5 h-3.5 flex-shrink-0 transition-colors"
+            <div
+              className="group flex items-center gap-2 px-2 py-1.5 mx-1 rounded-lg cursor-pointer hover-sidebar-item"
+              onClick={() => onSelect(search.query)}
+            >
+              {/* 불릿 */}
+              <span
+                className="flex-shrink-0 text-[8px] leading-none"
                 style={{ color: "var(--color-sidebar-muted)" }}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
                 aria-hidden="true"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+                ·
+              </span>
 
               {/* 검색어 */}
-              <button
-                onClick={() => onSelect(search.query)}
-                className="flex-1 text-left text-sm truncate transition-colors"
+              <span
+                className="flex-1 text-left text-sm truncate"
                 style={{ color: "var(--color-sidebar-text)" }}
                 title={search.query}
               >
                 {search.query}
-              </button>
+              </span>
 
-              {/* 시간 배지 (호버 시 삭제 버튼으로 교체) */}
+              {/* 시간 표시 — 호버 시 숨김 */}
               <span
-                className="text-[11px] flex-shrink-0 group-hover:hidden"
+                className="text-[11px] flex-shrink-0 whitespace-nowrap group-hover:hidden"
                 style={{ color: "var(--color-sidebar-muted)" }}
                 title={new Date(search.timestamp).toLocaleString("ko-KR")}
               >
-                {formatRelativeTime(search.timestamp)}
+                {formatRelativeTime(search.timestamp, true)}
               </span>
 
-              {/* 삭제 버튼 (호버 시만 표시) */}
+              {/* 삭제 버튼 — 호버 시 표시 */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(search.query);
                 }}
-                className="hidden group-hover:flex group-focus-within:flex p-1 rounded transition-all duration-200 hover:scale-110 flex-shrink-0"
-                style={{ color: "var(--color-sidebar-muted)" }}
+                className="hidden group-hover:flex flex-shrink-0 p-0.5 rounded hover-sidebar-danger"
                 aria-label={`"${search.query}" 검색 기록 삭제`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

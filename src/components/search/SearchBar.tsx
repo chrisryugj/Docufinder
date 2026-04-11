@@ -1,9 +1,11 @@
-import { forwardRef, memo, useCallback, useRef, useEffect } from "react";
+import { forwardRef, memo, useCallback, useRef, useEffect, useMemo } from "react";
 import type { SearchMode, SearchParadigm, SuggestionItem } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
 import SearchParadigmToggle from "./SearchParadigmToggle";
+import { ScopeChip } from "./ScopeChip";
+import { parseSmartPreview } from "../../utils/parseSmartPreview";
 
 interface SearchBarProps {
   query: string;
@@ -29,26 +31,18 @@ interface SearchBarProps {
   onParadigmChange?: (p: SearchParadigm) => void;
   /** 자연어/질문 실행 */
   onSubmitNatural?: () => void;
+  /** AI 검색 범위 */
+  watchedFolders?: string[];
+  searchScope?: string | null;
+  onSearchScopeChange?: (scope: string | null) => void;
 }
 
 // ── 아이콘 ──────────────────────────────────────────────
-
-const SparkleIcon = () => (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
-  </svg>
-);
 
 const SendIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <line x1="22" y1="2" x2="11" y2="13" />
     <polygon points="22 2 15 22 11 13 2 9 22 2" />
-  </svg>
-);
-
-const WandIcon = () => (
-  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M12.2 6.2l-1.4-1.4M3 21l9-9" />
   </svg>
 );
 
@@ -77,12 +71,21 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       paradigm = "instant",
       onParadigmChange,
       onSubmitNatural,
+      watchedFolders = [],
+      searchScope,
+      onSearchScopeChange,
     },
     ref
   ) => {
     const isNatural = paradigm === "natural";
     const isQuestion = paradigm === "question";
     const needsEnterToSubmit = isNatural || isQuestion;
+
+    // 스마트 모드 실시간 파싱 미리보기
+    const smartPreview = useMemo(
+      () => (isNatural ? parseSmartPreview(query) : null),
+      [isNatural, query]
+    );
 
     // 일반 검색 input 훅
     const { innerRef, imeHandlers } = useSearchInput({
@@ -167,8 +170,9 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
         )}
 
         {/* ── 검색바 (3모드 통일 레이아웃) ── */}
+        <div className="group/search">
         <div
-          className="group/search flex items-center px-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
+          className="flex items-center px-3 rounded-lg transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
           style={{
             backgroundColor: "var(--color-bg-secondary)",
             border: `1px solid ${needsEnterToSubmit ? "var(--color-accent)" : "var(--color-border)"}`,
@@ -178,44 +182,35 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             minHeight: "44px",
           }}
         >
-          {/* 모드별 배지/아이콘 */}
-          {isQuestion ? (
-            <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 mr-2.5 select-none"
-              style={{
-                background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)",
-                color: "white",
-              }}
-            >
-              <SparkleIcon />
-              Anything
-            </div>
-          ) : isNatural ? (
-            <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 mr-2.5 select-none"
-              style={{
-                background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
-                color: "white",
-              }}
-            >
-              <WandIcon />
-              스마트
-            </div>
-          ) : (
-            <svg
-              className="flex-shrink-0 mr-2.5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              viewBox="0 0 24 24"
-              style={{ color: "var(--color-text-muted)", width: "18px", height: "18px" }}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-              />
-            </svg>
+          {/* 모드별 아이콘 */}
+          <svg
+            className="flex-shrink-0 mr-2"
+            fill={isQuestion ? "currentColor" : "none"}
+            stroke={isQuestion ? "none" : "currentColor"}
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+            style={{
+              color: needsEnterToSubmit ? "var(--color-accent)" : "var(--color-text-muted)",
+              width: "16px",
+              height: "16px",
+            }}
+          >
+            {isQuestion ? (
+              <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
+            ) : isNatural ? (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M12.2 6.2l-1.4-1.4M3 21l9-9" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            )}
+          </svg>
+
+          {/* AI 스코프 칩 (Anything 모드) */}
+          {isQuestion && onSearchScopeChange && (
+            <ScopeChip
+              watchedFolders={watchedFolders}
+              searchScope={searchScope ?? null}
+              onSearchScopeChange={onSearchScopeChange}
+            />
           )}
 
           {/* 입력 필드 */}
@@ -273,19 +268,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             />
           )}
 
-          {/* Shortcut / Enter 힌트 */}
-          {!query && !needsEnterToSubmit && (
-            <kbd
-              className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
-              style={{
-                color: "var(--color-text-muted)",
-                backgroundColor: "var(--color-bg-tertiary)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              Ctrl+K
-            </kbd>
-          )}
+          {/* Enter 힌트 (스마트 모드) */}
           {needsEnterToSubmit && query && !isQuestion && (
             <kbd
               className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
@@ -337,28 +320,63 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           )}
         </div>
 
-        {/* 모드 설명 (스마트/Anything) */}
-        {needsEnterToSubmit && !query && (
-          <div className="mt-2 px-1 space-y-1">
-            {isQuestion ? (
-              <>
-                <p className="text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
-                  Anything이 인덱싱된 문서를 분석하여 답변합니다
-                </p>
-                <p className="text-[10px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-                  예: "계약서 해지 조건이 뭔가요?" · "이 문서 핵심 내용 요약해줘" · Shift+Enter로 줄바꿈
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-[11px] font-medium" style={{ color: "var(--color-text-secondary)" }}>
-                  자연어로 검색 조건을 조합합니다
-                </p>
-                <p className="text-[10px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-                  예: "작년 예산 한글 문서" · "최근 30일 계약서 PDF만" · "인사발령 제외하고 검색"
-                </p>
-              </>
+        {/* 모드 힌트 토스트 — 스마트/Anything 모드, 입력 비어있을 때 호버 시 표시 */}
+        {!query && needsEnterToSubmit && (
+          <div
+            className="overflow-hidden transition-all duration-300 ease-out opacity-0 max-h-0 group-hover/search:opacity-100 group-hover/search:max-h-12 group-hover/search:mt-1.5"
+          >
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs"
+              style={{
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <span style={{ color: "var(--color-accent)" }}>
+                {isQuestion ? "Anything" : "스마트"}
+              </span>
+              <span
+                className="w-px h-3 shrink-0"
+                style={{ backgroundColor: "var(--color-border)" }}
+              />
+              <span>
+                {isQuestion
+                  ? "문서를 분석하여 답변합니다 · 예: \"연차 사용 조건이 어떻게 되나요?\""
+                  : "자연어로 조건을 조합합니다 · 예: \"작년 예산 한글 문서\""
+                }
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* 스마트 모드 파싱 미리보기 */}
+        {isNatural && smartPreview && (
+          <div className="flex items-center gap-2 flex-wrap mt-1.5 px-1">
+            {smartPreview.keywords && (
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {smartPreview.keywords}
+              </span>
             )}
+            {smartPreview.dateLabel && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                {smartPreview.dateLabel}
+              </span>
+            )}
+            {smartPreview.fileType && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                {smartPreview.fileType}
+              </span>
+            )}
+            {smartPreview.excludeKeywords.map((ex, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/10 text-red-500 border border-red-500/20"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                {ex}
+              </span>
+            ))}
           </div>
         )}
 
@@ -419,6 +437,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             ))}
           </div>
         )}
+        </div>
       </div>
     );
   }

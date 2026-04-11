@@ -65,6 +65,17 @@ export const AI_MODEL_OPTIONS = [
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (고품질)" },
 ];
 
+export const UI_ZOOM_OPTIONS = [
+  { value: "0.85", label: "85%" },
+  { value: "0.9", label: "90%" },
+  { value: "0.95", label: "95%" },
+  { value: "1", label: "100% (기본)" },
+  { value: "1.05", label: "105%" },
+  { value: "1.1", label: "110%" },
+  { value: "1.15", label: "115%" },
+  { value: "1.2", label: "120%" },
+];
+
 export const CONFIDENCE_STEP = 5;
 
 export const HIGHLIGHT_COLOR_PRESETS = [
