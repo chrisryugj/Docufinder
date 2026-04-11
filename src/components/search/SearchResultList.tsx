@@ -465,6 +465,11 @@ export const SearchResultList = memo(function SearchResultList({
     );
   }
 
+  // 스마트 검색 모드 — 초기 안내 화면
+  if (paradigm === "natural") {
+    return <SmartSearchGuide />;
+  }
+
   // 초기 상태 — 웰컴 히어로
   return (
     <WelcomeHero
@@ -514,6 +519,53 @@ function ShowMoreButton({ visibleCount, totalCount, onShowMore }: {
         <ChevronDown className="w-4 h-4" />
         {remaining}개 더 보기
       </button>
+    </div>
+  );
+}
+
+const SMART_GUIDE_CATEGORIES: { label: string; icon: string; examples: string[] }[] = [
+  { label: "파일 타입", icon: "📄", examples: ["예산 한글 문서", "계약서 PDF만", "매출 엑셀 파일"] },
+  { label: "날짜 범위", icon: "📅", examples: ["최근 30일 보고서", "작년 인사발령", "3월 회의록"] },
+  { label: "제외 검색", icon: "🚫", examples: ["계약서 초안 제외", "인사 관련 공지 빼고", "임시파일 아닌 것만"] },
+  { label: "조건 조합", icon: "🔗", examples: ["올해 예산 엑셀 파일", "최근 7일 계약서 PDF", "작년 보고서 한글문서"] },
+];
+
+/** 스마트 검색 모드 초기 안내 화면 */
+function SmartSearchGuide() {
+  return (
+    <div className="flex flex-col h-full px-4 sm:px-8 pt-2">
+      {/* 예시 카드 그리드 */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5">
+        {SMART_GUIDE_CATEGORIES.map((cat) => (
+          <div
+            key={cat.label}
+            className="flex flex-col gap-2.5 px-4 py-3.5 rounded-xl"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">{cat.icon}</span>
+              <span className="text-xs font-semibold text-[var(--color-text-secondary)]">
+                {cat.label}
+              </span>
+            </div>
+            <ul className="space-y-1.5">
+              {cat.examples.map((ex) => (
+                <li key={ex} className="text-[13px] leading-snug text-[var(--color-text-muted)]">
+                  "{ex}"
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      {/* 하단 안내 */}
+      <div className="mt-auto pb-4 flex items-center justify-center gap-4 text-xs text-[var(--color-text-tertiary)]">
+        <span>Enter로 검색 · 키워드 + 조건을 자연스럽게 입력하세요</span>
+      </div>
     </div>
   );
 }

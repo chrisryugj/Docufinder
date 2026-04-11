@@ -7,4 +7,10 @@ try {
     document.documentElement.classList.add('dark');
   }
   // theme === 'light' 또는 없으면 기본 라이트 모드 (아무 클래스 추가 안함)
+
+  // UI 줌 적용
+  var zoom = localStorage.getItem('docufinder-ui-zoom');
+  if (zoom) {
+    document.documentElement.style.zoom = zoom;
+  }
 } catch(e) {}
