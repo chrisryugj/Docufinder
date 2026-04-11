@@ -11,830 +11,243 @@ import {
 
 // ─── Design tokens ───
 const C = {
-  bg: "#06080F",
+  bg: "#000000",
   surface: "rgba(255,255,255,0.04)",
-  surfaceHover: "rgba(255,255,255,0.08)",
-  border: "rgba(255,255,255,0.08)",
-  accent: "#6366F1", // indigo-500
+  border: "rgba(255,255,255,0.06)",
+  accent: "#6366F1",
   accentLight: "#818CF8",
-  accentGlow: "rgba(99,102,241,0.35)",
+  accentGlow: "rgba(99,102,241,0.4)",
   cyan: "#22D3EE",
   emerald: "#34D399",
   amber: "#FBBF24",
   rose: "#FB7185",
-  text: "#F1F5F9",
+  text: "#FFFFFF",
+  textSub: "#E2E8F0",
   textMuted: "#94A3B8",
-  textDim: "#64748B",
-  mono: "'Consolas', 'SF Mono', 'Fira Code', monospace",
+  textDim: "#475569",
   sans: "'Inter', 'Pretendard', -apple-system, sans-serif",
+  mono: "'SF Mono', 'Consolas', 'Fira Code', monospace",
 };
 
-// ─── Helpers ───
-const ease = (
-  f: number,
-  from: number,
-  to: number,
-  inputRange: [number, number]
-) =>
-  interpolate(f, inputRange, [from, to], {
+// ─── Animation helpers ───
+const ease = (f: number, from: number, to: number, range: [number, number]) =>
+  interpolate(f, range, [from, to], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: Easing.out(Easing.cubic),
   });
 
-const fadeUp = (f: number, start: number, dur = 18) => ({
+const easeIn = (f: number, from: number, to: number, range: [number, number]) =>
+  interpolate(f, range, [from, to], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.in(Easing.cubic),
+  });
+
+const fadeUp = (f: number, start: number, dur = 15) => ({
   opacity: ease(f, 0, 1, [start, start + dur]),
-  transform: `translateY(${ease(f, 40, 0, [start, start + dur])}px)`,
+  transform: `translateY(${ease(f, 50, 0, [start, start + dur])}px)`,
 });
 
-// ─── Dot grid background ───
-const DotGrid: React.FC<{ opacity?: number }> = ({ opacity = 0.15 }) => (
-  <div
-    style={{
-      position: "absolute",
-      inset: 0,
-      opacity,
-      backgroundImage:
-        "radial-gradient(circle, rgba(255,255,255,0.25) 1px, transparent 1px)",
-      backgroundSize: "48px 48px",
-    }}
-  />
-);
+const fadeOut = (f: number, start: number, dur = 10) => ({
+  opacity: easeIn(f, 1, 0, [start, start + dur]),
+  transform: `translateY(${easeIn(f, 0, -30, [start, start + dur])}px)`,
+});
 
-// ─── Radial glow ───
+// ─── Ambient glow ───
 const Glow: React.FC<{
-  x: string;
-  y: string;
-  color: string;
-  size?: number;
-  opacity?: number;
-}> = ({ x, y, color, size = 600, opacity = 0.3 }) => (
-  <div
-    style={{
-      position: "absolute",
-      left: x,
-      top: y,
-      width: size,
-      height: size,
-      borderRadius: "50%",
-      background: color,
-      filter: `blur(${size / 2}px)`,
-      opacity,
-      transform: "translate(-50%, -50%)",
-      pointerEvents: "none",
-    }}
-  />
+  x: string; y: string; color: string; size?: number; opacity?: number;
+}> = ({ x, y, color, size = 600, opacity = 0.25 }) => (
+  <div style={{
+    position: "absolute", left: x, top: y,
+    width: size, height: size, borderRadius: "50%",
+    background: color, filter: `blur(${size * 0.55}px)`,
+    opacity, transform: "translate(-50%, -50%)", pointerEvents: "none",
+  }} />
 );
 
-// ─── Glass card ───
-const Glass: React.FC<{
-  children: React.ReactNode;
-  style?: React.CSSProperties;
-}> = ({ children, style }) => (
-  <div
-    style={{
-      background: "rgba(255,255,255,0.03)",
-      backdropFilter: "blur(40px)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 24,
-      ...style,
-    }}
-  >
-    {children}
-  </div>
-);
-
-// ─── Badge pill ───
-const Badge: React.FC<{
-  children: string;
-  color: string;
-  style?: React.CSSProperties;
-}> = ({ children, color, style }) => (
-  <span
-    style={{
-      display: "inline-block",
-      padding: "8px 20px",
-      borderRadius: 100,
-      fontSize: 22,
-      fontWeight: 600,
-      letterSpacing: 0.5,
-      background: `${color}18`,
-      color,
-      border: `1px solid ${color}30`,
-      fontFamily: C.sans,
-      ...style,
-    }}
-  >
-    {children}
-  </span>
-);
-
-// ─── Feature card ───
-const FeatureCard: React.FC<{
-  icon: string;
-  title: string;
-  desc: string;
-  color: string;
-  frame: number;
-  delay: number;
-  fps: number;
-}> = ({ icon, title, desc, color, frame, delay, fps }) => {
-  const s = spring({ frame: Math.max(0, frame - delay), fps, config: { damping: 14, mass: 0.8 } });
+// ─── Stat number with counter animation ───
+const StatNumber: React.FC<{
+  value: string; label: string; color: string;
+  frame: number; delay: number;
+}> = ({ value, label, color, frame, delay }) => {
+  const o = ease(frame, 0, 1, [delay, delay + 12]);
+  const y = ease(frame, 40, 0, [delay, delay + 12]);
+  const scale = ease(frame, 0.9, 1, [delay, delay + 15]);
   return (
-    <div
-      style={{
-        width: 320,
-        padding: "36px 32px",
-        borderRadius: 20,
-        background: C.surface,
-        border: `1px solid ${C.border}`,
-        transform: `scale(${s}) translateY(${(1 - s) * 30}px)`,
-        opacity: s,
-      }}
-    >
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: 14,
-          background: `${color}15`,
-          border: `1px solid ${color}30`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 28,
-          marginBottom: 20,
-        }}
-      >
-        {icon}
+    <div style={{
+      textAlign: "center", opacity: o,
+      transform: `translateY(${y}px) scale(${scale})`,
+    }}>
+      <div style={{
+        fontSize: 96, fontWeight: 800, color,
+        fontFamily: C.sans, letterSpacing: -3, lineHeight: 1,
+      }}>
+        {value}
       </div>
-      <div
-        style={{
-          fontSize: 28,
-          fontWeight: 700,
-          color: C.text,
-          marginBottom: 8,
-          fontFamily: C.sans,
-        }}
-      >
-        {title}
-      </div>
-      <div
-        style={{
-          fontSize: 20,
-          color: C.textMuted,
-          lineHeight: 1.5,
-          fontFamily: C.sans,
-        }}
-      >
-        {desc}
+      <div style={{
+        fontSize: 24, color: C.textMuted, marginTop: 12,
+        fontWeight: 500, fontFamily: C.sans, letterSpacing: 1,
+      }}>
+        {label}
       </div>
     </div>
   );
 };
 
-// ─── Search result row (with content snippet) ───
+// ─── Search result row (compact) ───
 const ResultRow: React.FC<{
-  icon: string;
-  name: string;
-  path: string;
-  snippet: string;
-  hlWord: string;
-  score: string;
-  frame: number;
-  delay: number;
-}> = ({ icon, name, path, snippet, hlWord, score, frame, delay }) => {
-  const o = ease(frame, 0, 1, [delay, delay + 10]);
-  const x = ease(frame, 30, 0, [delay, delay + 10]);
-  // Highlight matched word in snippet
+  icon: string; name: string; snippet: string; hlWord: string;
+  frame: number; delay: number;
+}> = ({ icon, name, snippet, hlWord, frame, delay }) => {
+  const o = ease(frame, 0, 1, [delay, delay + 8]);
+  const x = ease(frame, 40, 0, [delay, delay + 8]);
   const parts = snippet.split(hlWord);
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 20,
-        padding: "16px 24px",
-        borderRadius: 12,
-        background: C.surfaceHover,
-        opacity: o,
-        transform: `translateX(${x}px)`,
-        fontFamily: C.sans,
-      }}
-    >
-      <span style={{ fontSize: 28, marginTop: 4 }}>{icon}</span>
+    <div style={{
+      display: "flex", alignItems: "center", gap: 18,
+      padding: "14px 22px", borderRadius: 14,
+      background: "rgba(255,255,255,0.04)",
+      border: `1px solid rgba(255,255,255,0.06)`,
+      opacity: o, transform: `translateX(${x}px)`,
+      fontFamily: C.sans,
+    }}>
+      <span style={{ fontSize: 26 }}>{icon}</span>
       <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontSize: 24, fontWeight: 600, color: C.text }}>{name}</div>
-          <div style={{ fontSize: 16, color: C.textDim }}>{path}</div>
-        </div>
-        <div
-          style={{
-            fontSize: 19,
-            color: C.textMuted,
-            marginTop: 6,
-            lineHeight: 1.4,
-            borderLeft: `2px solid ${C.accent}40`,
-            paddingLeft: 12,
-          }}
-        >
+        <div style={{ fontSize: 22, fontWeight: 600, color: C.text }}>{name}</div>
+        <div style={{
+          fontSize: 17, color: C.textMuted, marginTop: 4, lineHeight: 1.4,
+        }}>
           {parts.map((part, i) => (
             <React.Fragment key={i}>
               {part}
               {i < parts.length - 1 && (
-                <span
-                  style={{
-                    color: C.amber,
-                    fontWeight: 700,
-                    background: `${C.amber}15`,
-                    padding: "0 2px",
-                    borderRadius: 3,
-                  }}
-                >
-                  {hlWord}
-                </span>
+                <span style={{
+                  color: C.amber, fontWeight: 700,
+                  background: `${C.amber}18`, padding: "1px 3px", borderRadius: 3,
+                }}>{hlWord}</span>
               )}
             </React.Fragment>
           ))}
         </div>
       </div>
-      <Badge color={C.emerald} style={{ fontSize: 18 }}>
-        {score}
-      </Badge>
     </div>
   );
 };
 
 // ═══════════════════════════════════════════════
+// Total: 420 frames = 14 seconds @ 30fps
+// ═══════════════════════════════════════════════
 export const IntroVideo: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // ─── Scene transition helper ───
-  const sceneOut = (sceneEnd: number) =>
-    ease(frame, 1, 0, [sceneEnd - 12, sceneEnd]);
-
   return (
     <AbsoluteFill style={{ backgroundColor: C.bg, fontFamily: C.sans }}>
-      {/* ══════ Scene 1: Hero (0-119) ══════ */}
-      <Sequence from={0} durationInFrames={120}>
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-            opacity: sceneOut(120),
-          }}
-        >
-          <DotGrid opacity={0.08} />
-          <Glow x="50%" y="40%" color={C.accent} size={800} opacity={0.2} />
-          <Glow x="30%" y="60%" color={C.cyan} size={500} opacity={0.1} />
 
-          {/* Version badge */}
-          <div style={{ ...fadeUp(frame, 5), position: "relative" }}>
-            <Badge color={C.accent}>v2.1.0</Badge>
+      {/* ══════ Scene 1: HOOK — Title (0-74) ═══════════════════════ */}
+      <Sequence from={0} durationInFrames={75}>
+        <AbsoluteFill style={{
+          justifyContent: "center", alignItems: "center",
+          ...fadeOut(frame, 60),
+        }}>
+          <Glow x="50%" y="45%" color={C.accent} size={900} opacity={0.2} />
+          <Glow x="35%" y="55%" color={C.cyan} size={400} opacity={0.08} />
+
+          {/* Logo mark */}
+          <div style={{
+            ...fadeUp(frame, 3),
+            width: 80, height: 80, borderRadius: 22,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 42, fontWeight: 800, color: "#fff",
+            boxShadow: `0 0 80px ${C.accentGlow}`,
+            marginBottom: 32,
+          }}>
+            A
           </div>
 
           {/* Title */}
-          <div
-            style={{
-              ...fadeUp(frame, 12),
-              marginTop: 28,
-              position: "relative",
-            }}
-          >
-            <h1
-              style={{
-                fontSize: 130,
-                fontWeight: 800,
-                margin: 0,
-                color: C.text,
-                letterSpacing: -3,
-                fontFamily: C.sans,
-              }}
-            >
+          <div style={fadeUp(frame, 8)}>
+            <div style={{
+              fontSize: 140, fontWeight: 800, color: C.text,
+              letterSpacing: -5, lineHeight: 1,
+            }}>
               Anything
-            </h1>
-          </div>
-
-          {/* Tagline with typing */}
-          <div
-            style={{
-              ...fadeUp(frame, 22),
-              marginTop: 16,
-              position: "relative",
-            }}
-          >
-            {(() => {
-              const fullText = "파일명이 아닌, 문서 내용을 검색합니다";
-              const chars = Math.floor(
-                ease(frame, 0, fullText.length, [35, 80])
-              );
-              return (
-                <div
-                  style={{
-                    fontSize: 44,
-                    color: C.textMuted,
-                    fontWeight: 400,
-                    fontFamily: C.sans,
-                  }}
-                >
-                  {fullText.substring(0, chars)}
-                  <span
-                    style={{
-                      opacity: frame % 16 < 8 ? 1 : 0,
-                      color: C.accent,
-                      fontWeight: 300,
-                    }}
-                  >
-                    |
-                  </span>
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Tech badges */}
-          <div
-            style={{
-              ...fadeUp(frame, 85),
-              display: "flex",
-              gap: 12,
-              marginTop: 36,
-              position: "relative",
-            }}
-          >
-            {["Tauri 2", "React 19", "Rust", "ONNX", "SQLite FTS5"].map(
-              (t) => (
-                <Badge key={t} color={C.textDim}>
-                  {t}
-                </Badge>
-              )
-            )}
-          </div>
-        </AbsoluteFill>
-      </Sequence>
-
-      {/* ══════ Scene 2: Search Demo (120-269) ══════ */}
-      <Sequence from={120} durationInFrames={150}>
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-            padding: "0 120px",
-            opacity: sceneOut(270),
-          }}
-        >
-          <DotGrid opacity={0.05} />
-          <Glow x="70%" y="30%" color={C.cyan} size={600} opacity={0.12} />
-
-          {/* Section header */}
-          <div style={{ ...fadeUp(frame, 122), marginBottom: 36, textAlign: "center" }}>
-            <div style={{ fontSize: 22, fontWeight: 600, color: C.cyan, letterSpacing: 3, textTransform: "uppercase", marginBottom: 10, fontFamily: C.sans }}>
-              Content Search
-            </div>
-            <div style={{ fontSize: 52, fontWeight: 800, color: C.text, letterSpacing: -1, fontFamily: C.sans }}>
-              문서 <span style={{ color: C.cyan }}>내용</span>을 검색합니다
-            </div>
-            <div style={{ fontSize: 26, color: C.textMuted, marginTop: 10, fontFamily: C.sans }}>
-              파일명만 찾는 게 아닙니다 --- HWPX, DOCX, XLSX, PDF 안의 텍스트까지
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 60,
-              width: "100%",
-              maxWidth: 1680,
-              alignItems: "flex-start",
-            }}
-          >
-            {/* Left: Search UI mockup */}
-            <Glass
-              style={{
-                flex: 1,
-                padding: 0,
-                overflow: "hidden",
-                ...fadeUp(frame, 125),
-              }}
-            >
-              {/* Title bar */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "16px 24px",
-                  borderBottom: `1px solid ${C.border}`,
-                }}
-              >
-                <div
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 7,
-                    background: "#EF4444",
-                  }}
-                />
-                <div
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 7,
-                    background: "#F59E0B",
-                  }}
-                />
-                <div
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 7,
-                    background: "#22C55E",
-                  }}
-                />
-                <span
-                  style={{
-                    marginLeft: 16,
-                    fontSize: 18,
-                    color: C.textDim,
-                    fontFamily: C.sans,
-                  }}
-                >
-                  Anything
-                </span>
-              </div>
-
-              {/* Search bar */}
-              <div style={{ padding: "20px 24px" }}>
-                <div
-                  style={{
-                    background: C.surfaceHover,
-                    borderRadius: 12,
-                    padding: "16px 24px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    border: `1px solid ${C.accent}40`,
-                  }}
-                >
-                  <span style={{ fontSize: 22, color: C.textDim }}>
-                    {"\u{1F50D}"}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 24,
-                      color: C.text,
-                      fontFamily: C.sans,
-                    }}
-                  >
-                    {(() => {
-                      const q = "예산 집행 현황 보고서";
-                      const c = Math.floor(ease(frame, 0, q.length, [140, 168]));
-                      return q.substring(0, c);
-                    })()}
-                    <span
-                      style={{
-                        opacity:
-                          frame > 135 && frame < 175 && frame % 16 < 8
-                            ? 1
-                            : 0,
-                        color: C.accent,
-                      }}
-                    >
-                      |
-                    </span>
-                  </span>
-                </div>
-              </div>
-
-              {/* Results */}
-              <div
-                style={{
-                  padding: "0 24px 24px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
-                <ResultRow
-                  icon={"\u{1F4C4}"}
-                  name="2026 예산집행현황.hwpx"
-                  path="C:/업무/재정/"
-                  snippet="...3분기 예산 집행률 87.3%로 전년 대비 12%p 상승하였으며, 예산 잔액은..."
-                  hlWord="예산 집행"
-                  score="98%"
-                  frame={frame}
-                  delay={175}
-                />
-                <ResultRow
-                  icon={"\u{1F4CA}"}
-                  name="1분기_집행실적.xlsx"
-                  path="C:/업무/재정/"
-                  snippet="...사업별 예산 집행 현황: 인건비 92%, 운영비 78%, 사업비 집행 잔액 4.2억..."
-                  hlWord="예산 집행"
-                  score="94%"
-                  frame={frame}
-                  delay={182}
-                />
-                <ResultRow
-                  icon={"\u{1F4D1}"}
-                  name="예산운용계획_보고.pdf"
-                  path="C:/업무/기획/"
-                  snippet="...차년도 예산 집행 계획 수립 시 전년도 집행률을 기반으로 조정..."
-                  hlWord="예산 집행"
-                  score="91%"
-                  frame={frame}
-                  delay={189}
-                />
-              </div>
-            </Glass>
-
-            {/* Right: Pipeline explanation */}
-            <div
-              style={{
-                flex: 0.7,
-                display: "flex",
-                flexDirection: "column",
-                gap: 24,
-                paddingTop: 40,
-              }}
-            >
-              {[
-                {
-                  label: "Keyword",
-                  desc: "FTS5 + Lindera 형태소 분석",
-                  color: C.cyan,
-                  d: 190,
-                },
-                {
-                  label: "Semantic",
-                  desc: "KoSimCSE 768차원 벡터",
-                  color: C.accent,
-                  d: 198,
-                },
-                {
-                  label: "Hybrid",
-                  desc: "RRF 스코어 병합",
-                  color: C.emerald,
-                  d: 206,
-                },
-                {
-                  label: "Rerank",
-                  desc: "Cross-Encoder 재정렬",
-                  color: C.amber,
-                  d: 214,
-                },
-              ].map((step) => (
-                <div
-                  key={step.label}
-                  style={{
-                    ...fadeUp(frame, step.d),
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 20,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 8,
-                      height: 48,
-                      borderRadius: 4,
-                      background: step.color,
-                    }}
-                  />
-                  <div>
-                    <div
-                      style={{
-                        fontSize: 28,
-                        fontWeight: 700,
-                        color: step.color,
-                        fontFamily: C.mono,
-                      }}
-                    >
-                      {step.label}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 22,
-                        color: C.textMuted,
-                        fontFamily: C.sans,
-                      }}
-                    >
-                      {step.desc}
-                    </div>
-                  </div>
-                </div>
-              ))}
+          {/* One-line hook */}
+          <div style={{
+            ...fadeUp(frame, 20),
+            marginTop: 24,
+          }}>
+            <div style={{
+              fontSize: 36, color: C.textMuted, fontWeight: 400,
+              letterSpacing: 0.5,
+            }}>
+              Local Document Search Engine
             </div>
           </div>
         </AbsoluteFill>
       </Sequence>
 
-      {/* ══════ Scene 3: Features Grid (270-399) ══════ */}
-      <Sequence from={270} durationInFrames={130}>
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-            padding: "0 100px",
-            opacity: sceneOut(400),
-          }}
-        >
-          <DotGrid opacity={0.06} />
-          <Glow x="20%" y="50%" color={C.accent} size={700} opacity={0.15} />
-          <Glow x="80%" y="30%" color={C.emerald} size={500} opacity={0.1} />
+      {/* ══════ Scene 2: KILLING COPY (75-164) ═════════════════════ */}
+      <Sequence from={75} durationInFrames={90}>
+        <AbsoluteFill style={{
+          justifyContent: "center", alignItems: "center",
+          ...fadeOut(frame, 150),
+        }}>
+          <Glow x="50%" y="50%" color={C.cyan} size={800} opacity={0.15} />
 
-          {/* Section title */}
-          <div style={{ ...fadeUp(frame, 275), marginBottom: 50 }}>
-            <div
-              style={{
-                fontSize: 22,
-                fontWeight: 600,
-                color: C.accent,
-                letterSpacing: 3,
-                textTransform: "uppercase",
-                marginBottom: 12,
-                fontFamily: C.sans,
-              }}
-            >
-              Features
-            </div>
-            <div
-              style={{
-                fontSize: 64,
-                fontWeight: 800,
-                color: C.text,
-                letterSpacing: -1,
-                fontFamily: C.sans,
-              }}
-            >
-              Everything you need
+          {/* Line 1 */}
+          <div style={fadeUp(frame, 78)}>
+            <div style={{
+              fontSize: 72, fontWeight: 300, color: C.textDim,
+              letterSpacing: -1,
+            }}>
+              파일명이 아닌,
             </div>
           </div>
 
-          {/* Feature cards grid */}
-          <div
-            style={{
-              display: "flex",
-              gap: 24,
-              flexWrap: "wrap",
-              justifyContent: "center",
-              maxWidth: 1400,
-            }}
-          >
-            {[
-              {
-                icon: "\u{1F916}",
-                title: "AI RAG",
-                desc: "Gemini 기반 문맥 질의응답",
-                color: C.accent,
-                d: 288,
-              },
-              {
-                icon: "\u{1F50D}",
-                title: "하이브리드 검색",
-                desc: "키워드 + 시맨틱 + 재정렬",
-                color: C.cyan,
-                d: 296,
-              },
-              {
-                icon: "\u{1F4F7}",
-                title: "OCR",
-                desc: "스캔 PDF 텍스트 추출",
-                color: C.emerald,
-                d: 304,
-              },
-              {
-                icon: "\u{1F4DD}",
-                title: "HWP 변환",
-                desc: "kordoc 자동 변환 번들",
-                color: C.amber,
-                d: 312,
-              },
-              {
-                icon: "\u{1F3F7}\u{FE0F}",
-                title: "파일 태그",
-                desc: "커스텀 태그로 분류/검색",
-                color: C.rose,
-                d: 320,
-              },
-              {
-                icon: "\u{1F4C8}",
-                title: "실시간 감시",
-                desc: "폴더 변경 자동 인덱싱",
-                color: C.accentLight,
-                d: 328,
-              },
-              {
-                icon: "\u{2696}\u{FE0F}",
-                title: "법령 링크",
-                desc: "법령 자동 감지 + law.go.kr",
-                color: C.cyan,
-                d: 336,
-              },
-              {
-                icon: "\u{1F4E4}",
-                title: "내보내기",
-                desc: "CSV / JSON 다운로드",
-                color: C.emerald,
-                d: 344,
-              },
-            ].map((f) => (
-              <FeatureCard key={f.title} icon={f.icon} title={f.title} desc={f.desc} color={f.color} delay={f.d} frame={frame} fps={fps} />
-            ))}
-          </div>
-        </AbsoluteFill>
-      </Sequence>
-
-      {/* ══════ Scene 4: File formats (400-479) ══════ */}
-      <Sequence from={400} durationInFrames={80}>
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-            opacity: sceneOut(480),
-          }}
-        >
-          <DotGrid opacity={0.06} />
-          <Glow x="50%" y="50%" color={C.accent} size={700} opacity={0.15} />
-
-          <div style={{ ...fadeUp(frame, 405), marginBottom: 48 }}>
-            <div
-              style={{
-                fontSize: 52,
-                fontWeight: 800,
-                color: C.text,
-                letterSpacing: -1,
-                fontFamily: C.sans,
-              }}
-            >
-              모든 문서 형식 지원
+          {/* Line 2 — the punch */}
+          <div style={{
+            ...fadeUp(frame, 92),
+            marginTop: 8,
+          }}>
+            <div style={{
+              fontSize: 86, fontWeight: 800, letterSpacing: -2,
+            }}>
+              <span style={{ color: C.text }}>문서 </span>
+              <span style={{
+                background: `linear-gradient(135deg, ${C.cyan}, ${C.accent})`,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>내용</span>
+              <span style={{ color: C.text }}>을 검색합니다</span>
             </div>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              gap: 32,
-              ...fadeUp(frame, 415),
-            }}
-          >
-            {[
-              { ext: ".hwpx", label: "한글", color: "#3B82F6" },
-              { ext: ".hwp", label: "한글 (레거시)", color: "#6366F1" },
-              { ext: ".docx", label: "워드", color: "#2563EB" },
-              { ext: ".xlsx", label: "엑셀", color: "#059669" },
-              { ext: ".pdf", label: "PDF", color: "#DC2626" },
-              { ext: ".txt", label: "텍스트", color: "#94A3B8" },
-            ].map((f, i) => {
+          {/* Supported formats inline */}
+          <div style={{
+            ...fadeUp(frame, 110),
+            marginTop: 32, display: "flex", gap: 16,
+          }}>
+            {[".hwpx", ".hwp", ".docx", ".xlsx", ".pdf"].map((ext, i) => {
               const s = spring({
-                frame: Math.max(0, frame - 420 - i * 6),
-                fps,
+                frame: Math.max(0, frame - 112 - i * 3), fps,
                 config: { damping: 14 },
               });
               return (
-                <div
-                  key={f.ext}
-                  style={{
-                    textAlign: "center",
-                    transform: `scale(${s})`,
-                    opacity: s,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 100,
-                      height: 120,
-                      borderRadius: 16,
-                      background: `${f.color}15`,
-                      border: `2px solid ${f.color}40`,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 22,
-                        fontWeight: 800,
-                        color: f.color,
-                        fontFamily: C.mono,
-                      }}
-                    >
-                      {f.ext}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      color: C.textMuted,
-                      fontFamily: C.sans,
-                    }}
-                  >
-                    {f.label}
-                  </div>
+                <div key={ext} style={{
+                  padding: "10px 22px", borderRadius: 10,
+                  background: "rgba(255,255,255,0.06)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  fontSize: 22, fontWeight: 700, color: C.textSub,
+                  fontFamily: C.mono, opacity: s,
+                  transform: `scale(${s})`,
+                }}>
+                  {ext}
                 </div>
               );
             })}
@@ -842,98 +255,214 @@ export const IntroVideo: React.FC = () => {
         </AbsoluteFill>
       </Sequence>
 
-      {/* ══════ Scene 5: CTA (480-569) ══════ */}
-      <Sequence from={480} durationInFrames={90}>
-        <AbsoluteFill
-          style={{
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <DotGrid opacity={0.06} />
-          <Glow x="50%" y="45%" color={C.accent} size={900} opacity={0.25} />
-          <Glow x="40%" y="55%" color={C.cyan} size={500} opacity={0.1} />
+      {/* ══════ Scene 3: SEARCH DEMO (165-269) ═════════════════════ */}
+      <Sequence from={165} durationInFrames={105}>
+        <AbsoluteFill style={{
+          justifyContent: "center", alignItems: "center",
+          padding: "0 200px",
+          ...fadeOut(frame, 255),
+        }}>
+          <Glow x="50%" y="35%" color={C.accent} size={700} opacity={0.12} />
 
-          <div style={{ ...fadeUp(frame, 485), textAlign: "center" }}>
-            <div
-              style={{
-                fontSize: 72,
-                fontWeight: 800,
-                color: C.text,
-                letterSpacing: -2,
-                fontFamily: C.sans,
-              }}
-            >
-              지금 바로 시작하세요
+          {/* Search mockup */}
+          <div style={{
+            width: "100%", maxWidth: 960,
+            ...fadeUp(frame, 168),
+          }}>
+            {/* Search bar */}
+            <div style={{
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${C.accent}50`,
+              borderRadius: 16, padding: "20px 28px",
+              display: "flex", alignItems: "center", gap: 14,
+              marginBottom: 16,
+            }}>
+              <span style={{ fontSize: 24, color: C.textDim }}>{"\u{1F50D}"}</span>
+              <span style={{ fontSize: 26, color: C.text, fontWeight: 500 }}>
+                {(() => {
+                  const q = "예산 집행 현황";
+                  const c = Math.floor(ease(frame, 0, q.length, [175, 198]));
+                  return q.substring(0, c);
+                })()}
+                <span style={{
+                  opacity: frame > 172 && frame < 205 && frame % 16 < 8 ? 1 : 0,
+                  color: C.accent, fontWeight: 300,
+                }}>|</span>
+              </span>
             </div>
-          </div>
 
-          {/* Download button style */}
-          <div style={{ ...fadeUp(frame, 498), marginTop: 44 }}>
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 16,
-                padding: "24px 56px",
-                borderRadius: 16,
-                background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
-                boxShadow: `0 0 60px ${C.accentGlow}`,
-                fontSize: 36,
-                fontWeight: 700,
-                color: "#fff",
-                fontFamily: C.sans,
-                transform: `scale(${spring({
-                  frame: Math.max(0, frame - 500),
-                  fps,
-                  config: { damping: 12 },
-                })})`,
-              }}
-            >
-              {"\u{2B07}\u{FE0F}"} Download for Windows
+            {/* Results */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <ResultRow
+                icon={"\u{1F4C4}"} name="2026 예산집행현황.hwpx"
+                snippet="...3분기 예산 집행률 87.3%로 전년 대비 12%p 상승..."
+                hlWord="예산 집행" frame={frame} delay={202}
+              />
+              <ResultRow
+                icon={"\u{1F4CA}"} name="1분기_집행실적.xlsx"
+                snippet="...사업별 예산 집행 현황: 인건비 92%, 운영비 78%..."
+                hlWord="예산 집행" frame={frame} delay={208}
+              />
+              <ResultRow
+                icon={"\u{1F4D1}"} name="예산운용계획_보고.pdf"
+                snippet="...차년도 예산 집행 계획 수립 시 전년도 집행률 기반 조정..."
+                hlWord="예산 집행" frame={frame} delay={214}
+              />
             </div>
-          </div>
 
-          {/* GitHub link */}
-          <div style={{ ...fadeUp(frame, 512), marginTop: 28 }}>
-            <div
-              style={{
-                fontFamily: C.mono,
-                fontSize: 28,
-                color: C.textDim,
-                padding: "12px 32px",
-                borderRadius: 10,
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-              }}
-            >
-              github.com/chrisryugj/Docufinder
-            </div>
-          </div>
-
-          {/* Bottom tech line */}
-          <div style={{ ...fadeUp(frame, 525), marginTop: 36 }}>
-            <div
-              style={{
-                display: "flex",
-                gap: 32,
-                alignItems: "center",
-                fontSize: 22,
-                color: C.textDim,
-                fontFamily: C.sans,
-              }}
-            >
-              <span>Windows 10/11</span>
-              <span style={{ color: C.border }}>{"\u{2022}"}</span>
-              <span>100% 로컬 처리</span>
-              <span style={{ color: C.border }}>{"\u{2022}"}</span>
-              <span>MIT License</span>
-              <span style={{ color: C.border }}>{"\u{2022}"}</span>
-              <span>OTA 자동 업데이트</span>
+            {/* Speed indicator */}
+            <div style={{
+              ...fadeUp(frame, 222),
+              textAlign: "right", marginTop: 16,
+            }}>
+              <span style={{
+                fontSize: 20, color: C.emerald, fontFamily: C.mono, fontWeight: 600,
+              }}>
+                3건 · 0.28초
+              </span>
             </div>
           </div>
         </AbsoluteFill>
       </Sequence>
+
+      {/* ══════ Scene 4: STATS — Numbers that hit (270-359) ════════ */}
+      <Sequence from={270} durationInFrames={90}>
+        <AbsoluteFill style={{
+          justifyContent: "center", alignItems: "center",
+          ...fadeOut(frame, 345),
+        }}>
+          <Glow x="30%" y="50%" color={C.accent} size={600} opacity={0.15} />
+          <Glow x="70%" y="50%" color={C.cyan} size={600} opacity={0.12} />
+
+          {/* Section label */}
+          <div style={{
+            ...fadeUp(frame, 273),
+            marginBottom: 60,
+          }}>
+            <div style={{
+              fontSize: 28, fontWeight: 600, color: C.accent,
+              letterSpacing: 6, textTransform: "uppercase",
+            }}>
+              How it works
+            </div>
+          </div>
+
+          {/* Stats row */}
+          <div style={{
+            display: "flex", gap: 120, alignItems: "flex-start",
+          }}>
+            <StatNumber value="768" label="차원 벡터 임베딩" color={C.cyan} frame={frame} delay={280} />
+
+            {/* Divider */}
+            <div style={{
+              width: 1, height: 100, background: "rgba(255,255,255,0.08)",
+              opacity: ease(frame, 0, 1, [286, 294]),
+            }} />
+
+            <StatNumber value="4단계" label="하이브리드 파이프라인" color={C.accent} frame={frame} delay={288} />
+
+            <div style={{
+              width: 1, height: 100, background: "rgba(255,255,255,0.08)",
+              opacity: ease(frame, 0, 1, [294, 302]),
+            }} />
+
+            <StatNumber value="100%" label="로컬 · 오프라인" color={C.emerald} frame={frame} delay={296} />
+          </div>
+
+          {/* Pipeline steps */}
+          <div style={{
+            ...fadeUp(frame, 310),
+            marginTop: 60, display: "flex", gap: 12, alignItems: "center",
+          }}>
+            {[
+              { label: "Keyword", color: C.cyan },
+              { label: "Semantic", color: C.accent },
+              { label: "Hybrid RRF", color: C.emerald },
+              { label: "Rerank", color: C.amber },
+            ].map((step, i) => (
+              <React.Fragment key={step.label}>
+                {i > 0 && (
+                  <div style={{
+                    fontSize: 20, color: C.textDim, margin: "0 4px",
+                  }}>{"\u{2192}"}</div>
+                )}
+                <div style={{
+                  padding: "10px 24px", borderRadius: 10,
+                  background: `${step.color}12`,
+                  border: `1px solid ${step.color}30`,
+                  fontSize: 20, fontWeight: 700, color: step.color,
+                  fontFamily: C.mono,
+                }}>
+                  {step.label}
+                </div>
+              </React.Fragment>
+            ))}
+          </div>
+        </AbsoluteFill>
+      </Sequence>
+
+      {/* ══════ Scene 5: CTA (360-419) ═════════════════════════════ */}
+      <Sequence from={360} durationInFrames={60}>
+        <AbsoluteFill style={{
+          justifyContent: "center", alignItems: "center",
+        }}>
+          <Glow x="50%" y="45%" color={C.accent} size={1000} opacity={0.25} />
+          <Glow x="45%" y="55%" color={C.cyan} size={500} opacity={0.1} />
+
+          {/* Final title */}
+          <div style={fadeUp(frame, 363)}>
+            <div style={{
+              fontSize: 80, fontWeight: 800, color: C.text,
+              letterSpacing: -3, textAlign: "center",
+            }}>
+              찾고 싶은 건,{"\n"}
+              <span style={{
+                background: `linear-gradient(135deg, ${C.accent}, ${C.cyan})`,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}>Anything</span>
+            </div>
+          </div>
+
+          {/* Download CTA */}
+          <div style={{
+            ...fadeUp(frame, 378),
+            marginTop: 40,
+          }}>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 14,
+              padding: "22px 52px", borderRadius: 16,
+              background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
+              boxShadow: `0 0 80px ${C.accentGlow}`,
+              fontSize: 32, fontWeight: 700, color: "#fff",
+              transform: `scale(${spring({
+                frame: Math.max(0, frame - 380), fps,
+                config: { damping: 12 },
+              })})`,
+            }}>
+              Download for Windows
+            </div>
+          </div>
+
+          {/* Bottom info */}
+          <div style={{
+            ...fadeUp(frame, 392),
+            marginTop: 32,
+          }}>
+            <div style={{
+              display: "flex", gap: 28, alignItems: "center",
+              fontSize: 20, color: C.textDim,
+            }}>
+              <span>Windows 10/11</span>
+              <span style={{ color: C.border }}>{"\u{2022}"}</span>
+              <span>100% 오프라인</span>
+              <span style={{ color: C.border }}>{"\u{2022}"}</span>
+              <span>MIT License</span>
+            </div>
+          </div>
+        </AbsoluteFill>
+      </Sequence>
+
     </AbsoluteFill>
   );
 };
