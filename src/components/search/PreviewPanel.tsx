@@ -218,28 +218,39 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
   const unlistenRef = useRef<UnlistenFn[]>([]);
   const requestIdRef = useRef("");
 
-  // Tauri 이벤트 리스너
+  // Tauri 이벤트 리스너 (StrictMode 중복 방지: cancelled flag)
   useEffect(() => {
+    let cancelled = false;
+
     const setup = async () => {
       const u1 = await listen<{ request_id: string; token: string }>("ai-file-token", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         setAnswer((prev) => prev + e.payload.token);
       });
       const u2 = await listen<AiAnalysis & { request_id: string }>("ai-file-complete", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         const { request_id: _, ...a } = e.payload;
         setAnalysis(a as AiAnalysis);
         setLoading(false);
       });
       const u3 = await listen<{ request_id: string; error: string }>("ai-file-error", (e) => {
+        if (cancelled) return;
         if (e.payload.request_id !== requestIdRef.current) return;
         setError(e.payload.error);
         setLoading(false);
       });
-      unlistenRef.current = [u1, u2, u3];
+
+      if (cancelled) {
+        u1(); u2(); u3();
+      } else {
+        unlistenRef.current = [u1, u2, u3];
+      }
     };
     setup();
     return () => {
+      cancelled = true;
       unlistenRef.current.forEach((fn) => fn());
       unlistenRef.current = [];
     };
