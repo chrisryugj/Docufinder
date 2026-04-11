@@ -214,6 +214,47 @@ fn load_file_chunks_text(conn: &rusqlite::Connection, file_path: &str) -> Result
     Ok(text)
 }
 
+/// 파일 청크 텍스트 로드 (제한된 예산)
+fn load_file_chunks_text_limited(
+    conn: &rusqlite::Connection,
+    file_path: &str,
+    max_chars: usize,
+) -> Result<String, String> {
+    let chunk_ids = db::get_chunk_ids_for_path(conn, file_path)
+        .map_err(|e| format!("청크 조회 실패: {}", e))?;
+
+    if chunk_ids.is_empty() {
+        return Ok(String::new());
+    }
+
+    let chunks =
+        db::get_chunks_by_ids(conn, &chunk_ids).map_err(|e| format!("청크 로드 실패: {}", e))?;
+
+    let mut sorted = chunks;
+    sorted.sort_by_key(|c| c.chunk_index);
+
+    let mut text = String::new();
+    for chunk in &sorted {
+        if text.len() >= max_chars {
+            break;
+        }
+        let remaining = max_chars.saturating_sub(text.len());
+        if chunk.content.len() > remaining {
+            let mut end = remaining;
+            while end > 0 && !chunk.content.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.push_str(&chunk.content[..end]);
+            break;
+        } else {
+            text.push_str(&chunk.content);
+            text.push('\n');
+        }
+    }
+
+    Ok(text)
+}
+
 /// 스트리밍 결과를 AiAnalysis DTO로 변환 헬퍼
 fn to_analysis(
     response: crate::llm::LlmResponse,
@@ -468,7 +509,7 @@ pub async fn ask_ai_file(
         ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
     })?;
 
-    let (client, db_path, config) = {
+    let (client, db_path, config, service, tokenizer) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
         let db_path = container.db_path.clone();
@@ -477,7 +518,9 @@ pub async fn ask_ai_file(
             temperature: settings.ai_temperature,
             max_tokens: settings.ai_max_tokens,
         };
-        (client, db_path, config)
+        let service = container.search_service();
+        let tokenizer = container.get_tokenizer().ok();
+        (client, db_path, config, service, tokenizer)
     };
 
     // 이전 파일 QA 요청 취소 + 새 취소 토큰 발급
@@ -486,44 +529,116 @@ pub async fn ask_ai_file(
     let app_clone = app.clone();
     let file_path_clone = file_path.clone();
     let rid = request_id.clone();
+    let query_clone = query.clone();
 
     tauri::async_runtime::spawn(async move {
         let start = Instant::now();
 
-        // 청크 로드
-        let content_result = tokio::task::spawn_blocking(move || {
-            let conn = db::get_connection(&db_path).map_err(|e| format!("DB 연결 실패: {}", e))?;
-            load_file_chunks_text(&conn, &file_path_clone)
-        })
-        .await;
+        // 1단계: 쿼리 기반으로 파일 내 관련 청크 검색 (타겟 검색)
+        let parsed = match tokenizer.as_ref() {
+            Some(tok) => NlQueryParser::parse_with_tokenizer(&query_clone, tok.as_ref()),
+            None => NlQueryParser::parse(&query_clone),
+        };
+        let search_query = if parsed.keywords.is_empty() {
+            query_clone.clone()
+        } else {
+            parsed.keywords.clone()
+        };
+
+        tracing::debug!(
+            "파일 QA 검색쿼리: '{}' (원본: '{}', 파일: '{}')",
+            search_query, query_clone, file_path_clone
+        );
+
+        // 하이브리드 검색 후 대상 파일만 필터
+        let targeted_results = service
+            .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, None)
+            .await
+            .ok()
+            .map(|resp| {
+                resp.results
+                    .into_iter()
+                    .filter(|r| {
+                        r.file_path.eq_ignore_ascii_case(&file_path_clone)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         if cancel_token.load(Ordering::Relaxed) {
             return;
         }
 
-        let content = match content_result {
-            Ok(Ok(text)) => text,
-            Ok(Err(e)) => {
-                let _ = app_clone.emit(
-                    "ai-file-error",
-                    AiErrorEvent {
-                        request_id: rid,
-                        error: e,
-                    },
-                );
-                return;
+        // 2단계: 컨텍스트 빌드
+        // - 검색 결과가 있으면 관련 청크 우선 사용 + 나머지 예산으로 순차 청크 보충
+        // - 검색 결과 없으면 순차 로딩 폴백
+        let db_path_for_load = db_path.clone();
+        let fp_for_load = file_path_clone.clone();
+        let targeted_len = targeted_results.len();
+
+        let content = if !targeted_results.is_empty() {
+            let (targeted_ctx, _) = build_rag_context(&targeted_results);
+            let targeted_chars = targeted_ctx.len();
+
+            // 남은 예산으로 순차 청크 보충 (문서 앞부분 맥락 제공)
+            if targeted_chars < MAX_CONTEXT_CHARS / 2 {
+                let remaining_budget = MAX_CONTEXT_CHARS.saturating_sub(targeted_chars + 200);
+                let sequential = tokio::task::spawn_blocking(move || {
+                    let conn = db::get_connection(&db_path_for_load).ok()?;
+                    load_file_chunks_text_limited(&conn, &fp_for_load, remaining_budget).ok()
+                })
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+
+                if sequential.is_empty() {
+                    targeted_ctx
+                } else {
+                    format!("[문서 앞부분]\n{}\n\n[질문 관련 부분]\n{}", sequential, targeted_ctx)
+                }
+            } else {
+                targeted_ctx
             }
-            Err(e) => {
-                let _ = app_clone.emit(
-                    "ai-file-error",
-                    AiErrorEvent {
-                        request_id: rid,
-                        error: format!("태스크 실패: {}", e),
-                    },
-                );
-                return;
+        } else {
+            // 검색 결과 없음 → 순차 로딩 폴백
+            let result = tokio::task::spawn_blocking(move || {
+                let conn = db::get_connection(&db_path_for_load)
+                    .map_err(|e| format!("DB 연결 실패: {}", e))?;
+                load_file_chunks_text(&conn, &fp_for_load)
+            })
+            .await;
+
+            match result {
+                Ok(Ok(text)) => text,
+                Ok(Err(e)) => {
+                    let _ = app_clone.emit(
+                        "ai-file-error",
+                        AiErrorEvent {
+                            request_id: rid,
+                            error: e,
+                        },
+                    );
+                    return;
+                }
+                Err(e) => {
+                    let _ = app_clone.emit(
+                        "ai-file-error",
+                        AiErrorEvent {
+                            request_id: rid,
+                            error: format!("태스크 실패: {}", e),
+                        },
+                    );
+                    return;
+                }
             }
         };
+
+        tracing::debug!(
+            "파일 QA 컨텍스트: {}자 (타겟 청크 {}개)",
+            content.len(),
+            targeted_len
+        );
 
         let prompt = format!(
             "{}\n\n--- 문서 내용 ---\n{}\n--- 질문 ---\n{}",

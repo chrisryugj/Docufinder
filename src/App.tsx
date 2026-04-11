@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -62,6 +62,26 @@ function AppContent() {
 
   // Document categories (cross-cutting: search results + settings)
   const categories = useDocumentCategories(search.filteredResults, semanticEnabled);
+
+  // ── Preview Overlay 감지 (결과 영역 < 400px이면 overlay 전환) ──
+  const contentFlexRef = useRef<HTMLDivElement>(null);
+  const [previewOverlay, setPreviewOverlay] = useState(false);
+  const MIN_RESULTS_WIDTH = 400;
+
+  useEffect(() => {
+    const el = contentFlexRef.current;
+    if (!el || !ui.previewFilePath) {
+      setPreviewOverlay(false);
+      return;
+    }
+    const check = () => {
+      setPreviewOverlay(el.clientWidth < ui.previewWidth + MIN_RESULTS_WIDTH);
+    };
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ui.previewFilePath, ui.previewWidth]);
 
   // ── AI Disclaimer ──
   const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
@@ -474,7 +494,7 @@ function AppContent() {
         )}
 
         {/* Scrollable Content + Preview */}
-        <div className="flex-1 flex overflow-hidden">
+        <div ref={contentFlexRef} className="flex-1 flex overflow-hidden relative">
           <div
             ref={search.scrollContainerRef}
             onScroll={(e) => { search.handleScroll(e); search.autoComplete.close(); }}
@@ -576,8 +596,8 @@ function AppContent() {
             </main>
           </div>
 
-          {/* Preview Panel */}
-          {ui.previewFilePath && (
+          {/* Preview Panel — push(넓은 창) / overlay(좁은 창) 자동 전환 */}
+          {ui.previewFilePath && !previewOverlay && (
             <>
               <div
                 onMouseDown={ui.handleResizeStart}
@@ -588,6 +608,33 @@ function AppContent() {
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
               <div className="shrink-0" style={{ width: ui.previewWidth, minWidth: 280, maxWidth: '50%' }}>
+                <PreviewPanel
+                  filePath={ui.previewFilePath}
+                  highlightQuery={search.query}
+                  onClose={ui.handlePreviewClose}
+                  onOpenFile={handleOpenFile}
+                  onCopyPath={handleCopyPath}
+                  onOpenFolder={handleOpenFolder}
+                  onBookmark={ui.addBookmark}
+                  isBookmarked={ui.isBookmarked(ui.previewFilePath)}
+                  tags={ui.previewTags}
+                  tagSuggestions={ui.tagSuggestions}
+                  onAddTag={ui.handleAddTag}
+                  onRemoveTag={ui.handleRemoveTag}
+                />
+              </div>
+            </>
+          )}
+          {ui.previewFilePath && previewOverlay && (
+            <>
+              <div
+                className="absolute inset-0 z-40 bg-black/15 animate-fade-in"
+                onClick={ui.handlePreviewClose}
+              />
+              <div
+                className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
+                style={{ width: Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), minWidth: 320 }}
+              >
                 <PreviewPanel
                   filePath={ui.previewFilePath}
                   highlightQuery={search.query}

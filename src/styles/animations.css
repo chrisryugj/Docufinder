@@ -125,6 +125,16 @@
   animation: slideUp 0.3s var(--ease-out-expo) forwards;
 }
 
+/* Preview panel overlay slide-in */
+@keyframes previewSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.preview-slide-in {
+  animation: previewSlideIn 0.2s var(--ease-out-expo) forwards;
+}
+
 /* Skeleton shimmer effect */
 @keyframes shimmer {
   0% { background-position: -200% 0; }

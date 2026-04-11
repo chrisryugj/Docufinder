@@ -203,6 +203,149 @@ const SUMMARY_TYPE_LABELS: Record<SummaryType, string> = {
   keywords: "핵심 키워드",
 };
 
+// ─── FileQaSection (격리 컴포넌트 — 입력 시 부모 리렌더 방지) ──
+
+interface FileQaSectionProps {
+  filePath: string;
+}
+
+const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionProps) {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<AiAnalysis | null>(null);
+  const unlistenRef = useRef<UnlistenFn[]>([]);
+  const requestIdRef = useRef("");
+
+  // Tauri 이벤트 리스너
+  useEffect(() => {
+    const setup = async () => {
+      const u1 = await listen<{ request_id: string; token: string }>("ai-file-token", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        setAnswer((prev) => prev + e.payload.token);
+      });
+      const u2 = await listen<AiAnalysis & { request_id: string }>("ai-file-complete", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        const { request_id: _, ...a } = e.payload;
+        setAnalysis(a as AiAnalysis);
+        setLoading(false);
+      });
+      const u3 = await listen<{ request_id: string; error: string }>("ai-file-error", (e) => {
+        if (e.payload.request_id !== requestIdRef.current) return;
+        setError(e.payload.error);
+        setLoading(false);
+      });
+      unlistenRef.current = [u1, u2, u3];
+    };
+    setup();
+    return () => {
+      unlistenRef.current.forEach((fn) => fn());
+      unlistenRef.current = [];
+    };
+  }, []);
+
+  // 파일 변경 시 초기화
+  useEffect(() => {
+    setAnswer("");
+    setAnalysis(null);
+    setError(null);
+    setLoading(false);
+    requestIdRef.current = "";
+  }, [filePath]);
+
+  const handleSubmit = useCallback(() => {
+    if (!filePath || !question.trim() || loading) return;
+    const rid = crypto.randomUUID();
+    requestIdRef.current = rid;
+    setAnswer("");
+    setAnalysis(null);
+    setError(null);
+    setLoading(true);
+
+    invoke("ask_ai_file", { filePath, query: question, requestId: rid }).catch((e) => {
+      const msg = typeof e === "string" ? e : e?.message || "질문 처리 실패";
+      setError(msg);
+      setLoading(false);
+    });
+  }, [filePath, question, loading]);
+
+  return (
+    <div className="border-t" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-bg-primary)" }}>
+      {/* 질문 입력 */}
+      <div className="flex items-center gap-1.5 px-3 py-2">
+        <MessageSquare size={11} style={{ color: "var(--color-accent)" }} className="shrink-0" />
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
+          placeholder="이 파일에 대해 질문하세요..."
+          className="flex-1 bg-transparent border-none focus:outline-none text-xs"
+          style={{ color: "var(--color-text-primary)" }}
+        />
+        {loading ? (
+          <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+        ) : (
+          question.trim() && (
+            <button
+              onClick={handleSubmit}
+              className="shrink-0 p-1 rounded transition-colors hover:opacity-80"
+              style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+              title="전송 (Enter)"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          )
+        )}
+      </div>
+
+      {/* 에러 */}
+      {error && (
+        <div className="px-3 pb-2 text-[11px]" style={{ color: "var(--color-error)" }}>
+          {error}
+        </div>
+      )}
+
+      {/* 답변 스트리밍 */}
+      {(answer || loading) && (
+        <div className="px-3 pb-3 max-h-48 overflow-y-auto">
+          <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
+            {answer}
+            {loading && !answer && (
+              <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>
+            )}
+            {loading && answer && (
+              <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+            )}
+          </div>
+          {analysis && (
+            <div className="mt-1.5 flex items-center justify-between">
+              <button
+                onClick={() => { setAnswer(""); setAnalysis(null); setError(null); setQuestion(""); }}
+                className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+              >
+                초기화
+              </button>
+              <span className="text-[10px] text-[var(--color-text-muted)]">
+                {(analysis.processing_time_ms / 1000).toFixed(1)}초
+                {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens} tokens`}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 // ─── PreviewPanel ──────────────────────────────────────
 
 export const PreviewPanel = memo(function PreviewPanel({
@@ -233,42 +376,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [showSummaryMenu, setShowSummaryMenu] = useState(false);
   const summaryRequestId = useRef(0);
 
-  // 파일 질문 상태
+  // 파일 질문 토글
   const [showFileQa, setShowFileQa] = useState(false);
-  const [fileQuestion, setFileQuestion] = useState("");
-  const [fileAnswer, setFileAnswer] = useState("");
-  const [fileAnswerLoading, setFileAnswerLoading] = useState(false);
-  const [fileAnswerError, setFileAnswerError] = useState<string | null>(null);
-  const [fileAnalysis, setFileAnalysis] = useState<AiAnalysis | null>(null);
-  const fileQaUnlistenRef = useRef<UnlistenFn[]>([]);
-  const fileQaRequestIdRef = useRef("");
-
-  // 파일 QA Tauri 이벤트 리스너 (마운트 시 1회, request_id로 필터링)
-  useEffect(() => {
-    const setup = async () => {
-      const u1 = await listen<{ request_id: string; token: string }>("ai-file-token", (e) => {
-        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
-        setFileAnswer((prev) => prev + e.payload.token);
-      });
-      const u2 = await listen<AiAnalysis & { request_id: string }>("ai-file-complete", (e) => {
-        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
-        const { request_id: _, ...analysis } = e.payload;
-        setFileAnalysis(analysis as AiAnalysis);
-        setFileAnswerLoading(false);
-      });
-      const u3 = await listen<{ request_id: string; error: string }>("ai-file-error", (e) => {
-        if (e.payload.request_id !== fileQaRequestIdRef.current) return;
-        setFileAnswerError(e.payload.error);
-        setFileAnswerLoading(false);
-      });
-      fileQaUnlistenRef.current = [u1, u2, u3];
-    };
-    setup();
-    return () => {
-      fileQaUnlistenRef.current.forEach((fn) => fn());
-      fileQaUnlistenRef.current = [];
-    };
-  }, []);
 
   // 파일 변경 시 AI 상태 초기화
   useEffect(() => {
@@ -280,12 +389,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     setAiSummary(null);
     setSummaryError(null);
     setShowSummaryMenu(false);
-    setFileAnswer("");
-    setFileAnalysis(null);
-    setFileAnswerError(null);
-    setFileAnswerLoading(false);
-    // 파일 변경 시 이전 파일 QA 스트리밍 무효화
-    fileQaRequestIdRef.current = "";
+    setShowFileQa(false);
 
     let cancelled = false;
     setLoading(true);
@@ -339,23 +443,6 @@ export const PreviewPanel = memo(function PreviewPanel({
       });
   }, [filePath, summaryLoading]);
 
-  // 파일 질문 전송
-  const handleAskFileQuestion = useCallback(() => {
-    if (!filePath || !fileQuestion.trim() || fileAnswerLoading) return;
-    const requestId = crypto.randomUUID();
-    fileQaRequestIdRef.current = requestId;
-    setFileAnswer("");
-    setFileAnalysis(null);
-    setFileAnswerError(null);
-    setFileAnswerLoading(true);
-
-    invoke("ask_ai_file", { filePath, query: fileQuestion, requestId }).catch((e) => {
-      const msg = typeof e === "string" ? e : e?.message || "질문 처리 실패";
-      setFileAnswerError(msg);
-      setFileAnswerLoading(false);
-    });
-  }, [filePath, fileQuestion, fileAnswerLoading]);
-
   // URL 열기
   const handleOpenUrl = useCallback((url: string) => {
     invoke("open_url", { url }).catch(() => {});
@@ -380,10 +467,10 @@ export const PreviewPanel = memo(function PreviewPanel({
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const dirPath = filePath.replace(/[/\\][^/\\]*$/, "");
-  const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa || fileAnswer;
+  const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
 
   return (
-    <div className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)" }}>
+    <div className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
       {/* 헤더 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-[var(--color-bg-secondary)]" style={{ borderColor: "var(--color-border)" }}>
         <FileIcon fileName={fileName} size="sm" />
@@ -545,81 +632,8 @@ export const PreviewPanel = memo(function PreviewPanel({
             </>
           )}
 
-          {/* 파일 질문 섹션 */}
-          {showFileQa && (
-            <div className="border-t" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-bg-primary)" }}>
-              {/* 질문 입력 */}
-              <div className="flex items-center gap-1.5 px-3 py-2">
-                <MessageSquare size={11} style={{ color: "var(--color-accent)" }} className="shrink-0" />
-                <input
-                  type="text"
-                  value={fileQuestion}
-                  onChange={(e) => setFileQuestion(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      handleAskFileQuestion();
-                    }
-                  }}
-                  placeholder="이 파일에 대해 질문하세요..."
-                  className="flex-1 bg-transparent border-none focus:outline-none text-xs"
-                  style={{ color: "var(--color-text-primary)" }}
-                />
-                {fileAnswerLoading ? (
-                  <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin shrink-0" />
-                ) : (
-                  fileQuestion.trim() && (
-                    <button
-                      onClick={handleAskFileQuestion}
-                      className="shrink-0 p-1 rounded transition-colors hover:opacity-80"
-                      style={{ backgroundColor: "var(--color-accent)", color: "white" }}
-                      title="전송 (Enter)"
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                      </svg>
-                    </button>
-                  )
-                )}
-              </div>
-
-              {/* 파일 질문 에러 */}
-              {fileAnswerError && (
-                <div className="px-3 pb-2 text-[11px]" style={{ color: "var(--color-error)" }}>
-                  {fileAnswerError}
-                </div>
-              )}
-
-              {/* 파일 질문 답변 스트리밍 */}
-              {(fileAnswer || fileAnswerLoading) && (
-                <div className="px-3 pb-3 max-h-48 overflow-y-auto">
-                  <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
-                    {fileAnswer}
-                    {fileAnswerLoading && !fileAnswer && (
-                      <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>
-                    )}
-                    {fileAnswerLoading && fileAnswer && (
-                      <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
-                    )}
-                  </div>
-                  {fileAnalysis && (
-                    <div className="mt-1.5 flex items-center justify-between">
-                      <button
-                        onClick={() => { setFileAnswer(""); setFileAnalysis(null); setFileAnswerError(null); setFileQuestion(""); }}
-                        className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                      >
-                        초기화
-                      </button>
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
-                        {(fileAnalysis.processing_time_ms / 1000).toFixed(1)}초
-                        {fileAnalysis.tokens_used && ` · ${fileAnalysis.tokens_used.total_tokens} tokens`}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+          {/* 파일 질문 섹션 (별도 컴포넌트 — 입력 시 부모 리렌더 방지) */}
+          {showFileQa && <FileQaSection filePath={filePath} />}
         </div>
       )}
 
