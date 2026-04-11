@@ -374,43 +374,43 @@ mark.hl-filename {
   word-break: break-word;
 }
 
-/* 헤딩 */
+/* 헤딩 — 프리뷰 패널에 적합한 컴팩트 스케일 */
 .doc-h1 {
-  font-size: 1.5em;
+  font-size: 1.15em;
   font-weight: 700;
   color: var(--color-text-primary);
-  margin: 1.5em 0 0.6em;
-  padding-bottom: 0.3em;
-  border-bottom: 2px solid var(--color-border);
-  line-height: 1.3;
-}
-.doc-h2 {
-  font-size: 1.25em;
-  font-weight: 600;
-  color: var(--color-text-primary);
-  margin: 1.3em 0 0.5em;
-  padding-bottom: 0.2em;
-  border-bottom: 1px solid var(--color-border);
+  margin: 1.2em 0 0.5em;
+  padding-bottom: 0.25em;
+  border-bottom: 1.5px solid var(--color-border);
   line-height: 1.35;
 }
-.doc-h3 {
-  font-size: 1.1em;
-  font-weight: 600;
+.doc-h2 {
+  font-size: 1.05em;
+  font-weight: 650;
   color: var(--color-text-primary);
-  margin: 1.1em 0 0.4em;
+  margin: 1em 0 0.4em;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid var(--color-border-subtle);
   line-height: 1.4;
 }
-.doc-h4 {
+.doc-h3 {
   font-size: 1em;
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 1em 0 0.3em;
+  margin: 0.9em 0 0.3em;
+  line-height: 1.4;
+}
+.doc-h4 {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0.8em 0 0.25em;
 }
 .doc-h5, .doc-h6 {
   font-size: 0.9em;
   font-weight: 600;
   color: var(--color-text-muted);
-  margin: 0.8em 0 0.3em;
+  margin: 0.7em 0 0.2em;
 }
 .doc-preview > :first-child {
   margin-top: 0;

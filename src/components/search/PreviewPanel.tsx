@@ -281,11 +281,21 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
     });
   }, [filePath, question, loading]);
 
+  const hasAnswer = answer || loading;
+
   return (
-    <div className="border-t" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-bg-primary)" }}>
+    <div className="border-t" style={{ borderColor: "var(--color-border)" }}>
       {/* 질문 입력 */}
-      <div className="flex items-center gap-1.5 px-3 py-2">
-        <MessageSquare size={11} style={{ color: "var(--color-accent)" }} className="shrink-0" />
+      <div
+        className="flex items-center gap-2 px-3 py-2.5"
+        style={{ backgroundColor: "var(--color-bg-secondary)" }}
+      >
+        <div
+          className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)" }}
+        >
+          <MessageSquare size={10} color="white" />
+        </div>
         <input
           type="text"
           value={question}
@@ -301,17 +311,20 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
           style={{ color: "var(--color-text-primary)" }}
         />
         {loading ? (
-          <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+          <div
+            className="w-4 h-4 border-2 rounded-full animate-spin shrink-0"
+            style={{ borderColor: "var(--color-accent-ai)", borderTopColor: "transparent" }}
+          />
         ) : (
           question.trim() && (
             <button
               onClick={handleSubmit}
-              className="shrink-0 p-1 rounded transition-colors hover:opacity-80"
-              style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+              className="shrink-0 p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95"
+              style={{ backgroundColor: "var(--color-accent-ai)", color: "white" }}
               title="전송 (Enter)"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2" />
               </svg>
             </button>
           )
@@ -320,40 +333,59 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
 
       {/* 에러 */}
       {error && (
-        <div className="px-3 pb-2 text-[11px]" style={{ color: "var(--color-error)" }}>
+        <div className="px-3 py-2 text-[11px] flex items-start gap-1.5" style={{ color: "var(--color-error)", backgroundColor: "color-mix(in srgb, var(--color-error) 6%, transparent)" }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           {error}
         </div>
       )}
 
-      {/* 답변 스트리밍 / 완료 */}
-      {(answer || loading) && (
-        <div className="px-3 pb-3 max-h-48 overflow-y-auto">
+      {/* 답변 */}
+      {hasAnswer && (
+        <div className="px-3 py-3 max-h-60 overflow-y-auto" style={{ backgroundColor: "var(--color-bg-primary)" }}>
+          {/* 답변 라벨 */}
+          <div className="flex items-center gap-1.5 mb-2">
+            <Sparkles size={10} style={{ color: "var(--color-accent-ai)" }} />
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-accent-ai)" }}>
+              답변
+            </span>
+            {loading && (
+              <span className="text-[10px] animate-pulse" style={{ color: "var(--color-accent-ai)" }}>분석 중...</span>
+            )}
+            {analysis && (
+              <span className="text-[10px] text-[var(--color-text-muted)] ml-auto tabular-nums">
+                {(analysis.processing_time_ms / 1000).toFixed(1)}초
+                {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens.toLocaleString()} tok`}
+              </span>
+            )}
+          </div>
+
+          {/* 답변 본문 */}
           {loading ? (
-            /* 스트리밍 중: plain text */
-            <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
-              {answer || <span className="text-[var(--color-text-muted)]">답변 생성 중...</span>}
+            <div className="text-[12.5px] leading-[1.8] text-[var(--color-text-primary)] whitespace-pre-wrap break-words">
+              {answer || <span className="text-[var(--color-text-muted)]">문서를 분석하고 있습니다...</span>}
               {answer && (
-                <span className="inline-block w-1 h-3.5 bg-[var(--color-accent)] animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+                <span
+                  className="inline-block w-1.5 h-3.5 rounded-sm animate-pulse ml-0.5 align-text-bottom"
+                  style={{ backgroundColor: "var(--color-accent-ai)" }}
+                />
               )}
             </div>
           ) : (
-            /* 완료: 마크다운 렌더링 */
-            <div className="text-[12px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline">
+            <div className="text-[12.5px] leading-[1.8] text-[var(--color-text-primary)] doc-preview summary-inline ai-answer-prose">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
             </div>
           )}
+
+          {/* 메타 / 초기화 */}
           {analysis && (
-            <div className="mt-1.5 flex items-center justify-between">
+            <div className="mt-3 pt-2 border-t flex items-center" style={{ borderColor: "var(--color-border)" }}>
               <button
                 onClick={() => { setAnswer(""); setAnalysis(null); setError(null); setQuestion(""); }}
-                className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
+                className="text-[10px] px-2 py-0.5 rounded transition-colors hover:bg-[var(--color-bg-tertiary)]"
+                style={{ color: "var(--color-text-muted)" }}
               >
-                초기화
+                새 질문
               </button>
-              <span className="text-[10px] text-[var(--color-text-muted)]">
-                {(analysis.processing_time_ms / 1000).toFixed(1)}초
-                {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens} tokens`}
-              </span>
             </div>
           )}
         </div>
