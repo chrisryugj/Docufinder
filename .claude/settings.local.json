@@ -6,7 +6,9 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Edit(.claude/memory/**)",
-      "Write(.claude/memory/**)"
+      "Write(.claude/memory/**)",
+      "Skill(push)",
+      "Skill(push:*)"
     ]
   },
   "outputStyle": "chris-v3"
