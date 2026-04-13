@@ -49,14 +49,20 @@ export const RESULTS_PER_PAGE_OPTIONS = [
   { value: "200", label: "200개" },
 ];
 
-export const MAX_FILE_SIZE_OPTIONS = [
-  { value: "50", label: "50 MB" },
-  { value: "100", label: "100 MB" },
-  { value: "200", label: "200 MB" },
-  { value: "400", label: "400 MB (기본)" },
-  { value: "500", label: "500 MB" },
-  { value: "0", label: "제한 없음" },
-];
+/// 단일 파일 최대 크기 기본값 (MB) — src-tauri/src/constants.rs::DEFAULT_MAX_FILE_SIZE_MB와 동기화
+export const DEFAULT_MAX_FILE_SIZE_MB = 200;
+/// 단일 파일 크기 절대 상한 (MB) — src-tauri/src/constants.rs::MAX_FILE_SIZE_LIMIT_MB와 동기화
+export const MAX_FILE_SIZE_LIMIT_MB = 500;
+
+export const MAX_FILE_SIZE_OPTIONS = [50, 100, 200, 400, 500].map((mb) => ({
+  value: String(mb),
+  label:
+    mb === DEFAULT_MAX_FILE_SIZE_MB
+      ? `${mb} MB (기본)`
+      : mb === MAX_FILE_SIZE_LIMIT_MB
+        ? `${mb} MB (최대)`
+        : `${mb} MB`,
+}));
 
 export const AI_MODEL_OPTIONS = [
   { value: "gemini-3.1-flash-lite-preview", label: "Gemini 3.1 Flash Lite (빠름/저렴)" },
