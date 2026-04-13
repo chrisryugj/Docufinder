@@ -1,3 +1,4 @@
+use crate::constants::{DEFAULT_MAX_FILE_SIZE_MB, MAX_FILE_SIZE_LIMIT_MB};
 use crate::error::{ApiError, ApiResult};
 use crate::model_downloader;
 use crate::AppContainer;
@@ -81,7 +82,7 @@ fn default_include_subfolders() -> bool {
 }
 
 fn default_max_file_size_mb() -> u64 {
-    400
+    DEFAULT_MAX_FILE_SIZE_MB
 }
 
 fn default_results_per_page() -> usize {
@@ -160,7 +161,7 @@ impl Default for Settings {
             semantic_search_enabled: false,
             vector_indexing_mode: VectorIndexingMode::Manual,
             indexing_intensity: IndexingIntensity::Balanced,
-            max_file_size_mb: 400,
+            max_file_size_mb: DEFAULT_MAX_FILE_SIZE_MB,
             results_per_page: 50,
             data_root: None,
             exclude_dirs: Vec::new(),
@@ -282,7 +283,7 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
         .chunk_overlap
         .min(settings.chunk_size.saturating_sub(1));
     settings.results_per_page = settings.results_per_page.clamp(1, 200);
-    settings.max_file_size_mb = settings.max_file_size_mb.min(500);
+    settings.max_file_size_mb = settings.max_file_size_mb.min(MAX_FILE_SIZE_LIMIT_MB);
     settings.min_confidence = settings.min_confidence.min(100);
     settings.ai_temperature = settings.ai_temperature.clamp(0.0, 2.0);
     settings.ai_max_tokens = settings.ai_max_tokens.clamp(1, 8192);
@@ -312,9 +313,9 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
             "results_per_page는 1~200 범위여야 합니다".into(),
         ));
     }
-    if settings.max_file_size_mb > 500 {
+    if settings.max_file_size_mb > MAX_FILE_SIZE_LIMIT_MB {
         return Err(ApiError::Validation(
-            "max_file_size_mb는 최대 500MB입니다".into(),
+            format!("max_file_size_mb는 최대 {}MB입니다", MAX_FILE_SIZE_LIMIT_MB),
         ));
     }
     if settings.ai_temperature < 0.0 || settings.ai_temperature > 2.0 {

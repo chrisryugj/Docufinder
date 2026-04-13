@@ -6,7 +6,7 @@ import { Dropdown } from "../../ui/Dropdown";
 import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
-import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS } from "./types";
+import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB } from "./types";
 
 interface SystemTabProps extends TabProps {
   onClose: () => void;
@@ -57,10 +57,13 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             </label>
             <Dropdown
               options={MAX_FILE_SIZE_OPTIONS}
-              value={String(settings.max_file_size_mb ?? 400)}
+              value={String(settings.max_file_size_mb ?? DEFAULT_MAX_FILE_SIZE_MB)}
               onChange={(value) => onChange("max_file_size_mb", parseInt(value))}
               placeholder="크기 선택"
             />
+            <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+              초과 파일은 인덱싱 스킵 · 큰 값은 메모리/속도 부담
+            </p>
           </div>
         </div>
       </div>

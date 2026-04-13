@@ -98,6 +98,9 @@ export function AiTab({ settings, onChange }: TabProps) {
                 <span>정확</span>
                 <span>창의적</span>
               </div>
+              <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+                답변의 다양성 · 문서 QA는 <strong style={{ color: "var(--color-text-secondary)" }}>0.1~0.3</strong> 권장 (환각 감소)
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
@@ -117,6 +120,9 @@ export function AiTab({ settings, onChange }: TabProps) {
                   color: "var(--color-text-primary)",
                 }}
               />
+              <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+                답변 최대 길이 · 일반 <strong style={{ color: "var(--color-text-secondary)" }}>2048</strong>, 상세 요약 4096
+              </p>
             </div>
           </div>
 
@@ -137,6 +143,8 @@ export function AiTab({ settings, onChange }: TabProps) {
             <span>
               AI 기능 사용 시 문서 내용의 일부가 Google Gemini API로 전송됩니다.
               기밀 문서를 다루는 경우 주의하세요.
+              <br />
+              내부망·방화벽 등 외부 API 호출이 제한된 환경에서는 AI 기능을 사용할 수 없습니다.
             </span>
           </div>
         </>

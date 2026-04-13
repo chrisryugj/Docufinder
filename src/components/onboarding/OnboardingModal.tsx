@@ -40,13 +40,13 @@ const steps: Step[] = [
   {
     title: "검색 모드 활용",
     description:
-      "검색바 우측의 모드 전환으로 상황에 맞는 검색을 선택하세요.\n\n• 키워드: 정확한 단어 매칭\n• 하이브리드: 키워드 + 의미 검색 (추천)\n• 파일명: 파일 이름으로만 검색",
+      "검색바 옆 토글로 상황에 맞는 모드를 선택하세요.\n\n• 검색: 키워드 정확 매칭 — 빠르고 가벼워요\n• 스마트: 자연어로 물어봐도 의도 파악\n• Anything: AI가 문서를 읽고 답변 생성",
     icon: (
       <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
       </svg>
     ),
-    tip: "시맨틱 검색은 설정에서 활성화할 수 있어요",
+    tip: "Anything 모드는 설정에서 LLM API 키를 입력하면 사용할 수 있어요",
   },
   {
     title: "준비 완료!",
