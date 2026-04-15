@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
@@ -135,12 +136,10 @@ export function useIndexStatus(): UseIndexStatusReturn {
   }, [refreshStatus]);
 
   // 단일 경로 인덱싱 (내부 공통 로직)
+  // 인덱싱은 폴더 크기에 따라 수분~수십분 소요 가능 → 타임아웃 없이 raw invoke 사용
+  // hang 감지는 indexing-progress 이벤트 침묵으로 별도 판단
   const indexSingleFolder = useCallback(async (path: string): Promise<AddFolderResult> => {
-    const result = await invokeWithTimeout<AddFolderResult>("add_folder", {
-      path,
-    }, IPC_TIMEOUT.INDEXING);
-
-    return result;
+    return await invoke<AddFolderResult>("add_folder", { path });
   }, []);
 
   // 폴더 추가 (다이얼로그, 다중 선택 지원)

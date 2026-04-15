@@ -13,6 +13,7 @@ use crate::ocr::OcrEngine;
 use crate::search::filename_cache::{FilenameCache, FilenameEntry};
 use crate::search::vector::VectorIndex;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use once_cell::sync::OnceCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -100,10 +101,14 @@ pub struct WatchManager {
 }
 
 /// 인덱싱에 필요한 컨텍스트
+///
+/// 벡터/임베더는 AppContainer의 OnceCell을 **공유**한다.
+/// WatchManager 생성 시점에는 아직 init되지 않을 수 있으므로,
+/// 매번 `.get()`으로 최신 상태를 읽어야 한다 (orphan 벡터 방지).
 pub struct IndexContext {
     pub db_path: PathBuf,
-    pub embedder: Option<Arc<Embedder>>,
-    pub vector_index: Option<Arc<VectorIndex>>,
+    pub embedder: Arc<OnceCell<Arc<Embedder>>>,
+    pub vector_index: Arc<OnceCell<Arc<VectorIndex>>>,
     /// 파일명 캐시 (증분 인덱싱 시 동기화)
     pub filename_cache: Arc<FilenameCache>,
     /// 파일 크기 제한 (MB) — 초과 시 메타데이터만 저장
@@ -112,8 +117,6 @@ pub struct IndexContext {
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
     /// 벡터 워커 트리거 콜백 (watcher 증분 인덱싱 후 벡터 백필 시작)
     pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
-    /// HWP 파일 감지 콜백 (증분 인덱싱 시 새 HWP 파일 발견 알림)
-    pub on_hwp_detected: Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>,
     /// OCR 엔진 (이미지 파일 텍스트 인식)
     pub ocr_engine: Option<Arc<OcrEngine>>,
 }
@@ -122,7 +125,6 @@ pub struct IndexContext {
 pub struct WatchRuntimeSettings {
     pub max_file_size_mb: u64,
     pub excluded_dirs: Vec<String>,
-    pub hwp_auto_detect: bool,
 }
 
 pub type WatchRuntimeSettingsProvider = Arc<dyn Fn() -> WatchRuntimeSettings + Send + Sync>;
@@ -415,7 +417,6 @@ impl WatchManager {
 
         let file_count = pending.len();
         tracing::info!("Processing {} changed files", file_count);
-        let mut hwp_files: Vec<String> = Vec::new();
 
         let conn = match db::get_connection(&ctx.db_path) {
             Ok(c) => c,
@@ -447,7 +448,7 @@ impl WatchManager {
                 })
                 .ok();
 
-            if let Some(vi) = &ctx.vector_index {
+            if let Some(vi) = ctx.vector_index.get() {
                 if let Ok(chunk_ids) = db::get_chunk_ids_for_path(&conn, &path_str) {
                     for chunk_id in chunk_ids {
                         if let Err(e) = vi.remove(chunk_id) {
@@ -487,7 +488,7 @@ impl WatchManager {
                                 runtime_settings.max_file_size_mb,
                                 path.display()
                             );
-                            Self::cleanup_stale_vectors(&conn, path, &ctx.vector_index);
+                            Self::cleanup_stale_vectors(&conn, path, ctx.vector_index.get());
                             if let Ok(path_str) =
                                 pipeline::save_file_metadata_and_cache(&conn, path)
                             {
@@ -532,10 +533,7 @@ impl WatchManager {
                         }
                     }
                 } else {
-                    if ext == "hwp" && runtime_settings.hwp_auto_detect {
-                        hwp_files.push(path.to_string_lossy().to_string());
-                    }
-                    Self::cleanup_stale_vectors(&conn, path, &ctx.vector_index);
+                    Self::cleanup_stale_vectors(&conn, path, ctx.vector_index.get());
                     if let Ok(path_str) = pipeline::save_file_metadata_and_cache(&conn, path) {
                         indexed_paths.push(path_str);
                     }
@@ -578,20 +576,13 @@ impl WatchManager {
         if let Some(ref trigger) = ctx.on_vector_trigger {
             trigger();
         }
-
-        // HWP 파일 감지 알림 (설정 활성 시)
-        if !hwp_files.is_empty() {
-            if let Some(ref callback) = ctx.on_hwp_detected {
-                callback(hwp_files);
-            }
-        }
     }
 
     /// metadata-only 전환 시 기존 벡터 인덱스에서 stale 벡터 정리
     fn cleanup_stale_vectors(
         conn: &rusqlite::Connection,
         path: &Path,
-        vector_index: &Option<Arc<VectorIndex>>,
+        vector_index: Option<&Arc<VectorIndex>>,
     ) {
         let path_str = path.to_string_lossy().to_string();
         if let Some(vi) = vector_index {

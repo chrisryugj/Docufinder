@@ -37,7 +37,6 @@ pub async fn add_folder(
                 message: "이미 등록된 폴더입니다. 재인덱싱하려면 '다시 인덱싱' 버튼을 사용하세요."
                     .to_string(),
                 errors: vec![],
-                hwp_files: vec![],
                 ocr_image_count: 0,
             });
         }
@@ -182,7 +181,6 @@ pub async fn add_folder(
         vectors_count: 0,
         message,
         errors: result.errors,
-        hwp_files: result.hwp_files,
         ocr_image_count: result.ocr_image_count,
     })
 }
@@ -338,7 +336,6 @@ pub async fn reindex_folder(
         vectors_count: 0,
         message,
         errors: result.errors,
-        hwp_files: result.hwp_files,
         ocr_image_count: result.ocr_image_count,
     })
 }
@@ -453,7 +450,6 @@ pub async fn resume_indexing(
         vectors_count: 0,
         message,
         errors: result.errors,
-        hwp_files: result.hwp_files,
         ocr_image_count: result.ocr_image_count,
     })
 }

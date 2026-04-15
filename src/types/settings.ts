@@ -34,8 +34,6 @@ export interface Settings {
   data_root?: string;
   /** 사용자 커스텀 제외 디렉토리 목록 */
   exclude_dirs?: string[];
-  /** 증분 인덱싱 시 새 HWP 파일 감지 → 변환 알림 (기본: 비활성) */
-  hwp_auto_detect: boolean;
   /** AI 기능 활성화 */
   ai_enabled: boolean;
   /** Gemini API 키 */

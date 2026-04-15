@@ -13,7 +13,7 @@ pub use folder::*;
 pub use init::*;
 
 use crate::application::dto::indexing::{
-    AddFolderResult, ConvertHwpResult, FolderStats, IndexStatus, WatchedFolderInfo,
+    AddFolderResult, FolderStats, IndexStatus, WatchedFolderInfo,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::indexer::pipeline::FtsIndexingProgress;

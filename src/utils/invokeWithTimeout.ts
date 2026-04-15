@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** IPC 타임아웃 기본값 (ms) */
+// 인덱싱은 폴더 크기에 따라 수분~수십분 소요 가능 → 타임아웃 사용 금지 (raw invoke 사용)
 export const IPC_TIMEOUT = {
   SEARCH: 30_000,
   FILE_ACTION: 5_000,
-  INDEXING: 60_000,
   SETTINGS: 10_000,
 } as const;
 

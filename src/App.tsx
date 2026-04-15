@@ -12,7 +12,7 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useWindowFocus } from "./hooks/useWindowFocus";
-import { setupGlobalErrorHandlers, logToBackend } from "./utils/errorLogger";
+import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
@@ -65,9 +65,12 @@ function AppContent() {
 
   // ── App Settings (cross-cutting) ──
   const {
-    minConfidence, viewDensity, semanticEnabled, vectorIndexingMode,
+    viewDensity, semanticEnabled, vectorIndexingMode,
     resultsPerPage, applySettings,
-  } = useAppSettings({ setSearchMode: search.setSearchMode });
+  } = useAppSettings({
+    setSearchMode: search.setSearchMode,
+    setMinConfidence: search.setMinConfidence,
+  });
 
   // Document categories (cross-cutting: search results + settings)
   const categories = useDocumentCategories(search.filteredResults, semanticEnabled);
@@ -140,8 +143,7 @@ function AppContent() {
   // ── Report helper ──
   const showReportIfNeeded = useCallback((results: AddFolderResult[]) => {
     const hasFailed = results.some((r) => r.failed_count > 0);
-    const hasHwp = results.some((r) => (r.hwp_files?.length ?? 0) > 0);
-    if (hasFailed || hasHwp) ui.setReportResults(results);
+    if (hasFailed) ui.setReportResults(results);
   }, [ui.setReportResults]);
 
   const handleAddFolder = useCallback(async () => {
@@ -203,12 +205,6 @@ function AppContent() {
     }
   }, [idx.vectorJustCompleted, idx.clearVectorCompleted, ui.showToast, search.query, search.invalidateSearch]);
 
-  // HWP 감지 콜백
-  const handleHwpDetected = useCallback((paths: string[]) => {
-    ui.setPendingHwpFiles((prev) => [...prev, ...paths]);
-    ui.showToast(`새 HWP 파일 ${paths.length}개 발견 — 변환하려면 아래 배너를 확인하세요`, "info", 5000);
-  }, [ui.setPendingHwpFiles, ui.showToast]);
-
   // Tauri 이벤트 리스너
   useAppEvents({
     query: search.query,
@@ -217,7 +213,6 @@ function AppContent() {
     refreshVectorStatus: idx.refreshVectorStatus,
     showToast: ui.showToast,
     updateToast: ui.updateToast,
-    onHwpDetected: handleHwpDetected,
   });
 
   // 윈도우 ���커스 → 검색창 포커스
@@ -588,7 +583,7 @@ function AppContent() {
                     refineKeywords={search.memoizedRefineKeywords}
                     resultCount={search.filteredResults.length}
                     totalResultCount={search.results.length}
-                    minConfidence={minConfidence}
+                    minConfidence={search.minConfidence}
                     searchTime={search.searchTime}
                     resultsPerPage={resultsPerPage}
                     indexedFiles={idx.status?.indexed_files ?? 0}
@@ -703,37 +698,9 @@ function AppContent() {
       />
       <ToastContainer toasts={ui.toasts} onDismiss={ui.dismissToast} />
       <IndexingReportModal
-        isOpen={ui.reportResults.length > 0 || ui.pendingHwpFiles.length > 0}
-        onClose={() => { ui.setReportResults([]); ui.setPendingHwpFiles([]); }}
-        results={ui.pendingHwpFiles.length > 0 && ui.reportResults.length === 0
-          ? [{ success: true, indexed_count: 0, failed_count: 0, hwp_files: ui.pendingHwpFiles } as AddFolderResult]
-          : ui.reportResults
-        }
-        onReindex={async (convertedPaths) => {
-          const watchedFolders = idx.status?.watched_folders ?? [];
-          const foldersToSync = new Set<string>();
-          const strip = (p: string) => p.replace(/^\\\\\?\\/, "").replace(/\\/g, "/").toLowerCase();
-          for (const hwpxPath of convertedPaths) {
-            const normalized = strip(hwpxPath);
-            for (const folder of watchedFolders) {
-              if (normalized.startsWith(strip(folder))) {
-                foldersToSync.add(folder);
-                break;
-              }
-            }
-          }
-          let indexedCount = 0;
-          for (const folder of foldersToSync) {
-            try {
-              const result = await invoke<AddFolderResult>("resume_indexing", { path: folder });
-              indexedCount += result.indexed_count;
-            } catch (err) {
-              logToBackend("error", `Re-indexing failed for ${folder}`, String(err), "App");
-            }
-          }
-          ui.showToast(`${indexedCount}개 HWPX 파일 인덱싱 완료`, "success");
-          idx.refreshStatus();
-        }}
+        isOpen={ui.reportResults.length > 0}
+        onClose={() => ui.setReportResults([])}
+        results={ui.reportResults}
       />
 
       <StatisticsModal

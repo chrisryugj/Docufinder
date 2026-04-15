@@ -290,7 +290,6 @@ fn index_folder_fts_impl(
             vectors_count: 0,
             errors: vec![],
             was_cancelled: true,
-            hwp_files: vec![],
             ocr_image_count: 0,
         });
     }
@@ -361,7 +360,6 @@ fn index_folder_fts_impl(
     let mut failed = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut suppressed_errors: usize = 0;
-    let mut hwp_files: Vec<String> = Vec::new();
     let mut ocr_image_count: usize = 0;
     let mut processed = 0;
     let mut was_cancelled = false;
@@ -432,15 +430,6 @@ fn index_folder_fts_impl(
                             if let Err(e) = save_file_metadata_only(conn, &path) {
                                 tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
                             }
-                            // .hwp 파일은 변환 대상으로 수집
-                            if path
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .map(|e| e.eq_ignore_ascii_case("hwp"))
-                                .unwrap_or(false)
-                            {
-                                hwp_files.push(path.to_string_lossy().to_string());
-                            }
                             failed += 1;
                             if errors.len() < MAX_INDEXING_ERRORS {
                                 errors.push(format!("{:?}: {}", path, error));
@@ -499,7 +488,6 @@ fn index_folder_fts_impl(
         vectors_count: 0, // FTS만이므로 0
         errors,
         was_cancelled,
-        hwp_files,
         ocr_image_count,
     })
 }
@@ -863,8 +851,6 @@ pub struct FolderIndexResult {
     pub errors: Vec<String>,
     /// 사용자에 의해 취소되었는지 여부
     pub was_cancelled: bool,
-    /// 변환 대상 HWP 파일 경로 목록
-    pub hwp_files: Vec<String>,
     /// OCR로 인덱싱된 이미지 파일 수
     pub ocr_image_count: usize,
 }
