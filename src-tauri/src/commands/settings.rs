@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -54,9 +54,6 @@ pub struct Settings {
     /// 사용자 커스텀 제외 디렉토리 목록 (DEFAULT_EXCLUDED_DIRS에 추가됨)
     #[serde(default)]
     pub exclude_dirs: Vec<String>,
-    /// 증분 인덱싱 시 새 HWP 파일 감지 → 변환 알림 (기본: 비활성)
-    #[serde(default)]
-    pub hwp_auto_detect: bool,
     /// AI 기능 활성화
     #[serde(default)]
     pub ai_enabled: bool,
@@ -165,7 +162,6 @@ impl Default for Settings {
             results_per_page: 50,
             data_root: None,
             exclude_dirs: Vec::new(),
-            hwp_auto_detect: false,
             ai_enabled: false,
             ai_api_key: None,
             ai_model: default_ai_model(),
@@ -425,12 +421,34 @@ pub async fn update_settings(
                 {
                     Ok(Ok(_)) => {
                         let _ = download_app.emit("model-download-status", "completed");
+                        // 다운로드 완료 → VectorIndex OnceCell pre-init
+                        // (WatchManager 벡터 삭제 경로 활성화, 재시작 없이 사용 가능)
+                        if let Some(state) =
+                            download_app.try_state::<RwLock<AppContainer>>()
+                        {
+                            if let Ok(container) = state.read() {
+                                if let Err(e) = container.get_vector_index() {
+                                    tracing::warn!(
+                                        "VectorIndex pre-init 실패(다운로드 후): {}",
+                                        e
+                                    );
+                                }
+                            }
+                        }
                     }
                     _ => {
                         let _ = download_app.emit("model-download-status", "failed");
                     }
                 }
             });
+        } else {
+            // 이미 모델이 있으나 VectorIndex OnceCell이 아직 비어있다면 지금 init
+            // (사용자가 앱 설치 후 수동으로 models 폴더에 파일 배치한 케이스)
+            if let Ok(container) = state.read() {
+                if let Err(e) = container.get_vector_index() {
+                    tracing::debug!("VectorIndex pre-init skip: {}", e);
+                }
+            }
         }
     }
 

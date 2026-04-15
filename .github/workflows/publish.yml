@@ -35,6 +35,32 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # kordoc 사이드카 소스 체크아웃 (HWP/HWPX/DOCX/PDF 파싱 런타임)
+      # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
+      - name: Checkout kordoc
+        uses: actions/checkout@v4
+        with:
+          repository: chrisryugj/kordoc
+          path: kordoc-src
+          ref: main
+
+      - name: Build kordoc dist
+        working-directory: kordoc-src
+        shell: pwsh
+        run: |
+          npm ci
+          npm run build
+          if (-not (Test-Path "dist/cli.js")) {
+            Write-Error "kordoc 빌드 산출물(dist/cli.js)이 없습니다"
+            exit 1
+          }
+
+      - name: Bundle kordoc into Tauri resources
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/bundle-kordoc.ps1 `
+            -KordocDir "${{ github.workspace }}/kordoc-src"
+
       - name: Download ONNX models
         run: pnpm run download-model
 

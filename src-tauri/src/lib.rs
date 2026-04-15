@@ -470,14 +470,16 @@ pub fn run() {
             // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
             // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
             // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
+            //
+            // ⚠️ 파일 존재 여부와 무관하게 항상 설정: 첫 실행 시 모델이 없어도,
+            // 백그라운드 다운로드 완료 후 사용자가 앱을 재시작하지 않고도 임베더를
+            // 초기화할 수 있어야 한다 (그 시점엔 DLL이 생성돼 있음).
             {
                 let dll_path = models_dir
                     .join("kosimcse-roberta-multitask")
                     .join("onnxruntime.dll");
-                if dll_path.exists() {
-                    unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
-                    tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
-                }
+                unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
+                tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
             }
 
             // 모델 자동 다운로드 (백그라운드)
@@ -534,6 +536,14 @@ pub fn run() {
             // Check semantic search availability
             if container.is_semantic_available() {
                 tracing::info!("Semantic search: enabled");
+                // VectorIndex를 즉시 init하여 WatchManager의 OnceCell 공유 값을
+                // pre-populate. 이렇게 해야 사용자가 검색을 한 번도 하지 않은
+                // 상태에서도 파일 삭제/수정 이벤트에 벡터가 정리된다 (orphan 방지).
+                // 주의: Embedder는 ONNX 로드가 무거워 lazy 유지. VectorIndex는
+                // usearch mmap view라 저렴함.
+                if let Err(e) = container.get_vector_index() {
+                    tracing::warn!("VectorIndex pre-init 실패: {}", e);
+                }
             } else {
                 tracing::warn!(
                     "Semantic search: disabled (model not found at {:?})",
@@ -556,15 +566,6 @@ pub fn run() {
                 container.set_incremental_update_callback(Arc::new(move |count| {
                     tracing::info!("[WatchManager] Incremental update: {} files", count);
                     let _ = app_handle.emit("incremental-index-updated", count);
-                }));
-            }
-
-            // 증분 인덱싱 시 HWP 파일 감지 콜백 설정
-            {
-                let app_handle = app.handle().clone();
-                container.set_hwp_detected_callback(Arc::new(move |paths| {
-                    tracing::info!("[WatchManager] HWP files detected: {} files", paths.len());
-                    let _ = app_handle.emit("hwp-files-detected", paths);
                 }));
             }
 
@@ -796,7 +797,6 @@ pub fn run() {
             commands::index::start_vector_indexing,
             commands::index::get_db_debug_info,
             commands::index::clear_all_data,
-            commands::index::convert_hwp_to_hwpx,
             commands::index::initialize_app,
             commands::index::start_indexing_batch,
             commands::index::get_indexing_batch,

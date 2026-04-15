@@ -74,8 +74,7 @@ mod tests {
     fn make_vec(chunk_ids: &[i64]) -> Vec<VectorResult> {
         chunk_ids
             .iter()
-            .enumerate()
-            .map(|(_, &id)| VectorResult {
+            .map(|&id| VectorResult {
                 chunk_id: id,
                 score: 0.9,
             })

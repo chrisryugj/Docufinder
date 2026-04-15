@@ -35,9 +35,6 @@ pub struct AddFolderResult {
     pub message: String,
     /// 에러 목록
     pub errors: Vec<String>,
-    /// 변환 대상 HWP 파일 경로 목록
-    #[serde(default)]
-    pub hwp_files: Vec<String>,
     /// OCR로 인덱싱된 이미지 파일 수
     #[serde(default)]
     pub ocr_image_count: usize,
@@ -53,7 +50,6 @@ impl AddFolderResult {
             vectors_count: 0,
             message,
             errors: vec![],
-            hwp_files: vec![],
             ocr_image_count: 0,
         }
     }
@@ -67,22 +63,9 @@ impl AddFolderResult {
             vectors_count: 0,
             message: "인덱싱이 취소되었습니다".to_string(),
             errors: vec![],
-            hwp_files: vec![],
             ocr_image_count: 0,
         }
     }
-}
-
-/// HWP → HWPX 변환 결과 DTO
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ConvertHwpResult {
-    pub success_count: usize,
-    pub failed_count: usize,
-    pub converted_paths: Vec<String>,
-    pub errors: Vec<String>,
-    /// 변환기 미설치 시 번들된 설치 파일 경로
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub installer_path: Option<String>,
 }
 
 /// 폴더 통계 DTO

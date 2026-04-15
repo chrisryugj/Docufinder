@@ -277,15 +277,15 @@ fn emit_job_progress(
     let _ = app_handle.emit("indexing-batch-job-progress", &payload);
 }
 
+/// 배치 job 결과: (indexed_count, failed_count, was_cancelled)
+type JobOutcome = (usize, usize, bool);
+
 /// 단일 폴더 인덱싱 실행 (배치 전용)
 ///
 /// 기존 `add_folder` 커맨드의 핵심 로직을 배치용으로 슬림화:
 /// - pause/resume은 배치 루프에서 1회만 처리
 /// - 벡터 자동 시작 없음 (드라이브 인덱싱은 수동 모드)
 /// - 결과는 Result<(indexed, failed), String>로 반환
-/// 배치 job 결과: (indexed_count, failed_count, was_cancelled)
-type JobOutcome = (usize, usize, bool);
-
 async fn run_folder_index_job_batch(
     state: &State<'_, RwLock<AppContainer>>,
     path: &str,

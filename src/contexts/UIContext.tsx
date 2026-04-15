@@ -48,8 +48,6 @@ export interface UIContextValue {
   // Report (인덱싱 결과)
   reportResults: AddFolderResult[];
   setReportResults: Dispatch<SetStateAction<AddFolderResult[]>>;
-  pendingHwpFiles: string[];
-  setPendingHwpFiles: Dispatch<SetStateAction<string[]>>;
 
   // Preview
   previewFilePath: string | null;
@@ -127,7 +125,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
 
   // Report
   const [reportResults, setReportResults] = useState<AddFolderResult[]>([]);
-  const [pendingHwpFiles, setPendingHwpFiles] = useState<string[]>([]);
 
   // Preview
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
@@ -216,7 +213,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     duplicateOpen, setDuplicateOpen,
     showAutoIndexPrompt, setShowAutoIndexPrompt, tryShowAutoIndexPrompt,
     reportResults, setReportResults,
-    pendingHwpFiles, setPendingHwpFiles,
     previewFilePath, setPreviewFilePath, previewWidth, handlePreviewClose, handleResizeStart,
     bookmarks, addBookmark, removeBookmark, isBookmarked,
     allTags, getFileTags, previewTags, tagSuggestions, handleAddTag, handleRemoveTag,

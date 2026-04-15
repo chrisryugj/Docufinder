@@ -952,7 +952,7 @@ mod tests {
         assert_eq!(result.date_filter, Some(DateFilter::LastWeek));
         assert_eq!(result.file_type, Some("hwpx".to_string()));
         // 키워드가 비어있을 수 있음
-        assert!(result.keywords.is_empty() || result.keywords == "");
+        assert!(result.keywords.is_empty());
     }
 
     #[test]
@@ -1049,7 +1049,7 @@ mod tests {
             must_not_have: &'static [&'static str],
         }
 
-        let cases = vec![
+        let cases = [
             Case {
                 input: "2026년 노인일자리 참여자가 몇명이야",
                 must_have: &["노인", "일자리", "참여"],

@@ -20,7 +20,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
-type HwpDetectedCallback = RwLock<Option<Arc<dyn Fn(Vec<String>) + Send + Sync>>>;
 type VectorProgressState = Arc<RwLock<Option<VectorProgressCallback>>>;
 
 /// DI 컨테이너 - 앱 전역 의존성 관리
@@ -61,8 +60,6 @@ pub struct AppContainer {
     settings_cache: Arc<RwLock<Settings>>,
     /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
     incremental_update_callback: IncrementalCallback,
-    /// HWP 파일 감지 시 프론트엔드 알림 콜백
-    hwp_detected_callback: HwpDetectedCallback,
     vector_progress_callback: VectorProgressState,
 }
 
@@ -110,7 +107,6 @@ impl AppContainer {
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             settings_cache: Arc::new(RwLock::new(cached_settings)),
             incremental_update_callback: RwLock::new(None),
-            hwp_detected_callback: RwLock::new(None),
             vector_progress_callback: Arc::new(RwLock::new(None)),
         }
     }
@@ -246,12 +242,6 @@ impl AppContainer {
         }
     }
 
-    pub fn set_hwp_detected_callback(&self, callback: Arc<dyn Fn(Vec<String>) + Send + Sync>) {
-        if let Ok(mut cb) = self.hwp_detected_callback.write() {
-            *cb = Some(callback);
-        }
-    }
-
     pub fn set_vector_progress_callback(&self, callback: VectorProgressCallback) {
         if let Ok(mut cb) = self.vector_progress_callback.write() {
             *cb = Some(callback);
@@ -281,32 +271,28 @@ impl AppContainer {
                     WatchRuntimeSettings {
                         max_file_size_mb: settings.max_file_size_mb,
                         excluded_dirs,
-                        hwp_auto_detect: settings.hwp_auto_detect,
                     }
                 });
                 let watch_pause_handle = WatchPauseHandle::new();
                 // 벡터 인덱싱은 AI RAG 전용 → incremental update 후 자동 벡터 트리거 비활성화
                 let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = None;
-                let hwp_callback = self
-                    .hwp_detected_callback
-                    .read()
-                    .ok()
-                    .and_then(|cb| cb.clone());
                 // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
                 let ocr = if self.get_settings().ocr_enabled {
                     self.get_ocr_engine().ok()
                 } else {
                     None
                 };
+                // 벡터/임베더 OnceCell을 **공유** — WatchManager 생성 시점에
+                // OnceCell이 비어있어도, 이후 검색 등으로 init되면 WatchManager도
+                // 매번 .get()으로 최신 상태를 읽는다 (orphan 벡터 방지)
                 let ctx = IndexContext {
                     db_path: self.db_path.clone(),
-                    embedder: self.embedder.get().cloned(),
-                    vector_index: self.vector_index.get().cloned(),
+                    embedder: self.embedder.clone(),
+                    vector_index: self.vector_index.clone(),
                     filename_cache: self.filename_cache.clone(),
                     runtime_settings,
                     on_incremental_update: callback,
                     on_vector_trigger: vector_trigger,
-                    on_hwp_detected: hwp_callback,
                     ocr_engine: ocr,
                 };
 

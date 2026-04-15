@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useRef, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearch, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection, useAiAnswer } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
 import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
@@ -38,6 +38,8 @@ export interface SearchContextValue {
   nlSubmitted: boolean;
   keywordMatchMode: KeywordMatchMode;
   setKeywordMatchMode: (mode: KeywordMatchMode) => void;
+  minConfidence: number;
+  setMinConfidence: (v: number) => void;
 
   // Collapsible search area
   isCollapsed: boolean;
@@ -120,6 +122,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const compactSearchInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 사용자 설정 min_confidence — useAppSettings가 setMinConfidence로 주입
+  const [minConfidence, setMinConfidence] = useState(0);
+
   // ── Core Search ──
   const {
     query, setQuery, results, filenameResults, filteredResults, groupedResults,
@@ -129,7 +134,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     invalidate: invalidateSearch, paradigm, setParadigm,
     submitNaturalQuery, parsedQuery, nlSubmitted,
     keywordMatchMode, setKeywordMatchMode,
-  } = useSearch({ minConfidence: 0 });
+  } = useSearch({ minConfidence });
 
   // ── Collapsible ──
   const {
@@ -206,6 +211,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     refineQuery, setRefineQuery, clearRefine, setComposing,
     invalidateSearch, paradigm, setParadigm, submitNaturalQuery, parsedQuery, nlSubmitted,
     keywordMatchMode, setKeywordMatchMode,
+    minConfidence, setMinConfidence,
     isCollapsed, handleScroll, scrollToTop, scrollContainerRef, showScrollTop, expand, handleExpand,
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,

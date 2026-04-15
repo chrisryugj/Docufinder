@@ -65,18 +65,20 @@ fn find_kordoc_cli() -> Option<PathBuf> {
         }
     }
 
-    // 3. 프로덕션: 번들된 리소스 디렉토리 (node.exe와 함께 배포됨)
+    // 3. 프로덕션: 번들된 리소스 디렉토리
+    //    tauri.conf.json의 `"resources/kordoc/**/*"` glob이
+    //    `$INSTALLDIR/resources/kordoc/...`로 배치됨
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            // Tauri 번들: resources/kordoc/cli.js
+            // 주 경로: Tauri array-glob 번들
             let prod = dir.join("resources").join("kordoc").join("cli.js");
             if prod.exists() {
                 return Some(prod);
             }
-            // 개발 모드: resources/ 없이 직접
-            let dev_prod = dir.join("kordoc").join("cli.js");
-            if dev_prod.exists() {
-                return Some(dev_prod);
+            // 폴백: 객체 형식이나 평평한 배치를 쓰던 구버전 호환
+            let flat = dir.join("kordoc").join("cli.js");
+            if flat.exists() {
+                return Some(flat);
             }
         }
     }
@@ -174,17 +176,17 @@ pub fn is_available() -> bool {
 
 /// node 실행 파일 탐색 (번들 node.exe 우선 → 시스템 PATH)
 fn which_node() -> Option<PathBuf> {
-    // 1. 번들된 node.exe (인스톨러에 포함됨)
+    // 1. 번들된 node.exe (Tauri resources/ array-glob: $INSTALLDIR/resources/node.exe)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             let bundled = dir.join("resources").join("node.exe");
             if bundled.exists() {
                 return Some(bundled);
             }
-            // 개발 모드
-            let dev_bundled = dir.join("node.exe");
-            if dev_bundled.exists() {
-                return Some(dev_bundled);
+            // 폴백: 평평한 배치 (구버전 호환)
+            let flat = dir.join("node.exe");
+            if flat.exists() {
+                return Some(flat);
             }
         }
     }
@@ -207,7 +209,17 @@ fn validate_file_size(path: &Path) -> Result<(), ParseError> {
 }
 
 /// kordoc CLI 동기 호출 (blocking thread에서 사용, 60초 타임아웃)
+///
+/// 타임아웃 관리:
+/// - stdout/stderr를 별도 스레드에서 drain하여 파이프 블록 방지
+/// - 메인 스레드는 try_wait 폴링 (std::process::Child는 Drop에서 kill하지 않으므로
+///   타임아웃 시 명시적 child.kill() 호출 필수)
 fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseError> {
+    use std::io::Read;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
     let node = which_node()
         .ok_or_else(|| ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string()))?;
 
@@ -234,57 +246,92 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let child = cmd
+    let mut child = cmd
         .spawn()
         .map_err(|e| ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}")))?;
 
-    // wait_with_output()을 별도 스레드에서 실행하여 stdout 데드락 방지
-    // (try_wait 폴링은 stdout 파이프 버퍼가 차면 데드락 발생 가능)
-    let timeout = std::time::Duration::from_secs(KORDOC_TIMEOUT_SECS);
     let file_display = file_path.display().to_string();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let timeout = Duration::from_secs(KORDOC_TIMEOUT_SECS);
 
-    std::thread::spawn(move || {
-        let result = child.wait_with_output();
-        let _ = tx.send(result);
+    // stdout/stderr drain 스레드 (파이프 블록 방지)
+    let mut stdout_pipe = child
+        .stdout
+        .take()
+        .ok_or_else(|| ParseError::ParseError("kordoc stdout 캡처 실패".to_string()))?;
+    let mut stderr_pipe = child
+        .stderr
+        .take()
+        .ok_or_else(|| ParseError::ParseError("kordoc stderr 캡처 실패".to_string()))?;
+
+    let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>();
+    let (stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>();
+
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout_pipe.read_to_end(&mut buf);
+        let _ = stdout_tx.send(buf);
+    });
+    thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr_pipe.read_to_end(&mut buf);
+        let _ = stderr_tx.send(buf);
     });
 
-    let output = match rx.recv_timeout(timeout) {
-        Ok(Ok(output)) => output,
-        Ok(Err(e)) => {
-            return Err(ParseError::ParseError(format!(
-                "kordoc 출력 읽기 실패: {e}"
-            )));
-        }
-        Err(_) => {
-            // 타임아웃 — 스레드 내 child는 drop 시 자동 kill (Windows)
-            return Err(ParseError::ParseError(format!(
-                "kordoc 타임아웃 ({}초 초과): {}",
-                KORDOC_TIMEOUT_SECS, file_display
-            )));
+    // 폴링 기반 타임아웃: std::process::Child::try_wait + 명시적 kill
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    // 타임아웃 — 명시적 kill + wait (좀비 방지)
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    warn!(
+                        "kordoc 타임아웃 ({}초 초과), 프로세스 강제 종료: {}",
+                        KORDOC_TIMEOUT_SECS, file_display
+                    );
+                    return Err(ParseError::ParseError(format!(
+                        "kordoc 타임아웃 ({}초 초과): {}",
+                        KORDOC_TIMEOUT_SECS, file_display
+                    )));
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(ParseError::ParseError(format!(
+                    "kordoc 프로세스 대기 실패: {e}"
+                )));
+            }
         }
     };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        warn!("kordoc failed (exit {}): {}", output.status, stderr);
+    // 프로세스 종료 후 파이프 drain 결과 수거 (짧은 타임아웃 — 이미 프로세스 끝났으면 즉시 EOF)
+    let drain_timeout = Duration::from_secs(2);
+    let stdout_buf = stdout_rx.recv_timeout(drain_timeout).unwrap_or_default();
+    let stderr_buf = stderr_rx.recv_timeout(drain_timeout).unwrap_or_default();
+
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr_buf);
+        warn!("kordoc failed (exit {}): {}", status, stderr);
         return Err(ParseError::ParseError(format!(
-            "kordoc 실행 실패 (exit {})",
-            output.status
+            "kordoc 실행 실패 (exit {status})"
         )));
     }
 
     // kordoc 출력 크기 제한 (100MB — OOM 방지)
     const MAX_OUTPUT_SIZE: usize = 100 * 1024 * 1024;
-    if output.stdout.len() > MAX_OUTPUT_SIZE {
+    if stdout_buf.len() > MAX_OUTPUT_SIZE {
         return Err(ParseError::ParseError(format!(
             "kordoc 출력 크기 초과: {}MB (최대 {}MB)",
-            output.stdout.len() / 1_048_576,
+            stdout_buf.len() / 1_048_576,
             MAX_OUTPUT_SIZE / 1_048_576
         )));
     }
 
-    String::from_utf8(output.stdout)
+    String::from_utf8(stdout_buf)
         .map_err(|_| ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string()))
 }
 

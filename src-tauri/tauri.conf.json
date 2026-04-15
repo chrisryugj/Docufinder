@@ -36,16 +36,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "resources/HwpxConverterSetup.exe": "HwpxConverterSetup.exe",
-      "resources/node.exe": "node.exe",
-      "resources/kordoc": "kordoc",
-      "icons/tray-icon.png": "icons/tray-icon.png"
-    },
+    "resources": [
+      "resources/node.exe",
+      "resources/kordoc/**/*",
+      "icons/tray-icon.png"
+    ],
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": "https://timestamp.digicert.com",
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "wix": {
         "language": "ko-KR",
         "template": "wix/main.wxs",

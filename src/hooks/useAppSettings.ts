@@ -14,10 +14,10 @@ function hexToRgba(hex: string, alpha: number): string {
 
 interface UseAppSettingsOptions {
   setSearchMode: (mode: SearchMode) => void;
+  setMinConfidence: (v: number) => void;
 }
 
-export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
-  const [minConfidence, setMinConfidence] = useState(0);
+export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettingsOptions) {
   const [viewDensity, setViewDensity] = useState<ViewDensity>("compact");
   const [semanticEnabled, setSemanticEnabled] = useState(false);
   const [vectorIndexingMode, setVectorIndexingMode] =
@@ -70,7 +70,7 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
       }
     };
     loadSettings();
-  }, [setSearchMode, applyHighlightColors]);
+  }, [setSearchMode, setMinConfidence, applyHighlightColors]);
 
   const applySettings = useCallback(
     (settings: Settings) => {
@@ -83,11 +83,10 @@ export function useAppSettings({ setSearchMode }: UseAppSettingsOptions) {
       setResultsPerPage(settings.results_per_page ?? 50);
       applyHighlightColors(settings);
     },
-    [setSearchMode, applyHighlightColors]
+    [setSearchMode, setMinConfidence, applyHighlightColors]
   );
 
   return {
-    minConfidence,
     viewDensity,
     setViewDensity,
     semanticEnabled,
