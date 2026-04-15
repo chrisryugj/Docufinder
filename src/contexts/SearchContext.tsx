@@ -1,9 +1,9 @@
 import { createContext, useContext, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
-import { useSearch, useAutoComplete, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection, useAiAnswer } from "../hooks";
+import { useSearch, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection, useAiAnswer } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
 import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
-import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, SuggestionItem, RecentSearch, AiAnalysis, KeywordMatchMode } from "../types/search";
+import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, RecentSearch, AiAnalysis, KeywordMatchMode } from "../types/search";
 import { useUIContext } from "./UIContext";
 
 // ── Types ──────────────────────────────────────────────
@@ -47,17 +47,6 @@ export interface SearchContextValue {
   showScrollTop: boolean;
   expand: () => void;
   handleExpand: () => void;
-
-  // Autocomplete
-  autoComplete: {
-    suggestions: SuggestionItem[];
-    isOpen: boolean;
-    selectedIndex: number;
-    setSelectedIndex: (i: number) => void;
-    close: () => void;
-    handleKeyDown: (e: React.KeyboardEvent) => string | null;
-  };
-  handleSuggestionSelect: (text: string) => void;
 
   // Recent searches
   recentSearches: RecentSearch[];
@@ -159,25 +148,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     setTimeout(() => searchInputRef.current?.focus(), EXPAND_FOCUS_DELAY_MS);
   }, [expand, scrollToTop]);
 
-  // ── Autocomplete ──
-  const autoComplete = useAutoComplete({ query });
-  const autoCompleteCloseRef = useRef(autoComplete.close);
-  autoCompleteCloseRef.current = autoComplete.close;
-
-  // 결과 등장 후 800ms 뒤 추천어 자동 닫기
-  useEffect(() => {
-    if (!autoComplete.isOpen) return;
-    if (results.length === 0 && filenameResults.length === 0) return;
-    const timer = setTimeout(() => autoCompleteCloseRef.current(), 800);
-    return () => clearTimeout(timer);
-  }, [results, filenameResults, autoComplete.isOpen]);
-
-  const handleSuggestionSelect = useCallback((text: string) => {
-    setQuery(text);
-    autoCompleteCloseRef.current();
-    searchInputRef.current?.focus();
-  }, [setQuery]);
-
   // ── Recent Searches ──
   const { searches: recentSearches, addSearch, removeSearch, clearSearches } = useRecentSearches();
 
@@ -237,7 +207,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     invalidateSearch, paradigm, setParadigm, submitNaturalQuery, parsedQuery, nlSubmitted,
     keywordMatchMode, setKeywordMatchMode,
     isCollapsed, handleScroll, scrollToTop, scrollContainerRef, showScrollTop, expand, handleExpand,
-    autoComplete, handleSuggestionSelect,
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,
     presets, handleSavePreset, handleApplyPreset, removePreset,

@@ -1,7 +1,17 @@
 import { useEffect, useRef } from "react";
-import { saveSearchQuery } from "./useAutoComplete";
+import { invoke } from "@tauri-apps/api/core";
 
 const RECENT_SEARCH_SAVE_DELAY_MS = 3000;
+
+/** 검색어 히스토리에 저장 (사이드바 "최근 검색" 용) */
+async function saveSearchQuery(query: string): Promise<void> {
+  if (query.trim().length < 2) return;
+  try {
+    await invoke("save_search_query", { query: query.trim() });
+  } catch {
+    // 저장 실패는 무시
+  }
+}
 
 /**
  * 검색 결과가 있고 3초 유지 시 최근 검색에 자동 저장

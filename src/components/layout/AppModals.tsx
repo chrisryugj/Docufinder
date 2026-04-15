@@ -15,6 +15,7 @@ interface AppModalsProps {
 
   helpOpen: boolean;
   onHelpClose: () => void;
+  onRestartTour?: () => void;
 
   showOnboarding: boolean;
   onCompleteOnboarding: () => void;
@@ -32,7 +33,7 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         onClearData={props.onClearData}
         onAutoIndexAllDrives={props.onAutoIndexAllDrives}
       />
-      <HelpModal isOpen={props.helpOpen} onClose={props.onHelpClose} />
+      <HelpModal isOpen={props.helpOpen} onClose={props.onHelpClose} onRestartTour={props.onRestartTour} />
       <OnboardingModal
         isOpen={props.showOnboarding}
         onComplete={props.onCompleteOnboarding}

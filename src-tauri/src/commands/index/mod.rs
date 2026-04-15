@@ -2,10 +2,12 @@
 //!
 //! Tauri commands that delegate to IndexService and FolderService.
 
+mod batch;
 mod data;
 mod folder;
 mod init;
 
+pub use batch::*;
 pub use data::*;
 pub use folder::*;
 pub use init::*;

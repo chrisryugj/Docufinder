@@ -196,17 +196,6 @@ export interface TokenUsage {
 }
 
 // =====================
-// 자동완성 (v2.3)
-// =====================
-
-/** 자동완성 제안 항목 */
-export interface SuggestionItem {
-  text: string;
-  source: "history" | "vocab";
-  frequency: number;
-}
-
-// =====================
 // 문서 요약 (v2.4)
 // =====================
 

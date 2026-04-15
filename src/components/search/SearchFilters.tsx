@@ -92,6 +92,7 @@ export const SearchFilters = memo(function SearchFilters({
       className="flex flex-wrap items-center gap-1.5 py-1 text-xs"
       role="toolbar"
       aria-label="검색 필터"
+      data-tour="search-filters"
     >
       {/* 키워드 매칭 모드 (AND/OR/EXACT) */}
       {onKeywordMatchModeChange && searchMode !== "filename" && (

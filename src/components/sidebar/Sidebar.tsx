@@ -4,8 +4,10 @@ import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
 import { SuggestedFolders } from "./SuggestedFolders";
 import { BookmarkList } from "./BookmarkList";
+import { DriveIndexingPanel } from "./DriveIndexingPanel";
 import type { RecentSearch } from "../../types/search";
 import type { BookmarkInfo } from "../../hooks/useBookmarks";
+import type { BatchState } from "../../types/index";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -24,6 +26,9 @@ interface SidebarProps {
   onBookmarkSelect?: (filePath: string, pageNumber?: number | null) => void;
   onBookmarkRemove?: (id: number) => void;
   isAutoIndexing?: React.RefObject<boolean>;
+  batch?: BatchState | null;
+  onCancelBatch?: () => Promise<void> | void;
+  onDismissBatch?: () => void;
 }
 
 export const Sidebar = memo(function Sidebar({
@@ -43,6 +48,9 @@ export const Sidebar = memo(function Sidebar({
   onBookmarkSelect,
   onBookmarkRemove,
   isAutoIndexing,
+  batch,
+  onCancelBatch,
+  onDismissBatch,
 }: SidebarProps) {
   const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
@@ -144,8 +152,17 @@ export const Sidebar = memo(function Sidebar({
         {isOpen && (
           <>
             <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-1">
+              {/* Batch indexing panel (전체 드라이브 인덱싱 진행 상태) */}
+              {batch && (
+                <DriveIndexingPanel
+                  batch={batch}
+                  onCancel={() => onCancelBatch?.()}
+                  onDismiss={() => onDismissBatch?.()}
+                />
+              )}
+
               {/* Section: Folders */}
-              <section className="pb-3">
+              <section className="pb-3" data-tour="sidebar-folders">
                 <div
                   className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
                   style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}

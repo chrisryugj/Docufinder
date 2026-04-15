@@ -89,7 +89,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         </button>
 
         {/* 오버플로우 메뉴 */}
-        <div className="relative">
+        <div className="relative" data-tour="help-button">
           <button
             ref={menuBtnRef}
             onClick={() => setMenuOpen((v) => !v)}
@@ -131,6 +131,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
           onClick={onOpenSettings}
           className="p-1.5 rounded-md transition-colors btn-icon-hover"
           aria-label="설정"
+          data-tour="settings-button"
         >
           <Settings className="w-4 h-4" style={{ color: "var(--color-text-muted)" }} />
         </button>

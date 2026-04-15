@@ -6,6 +6,7 @@
 use crate::application::services::{FolderService, IndexService, SearchService};
 use crate::commands::settings::{self, Settings};
 use crate::embedder::Embedder;
+use crate::indexer::batch::BatchController;
 use crate::indexer::manager::{IndexContext, WatchManager, WatchPauseHandle, WatchRuntimeSettings};
 use crate::indexer::vector_worker::{VectorProgressCallback, VectorWorker};
 use crate::ocr::OcrEngine;
@@ -49,6 +50,8 @@ pub struct AppContainer {
     ocr_engine: OnceCell<Arc<OcrEngine>>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
+    /// 배치 인덱싱 컨트롤러 (멀티 폴더 순차 실행 상태)
+    batch_controller: Arc<BatchController>,
 
     // ============================================
     // Shared State
@@ -103,6 +106,7 @@ impl AppContainer {
             tokenizer: OnceCell::new(),
             ocr_engine: OnceCell::new(),
             filename_cache: Arc::new(FilenameCache::new()),
+            batch_controller: Arc::new(BatchController::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
             settings_cache: Arc::new(RwLock::new(cached_settings)),
             incremental_update_callback: RwLock::new(None),
@@ -365,6 +369,11 @@ impl AppContainer {
     /// 파일명 캐시 가져오기
     pub fn get_filename_cache(&self) -> Arc<FilenameCache> {
         self.filename_cache.clone()
+    }
+
+    /// 배치 인덱싱 컨트롤러 가져오기 (Arc 공유)
+    pub fn get_batch_controller(&self) -> Arc<BatchController> {
+        self.batch_controller.clone()
     }
 
     /// 파일명 캐시 로드 (DB에서)

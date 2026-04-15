@@ -33,9 +33,10 @@ interface UseIndexStatusReturn {
   addFolderByPath: (path: string) => Promise<AddFolderResult | null>;
   removeFolder: (path: string) => Promise<void>;
   cancelIndexing: () => Promise<void>;
-  autoIndexAllDrives: () => Promise<void>;
+  /** 드라이브 경로 목록을 반환 (배치 시작은 IndexContext에서 수행) */
+  getAllDrivePaths: () => Promise<string[]>;
   cancelledFolderPath: string | null;
-  /** autoIndexAllDrives 실행 중 여부 (FolderTree auto-resume 억제용) */
+  /** 배치 인덱싱 실행 중 여부 (FolderTree auto-resume 억제용) */
   isAutoIndexing: React.RefObject<boolean>;
 }
 
@@ -49,8 +50,6 @@ export function useIndexStatus(): UseIndexStatusReturn {
   const [error, setError] = useState<string | null>(null);
   const [cancelledFolderPath, setCancelledFolderPath] = useState<string | null>(null);
   const autoIndexingRef = useRef(false);
-  // 멀티 드라이브 인덱싱 시 이전 드라이브 누적 수치
-  const cumulativeRef = useRef({ processedOffset: 0, totalOffset: 0 });
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -72,17 +71,11 @@ export function useIndexStatus(): UseIndexStatusReturn {
       try {
         unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
           const p = event.payload;
-          // 멀티 드라이브 인덱싱 중이면 누적 수치 반영
+          // 배치 인덱싱 중에는 단일 progress 무시 (DriveIndexingPanel이 담당)
           if (autoIndexingRef.current) {
-            const cum = cumulativeRef.current;
-            setProgress({
-              ...p,
-              total_files: p.total_files + cum.totalOffset,
-              processed_files: p.processed_files + cum.processedOffset,
-            });
-          } else {
-            setProgress(p);
+            return;
           }
+          setProgress(p);
 
           if (p.phase === "cancelled") {
             setCancelledFolderPath(p.folder_path);
@@ -262,45 +255,21 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, []);
 
-  // 전체 드라이브 자동 인덱싱 (Everything 스타일)
-  const autoIndexAllDrives = useCallback(async (): Promise<void> => {
+  // 드라이브 경로 목록 조회 (배치 인덱싱 대상 선정용)
+  const getAllDrivePaths = useCallback(async (): Promise<string[]> => {
     try {
       const folders = await invokeWithTimeout<SuggestedFolder[]>(
         "get_suggested_folders",
         undefined,
-        IPC_TIMEOUT.SETTINGS
+        IPC_TIMEOUT.SETTINGS,
       );
-      // 드라이브만 필터 (known 폴더 제외)
-      const drives = folders.filter((f) => f.category === "drive" && f.exists);
-      if (drives.length === 0) return;
-
-      autoIndexingRef.current = true;
-      cumulativeRef.current = { processedOffset: 0, totalOffset: 0 };
-      setIsIndexing(true);
-      setError(null);
-
-      for (const drive of drives) {
-        try {
-          const result = await indexSingleFolder(drive.path);
-          // 다음 드라이브 시작 전 누적 오프셋 갱신
-          cumulativeRef.current = {
-            processedOffset: cumulativeRef.current.processedOffset + (result.indexed_count + result.failed_count),
-            totalOffset: cumulativeRef.current.totalOffset + (result.indexed_count + result.failed_count),
-          };
-        } catch {
-          // 개별 드라이브 인덱싱 실패 시 다음 드라이브 계속
-        }
-        await refreshStatus();
-      }
-
-      cumulativeRef.current = { processedOffset: 0, totalOffset: 0 };
-      autoIndexingRef.current = false;
-      setIsIndexing(false);
+      return folders
+        .filter((f) => f.category === "drive" && f.exists)
+        .map((f) => f.path);
     } catch {
-      autoIndexingRef.current = false;
-      setIsIndexing(false);
+      return [];
     }
-  }, [refreshStatus, indexSingleFolder]);
+  }, []);
 
   return {
     status,
@@ -313,7 +282,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     addFolderByPath,
     removeFolder,
     cancelIndexing,
-    autoIndexAllDrives,
+    getAllDrivePaths,
     cancelledFolderPath,
     isAutoIndexing: autoIndexingRef,
   };

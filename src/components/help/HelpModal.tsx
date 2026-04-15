@@ -1,14 +1,16 @@
 import { useState } from "react";
+import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
 
 interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onRestartTour?: () => void;
 }
 
 type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
 
-export function HelpModal({ isOpen, onClose }: HelpModalProps) {
+export function HelpModal({ isOpen, onClose, onRestartTour }: HelpModalProps) {
   const [activeSection, setActiveSection] = useState<HelpSection>("start");
 
   const sections: { id: HelpSection; label: string }[] = [
@@ -48,7 +50,27 @@ export function HelpModal({ isOpen, onClose }: HelpModalProps) {
 
         {/* 콘텐츠 영역 */}
         <div className="flex-1 overflow-y-auto pr-1" style={{ maxHeight: "460px" }}>
-          {activeSection === "start" && <div role="tabpanel" id="help-panel-start" aria-labelledby="help-tab-start"><StartSection /></div>}
+          {activeSection === "start" && (
+            <div role="tabpanel" id="help-panel-start" aria-labelledby="help-tab-start">
+              {onRestartTour && (
+                <button
+                  onClick={() => {
+                    onRestartTour();
+                    onClose();
+                  }}
+                  className="mb-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all hover:shadow-md"
+                  style={{
+                    backgroundColor: "var(--color-accent)",
+                    color: "#fff",
+                  }}
+                >
+                  <Play className="w-4 h-4" />
+                  기능 투어 다시 보기
+                </button>
+              )}
+              <StartSection />
+            </div>
+          )}
           {activeSection === "search" && <div role="tabpanel" id="help-panel-search" aria-labelledby="help-tab-search"><SearchSection /></div>}
           {activeSection === "filters" && <div role="tabpanel" id="help-panel-filters" aria-labelledby="help-tab-filters"><FiltersSection /></div>}
           {activeSection === "advanced" && <div role="tabpanel" id="help-panel-advanced" aria-labelledby="help-tab-advanced"><AdvancedSection /></div>}
