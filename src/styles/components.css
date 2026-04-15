@@ -374,43 +374,43 @@ mark.hl-filename {
   word-break: break-word;
 }
 
-/* 헤딩 — 프리뷰 패널에 적합한 컴팩트 스케일 */
+/* 헤딩 — 크기 차이 최소화, 주로 font-weight + 색상 + 여백 + 구분선으로 위계 표현 */
 .doc-h1 {
-  font-size: 1.15em;
+  font-size: 1.05em;
   font-weight: 700;
   color: var(--color-text-primary);
-  margin: 1.2em 0 0.5em;
-  padding-bottom: 0.25em;
+  margin: 1.1em 0 0.4em;
+  padding-bottom: 0.2em;
   border-bottom: 1.5px solid var(--color-border);
-  line-height: 1.35;
+  line-height: 1.4;
 }
 .doc-h2 {
-  font-size: 1.05em;
-  font-weight: 650;
+  font-size: 1em;
+  font-weight: 700;
   color: var(--color-text-primary);
-  margin: 1em 0 0.4em;
-  padding-bottom: 0.15em;
+  margin: 0.9em 0 0.35em;
+  padding-bottom: 0.12em;
   border-bottom: 1px solid var(--color-border-subtle);
   line-height: 1.4;
 }
 .doc-h3 {
   font-size: 1em;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--color-text-primary);
-  margin: 0.9em 0 0.3em;
+  margin: 0.8em 0 0.25em;
   line-height: 1.4;
 }
 .doc-h4 {
-  font-size: 0.95em;
+  font-size: 1em;
   font-weight: 600;
   color: var(--color-text-secondary);
-  margin: 0.8em 0 0.25em;
+  margin: 0.7em 0 0.2em;
 }
 .doc-h5, .doc-h6 {
-  font-size: 0.9em;
+  font-size: 1em;
   font-weight: 600;
   color: var(--color-text-muted);
-  margin: 0.7em 0 0.2em;
+  margin: 0.6em 0 0.15em;
 }
 .doc-preview > :first-child {
   margin-top: 0;
@@ -421,6 +421,48 @@ mark.hl-filename {
   margin: 0.5em 0;
   text-align: justify;
   letter-spacing: 0.02em;
+}
+
+/* 불릿 문자 기반 위계 (HWPX/DOCX 원본 불릿 보존 케이스) */
+/* Level 1 (상위): ■ □ ▣ ▢ ◆ ◇ — 섹션 헤더급, primary 두껍고 위 여백 큼 */
+.doc-bullet-1 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+  padding-left: 0;
+  letter-spacing: 0;
+  line-height: 1.5;
+}
+/* Level 2 (중간): ● ○ ◉ ◎ ▸ ▹ — 기본 크기, secondary */
+.doc-bullet-2 {
+  font-size: 0.95em;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-top: 0.45em;
+  margin-bottom: 0.2em;
+  padding-left: 1em;
+  line-height: 1.6;
+}
+/* Level 3 (하위): - * · • ◦ — 작고 흐리게, 더 깊은 들여쓰기 */
+.doc-bullet-3 {
+  font-size: 0.88em;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  margin-top: 0.25em;
+  margin-bottom: 0.15em;
+  padding-left: 2em;
+  line-height: 1.55;
+}
+
+/* kordoc이 HWPX 모든 텍스트를 **bold**로 내보내는 케이스 방어 —
+   불릿 컨텍스트 안의 strong/em은 부모 weight/color를 상속 */
+.doc-bullet-1 .doc-strong,
+.doc-bullet-2 .doc-strong,
+.doc-bullet-3 .doc-strong {
+  font-weight: inherit;
+  color: inherit;
 }
 
 /* 테이블 */
@@ -501,6 +543,21 @@ mark.hl-filename {
 }
 .doc-em {
   font-style: italic;
+}
+/* 취소선 — 원본 문서의 삭제/수정 이력 가독성 유지 */
+.doc-del {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-decoration-skip-ink: none;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  opacity: 0.75;
+}
+/* 취소선 내부의 strong은 두꺼움 상속 해제 (kordoc가 전체를 bold로 감싸는 케이스) */
+.doc-del .doc-strong {
+  font-weight: 400;
+  color: inherit;
 }
 
 /* 요약 내 마크다운 — 컴팩트 여백 */

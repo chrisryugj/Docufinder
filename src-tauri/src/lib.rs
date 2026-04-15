@@ -498,25 +498,35 @@ pub fn run() {
             db::init_database(&container.db_path)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
-            // DB 무결성 검사 (부팅 시 1회)
-            if let Ok(conn) = db::get_connection(&container.db_path) {
-                match conn.query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0)) {
-                    Ok(result) if result == "ok" => {
-                        tracing::info!("DB integrity check passed");
+            // DB 무결성 검사 — 대용량 DB에서 수십 초 걸릴 수 있어 백그라운드로 실행.
+            // 시작 시간을 차단하지 않고, 문제 감지 시 이벤트로 프론트엔드에 경고한다.
+            {
+                let db_path_for_check = container.db_path.clone();
+                let app_for_check = app.handle().clone();
+                std::thread::spawn(move || {
+                    let conn = match db::get_connection(&db_path_for_check) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::error!("DB integrity check: connection failed: {}", e);
+                            return;
+                        }
+                    };
+                    match conn.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0)) {
+                        Ok(result) if result == "ok" => {
+                            tracing::info!("DB integrity check passed");
+                        }
+                        Ok(result) => {
+                            tracing::error!("DB integrity check failed: {}", result);
+                            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
+                            tracing::warn!("Attempted WAL recovery after integrity check failure");
+                            let _ = app_for_check.emit("db-integrity-warning", "데이터베이스 무결성 검사에 실패했습니다. 데이터가 손상되었을 수 있습니다.");
+                        }
+                        Err(e) => {
+                            tracing::error!("DB integrity check error: {}", e);
+                            let _ = app_for_check.emit("db-integrity-warning", format!("데이터베이스 검사 오류: {}", e));
+                        }
                     }
-                    Ok(result) => {
-                        tracing::error!("DB integrity check failed: {}", result);
-                        // WAL 복구 시도
-                        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
-                        tracing::warn!("Attempted WAL recovery after integrity check failure");
-                        // 프론트엔드에 경고 알림
-                        let _ = app.emit("db-integrity-warning", "데이터베이스 무결성 검사에 실패했습니다. 데이터가 손상되었을 수 있습니다.");
-                    }
-                    Err(e) => {
-                        tracing::error!("DB integrity check error: {}", e);
-                        let _ = app.emit("db-integrity-warning", format!("데이터베이스 검사 오류: {}", e));
-                    }
-                }
+                });
             }
 
             tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);

@@ -131,6 +131,44 @@ function stripHtmlForMarkdown(md: string): string {
 
 // ─── 마크다운 커스텀 컴포넌트 ──────────────────────────
 
+/**
+ * 문단 선두 불릿 문자로 위계 판정
+ * - Level 1 (상위): ■ □ ▣ ▢ ◆ ◇ — 두껍고 크게
+ * - Level 2 (중간): ● ○ ◉ ◎ ▸ ▹ — 보통
+ * - Level 3 (하위): - * · • ◦ — 작고 흐리게
+ */
+function detectBulletLevel(text: string): 1 | 2 | 3 | null {
+  const trimmed = text.trimStart();
+  const first = trimmed.charAt(0);
+  if (!first) return null;
+  if (/[■□▣▢◆◇]/.test(first)) return 1;
+  if (/[●○◉◎▸▹]/.test(first)) return 2;
+  if (/[\-*·•◦]/.test(first)) return 3;
+  return null;
+}
+
+/** React children에서 첫 문자열 추출 (불릿 감지용, React 엘리먼트 재귀 파고듦) */
+function firstTextOf(children: React.ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string") return children;
+  if (typeof children === "number") return String(children);
+  if (Array.isArray(children)) {
+    for (const c of children) {
+      const t = firstTextOf(c);
+      if (t) return t;
+    }
+    return "";
+  }
+  // React 엘리먼트 — props.children 재귀 (kordoc가 전체 문단을 **bold**로 감싼 경우 대응)
+  if (typeof children === "object" && "props" in (children as object)) {
+    const el = children as { props?: { children?: React.ReactNode } };
+    if (el.props?.children !== undefined) {
+      return firstTextOf(el.props.children);
+    }
+  }
+  return "";
+}
+
 function createMarkdownComponents(
   searchRegex: RegExp | null,
   onOpenUrl: (url: string) => void,
@@ -145,13 +183,17 @@ function createMarkdownComponents(
 
   return {
     // 텍스트가 포함된 블록 요소에 하이라이트 적용
-    p: ({ children }) => (
-      <p className="doc-paragraph">
-        {Array.isArray(children)
-          ? children.map((child, i) => <TextWrapper key={i}>{child}</TextWrapper>)
-          : <TextWrapper>{children}</TextWrapper>}
-      </p>
-    ),
+    p: ({ children }) => {
+      const level = detectBulletLevel(firstTextOf(children));
+      const bulletClass = level ? ` doc-bullet-${level}` : "";
+      return (
+        <p className={`doc-paragraph${bulletClass}`}>
+          {Array.isArray(children)
+            ? children.map((child, i) => <TextWrapper key={i}>{child}</TextWrapper>)
+            : <TextWrapper>{children}</TextWrapper>}
+        </p>
+      );
+    },
     // 헤딩
     h1: ({ children }) => <h1 className="doc-h1"><TextWrapper>{children}</TextWrapper></h1>,
     h2: ({ children }) => <h2 className="doc-h2"><TextWrapper>{children}</TextWrapper></h2>,
@@ -190,6 +232,7 @@ function createMarkdownComponents(
     // 강조
     strong: ({ children }) => <strong className="doc-strong">{children}</strong>,
     em: ({ children }) => <em className="doc-em">{children}</em>,
+    del: ({ children }) => <del className="doc-del">{children}</del>,
   };
 }
 
@@ -372,7 +415,7 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
             </div>
           ) : (
             <div className="text-[12.5px] leading-[1.8] text-[var(--color-text-primary)] doc-preview summary-inline ai-answer-prose">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]}>{answer}</ReactMarkdown>
             </div>
           )}
 
@@ -670,7 +713,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               </button>
               {summaryExpanded && (
                 <div className="px-3 pb-3 text-[13px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline" style={{ backgroundColor: "var(--color-bg-primary)" }}>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={markdownComponents}>
                     {aiSummary.answer}
                   </ReactMarkdown>
                 </div>
@@ -708,7 +751,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         {/* 마크다운 렌더링 */}
         {!loading && !error && markdown && (
           <div className="doc-preview px-6 py-5">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={markdownComponents}>
               {stripHtmlForMarkdown(markdown)}
             </ReactMarkdown>
           </div>

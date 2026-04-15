@@ -358,11 +358,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, [query, setQuery]);
 
-  // paradigm 전환 (localStorage 저장 + 결과 초기화, 쿼리 보존)
+  // paradigm 전환 (localStorage 저장 + 쿼리/결과 전체 초기화)
   const setParadigm = useCallback((p: SearchParadigm) => {
     setParadigmInternal(p);
     try { localStorage.setItem("docufinder_paradigm", p); } catch {}
-    // 결과/파싱 상태만 초기화 — 쿼리는 보존하여 전환 후 바로 사용 가능
+    // 쿼리 + 결과 + 파싱 상태 모두 초기화
+    setQueryInternal("");
     setParsedQuery(null);
     setNlSubmitted(false);
     clearSearchCache();
