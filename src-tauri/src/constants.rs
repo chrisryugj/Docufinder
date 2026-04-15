@@ -19,14 +19,14 @@ pub const METADATA_EXCLUDED_EXTENSIONS: &[&str] = &[
     "dll", "exe", "sys", "drv", "ocx", "cpl", "scr", // 임시/캐시 파일
     "tmp", "temp", "bak", "old", "cache", // 빌드 아티팩트
     "obj", "pdb", "ilk", "exp", "lib", "pch", // 로그 파일
-    "log", "etl", // 설정/레지스트리
+    "log", "etl", "jsonl", // 설정/레지스트리
     "ini", "reg", // 데이터베이스/인덱스
-    "db", "db-shm", "db-wal", "idx", "ldb",
+    "db", "db-shm", "db-wal", "sqlite", "sqlite-shm", "sqlite-wal", "idx", "ldb",
     // 미디어 (파일명은 필요할 수 있지만 대량 존재 시 제외)
     "mp3", "mp4", "avi", "mkv", "mov", "wmv", "flv", "m4v", "m4a", "aac", "wav", "flac",
     // 압축 파일 (지원 파서 없음)
     "zip", "rar", "7z", "tar", "gz", "bz2", "xz", // 기타 바이너리
-    "bin", "dat", "iso", "img",
+    "bin", "dat", "iso", "img", "pb",
 ];
 
 // ============================================
@@ -66,13 +66,37 @@ pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
     "$recycle.bin",
     "system volume information",
     "recovery",
-    // 개발 도구
+    // 개발 도구 - 빌드/의존성
     "node_modules",
     ".git",
     "__pycache__",
     ".venv",
+    "venv",
     "target",
     ".tox",
+    "dist",
+    "build",
+    "out",
+    ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".vite",
+    ".parcel-cache",
+    ".turbo",
+    ".cache",
+    "coverage",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    // 에디터/IDE
+    ".vscode",
+    ".idea",
+    // AI/CLI 도구 (세션 로그로 초당 수십 번 쓰여 watcher 노이즈 유발)
+    ".claude",
+    ".codex",
+    ".gemini",
+    ".cursor",
+    ".aider",
     // 사용자 캐시
     "appdata",
 ];

@@ -4,7 +4,7 @@
 //! - ask_ai_file: 단일 파일 청크 → LLM 스트리밍 응답 (파일 전용 QA)
 //! - summarize_ai: 파일 청크 → LLM 요약 (유형 선택 가능)
 
-use crate::application::dto::search::{AiAnalysis, TokenUsage};
+use crate::application::dto::search::{AiAnalysis, MatchType, SearchResult, TokenUsage};
 use crate::application::services::search_service::helpers::{
     smart_apply_exclude_filter, smart_apply_file_type_filter,
 };
@@ -24,6 +24,49 @@ use tauri::{AppHandle, Emitter, State};
 
 const MAX_QUERY_LEN: usize = 1000;
 const RAG_RETRIEVE_LIMIT: usize = 25;
+/// RAG 이웃 청크 확장 반경 — 표/리스트 연속성 보장용
+const RAG_NEIGHBOR_RADIUS: i64 = 1;
+/// 이 값보다 적게 걸리면 접미사 폴백 쿼리 시도
+/// (예: "예산액"이 4건만 걸리면 "예산"으로 재검색)
+const RAG_LOW_RESULTS_THRESHOLD: usize = 10;
+
+/// 한국어 복합명사 접미사 — 리트리벌 빈약 시 접미사 제거 후 재검색용.
+///
+/// 금액/비율/수량/요금 관련 접미사만 포함 (ambiguity 낮은 것):
+/// 예산액→예산, 집행률→집행, 사용량→사용, 수수료→수수, 사건건→사건,
+/// 임대비→임대, 소득세→소득, 지원금→지원.
+const KR_NOUN_SUFFIXES: &[&str] = &["액", "률", "량", "료", "건", "비", "세", "금"];
+
+/// 검색어 토큰 중 한국어 복합명사 접미사로 끝나는 것을 **접미사 제거 버전**으로 바꿔 반환.
+///
+/// 최소 3글자 이상이고 stem이 2글자 이상인 경우만 처리. 한 토큰이라도 변경되면 Some.
+/// 예: "2026 아차산 메아리 예산액" → Some("2026 아차산 메아리 예산")
+fn strip_suffix_variants(query: &str) -> Option<String> {
+    let mut changed = false;
+    let words: Vec<String> = query
+        .split_whitespace()
+        .map(|w| {
+            let char_count = w.chars().count();
+            if char_count >= 3 {
+                for suf in KR_NOUN_SUFFIXES {
+                    if w.ends_with(suf) {
+                        let stem: String = w.chars().take(char_count - 1).collect();
+                        if stem.chars().count() >= 2 {
+                            changed = true;
+                            return stem;
+                        }
+                    }
+                }
+            }
+            w.to_string()
+        })
+        .collect();
+    if changed {
+        Some(words.join(" "))
+    } else {
+        None
+    }
+}
 /// 동시 AI 요청 제한 (API 비용 폭발 방지)
 const MAX_CONCURRENT_AI_REQUESTS: usize = 3;
 
@@ -89,6 +132,103 @@ fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
             )
         })?;
     Ok(GeminiClient::new(api_key, settings.ai_model))
+}
+
+/// retrieved 청크의 ±radius 이웃을 DB에서 추가 로드하여 병합.
+///
+/// 검색 랭킹에서 표/리스트 중간 청크만 top-k에 올라왔을 때, 인접 청크를 함께 제공해
+/// LLM이 문맥을 복원할 수 있도록 한다. 이웃 청크는 SearchResult로 합성되며
+/// `full_content`만 채워지고 나머지 필드는 기본값이다 (build_rag_context는
+/// file_path / file_name / chunk_index / full_content / page_number / location_hint 만 사용).
+async fn expand_with_neighbors(
+    results: Vec<SearchResult>,
+    db_path: &std::path::Path,
+) -> Vec<SearchResult> {
+    use std::collections::{HashMap, HashSet};
+
+    if results.is_empty() {
+        return results;
+    }
+
+    // 파일별 retrieved chunk_index 집합
+    let mut per_file: HashMap<String, HashSet<i64>> = HashMap::new();
+    for r in &results {
+        per_file
+            .entry(r.file_path.clone())
+            .or_default()
+            .insert(r.chunk_index);
+    }
+
+    // 이웃 인덱스 계산 (원본 제외)
+    let mut to_fetch: Vec<(String, Vec<i64>)> = Vec::new();
+    for (path, indices) in &per_file {
+        let mut neighbors: HashSet<i64> = HashSet::new();
+        for &idx in indices {
+            for offset in -RAG_NEIGHBOR_RADIUS..=RAG_NEIGHBOR_RADIUS {
+                let n = idx + offset;
+                if n >= 0 && !indices.contains(&n) {
+                    neighbors.insert(n);
+                }
+            }
+        }
+        if !neighbors.is_empty() {
+            let mut v: Vec<i64> = neighbors.into_iter().collect();
+            v.sort_unstable();
+            to_fetch.push((path.clone(), v));
+        }
+    }
+
+    if to_fetch.is_empty() {
+        return results;
+    }
+
+    // DB 조회 (blocking I/O → spawn_blocking)
+    let db_path_owned = db_path.to_path_buf();
+    let fetched = tokio::task::spawn_blocking(move || -> Vec<crate::db::ChunkInfo> {
+        let conn = match crate::db::get_connection(&db_path_owned) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("RAG 이웃 확장 DB 연결 실패: {}", e);
+                return vec![];
+            }
+        };
+        let mut all = Vec::new();
+        for (path, indices) in &to_fetch {
+            match crate::db::get_chunks_for_file_indices(&conn, path, indices) {
+                Ok(chunks) => all.extend(chunks),
+                Err(e) => tracing::warn!("RAG 이웃 청크 조회 실패 ({}): {}", path, e),
+            }
+        }
+        all
+    })
+    .await
+    .unwrap_or_default();
+
+    tracing::debug!("RAG 이웃 청크 {}개 추가 로드", fetched.len());
+
+    // ChunkInfo → SearchResult 합성 후 병합
+    let mut merged = results;
+    for c in fetched {
+        merged.push(SearchResult {
+            file_path: c.file_path,
+            file_name: c.file_name,
+            chunk_index: c.chunk_index,
+            content_preview: String::new(),
+            full_content: c.content,
+            score: 0.0,
+            confidence: 0,
+            match_type: MatchType::Keyword,
+            highlight_ranges: vec![],
+            page_number: c.page_number,
+            start_offset: c.start_offset,
+            location_hint: c.location_hint,
+            snippet: None,
+            modified_at: c.modified_at,
+            has_hwp_pair: false,
+        });
+    }
+
+    merged
 }
 
 /// 검색 결과 → RAG 컨텍스트 문자열
@@ -303,7 +443,7 @@ pub async fn ask_ai(
         ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
     })?;
 
-    let (client, service, config, tokenizer) = {
+    let (client, service, config, tokenizer, db_path) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
         let service = container.search_service();
@@ -313,7 +453,8 @@ pub async fn ask_ai(
             max_tokens: settings.ai_max_tokens,
         };
         let tokenizer = container.get_tokenizer().ok();
-        (client, service, config, tokenizer)
+        let db_path = container.db_path.clone();
+        (client, service, config, tokenizer, db_path)
     };
 
     // 이전 요청 취소 + 새 취소 토큰 발급
@@ -388,11 +529,53 @@ pub async fn ask_ai(
         //   "2026년 노인일자리"에서 "2026년"은 문서 내용의 연도이지 파일 수정일이 아님.
         //   파일 수정일 필터를 걸면 관련 문서를 놓칠 수 있음.
         //   연도는 키워드로 FTS 검색에 반영됨.
-        let results: Vec<_> = results
+        let mut results: Vec<_> = results
             .into_iter()
             .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
             .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
             .collect();
+
+        // 저결과 폴백 — 복합명사 접미사 때문에 매칭이 빈약할 수 있음.
+        // 예: "예산액"으로 4건만 걸릴 때 "예산"으로 재검색해서 커버리지 확보.
+        // 한국어에서 "예산액/집행률/사용량" 같은 복합명사가 FTS5 토큰 경계로
+        // 쪼개지거나 원본에 다른 표기로 존재하는 경우를 구제한다.
+        if results.len() < RAG_LOW_RESULTS_THRESHOLD {
+            if let Some(fallback_query) = strip_suffix_variants(&search_query) {
+                tracing::debug!(
+                    "RAG 저결과 폴백: '{}' ({} hits) → '{}'",
+                    search_query,
+                    results.len(),
+                    fallback_query
+                );
+                if let Ok(fallback_resp) = service
+                    .search_hybrid(&fallback_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
+                    .await
+                {
+                    let existing: std::collections::HashSet<(String, i64)> = results
+                        .iter()
+                        .map(|r| (r.file_path.clone(), r.chunk_index))
+                        .collect();
+
+                    let additional = fallback_resp
+                        .results
+                        .into_iter()
+                        .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+                        .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+                        .filter(|r| !existing.contains(&(r.file_path.clone(), r.chunk_index)));
+
+                    for r in additional {
+                        results.push(r);
+                    }
+                    tracing::debug!("RAG 폴백 병합 후 {} hits", results.len());
+                }
+            }
+        }
+
+        // 이웃 청크 확장 — 표/리스트가 청크 경계에서 잘리는 문제 해결.
+        // 검색으로 걸린 청크의 ±RAG_NEIGHBOR_RADIUS 범위 청크를 DB에서 추가 로드하여
+        // 같은 파일 내 문맥 연속성을 확보한다. (예: 예산표 중간 청크만 걸렸을 때
+        // 앞뒤 청크를 함께 제공하면 LLM이 "표가 잘렸다"고 답하지 않음.)
+        let results = expand_with_neighbors(results, &db_path).await;
 
         if results.is_empty() {
             let _ = app_clone.emit(

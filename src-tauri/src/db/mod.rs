@@ -575,6 +575,55 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
     results.collect()
 }
 
+/// 파일 경로 + 청크 인덱스 목록으로 청크 일괄 조회 (RAG 이웃 청크 확장용)
+pub fn get_chunks_for_file_indices(
+    conn: &Connection,
+    file_path: &str,
+    chunk_indices: &[i64],
+) -> Result<Vec<ChunkInfo>> {
+    if chunk_indices.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let placeholders: String = chunk_indices.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
+                c.page_end, c.location_hint, f.path, f.name,
+                COALESCE(c.content, fts.content) AS content, f.modified_at
+         FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         JOIN chunks_fts fts ON fts.rowid = c.id
+         WHERE f.path = ? AND c.chunk_index IN ({})",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let mut params_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk_indices.len() + 1);
+    params_vec.push(&file_path);
+    for idx in chunk_indices {
+        params_vec.push(idx as &dyn rusqlite::ToSql);
+    }
+
+    let results = stmt.query_map(params_vec.as_slice(), |row| {
+        Ok(ChunkInfo {
+            chunk_id: row.get(0)?,
+            file_id: row.get(1)?,
+            chunk_index: row.get(2)?,
+            start_offset: row.get(3)?,
+            end_offset: row.get(4)?,
+            page_number: row.get(5)?,
+            page_end: row.get(6)?,
+            location_hint: row.get(7)?,
+            file_path: row.get(8)?,
+            file_name: row.get(9)?,
+            content: row.get(10)?,
+            modified_at: row.get(11)?,
+        })
+    })?;
+
+    results.collect()
+}
+
 /// 청크 ID → 파일 경로 경량 조회 (content 없이 경로만 — 벡터 스코프 프리필터용)
 pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<HashMap<i64, String>> {
     if chunk_ids.is_empty() {

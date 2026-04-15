@@ -127,11 +127,21 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  // 배경 클릭으로 닫기 (closable일 때만)
+  // 배경 클릭으로 닫기 — 드래그 셀렉션 시작이 모달 내부면 무시
+  // (input 드래그하다 backdrop에서 mouseup 되는 경우 모달이 잘못 닫히는 버그 방지)
+  const backdropMouseDownRef = useRef(false);
+  const handleBackdropMouseDown = (e: React.MouseEvent) => {
+    backdropMouseDownRef.current = e.target === e.currentTarget;
+  };
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget && closable) {
+    if (
+      e.target === e.currentTarget &&
+      backdropMouseDownRef.current &&
+      closable
+    ) {
       handleClose();
     }
+    backdropMouseDownRef.current = false;
   };
 
   if (!shouldRender) return null;
@@ -140,6 +150,7 @@ export function Modal({ isOpen, onClose, title, children, footer, headerExtra, s
     <div
       className={`fixed inset-0 flex items-start justify-center z-50 pt-[10vh] ${isExiting ? "animate-backdrop-exit" : "animate-backdrop-enter"}`}
       style={{ backgroundColor: "var(--color-backdrop)" }}
+      onMouseDown={handleBackdropMouseDown}
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
