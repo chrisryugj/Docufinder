@@ -30,6 +30,8 @@ import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { UpdateBanner } from "./components/ui/UpdateBanner";
+import { OnboardingTour, resetOnboardingTour } from "./components/onboarding/OnboardingTour";
+import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
 
@@ -53,6 +55,13 @@ function AppContent() {
   const ui = useUIContext();
   const idx = useIndexContext();
   const search = useSearchContext();
+
+  // 기능 투어 재시작 키 — 증가 시 투어 강제 재시작
+  const [tourRunKey, setTourRunKey] = useState(0);
+  const restartTour = useCallback(() => {
+    resetOnboardingTour(DOCUFINDER_TOUR_STORAGE_KEY);
+    setTourRunKey((k) => k + 1);
+  }, []);
 
   // ── App Settings (cross-cutting) ──
   const {
@@ -309,10 +318,17 @@ function AppContent() {
   }, [idx.cancelledFolderPath, idx.refreshStatus, ui.showToast]);
 
   const handleClearData = useCallback(async () => {
-    await invoke("clear_all_data");
-    clearSearchCache();
-    await Promise.all([idx.refreshStatus(), idx.refreshVectorStatus()]);
-  }, [idx]);
+    try {
+      await invoke("clear_all_data");
+      clearSearchCache();
+      await Promise.all([idx.refreshStatus(), idx.refreshVectorStatus()]);
+      ui.showToast("모든 인덱스 데이터가 초기화되었습니다", "success");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      ui.showToast(`초기화 실패: ${message}`, "error");
+      throw err;
+    }
+  }, [idx, ui]);
 
   // ── Render ──
 
@@ -348,6 +364,9 @@ function AppContent() {
         bookmarks={ui.bookmarks}
         onBookmarkSelect={handleBookmarkSelect}
         onBookmarkRemove={ui.removeBookmark}
+        batch={idx.batch}
+        onCancelBatch={idx.cancelBatch}
+        onDismissBatch={idx.dismissBatch}
       />
 
       <div
@@ -427,13 +446,6 @@ function AppContent() {
               status={idx.status}
               resultCount={search.filteredResults.length}
               searchTime={search.searchTime}
-              suggestions={search.autoComplete.suggestions}
-              isSuggestionsOpen={search.autoComplete.isOpen}
-              suggestionsSelectedIndex={search.autoComplete.selectedIndex}
-              onSuggestionSelect={search.handleSuggestionSelect}
-              onSuggestionsKeyDown={search.autoComplete.handleKeyDown}
-              onSuggestionsClose={search.autoComplete.close}
-              onSuggestionsSetIndex={search.autoComplete.setSelectedIndex}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
               onSubmitNatural={handleSubmitQuery}
@@ -499,7 +511,7 @@ function AppContent() {
         <div ref={contentFlexRef} className="flex-1 flex overflow-hidden relative">
           <div
             ref={search.scrollContainerRef}
-            onScroll={(e) => { search.handleScroll(e); search.autoComplete.close(); }}
+            onScroll={search.handleScroll}
             className="flex-1 overflow-y-auto overflow-x-hidden"
             style={{ overflowAnchor: "none" }}
           >
@@ -659,7 +671,9 @@ function AppContent() {
         <StatusBar
           status={idx.status}
           progress={idx.progress}
+          batch={idx.batch}
           onCancelIndexing={idx.cancelIndexing}
+          onCancelBatch={idx.cancelBatch}
           onResumeIndexing={handleResumeIndexing}
           hasCancelledFolders={!!idx.cancelledFolderPath}
         />
@@ -682,6 +696,7 @@ function AppContent() {
         onAutoIndexAllDrives={idx.autoIndexAllDrives}
         helpOpen={ui.helpOpen}
         onHelpClose={() => ui.setHelpOpen(false)}
+        onRestartTour={restartTour}
         showOnboarding={ui.showOnboarding}
         onCompleteOnboarding={() => { ui.completeOnboarding(); ui.setShowAutoIndexPrompt(true); }}
         onSkipOnboarding={() => { ui.skipOnboarding(); ui.setShowAutoIndexPrompt(true); }}
@@ -758,6 +773,14 @@ function AppContent() {
       <FloatingUI
         showScrollTop={search.showScrollTop}
         onScrollToTop={search.scrollToTop}
+      />
+
+      {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능 */}
+      <OnboardingTour
+        steps={DOCUFINDER_TOUR_STEPS}
+        storageKey={DOCUFINDER_TOUR_STORAGE_KEY}
+        autoStart
+        runKey={tourRunKey}
       />
     </div>
   );

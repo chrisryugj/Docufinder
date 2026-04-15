@@ -1,4 +1,5 @@
 pub mod background_parser;
+pub mod batch;
 pub mod collector;
 pub mod exclusions;
 pub mod manager;

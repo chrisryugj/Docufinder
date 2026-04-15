@@ -1,5 +1,5 @@
-import { forwardRef, memo, useCallback, useRef, useEffect, useMemo } from "react";
-import type { SearchMode, SearchParadigm, SuggestionItem } from "../../types/search";
+import { forwardRef, memo, useCallback, useRef, useMemo, useEffect } from "react";
+import type { SearchMode, SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
@@ -18,14 +18,6 @@ interface SearchBarProps {
   searchTime?: number | null;
   onCompositionStart?: () => void;
   onCompositionEnd?: (finalValue: string) => void;
-  /** 자동완성 */
-  suggestions?: SuggestionItem[];
-  isSuggestionsOpen?: boolean;
-  suggestionsSelectedIndex?: number;
-  onSuggestionSelect?: (text: string) => void;
-  onSuggestionsKeyDown?: (e: React.KeyboardEvent) => string | null;
-  onSuggestionsClose?: () => void;
-  onSuggestionsSetIndex?: (index: number) => void;
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
   onParadigmChange?: (p: SearchParadigm) => void;
@@ -61,13 +53,6 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       searchTime: _searchTime,
       onCompositionStart,
       onCompositionEnd,
-      suggestions = [],
-      isSuggestionsOpen = false,
-      suggestionsSelectedIndex = -1,
-      onSuggestionSelect,
-      onSuggestionsKeyDown,
-      onSuggestionsClose,
-      onSuggestionsSetIndex,
       paradigm = "instant",
       onParadigmChange,
       onSubmitNatural,
@@ -135,33 +120,19 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       }
     }, [onSubmitNatural]);
 
-    // ── 일반 모드: 기존 keydown ───────────────────────────
+    // ── 일반 모드: 스마트 모드 Enter 제출 ───────────────────
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (needsEnterToSubmit && e.key === "Enter" && !e.nativeEvent.isComposing) {
           e.preventDefault();
           onSubmitNatural?.();
-          return;
-        }
-        if (!needsEnterToSubmit && onSuggestionsKeyDown) {
-          const selected = onSuggestionsKeyDown(e);
-          if (selected !== null) {
-            onSuggestionSelect?.(selected);
-            return;
-          }
         }
       },
-      [needsEnterToSubmit, onSubmitNatural, onSuggestionsKeyDown, onSuggestionSelect]
+      [needsEnterToSubmit, onSubmitNatural]
     );
 
-    const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
-    const handleBlur = useCallback(() => {
-      blurTimerRef.current = setTimeout(() => { onSuggestionsClose?.(); blurTimerRef.current = null; }, 150);
-    }, [onSuggestionsClose]);
-
     return (
-      <div className="w-full relative">
+      <div className="w-full relative" data-tour="search-bar">
         {/* Paradigm Toggle */}
         {onParadigmChange && (
           <div className="mb-1">
@@ -242,7 +213,6 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               maxLength={1000}
               {...imeHandlers}
               onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
               placeholder={isNatural
                 ? "자연어로 검색 조건을 입력하세요..."
                 : "키워드로 문서 검색..."
@@ -256,15 +226,6 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               }}
               aria-label="검색어 입력"
               autoComplete="off"
-              role="combobox"
-              aria-expanded={isSuggestionsOpen}
-              aria-autocomplete="list"
-              aria-owns={isSuggestionsOpen ? "suggestion-listbox" : undefined}
-              aria-activedescendant={
-                isSuggestionsOpen && suggestionsSelectedIndex >= 0
-                  ? `suggestion-${suggestionsSelectedIndex}`
-                  : undefined
-              }
             />
           )}
 
@@ -380,63 +341,6 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           </div>
         )}
 
-        {/* 자동완성 드롭다운 (즉시 모드만) */}
-        {!isNatural && !isQuestion && isSuggestionsOpen && suggestions.length > 0 && (
-          <div
-            id="suggestion-listbox"
-            className="absolute left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-lg"
-            style={{
-              backgroundColor: "var(--color-bg-secondary)",
-              border: "1px solid var(--color-border)",
-            }}
-            role="listbox"
-          >
-            {suggestions.map((item, index) => (
-              <button
-                id={`suggestion-${index}`}
-                key={`${item.source}-${item.text}`}
-                className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors"
-                style={{
-                  backgroundColor:
-                    index === suggestionsSelectedIndex
-                      ? "var(--color-bg-tertiary)"
-                      : "transparent",
-                  color: "var(--color-text-primary)",
-                }}
-                onMouseEnter={() => onSuggestionsSetIndex?.(index)}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  onSuggestionSelect?.(item.text);
-                }}
-                role="option"
-                aria-selected={index === suggestionsSelectedIndex}
-              >
-                <span
-                  className="flex-shrink-0 w-4 h-4 flex items-center justify-center"
-                  style={{ color: "var(--color-text-muted)" }}
-                >
-                  {item.source === "history" ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <polyline points="12 6 12 12 16 14" />
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  )}
-                </span>
-                <span className="flex-1 truncate text-sm">{item.text}</span>
-                <span
-                  className="text-[10px] tabular-nums flex-shrink-0"
-                  style={{ color: "var(--color-text-muted)" }}
-                >
-                  {item.source === "history" ? `${item.frequency}회` : `${item.frequency}건`}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
         </div>
       </div>
     );

@@ -1,6 +1,7 @@
 // 훅 barrel export
 export { useSearch } from "./useSearch";
 export { useIndexStatus } from "./useIndexStatus";
+export { useIndexingBatch } from "./useIndexingBatch";
 export { useVectorIndexing } from "./useVectorIndexing";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 export {
@@ -13,7 +14,6 @@ export { useTheme } from "./useTheme";
 export type { Theme, ResolvedTheme } from "./useTheme";
 export { useCollapsibleSearch } from "./useCollapsibleSearch";
 export { useIMEComposition } from "./useIMEComposition";
-export { useAutoComplete, saveSearchQuery } from "./useAutoComplete";
 export { useWindowFocus } from "./useWindowFocus";
 export { useSimilarDocuments } from "./useSimilarDocuments";
 export { useDocumentCategories } from "./useDocumentCategories";

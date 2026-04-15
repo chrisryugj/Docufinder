@@ -81,3 +81,53 @@ export interface VectorIndexingProgress {
   current_file: string | null;
   is_complete: boolean;
 }
+
+// ── 배치 인덱싱 (멀티 드라이브/폴더 순차 실행) ─────────
+
+export type BatchJobStatus =
+  | "pending"
+  | "running"
+  | "committing"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+export interface BatchJob {
+  index: number;
+  path: string;
+  status: BatchJobStatus;
+  /** "scanning"|"parsing"|"indexing"|"fts_commit"|"wal_checkpoint"|"cache_refresh" */
+  stage: string | null;
+  processed: number;
+  total: number;
+  current_file: string | null;
+  started_at: number | null;
+  finished_at: number | null;
+  indexed_count: number;
+  failed_count: number;
+  error: string | null;
+}
+
+export interface BatchState {
+  batch_id: string;
+  jobs: BatchJob[];
+  current_index: number;
+  started_at: number;
+  finished_at: number | null;
+  is_running: boolean;
+}
+
+/** 배치 job 진행률 이벤트 payload */
+export interface BatchJobProgressPayload {
+  batch_id: string;
+  job_index: number;
+  path: string;
+  status: BatchJobStatus;
+  stage: string | null;
+  processed: number;
+  total: number;
+  current_file: string | null;
+  indexed_count: number;
+  failed_count: number;
+  error: string | null;
+}

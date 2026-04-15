@@ -270,64 +270,7 @@ pub async fn classify_document(
     service.classify_document(&text).map_err(ApiError::from)
 }
 
-// ==================== 자동완성 (v2.3) ====================
-
-/// 검색어 자동완성 제안
-#[tauri::command]
-pub async fn get_suggestions(
-    query: String,
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<Vec<SuggestionItem>> {
-    validate_query(&query)?;
-    let prefix = query.trim().to_lowercase();
-    if prefix.len() < 2 {
-        return Ok(vec![]);
-    }
-
-    let db_path = {
-        let container = state.read()?;
-        container.db_path.clone()
-    };
-
-    tokio::task::spawn_blocking(move || -> ApiResult<Vec<SuggestionItem>> {
-        let conn = crate::db::get_connection(&db_path)?;
-        let mut suggestions = Vec::new();
-
-        // 1) 최근 검색어 히스토리 (우선)
-        if let Ok(history) = crate::db::get_search_query_suggestions(&conn, &prefix, 5) {
-            for (term, freq) in history {
-                suggestions.push(SuggestionItem {
-                    text: term,
-                    source: "history".to_string(),
-                    frequency: freq,
-                });
-            }
-        }
-
-        // 2) fts5vocab 용어 (히스토리에 없는 것만)
-        let history_texts: std::collections::HashSet<String> =
-            suggestions.iter().map(|s| s.text.clone()).collect();
-
-        if let Ok(vocab) = crate::db::get_vocab_suggestions(&conn, &prefix, 10 + suggestions.len())
-        {
-            for (term, doc_count) in vocab {
-                if !history_texts.contains(&term) && term.len() >= 2 {
-                    suggestions.push(SuggestionItem {
-                        text: term,
-                        source: "vocab".to_string(),
-                        frequency: doc_count,
-                    });
-                }
-                if suggestions.len() >= 10 {
-                    break;
-                }
-            }
-        }
-
-        Ok(suggestions)
-    })
-    .await?
-}
+// ==================== 검색어 히스토리 저장 ====================
 
 /// 검색어 저장 (검색 실행 시 호출)
 #[tauri::command]
@@ -418,14 +361,6 @@ pub async fn get_document_statistics(
         })
     })
     .await?
-}
-
-/// 자동완성 제안 항목
-#[derive(Debug, serde::Serialize)]
-pub struct SuggestionItem {
-    pub text: String,
-    pub source: String,
-    pub frequency: i64,
 }
 
 /// 통계 항목

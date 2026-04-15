@@ -39,7 +39,7 @@
     "resources": {
       "resources/HwpxConverterSetup.exe": "HwpxConverterSetup.exe",
       "resources/node.exe": "node.exe",
-      "resources/kordoc/**/*": "kordoc/",
+      "resources/kordoc": "kordoc",
       "icons/tray-icon.png": "icons/tray-icon.png"
     },
     "windows": {

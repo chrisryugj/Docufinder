@@ -851,30 +851,7 @@ pub fn get_pending_vector_file_ids(conn: &Connection) -> Result<Vec<i64>> {
     results.collect()
 }
 
-// ==================== 자동완성 (v2.3) ====================
-
-/// fts5vocab에서 prefix 매칭 용어 조회
-pub fn get_vocab_suggestions(
-    conn: &Connection,
-    prefix: &str,
-    limit: usize,
-) -> Result<Vec<(String, i64)>> {
-    let prefix_lower = prefix.to_lowercase();
-    let mut stmt = conn.prepare(
-        "SELECT term, doc FROM chunks_fts_vocab
-         WHERE term >= ?1 AND term < ?2
-         ORDER BY doc DESC
-         LIMIT ?3",
-    )?;
-
-    // prefix 범위 검색: 'abc' <= term < 'abc\u{10FFFF}'
-    let upper = format!("{}\u{10FFFF}", prefix_lower);
-    let rows = stmt.query_map(params![prefix_lower, upper, limit as i64], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    })?;
-
-    rows.collect()
-}
+// ==================== 검색어 히스토리 (사이드바 "최근 검색") ====================
 
 /// 검색어 저장/빈도 증가 (최대 500개 유지)
 pub fn upsert_search_query(conn: &Connection, query: &str) -> Result<()> {
@@ -899,27 +876,6 @@ pub fn upsert_search_query(conn: &Connection, query: &str) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// 최근/빈출 검색어 prefix 매칭 조회
-pub fn get_search_query_suggestions(
-    conn: &Connection,
-    prefix: &str,
-    limit: usize,
-) -> Result<Vec<(String, i64)>> {
-    let pattern = format!("{}%", escape_like_pattern(prefix));
-    let mut stmt = conn.prepare(
-        "SELECT query, frequency FROM search_queries
-         WHERE query LIKE ?1 ESCAPE '\\'
-         ORDER BY frequency DESC, last_searched_at DESC
-         LIMIT ?2",
-    )?;
-
-    let rows = stmt.query_map(params![pattern, limit as i64], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-    })?;
-
-    rows.collect()
 }
 
 // ==================== 통계 대시보드 (v2.3) ====================
