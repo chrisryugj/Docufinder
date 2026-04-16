@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ask, open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../../utils/invokeWithTimeout";
 import { Button } from "../../ui/Button";
 import { Dropdown } from "../../ui/Dropdown";
@@ -14,9 +15,27 @@ interface SystemTabProps extends TabProps {
   onAutoIndexAllDrives?: () => Promise<void>;
 }
 
+const CLEAR_STEP_LABELS: Record<string, string> = {
+  "stopping-watchers": "파일 감시 중지 중...",
+  "cancelling-indexing": "인덱싱 취소 중...",
+  "clearing-vectors": "벡터 데이터 삭제 중...",
+  "clearing-database": "데이터베이스 초기화 중...",
+  "completed": "완료!",
+};
+
 export function SystemTab({ settings, onChange, setError, onClose, onClearData, onAutoIndexAllDrives }: SystemTabProps) {
   const [isAutoIndexing, setIsAutoIndexing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [clearStep, setClearStep] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isClearing) return;
+    let unlisten: (() => void) | null = null;
+    listen<string>("clear-data-progress", (event) => {
+      setClearStep(event.payload);
+    }).then((fn) => { unlisten = fn; });
+    return () => { unlisten?.(); setClearStep(null); };
+  }, [isClearing]);
 
   return (
     <div className="space-y-3">
@@ -175,7 +194,13 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
       <div className="flex items-center justify-between">
         <div>
           <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>모든 데이터 초기화</label>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>문서·벡터·폴더 전체 삭제 (원본 파일 무관)</p>
+          {isClearing && clearStep ? (
+            <p className="text-xs mt-0.5 animate-pulse" style={{ color: "var(--color-accent)" }}>
+              {CLEAR_STEP_LABELS[clearStep] ?? clearStep}
+            </p>
+          ) : (
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>문서·벡터·폴더 전체 삭제 (원본 파일 무관)</p>
+          )}
         </div>
         <Button
           variant="danger"

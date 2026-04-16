@@ -352,36 +352,39 @@ impl IndexService {
             .map_err(|e| AppError::Internal(e.to_string()))
     }
 
-    /// 모든 데이터 클리어 (벡터 + DB)
+    /// 모든 데이터 클리어 (벡터 + DB) — 한 번에 실행
     pub fn clear_all(&self) -> AppResult<()> {
-        // 1. 벡터 워커 중지 + 완전 종료 대기 (레이스 컨디션 방지)
+        self.stop_vector_worker();
+        self.clear_vector_index();
+        self.clear_database()?;
+        Ok(())
+    }
+
+    /// 벡터 워커 중지 + 완전 종료 대기
+    pub fn stop_vector_worker(&self) {
         if let Ok(mut worker) = self.vector_worker.write() {
             worker.cancel();
             worker.join(); // embed_batch 완료까지 대기
         }
+    }
 
-        // 2. 벡터 인덱스 클리어
+    /// 벡터 인덱스 클리어
+    pub fn clear_vector_index(&self) {
         if let Some(vi) = self.vector_index.as_ref() {
             vi.clear();
             let _ = vi.save();
             tracing::info!("Vector index cleared");
         }
+    }
 
-        // 3. DB 클리어
+    /// DB 초기화 (DROP + re-CREATE, DELETE 대비 수백 배 빠름)
+    pub fn clear_database(&self) -> AppResult<()> {
         let conn = self.get_connection()?;
-        db::clear_all_data(&conn).map_err(|e| AppError::Internal(e.to_string()))?;
+        db::clear_all_data(&conn, &self.db_path).map_err(|e| AppError::Internal(e.to_string()))?;
         tracing::info!("Database cleared");
-
-        // 4. VACUUM - 삭제된 데이터의 디스크 공간 회수
-        // VACUUM은 트랜잭션 밖에서 실행해야 하므로 clear_all_data 완료 후 별도 실행
-        if let Err(e) = conn.execute_batch("VACUUM") {
-            tracing::warn!("VACUUM failed (non-critical): {}", e);
-        } else {
-            tracing::info!("Database vacuumed successfully");
-        }
-
         Ok(())
     }
+
 
     // ============================================
     // Private Helpers

@@ -2,12 +2,22 @@
 
 use super::*;
 
-/// 모든 데이터 초기화
+/// 모든 데이터 초기화 (단계별 진행상황 이벤트 emit)
 #[tauri::command]
-pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
+pub async fn clear_all_data(
+    app: AppHandle,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
+    use tauri::Emitter;
+
+    let emit_step = |step: &str| {
+        let _ = app.emit("clear-data-progress", step);
+    };
+
     tracing::info!("Clearing all data...");
 
     // 1. 파일 감시 모두 중지
+    emit_step("stopping-watchers");
     {
         let container = state.read()?;
         if let Ok(wm) = container.get_watch_manager() {
@@ -19,6 +29,7 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
     }
 
     // 2. 인덱싱 취소 + 벡터 인덱싱 취소 + 워커 정지 대기
+    emit_step("cancelling-indexing");
     {
         let container = state.read()?;
         let service = container.index_service();
@@ -34,20 +45,31 @@ pub async fn clear_all_data(state: State<'_, RwLock<AppContainer>>) -> ApiResult
         }
     }
 
-    // 잠시 대기 (워커들이 정지될 시간 확보) - 최대 2초
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // 3. 모든 데이터 클리어
-    let (service, filename_cache) = {
+    // 3. 벡터 워커 종료 대기 + 인덱스 클리어
+    emit_step("clearing-vectors");
+    {
         let container = state.read()?;
-        (container.index_service(), container.get_filename_cache())
-    };
-    let result = service.clear_all().map_err(ApiError::from);
+        let service = container.index_service();
+        service.stop_vector_worker();
+        service.clear_vector_index();
+    }
 
-    filename_cache.clear();
-    tracing::info!("FilenameCache cleared");
+    // 4. DB DROP + 재생성 (DELETE 대비 수백 배 빠름, VACUUM 불필요)
+    emit_step("clearing-database");
+    {
+        let container = state.read()?;
+        container.index_service().clear_database().map_err(ApiError::from)?;
+    }
 
-    result
+    // 5. 파일명 캐시 클리어
+    {
+        let container = state.read()?;
+        container.get_filename_cache().clear();
+    }
+    tracing::info!("All data cleared");
+
+    emit_step("completed");
+    Ok(())
 }
 
 // ============================================
