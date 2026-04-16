@@ -329,6 +329,14 @@ fn kst_to_utc(kst: &chrono::FixedOffset, dt: chrono::NaiveDateTime) -> i64 {
         .unwrap_or(0)
 }
 
+/// 파일명 필터 적용 (파일명에 지정 텍스트 포함 여부, case-insensitive)
+pub fn smart_apply_filename_filter(r: &SearchResult, filename: &Option<String>) -> bool {
+    let Some(filter) = filename else { return true };
+    let name_lower = r.file_name.to_lowercase();
+    let filter_lower = filter.to_lowercase();
+    name_lower.contains(&filter_lower)
+}
+
 /// 파일 타입 필터 적용
 pub fn smart_apply_file_type_filter(r: &SearchResult, ft: &Option<String>) -> bool {
     let Some(ft) = ft else { return true };

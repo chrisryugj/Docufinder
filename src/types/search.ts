@@ -164,6 +164,7 @@ export interface ParsedQueryInfo {
   exclude_keywords: string[];
   date_filter: { type: string; value?: number } | null;
   file_type: string | null;
+  filename_filter: string | null;
   original_query: string;
   parse_log: string[];
 }

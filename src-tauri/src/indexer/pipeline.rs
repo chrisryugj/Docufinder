@@ -49,6 +49,16 @@ pub(crate) const TRANSACTION_BATCH_SIZE: usize = 200;
 /// 에러 벡터 최대 엔트리 수 (메모리 bloat 방지)
 pub(crate) const MAX_INDEXING_ERRORS: usize = 200;
 
+/// `\\?\` prefix 제거 + display()로 깔끔한 경로 출력
+fn clean_path_display(path: &Path) -> String {
+    clean_path_str(&path.to_string_lossy())
+}
+
+/// 문자열 경로에서 `\\?\` prefix 제거
+fn clean_path_str(path: &str) -> String {
+    path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+}
+
 /// 파싱 결과 (스트리밍 파이프라인용)
 pub(crate) enum ParseResult {
     Success {
@@ -419,7 +429,7 @@ fn index_folder_fts_impl(
                                 Err(e) => {
                                     failed += 1;
                                     if errors.len() < MAX_INDEXING_ERRORS {
-                                        errors.push(format!("{:?}: {}", path, e));
+                                        errors.push(format!("{}\t{}", clean_path_display(&path), e));
                                     } else {
                                         suppressed_errors += 1;
                                     }
@@ -432,7 +442,7 @@ fn index_folder_fts_impl(
                             }
                             failed += 1;
                             if errors.len() < MAX_INDEXING_ERRORS {
-                                errors.push(format!("{:?}: {}", path, error));
+                                errors.push(format!("{}\t{}", clean_path_display(&path), error));
                             } else {
                                 suppressed_errors += 1;
                             }
@@ -692,7 +702,7 @@ pub fn scan_metadata_only(
             Ok(m) => m,
             Err(e) => {
                 if errors.len() < MAX_INDEXING_ERRORS {
-                    errors.push(format!("{:?}: {}", path, e));
+                    errors.push(format!("{}\t{}", clean_path_display(&path), e));
                 } else {
                     suppressed_errors += 1;
                 }
@@ -721,7 +731,7 @@ pub fn scan_metadata_only(
             db::insert_file_metadata_only(conn, &path_str, file_name, &file_type, size, modified_at)
         {
             if errors.len() < MAX_INDEXING_ERRORS {
-                errors.push(format!("{}: {}", path_str, e));
+                errors.push(format!("{}\t{}", clean_path_str(&path_str), e));
             } else {
                 suppressed_errors += 1;
             }

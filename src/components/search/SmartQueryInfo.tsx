@@ -11,6 +11,7 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
   const hasFilters =
     parsed.date_filter !== null ||
     parsed.file_type !== null ||
+    parsed.filename_filter !== null ||
     parsed.exclude_keywords.length > 0;
 
   if (!hasFilters) return null;
@@ -31,6 +32,13 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
     chips.push({
       label: dateLabels[parsed.date_filter.type] || parsed.date_filter.type,
       icon: "📅",
+    });
+  }
+
+  if (parsed.filename_filter) {
+    chips.push({
+      label: `파일명: ${parsed.filename_filter}`,
+      icon: "🔤",
     });
   }
 

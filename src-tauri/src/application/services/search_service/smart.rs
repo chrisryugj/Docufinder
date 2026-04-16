@@ -105,6 +105,7 @@ impl SearchService {
 
         let has_filters = parsed.date_filter.is_some()
             || parsed.file_type.is_some()
+            || parsed.filename_filter.is_some()
             || !parsed.exclude_keywords.is_empty();
 
         if parsed.keywords.trim().is_empty() && !has_filters {
@@ -122,14 +123,33 @@ impl SearchService {
             max_results * 3
         };
 
-        let base = if parsed.keywords.trim().is_empty() {
-            self.browse_recent_files(over_fetch, folder_scope).await?
-        } else if self.embedder.is_some() && self.vector_index.is_some() {
-            self.search_hybrid(&parsed.keywords, over_fetch, folder_scope)
-                .await?
+        // base 결과 생성 전략:
+        // 1. filename_filter만 있고 keywords 비어있음 → search_filename (전체 인덱스 대상)
+        // 2. keywords 있음 → hybrid/keyword 검색
+        // 3. 둘 다 비어있고 다른 필터만 → browse_recent_files
+        let has_keywords = !parsed.keywords.trim().is_empty();
+        let has_filename = parsed.filename_filter.is_some();
+
+        let base = if has_keywords {
+            // 키워드 우선: 내용 검색 후 filename_filter는 후처리로 적용
+            if self.embedder.is_some() && self.vector_index.is_some() {
+                self.search_hybrid(&parsed.keywords, over_fetch, folder_scope)
+                    .await?
+            } else {
+                self.search_keyword(&parsed.keywords, over_fetch, folder_scope)
+                    .await?
+            }
+        } else if has_filename {
+            // 키워드 없고 파일명 필터만 → 파일명 검색 엔진 활용 (전체 인덱스 대상)
+            self.search_filename(
+                parsed.filename_filter.as_deref().unwrap_or(""),
+                over_fetch,
+                folder_scope,
+            )
+            .await?
         } else {
-            self.search_keyword(&parsed.keywords, over_fetch, folder_scope)
-                .await?
+            // 키워드도 파일명도 없고 다른 필터만 → 최근 파일 브라우즈
+            self.browse_recent_files(over_fetch, folder_scope).await?
         };
 
         let now = chrono::Utc::now().timestamp();
@@ -138,6 +158,7 @@ impl SearchService {
             .into_iter()
             .filter(|r| smart_apply_date_filter(r, &parsed.date_filter, now))
             .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+            .filter(|r| smart_apply_filename_filter(r, &parsed.filename_filter))
             .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
             .take(max_results)
             .collect();

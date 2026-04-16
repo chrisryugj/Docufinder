@@ -331,8 +331,22 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         )));
     }
 
-    String::from_utf8(stdout_buf)
-        .map_err(|_| ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string()))
+    let output = String::from_utf8(stdout_buf)
+        .map_err(|_| ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string()))?;
+
+    // pdfjs-dist 등 외부 라이브러리가 stdout에 경고를 출력하는 경우
+    // JSON 시작점을 찾아서 앞의 garbage를 제거 (예: "Warning: TT: ...")
+    let json_start = output.find('{').ok_or_else(|| {
+        ParseError::ParseError("kordoc 출력에 JSON이 없습니다".to_string())
+    })?;
+    if json_start > 0 {
+        debug!(
+            "kordoc stdout에 JSON 앞 {}바이트 garbage 제거: {:?}",
+            json_start,
+            &output[..json_start.min(200)]
+        );
+    }
+    Ok(output[json_start..].to_string())
 }
 
 /// ISO 8601 → Unix timestamp (chrono 활용)

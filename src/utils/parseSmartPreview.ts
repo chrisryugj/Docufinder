@@ -7,6 +7,7 @@ export interface SmartPreview {
   keywords: string;
   dateLabel: string | null;
   fileType: string | null;
+  filenameFilter: string | null;
   excludeKeywords: string[];
 }
 
@@ -32,6 +33,11 @@ const FILE_TYPE_PATTERNS: [RegExp, string][] = [
   [/파워포인트|피피티|pptx?(\s*파일)?/i, "PPT"],
 ];
 
+const FILENAME_PATTERNS: [RegExp, number][] = [
+  [/(제목|이름|파일명|파일\s*이름)(이|에)\s+(\S+?)(인|포함된|들어간|포함|있는)/, 3],
+  [/(제목|이름|파일명|파일\s*이름)(에)\s+(\S+)\s+(포함된|들어간|포함|있는)/, 3],
+];
+
 const EXCLUDE_PATTERN = /(\S+)\s*(아닌|빼고|제외|말고|없는|않은)/g;
 
 const INTENT_SUFFIXES = /\s*(찾아줘|보여줘|검색해줘?|알려줘|있어\??|해줘)\s*$/;
@@ -50,6 +56,17 @@ export function parseSmartPreview(query: string): SmartPreview | null {
     excludeKeywords.push(word);
     return "";
   });
+
+  // 파일명 필터 추출
+  let filenameFilter: string | null = null;
+  for (const [pattern, groupIdx] of FILENAME_PATTERNS) {
+    const match = remaining.match(pattern);
+    if (match && match[groupIdx]) {
+      filenameFilter = match[groupIdx];
+      remaining = remaining.replace(match[0], "");
+      break;
+    }
+  }
 
   // 날짜 추출
   let dateLabel: string | null = null;
@@ -77,7 +94,7 @@ export function parseSmartPreview(query: string): SmartPreview | null {
   const keywords = remaining.replace(/\s+/g, " ").trim();
 
   // 아무것도 파싱되지 않았으면 null
-  if (!dateLabel && !fileType && excludeKeywords.length === 0) return null;
+  if (!dateLabel && !fileType && !filenameFilter && excludeKeywords.length === 0) return null;
 
-  return { keywords, dateLabel, fileType, excludeKeywords };
+  return { keywords, dateLabel, fileType, filenameFilter, excludeKeywords };
 }

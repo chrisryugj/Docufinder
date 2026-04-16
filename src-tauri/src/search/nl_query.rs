@@ -16,6 +16,8 @@ pub struct ParsedQuery {
     pub date_filter: Option<DateFilter>,
     /// 파일 타입 필터 ("hwpx", "docx", "pdf" 등)
     pub file_type: Option<String>,
+    /// 파일명 필터 (파일명에 포함되어야 할 텍스트)
+    pub filename_filter: Option<String>,
     /// 파싱 전 원본 쿼리
     pub original_query: String,
     /// 파싱 로그 (UI 표시용)
@@ -72,6 +74,7 @@ impl NlQueryParser {
                 exclude_keywords: vec![],
                 date_filter: None,
                 file_type: None,
+                filename_filter: None,
                 original_query: original,
                 parse_log,
             };
@@ -86,13 +89,16 @@ impl NlQueryParser {
         // 2. 부정어 추출 (날짜/파일타입보다 먼저 — "지난주 빼고" 방지)
         let exclude_keywords = Self::extract_negation(&mut remaining, &mut parse_log);
 
-        // 3. 날짜 추출
+        // 3. 파일명 필터 추출 ("제목이 X인", "이름에 X 포함" 등)
+        let filename_filter = Self::extract_filename_filter(&mut remaining, &mut parse_log);
+
+        // 4. 날짜 추출
         let date_filter = Self::extract_date(&mut remaining, &mut parse_log);
 
-        // 4. 파일타입 추출
+        // 5. 파일타입 추출
         let file_type = Self::extract_file_type(&mut remaining, &mut parse_log);
 
-        // 5. 키워드 추출
+        // 6. 키워드 추출
         let keywords = if let Some(tok) = tokenizer {
             // 형태소 분석 기반: 명사만 추출 → 의문사/조사/어미 자동 제거
             let nouns = tok.extract_nouns(&remaining);
@@ -116,6 +122,7 @@ impl NlQueryParser {
             exclude_keywords,
             date_filter,
             file_type,
+            filename_filter,
             original_query: original,
             parse_log,
         }
@@ -270,6 +277,132 @@ impl NlQueryParser {
         }
 
         excluded
+    }
+
+    /// 파일명 필터 추출: "제목이 X인", "이름에 X 포함", "파일명에 X가 들어간" 등
+    fn extract_filename_filter(
+        remaining: &mut String,
+        parse_log: &mut Vec<String>,
+    ) -> Option<String> {
+        // 파일명 관련 접두 키워드
+        let prefixes: &[&str] = &[
+            "제목이", "제목에", "제목의",
+            "이름이", "이름에", "이름의",
+            "파일명이", "파일명에", "파일명의",
+            "파일이름이", "파일이름에", "파일이름의",
+            "파일 이름이", "파일 이름에", "파일 이름의",
+        ];
+
+        // 접미 패턴 (값 뒤에 붙는 표현) — 긴 것부터 매칭
+        let suffixes: &[&str] = &[
+            "가 포함된", "이 포함된", "가 들어간", "이 들어간",
+            "가 포함", "이 포함", "가 들어간",
+            "포함된", "들어간", "포함",
+            "있는", "인",
+        ];
+
+        let text = remaining.clone();
+        let words: Vec<&str> = text.split_whitespace().collect();
+
+        for prefix in prefixes {
+            // 띄어쓰기 포함 접두사 처리 ("파일 이름이")
+            let prefix_words: Vec<&str> = prefix.split_whitespace().collect();
+            let prefix_word_count = prefix_words.len();
+
+            for start_idx in 0..words.len() {
+                // 접두사가 여러 단어인 경우 (예: "파일 이름이")
+                if start_idx + prefix_word_count > words.len() {
+                    continue;
+                }
+
+                let matches_prefix = prefix_words.iter().enumerate().all(|(j, pw)| {
+                    words[start_idx + j] == *pw
+                });
+
+                if !matches_prefix {
+                    continue;
+                }
+
+                // 접두사 다음 단어가 값
+                let value_start = start_idx + prefix_word_count;
+                if value_start >= words.len() {
+                    continue;
+                }
+
+                // 값 + 접미사 추출 (값은 1~2 단어)
+                // 먼저 1단어 값 + 접미사 시도
+                for value_count in (1..=2).rev() {
+                    if value_start + value_count > words.len() {
+                        continue;
+                    }
+
+                    let value_words = &words[value_start..value_start + value_count];
+                    let after_value_idx = value_start + value_count;
+
+                    // 마지막 값 단어에 접미사가 붙어있는지 확인
+                    let last_val = value_words[value_count - 1];
+                    for suffix in suffixes {
+                        if last_val.ends_with(suffix) {
+                            let clean_val = &last_val[..last_val.len() - suffix.len()];
+                            if clean_val.is_empty() {
+                                continue;
+                            }
+                            let mut val_parts: Vec<&str> = value_words[..value_count - 1].to_vec();
+                            val_parts.push(clean_val);
+                            let value = val_parts.join(" ");
+
+                            // remaining에서 매칭된 부분 제거
+                            let mut new_words: Vec<&str> = Vec::new();
+                            for (i, w) in words.iter().enumerate() {
+                                if i < start_idx || i >= after_value_idx {
+                                    new_words.push(w);
+                                }
+                            }
+                            *remaining = new_words.join(" ");
+                            parse_log.push(format!("파일명: {}", value));
+                            return Some(value);
+                        }
+                    }
+
+                    // 접미사가 다음 단어에 별도로 있는지 확인
+                    if after_value_idx < words.len() {
+                        let next_word = words[after_value_idx];
+                        let mut suffix_word_count = 0;
+
+                        // 2단어 접미사 ("가 포함된") 먼저 확인
+                        if after_value_idx + 1 < words.len() {
+                            let two_word = format!("{} {}", next_word, words[after_value_idx + 1]);
+                            if suffixes.contains(&two_word.as_str()) {
+                                suffix_word_count = 2;
+                            }
+                        }
+                        // 1단어 접미사
+                        if suffix_word_count == 0 && suffixes.contains(&next_word) {
+                            suffix_word_count = 1;
+                        }
+
+                        if suffix_word_count > 0 {
+                            let value = value_words.join(" ");
+                            let remove_end = after_value_idx + suffix_word_count;
+                            let mut new_words: Vec<&str> = Vec::new();
+                            for (i, w) in words.iter().enumerate() {
+                                if i < start_idx || i >= remove_end {
+                                    new_words.push(w);
+                                }
+                            }
+                            *remaining = new_words.join(" ");
+                            parse_log.push(format!("파일명: {}", value));
+                            return Some(value);
+                        }
+                    }
+
+                    // 접미사 필수 — "제목에 관한 보고서" 등 오탐 방지
+                    // 접미사 없으면 파일명 필터로 인식하지 않음
+                }
+            }
+        }
+
+        None
     }
 
     /// 날짜 추출 (확실한 패턴만)
@@ -1192,6 +1325,168 @@ mod tests {
             if count == 0 {
                 println!("   ⚠ 0건 (DB에 관련 문서 없을 수 있음)");
             }
+        }
+    }
+
+    // === 파일명 필터 추출 (50개 종합 테스트) ===
+
+    /// 파일명 필터 + 기존 기능 50개 종합 테스트
+    #[test]
+    fn test_comprehensive_smart_queries() {
+        struct Q {
+            input: &'static str,
+            keywords: &'static str,
+            file_type: Option<&'static str>,
+            date: Option<&'static str>,     // 간략 표기
+            filename: Option<&'static str>,  // filename_filter
+            exclude: &'static [&'static str],
+        }
+
+        let cases: Vec<Q> = vec![
+            // ── A. 파일명 필터 (should trigger) ──
+            Q { input: "제목이 2025인 pdf", keywords: "", file_type: Some("pdf"), date: None, filename: Some("2025"), exclude: &[] },
+            Q { input: "제목이 예산인 한글 문서", keywords: "", file_type: Some("hwpx"), date: None, filename: Some("예산"), exclude: &[] },
+            Q { input: "이름이 계약서인 파일 찾아줘", keywords: "파일", file_type: None, date: None, filename: Some("계약서"), exclude: &[] },
+            Q { input: "파일명이 보고서인 문서", keywords: "문서", file_type: None, date: None, filename: Some("보고서"), exclude: &[] },
+            Q { input: "제목에 인사 포함된 엑셀", keywords: "", file_type: Some("xlsx"), date: None, filename: Some("인사"), exclude: &[] },
+            Q { input: "이름에 회의록 들어간 한글파일", keywords: "", file_type: Some("hwpx"), date: None, filename: Some("회의록"), exclude: &[] },
+            Q { input: "파일명에 2024 포함 pdf", keywords: "", file_type: Some("pdf"), date: None, filename: Some("2024"), exclude: &[] },
+            Q { input: "제목이 결산인 문서 보여줘", keywords: "문서", file_type: None, date: None, filename: Some("결산"), exclude: &[] },
+            Q { input: "제목에 출장 포함된 파일", keywords: "파일", file_type: None, date: None, filename: Some("출장"), exclude: &[] },
+            Q { input: "이름이 매출인 엑셀파일", keywords: "", file_type: Some("xlsx"), date: None, filename: Some("매출"), exclude: &[] },
+
+            // ── B. 파일명 필터가 트리거되면 안 되는 케이스 ──
+            Q { input: "제목 작성법", keywords: "제목 작성법", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "파일명 검색", keywords: "파일명 검색", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "이름표 만들기", keywords: "이름표 만들기", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "제목에 관한 보고서", keywords: "제목에 관한 보고서", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "이름 변경 방법", keywords: "이름 변경 방법", file_type: None, date: None, filename: None, exclude: &[] },
+
+            // ── C. 날짜 + 파일타입 (기존 동작 검증) ──
+            Q { input: "2025년 pdf", keywords: "", file_type: Some("pdf"), date: Some("Year"), filename: None, exclude: &[] },
+            Q { input: "올해 한글 문서", keywords: "", file_type: Some("hwpx"), date: Some("ThisYear"), filename: None, exclude: &[] },
+            Q { input: "지난주 워드 파일", keywords: "", file_type: Some("docx"), date: Some("LastWeek"), filename: None, exclude: &[] },
+            Q { input: "작년 엑셀 보고서", keywords: "보고서", file_type: Some("xlsx"), date: Some("LastYear"), filename: None, exclude: &[] },
+            Q { input: "이번달 pdf 매출", keywords: "매출", file_type: Some("pdf"), date: Some("ThisMonth"), filename: None, exclude: &[] },
+            Q { input: "최근 7일 계약서", keywords: "계약서", file_type: None, date: Some("RecentDays"), filename: None, exclude: &[] },
+            Q { input: "3월 보고서", keywords: "보고서", file_type: None, date: Some("Month"), filename: None, exclude: &[] },
+            Q { input: "24년 인사 자료", keywords: "인사 자료", file_type: None, date: Some("Year"), filename: None, exclude: &[] },
+
+            // ── D. 부정어 ──
+            Q { input: "계약서 부동산 빼고", keywords: "계약서", file_type: None, date: None, filename: None, exclude: &["부동산"] },
+            Q { input: "세금 제외 올해 보고서", keywords: "보고서", file_type: None, date: Some("ThisYear"), filename: None, exclude: &["세금"] },
+            Q { input: "예산 부동산 빼고 세금 제외", keywords: "예산", file_type: None, date: None, filename: None, exclude: &["부동산", "세금"] },
+
+            // ── E. Intent 제거 ──
+            Q { input: "인사팀 자료 찾아줘", keywords: "인사팀 자료", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "회의록 보여줘", keywords: "회의록", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "예산 보고서 있을까?", keywords: "예산 보고서", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "급여 명세서 검색해줘", keywords: "급여 명세서", file_type: None, date: None, filename: None, exclude: &[] },
+
+            // ── F. 복합 쿼리 (파일명 + 날짜 + 파일타입) ──
+            Q { input: "제목이 예산인 올해 pdf", keywords: "", file_type: Some("pdf"), date: Some("ThisYear"), filename: Some("예산"), exclude: &[] },
+            Q { input: "이름에 계약 포함된 작년 한글 문서", keywords: "", file_type: Some("hwpx"), date: Some("LastYear"), filename: Some("계약"), exclude: &[] },
+            Q { input: "제목이 회의록인 이번주 파일 찾아줘", keywords: "파일", file_type: None, date: Some("ThisWeek"), filename: Some("회의록"), exclude: &[] },
+
+            // ── G. 다양한 파일타입 ──
+            Q { input: "텍스트 파일 로그", keywords: "로그", file_type: Some("txt"), date: None, filename: None, exclude: &[] },
+            Q { input: "pptx 발표 자료", keywords: "발표 자료", file_type: Some("pptx"), date: None, filename: None, exclude: &[] },
+            Q { input: "파워포인트 프레젠테이션", keywords: "프레젠테이션", file_type: Some("pptx"), date: None, filename: None, exclude: &[] },
+            Q { input: "피디에프 스캔 문서", keywords: "스캔 문서", file_type: Some("pdf"), date: None, filename: None, exclude: &[] },
+
+            // ── H. 단순 키워드 (필터 없음) ──
+            Q { input: "고용보험료 부과", keywords: "고용보험료 부과", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "결재문서", keywords: "결재문서", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "인사발령 통보", keywords: "인사발령 통보", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "예산안", keywords: "예산안", file_type: None, date: None, filename: None, exclude: &[] },
+
+            // ── I. 엣지 케이스 ──
+            Q { input: "찾아줘", keywords: "", file_type: None, date: None, filename: None, exclude: &[] },
+            Q { input: "pdf만 보여줘", keywords: "", file_type: Some("pdf"), date: None, filename: None, exclude: &[] },
+            Q { input: "올해 한글 문서 세금 빼고 찾아줘", keywords: "", file_type: Some("hwpx"), date: Some("ThisYear"), filename: None, exclude: &["세금"] },
+            Q { input: "제목이 2025인 올해 pdf 부동산 빼고 찾아줘", keywords: "", file_type: Some("pdf"), date: Some("ThisYear"), filename: Some("2025"), exclude: &["부동산"] },
+
+            // ── J. 파일타입 변형 ──
+            Q { input: "hwp 예산", keywords: "예산", file_type: Some("hwpx"), date: None, filename: None, exclude: &[] },
+            Q { input: "한글로 된 계약서", keywords: "계약서", file_type: Some("hwpx"), date: None, filename: None, exclude: &[] },
+            Q { input: "엑셀 파일 중에서 매출", keywords: "매출", file_type: Some("xlsx"), date: None, filename: None, exclude: &[] },
+            Q { input: "pdf로 된 계약서", keywords: "계약서", file_type: Some("pdf"), date: None, filename: None, exclude: &[] },
+            Q { input: "최근 30일 계약서 PDF만", keywords: "계약서", file_type: Some("pdf"), date: Some("RecentDays"), filename: None, exclude: &[] },
+            Q { input: "2024년 인사팀 워드 문서", keywords: "인사팀", file_type: Some("docx"), date: Some("Year"), filename: None, exclude: &[] },
+        ];
+
+        for (i, q) in cases.iter().enumerate() {
+            let result = NlQueryParser::parse(q.input);
+            println!(
+                "[{:02}] '{}' -> kw='{}', ft={:?}, date={:?}, fn={:?}, ex={:?}",
+                i, q.input, result.keywords, result.file_type, result.date_filter,
+                result.filename_filter, result.exclude_keywords
+            );
+
+            // keywords
+            assert_eq!(
+                result.keywords, q.keywords,
+                "[{}] '{}': keywords expected='{}', got='{}'",
+                i, q.input, q.keywords, result.keywords
+            );
+
+            // file_type
+            assert_eq!(
+                result.file_type.as_deref(), q.file_type,
+                "[{}] '{}': file_type expected={:?}, got={:?}",
+                i, q.input, q.file_type, result.file_type
+            );
+
+            // date_filter (간략 비교: type 이름만)
+            match q.date {
+                Some(expected_type) => {
+                    assert!(
+                        result.date_filter.is_some(),
+                        "[{}] '{}': date expected Some({}), got None",
+                        i, q.input, expected_type
+                    );
+                    let actual_type = match &result.date_filter {
+                        Some(DateFilter::Today) => "Today",
+                        Some(DateFilter::ThisWeek) => "ThisWeek",
+                        Some(DateFilter::LastWeek) => "LastWeek",
+                        Some(DateFilter::ThisMonth) => "ThisMonth",
+                        Some(DateFilter::LastMonth) => "LastMonth",
+                        Some(DateFilter::ThisYear) => "ThisYear",
+                        Some(DateFilter::LastYear) => "LastYear",
+                        Some(DateFilter::Year(_)) => "Year",
+                        Some(DateFilter::Month(_)) => "Month",
+                        Some(DateFilter::RecentDays(_)) => "RecentDays",
+                        None => "None",
+                    };
+                    assert_eq!(
+                        actual_type, expected_type,
+                        "[{}] '{}': date type expected='{}', got='{}'",
+                        i, q.input, expected_type, actual_type
+                    );
+                }
+                None => {
+                    assert!(
+                        result.date_filter.is_none(),
+                        "[{}] '{}': date expected None, got {:?}",
+                        i, q.input, result.date_filter
+                    );
+                }
+            }
+
+            // filename_filter
+            assert_eq!(
+                result.filename_filter.as_deref(), q.filename,
+                "[{}] '{}': filename expected={:?}, got={:?}",
+                i, q.input, q.filename, result.filename_filter
+            );
+
+            // exclude_keywords
+            let expected_exclude: Vec<String> = q.exclude.iter().map(|s| s.to_string()).collect();
+            assert_eq!(
+                result.exclude_keywords, expected_exclude,
+                "[{}] '{}': exclude expected={:?}, got={:?}",
+                i, q.input, q.exclude, result.exclude_keywords
+            );
         }
     }
 }
