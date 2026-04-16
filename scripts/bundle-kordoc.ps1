@@ -19,6 +19,7 @@ if (-not $nodeExe) {
     exit 1
 }
 Write-Host "Node.js: $nodeExe"
+if (-not (Test-Path $OutputDir)) { New-Item $OutputDir -ItemType Directory -Force | Out-Null }
 Copy-Item $nodeExe "$OutputDir\node.exe" -Force
 Write-Host "  -> node.exe copied"
 
