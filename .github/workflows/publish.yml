@@ -51,21 +51,24 @@ jobs:
           npm ci
           npm run build
           if (-not (Test-Path "dist/cli.js")) {
-            Write-Error "kordoc 빌드 산출물(dist/cli.js)이 없습니다"
+            Write-Error "kordoc build output (dist/cli.js) not found"
             exit 1
           }
 
       - name: Bundle kordoc into Tauri resources
         shell: pwsh
         run: |
-          powershell -ExecutionPolicy Bypass -File scripts/bundle-kordoc.ps1 `
-            -KordocDir "${{ github.workspace }}/kordoc-src"
+          & scripts/bundle-kordoc.ps1 -KordocDir "${{ github.workspace }}/kordoc-src"
 
       - name: Download ONNX models
-        run: pnpm run download-model
+        shell: pwsh
+        run: |
+          & scripts/download-model.ps1
 
       - name: Download VC++ Redistributable
-        run: pnpm run download-vcredist
+        shell: pwsh
+        run: |
+          & scripts/download-vcredist.ps1
 
       - uses: tauri-apps/tauri-action@v0
         env:
