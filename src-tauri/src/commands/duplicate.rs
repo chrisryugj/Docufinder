@@ -5,6 +5,14 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use tauri::State;
 
+/// 폴더 경로를 Unix/Windows 두 가지 LIKE 패턴으로 변환 (와일드카드 이스케이프 포함)
+fn folder_like_patterns(folder: &str) -> (String, String) {
+    let trimmed = folder.trim_end_matches(['/', '\\']);
+    let unix = db::escape_like_pattern(&trimmed.replace('\\', "/"));
+    let win = db::escape_like_pattern(&trimmed.replace('/', "\\"));
+    (format!("{}/%", unix), format!("{}\\\\%", win))
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct DuplicateGroup {
     /// 그룹 내 파일 경로들
@@ -79,10 +87,13 @@ pub async fn find_duplicates(
         let conn =
             db::get_connection(&db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
         let (sql, params): (&str, Vec<Box<dyn rusqlite::types::ToSql>>) = match &folder_path {
-            Some(fp) => (
-                "SELECT COUNT(*) FROM files WHERE path LIKE ?",
-                vec![Box::new(format!("{}%", fp.replace('\\', "/")))],
-            ),
+            Some(fp) => {
+                let (unix, win) = folder_like_patterns(fp);
+                (
+                    "SELECT COUNT(*) FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
+                    vec![Box::new(unix), Box::new(win)],
+                )
+            }
             None => ("SELECT COUNT(*) FROM files", vec![]),
         };
         let count: i64 = conn
@@ -111,13 +122,15 @@ fn find_exact_duplicates(
     // size가 같은 파일 그룹 조회 (최소 2개 이상, 0바이트 제외)
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
         Some(fp) => {
-            let like = format!("{}%", fp.replace('\\', "/"));
+            let (unix, win) = folder_like_patterns(fp);
             (
                 "SELECT path, name, file_type, size, modified_at FROM files
-                 WHERE size > 0 AND path LIKE ?
-                 AND size IN (SELECT size FROM files WHERE size > 0 AND path LIKE ? GROUP BY size HAVING COUNT(*) >= 2)
+                 WHERE size > 0 AND (path LIKE ?1 ESCAPE '\\' OR path LIKE ?2 ESCAPE '\\')
+                 AND size IN (SELECT size FROM files WHERE size > 0
+                              AND (path LIKE ?1 ESCAPE '\\' OR path LIKE ?2 ESCAPE '\\')
+                              GROUP BY size HAVING COUNT(*) >= 2)
                  ORDER BY size DESC, path".to_string(),
-                vec![Box::new(like.clone()) as Box<dyn rusqlite::types::ToSql>, Box::new(like)],
+                vec![Box::new(unix) as Box<dyn rusqlite::types::ToSql>, Box::new(win)],
             )
         }
         None => (
@@ -215,15 +228,16 @@ fn find_similar_duplicates(
     // 벡터 인덱싱된 파일들의 대표 청크 (chunk_index=0) 조회
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match folder_path {
         Some(fp) => {
-            let like = format!("{}%", fp.replace('\\', "/"));
+            let (unix, win) = folder_like_patterns(fp);
             (
                 "SELECT f.path, f.name, f.file_type, f.size, f.modified_at, c.id, c.content
                  FROM files f
                  JOIN chunks c ON c.file_id = f.id AND c.chunk_index = 0
-                 WHERE f.vector_indexed_at IS NOT NULL AND f.path LIKE ?
+                 WHERE f.vector_indexed_at IS NOT NULL
+                   AND (f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\')
                  ORDER BY f.path"
                     .to_string(),
-                vec![Box::new(like) as Box<dyn rusqlite::types::ToSql>],
+                vec![Box::new(unix) as Box<dyn rusqlite::types::ToSql>, Box::new(win)],
             )
         }
         None => (

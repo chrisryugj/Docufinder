@@ -191,8 +191,20 @@ fn which_node() -> Option<PathBuf> {
         }
     }
 
-    // 2. 시스템 PATH
-    which::which("node").ok()
+    // 2. 시스템 PATH (개발 모드 전용)
+    // 프로덕션에서는 PATH hijacking(CWE-426) 방지를 위해 번들 node.exe만 허용.
+    #[cfg(debug_assertions)]
+    {
+        which::which("node").ok()
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        tracing::warn!(
+            "Bundled node.exe not found next to executable — \
+             HWP/HWPX parsing disabled. Reinstall the application."
+        );
+        None
+    }
 }
 
 /// 파일 크기 검증 (MAX_FILE_SIZE 초과 시 거부)

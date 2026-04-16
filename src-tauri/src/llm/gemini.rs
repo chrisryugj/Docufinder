@@ -80,6 +80,7 @@ impl GeminiClient {
         })
     }
 
+    /// ureq 에러 → 사용자용 메시지 (API 키/URL 누출 방지)
     fn map_http_error(e: &ureq::Error) -> String {
         if let ureq::Error::StatusCode(status) = e {
             match *status {
@@ -90,19 +91,20 @@ impl GeminiClient {
                 _ => format!("API 요청 실패 (HTTP {})", status),
             }
         } else {
-            format!("API 연결 실패: {}", e)
+            "API 연결 실패 (네트워크 상태를 확인해주세요)".to_string()
         }
     }
 }
 
 impl LlmProvider for GeminiClient {
     fn generate(&self, prompt: &str, config: &GenerateConfig) -> Result<LlmResponse, String> {
-        let url = format!("{}:generateContent?key={}", self.base_url(), self.api_key);
+        let url = format!("{}:generateContent", self.base_url());
         let agent = self.build_agent();
         let body = Self::build_request_body(prompt, config);
 
         let mut response = agent
             .post(&url)
+            .header("x-goog-api-key", &self.api_key)
             .send_json(&body)
             .map_err(|e| Self::map_http_error(&e))?;
 
@@ -121,16 +123,13 @@ impl LlmProvider for GeminiClient {
         on_token: &dyn Fn(&str),
         cancel: &AtomicBool,
     ) -> Result<LlmResponse, String> {
-        let url = format!(
-            "{}:streamGenerateContent?alt=sse&key={}",
-            self.base_url(),
-            self.api_key
-        );
+        let url = format!("{}:streamGenerateContent?alt=sse", self.base_url());
         let agent = self.build_agent();
         let body = Self::build_request_body(prompt, config);
 
         let response = agent
             .post(&url)
+            .header("x-goog-api-key", &self.api_key)
             .send_json(&body)
             .map_err(|e| Self::map_http_error(&e))?;
 

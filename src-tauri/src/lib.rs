@@ -346,8 +346,19 @@ pub fn run() {
             .map(|l| format!("{}:{}", l.file(), l.line()))
             .unwrap_or_else(|| "unknown".to_string());
 
-        // pdf-extract 라이브러리의 알려진 패닉은 catch_unwind로 처리됨 → crash.log 오염 방지
-        if location.contains("pdf-extract") {
+        // 파서 라이브러리의 알려진 패닉은 catch_unwind로 처리됨 → crash.log 오염 방지.
+        // 해당 파일은 에러로 스킵되고 앱은 정상 동작하므로 crash 기록 불필요.
+        const BENIGN_PANIC_SOURCES: &[&str] = &[
+            "pdf-extract",
+            "lopdf",
+            "quick-xml",
+            "calamine",
+            "zip-", // zip-2.x, zip-rs 등
+        ];
+        if BENIGN_PANIC_SOURCES
+            .iter()
+            .any(|src| location.contains(src))
+        {
             return;
         }
 
@@ -781,6 +792,14 @@ pub fn run() {
                         tracing::debug!("Window hidden to tray");
                     } else {
                         tracing::info!("Window closing (close_to_tray=false)");
+                        // 트레이 아이콘이 프로세스를 유지시키므로 명시적 종료 필요
+                        let app = window.app_handle().clone();
+                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(container) = container.read() {
+                                cleanup_vector_resources(&container);
+                            }
+                        }
+                        app.exit(0);
                     }
                 }
                 tauri::WindowEvent::Destroyed => {

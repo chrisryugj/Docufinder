@@ -53,6 +53,7 @@
   --color-text-primary: #1C1917;
   --color-text-secondary: #44403C;
   --color-text-muted: #78716C;
+  --color-text-tertiary: #A8A29E;
   --color-text-inverse: #FAFAF9;
 
   /* Borders — warm stone */
@@ -66,6 +67,8 @@
   --color-accent-active: #017A56;
   --color-accent-subtle: rgba(1, 175, 122, 0.06);
   --color-accent-light: rgba(1, 175, 122, 0.06);
+  --color-accent-border: rgba(1, 175, 122, 0.2);
+  --color-accent-tertiary: rgba(1, 175, 122, 0.4);
   --color-accent-glow: rgba(1, 175, 122, 0.25);
 
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
@@ -85,6 +88,8 @@
   --color-error-hover: #991B1B;
   --color-error-rgb: 220, 38, 38;
   --color-error-bg: rgba(220, 38, 38, 0.1);
+  --color-error-subtle: rgba(220, 38, 38, 0.08);
+  --color-error-border: rgba(220, 38, 38, 0.2);
   --color-info: #0284C7;
   --color-info-bg: rgba(2, 132, 199, 0.1);
   --color-favorite: #FACC15;
@@ -201,6 +206,7 @@
   --color-text-primary: #FAFAF9;
   --color-text-secondary: #D6D3D1;
   --color-text-muted: #A8A29E;
+  --color-text-tertiary: #78716C;
   --color-text-inverse: #1C1917;
 
   /* Borders */
@@ -214,6 +220,8 @@
   --color-accent-active: #01AF7A;
   --color-accent-subtle: rgba(16, 196, 142, 0.10);
   --color-accent-light: rgba(16, 196, 142, 0.10);
+  --color-accent-border: rgba(16, 196, 142, 0.25);
+  --color-accent-tertiary: rgba(16, 196, 142, 0.45);
   --color-accent-glow: rgba(16, 196, 142, 0.25);
 
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
@@ -230,6 +238,8 @@
   --color-error-hover: #B91C1C;
   --color-error-rgb: 248, 113, 113;
   --color-error-bg: rgba(248, 113, 113, 0.1);
+  --color-error-subtle: rgba(248, 113, 113, 0.08);
+  --color-error-border: rgba(248, 113, 113, 0.25);
   --color-info-bg: rgba(56, 189, 248, 0.1);
   --color-favorite: #FDE047;
   --color-favorite-bg: rgba(253, 224, 71, 0.15);

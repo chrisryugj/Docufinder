@@ -12,8 +12,10 @@ use std::sync::Mutex;
 /// (Option<String>, Vec<Connection>): (현재 DB 경로, 풀 커넥션 목록)
 /// DB 경로 변경 시 풀을 drain하고 새 커넥션 생성.
 static CONN_POOL: Mutex<(Option<String>, Vec<Connection>)> = Mutex::new((None, Vec::new()));
-/// 풀 크기: Repository 2개(into_inner 영구 점유) + pipeline/vector_worker/prefetch + 여유
-const MAX_POOL_SIZE: usize = 6;
+/// 풀 크기: Repository 2개(into_inner 영구 점유) + pipeline/vector_worker/prefetch/
+/// background_parser/watch event_loop + 다수 IPC 커맨드 동시 실행을 흡수.
+/// 6은 Repository 2 고정 점유 후 4개만 남아 폭주 상황에서 부족 → 16으로 상향.
+const MAX_POOL_SIZE: usize = 16;
 
 /// 풀에서 관리되는 DB 커넥션 래퍼
 /// Deref<Target=Connection>으로 기존 &Connection API 호환.

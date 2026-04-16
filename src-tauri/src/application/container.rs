@@ -64,6 +64,77 @@ pub struct AppContainer {
 }
 
 impl AppContainer {
+    /// data_root 경로 검증: 심볼릭 링크 거부, 드라이브 루트 거부, 시스템 폴더 거부
+    ///
+    /// 반환:
+    /// - `Some(path)` — 검증 통과한 절대 경로 (canonicalized)
+    /// - `None` — 거부됨 (호출자는 app_data_dir로 fallback)
+    fn validate_data_root(root: &str, app_data_dir: &Path) -> Option<PathBuf> {
+        let raw = PathBuf::from(root);
+        if !raw.is_absolute() {
+            tracing::warn!("data_root must be absolute: {:?}", raw);
+            return None;
+        }
+
+        // 최초 사용 시 디렉토리가 없을 수 있으므로 생성 시도
+        if !raw.exists() && std::fs::create_dir_all(&raw).is_err() {
+            tracing::warn!("data_root create_dir_all failed: {:?}", raw);
+            return None;
+        }
+
+        // canonicalize로 심볼릭 링크/.. 해소
+        let canonical = match raw.canonicalize() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!("data_root canonicalize failed {:?}: {}", raw, e);
+                return None;
+            }
+        };
+
+        // 심볼릭 링크/재파싱 포인트 거부 (raw와 canonical이 다르면 링크를 따라간 것)
+        if let (Ok(raw_meta), Ok(canon_meta)) = (
+            std::fs::symlink_metadata(&raw),
+            std::fs::metadata(&canonical),
+        ) {
+            if raw_meta.file_type().is_symlink() {
+                tracing::warn!("data_root is a symlink: {:?}", raw);
+                return None;
+            }
+            let _ = canon_meta;
+        }
+
+        // 드라이브 루트 거부 (e.g. C:\, D:\)
+        let canon_str = canonical.to_string_lossy().to_string();
+        let stripped = canon_str
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&canon_str);
+        if stripped.len() <= 3 && stripped.chars().nth(1) == Some(':') {
+            tracing::warn!("data_root cannot be a drive root: {:?}", canonical);
+            return None;
+        }
+
+        // 시스템 폴더 거부
+        let canon_lower = canon_str.to_lowercase();
+        for pattern in crate::constants::BLOCKED_PATH_PATTERNS {
+            if canon_lower.contains(&pattern.to_lowercase()) {
+                tracing::warn!(
+                    "data_root is inside blocked path {:?}: {:?}",
+                    pattern,
+                    canonical
+                );
+                return None;
+            }
+        }
+
+        // app_data_dir와 동일하면 의미 없음 (기본값 사용)
+        if canonical == app_data_dir {
+            return None;
+        }
+
+        tracing::info!("Using custom data_root: {:?}", canonical);
+        Some(canonical)
+    }
+
     /// 새 AppContainer 생성
     /// data_root 설정이 있으면 DB/벡터를 해당 경로에 저장 (C: 부족 대응)
     pub fn new(app_data_dir: &Path) -> Self {
@@ -71,21 +142,12 @@ impl AppContainer {
         let cached_settings = settings::get_settings_sync(app_data_dir);
 
         // data_root가 설정되어 있으면 해당 경로에 DB/벡터 저장
-        let data_dir = if let Some(ref root) = cached_settings.data_root {
-            let p = PathBuf::from(root);
-            if p.exists() || std::fs::create_dir_all(&p).is_ok() {
-                tracing::info!("Using custom data_root: {:?}", p);
-                p
-            } else {
-                tracing::warn!(
-                    "data_root {:?} is not accessible, falling back to app_data_dir",
-                    p
-                );
-                app_data_dir.to_path_buf()
-            }
-        } else {
-            app_data_dir.to_path_buf()
-        };
+        // 보안: 사용자 입력 경로 검증 (심볼릭 링크, 드라이브 루트, 시스템 폴더 거부)
+        let data_dir = cached_settings
+            .data_root
+            .as_ref()
+            .and_then(|root| Self::validate_data_root(root, app_data_dir))
+            .unwrap_or_else(|| app_data_dir.to_path_buf());
 
         let db_path = data_dir.join("docufinder.db");
         let vector_index_path = data_dir.join("vectors.usearch");

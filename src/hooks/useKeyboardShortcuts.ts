@@ -6,7 +6,7 @@ interface ShortcutHandlers {
   onArrowUp?: () => void;
   onArrowDown?: () => void;
   onEnter?: () => void;
-  onCopy?: () => void;
+  onCopy?: () => void; // Ctrl+Shift+C로 전용 바인딩 (일반 Ctrl+C 복사와 충돌 방지)
   onToggleSidebar?: () => void;
 }
 
@@ -66,18 +66,20 @@ export function useKeyboardShortcuts(
         return;
       }
 
+      // Ctrl+Shift+C: 선택된 결과 경로 복사 (일반 복사와 충돌 방지)
+      // 입력 필드 포커스 상태라도 명시적 조합이므로 허용.
+      if (isCtrlOrCmd && e.shiftKey && (e.key === "C" || e.key === "c")) {
+        e.preventDefault();
+        h.onCopy?.();
+        return;
+      }
+
       // 입력 중이면 아래 단축키 무시
       if (isInputFocused) return;
 
       // Enter: 선택된 파일 열기
       if (e.key === "Enter") {
         h.onEnter?.();
-        return;
-      }
-
-      // Ctrl+C: 경로 복사 (입력 필드 외부에서만)
-      if (isCtrlOrCmd && e.key === "c" && !window.getSelection()?.toString()) {
-        h.onCopy?.();
         return;
       }
     };

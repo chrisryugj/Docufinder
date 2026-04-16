@@ -286,10 +286,17 @@
                 Name="Installed" Type="raw" Win64="yes" />
         </Property>
         <Binary Id="VCRedist" SourceFile="$(sys.SOURCEFILEDIR)..\..\..\..\wix\vc_redist.x64.exe" />
+        <!--
+            Return="check"로 설치 실패를 명시적으로 감지.
+            이전 "ignore"는 VCRedist 실패(권한 부족, 손상된 파일 등)를 무음 통과시켜
+            앱 기동 시 VCRUNTIME140.dll 누락으로 크래시하는 블랙박스 디버깅 문제를 초래했음.
+            exit code 3010(재부팅 필요)/1638(동일/상위 버전 이미 설치)은 실패로 간주되지만,
+            1638은 NOT(VCRTINSTALLED) 조건에서 이미 걸러지므로 실무상 문제 없음.
+        -->
         <CustomAction Id="InstallVCRedist" BinaryKey="VCRedist" Execute="deferred"
             Impersonate="no"
             ExeCommand="/install /quiet /norestart"
-            Return="ignore" />
+            Return="check" />
         <InstallExecuteSequence>
             <Custom Action="InstallVCRedist" Before="InstallFinalize">
                 <![CDATA[NOT(REMOVE) AND NOT(VCRTINSTALLED)]]>

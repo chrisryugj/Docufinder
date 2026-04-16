@@ -247,7 +247,10 @@ function AppContent() {
         const main = search.searchInputRef.current;
         const target = compact && compact.offsetParent !== null ? compact : main;
         target?.focus();
-        target?.select();
+        // 질문 모드(textarea, 긴 입력)에서 전체 선택 시 실수 타이핑으로 내용 유실 위험 → 포커스만
+        if (target && target.tagName !== "TEXTAREA") {
+          (target as HTMLInputElement).select();
+        }
       },
       onEscape: () => {
         if (search.selectedIndex >= 0) {

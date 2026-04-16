@@ -2,7 +2,8 @@ import { useState, useCallback } from "react";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 
-const STORAGE_KEY = "ai_disclaimer_accepted";
+const STORAGE_KEY = "docufinder_ai_disclaimer_accepted";
+const LEGACY_STORAGE_KEY = "ai_disclaimer_accepted";
 
 interface AiDisclaimerModalProps {
   isOpen: boolean;
@@ -86,12 +87,20 @@ export function AiDisclaimerModal({ isOpen, onAccept, onDecline }: AiDisclaimerM
   );
 }
 
-/** AI disclaimer 동의 여부 확인 */
+/** AI disclaimer 동의 여부 확인 (레거시 키 자동 마이그레이션) */
 export function isAiDisclaimerAccepted(): boolean {
-  return localStorage.getItem(STORAGE_KEY) === "true";
+  if (localStorage.getItem(STORAGE_KEY) === "true") return true;
+  // 레거시 키 마이그레이션: 이전 버전에서 동의한 사용자 경험 보존
+  if (localStorage.getItem(LEGACY_STORAGE_KEY) === "true") {
+    localStorage.setItem(STORAGE_KEY, "true");
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return true;
+  }
+  return false;
 }
 
 /** AI disclaimer 동의 상태 초기화 */
 export function resetAiDisclaimer(): void {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
 }

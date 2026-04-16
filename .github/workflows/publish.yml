@@ -37,12 +37,15 @@ jobs:
 
       # kordoc 사이드카 소스 체크아웃 (HWP/HWPX/DOCX/PDF 파싱 런타임)
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
+      #
+      # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
+      # 현재: v2.4.0 (HWPX DRM COM fallback) — 2026-04-16
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: main
+          ref: 5feacad6adc8055bbc18c76bf063cac0282e8c18
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -79,5 +82,7 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'Anything v__VERSION__'
           releaseBody: 'See the assets to download and install.'
-          releaseDraft: true
+          # draft=false: updater가 latest.json을 즉시 찾을 수 있어야 함
+          # (draft 상태면 release 자산 URL이 404 → 자동 업데이트 실패)
+          releaseDraft: false
           prerelease: false

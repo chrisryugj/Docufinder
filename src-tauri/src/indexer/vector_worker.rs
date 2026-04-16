@@ -475,8 +475,8 @@ fn run_prefetch_thread(
         }
     };
 
-    // 대기 중인 파일 ID 목록
-    let pending_file_ids = match db::get_pending_vector_file_ids(&conn) {
+    // 대기 중인 파일 ID 목록 (SQLITE_BUSY 재시도: 인덱싱/감시와 충돌 시 생존)
+    let pending_file_ids = match db::retry_on_busy(|| db::get_pending_vector_file_ids(&conn)) {
         Ok(ids) => ids,
         Err(e) => {
             tracing::error!("[Prefetch] Failed to get pending files: {}", e);
@@ -491,18 +491,19 @@ fn run_prefetch_thread(
             break;
         }
 
-        // 해당 파일의 전체 청크 로드 (LIMIT 없음 - 부분 처리 방지)
-        let file_chunks = match db::get_pending_vector_chunks_for_file(&conn, file_id) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(
-                    "[Prefetch] Failed to get chunks for file {}: {}",
-                    file_id,
-                    e
-                );
-                continue;
-            }
-        };
+        // 해당 파일의 전체 청크 로드 (LIMIT 없음 - 부분 처리 방지, busy 재시도)
+        let file_chunks =
+            match db::retry_on_busy(|| db::get_pending_vector_chunks_for_file(&conn, file_id)) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(
+                        "[Prefetch] Failed to get chunks for file {}: {}",
+                        file_id,
+                        e
+                    );
+                    continue;
+                }
+            };
 
         if file_chunks.is_empty() {
             continue;

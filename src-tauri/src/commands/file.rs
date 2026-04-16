@@ -91,30 +91,29 @@ pub async fn open_file(
         }
     }
 
-    // 감시 폴더 내 파일인지 검증 (경로 순회 방지)
+    // 감시 폴더 내 파일인지 검증 (화이트리스트, 감시 폴더 미등록 시 거부)
     {
         let db_path = {
             let container = state.read().map_err(|_| "내부 오류".to_string())?;
             container.db_path.to_string_lossy().to_string()
         };
-        if let Ok(conn) = crate::db::get_connection(std::path::Path::new(&db_path)) {
-            if let Ok(folders) = crate::db::get_watched_folders(&conn) {
-                if !folders.is_empty() {
-                    // 감시 폴더가 1개 이상 등록된 경우에만 범위 검증 수행.
-                    // 폴더 미등록 상태(최초 실행 등)에서는 제한 없이 열기 허용.
-                    let strip = |p: &str| -> String {
-                        p.strip_prefix(r"\\?\")
-                            .unwrap_or(p)
-                            .replace('\\', "/")
-                            .to_lowercase()
-                    };
-                    let normalized = strip(&canonical_path.to_string_lossy());
-                    let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
-                    if !in_scope {
-                        return Err("감시 폴더 외부 파일은 열 수 없습니다".to_string());
-                    }
-                }
-            }
+        let conn = crate::db::get_connection(std::path::Path::new(&db_path))
+            .map_err(|_| "내부 오류".to_string())?;
+        let folders =
+            crate::db::get_watched_folders(&conn).map_err(|_| "내부 오류".to_string())?;
+        if folders.is_empty() {
+            return Err("등록된 감시 폴더가 없어 파일을 열 수 없습니다".to_string());
+        }
+        let strip = |p: &str| -> String {
+            p.strip_prefix(r"\\?\")
+                .unwrap_or(p)
+                .replace('\\', "/")
+                .to_lowercase()
+        };
+        let normalized = strip(&canonical_path.to_string_lossy());
+        let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
+        if !in_scope {
+            return Err("감시 폴더 외부 파일은 열 수 없습니다".to_string());
         }
     }
 
