@@ -398,47 +398,25 @@ pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<us
     }
 }
 
-/// 모든 데이터 초기화 (files, chunks, FTS, watched_folders) - 트랜잭션 보장
-pub fn clear_all_data(conn: &Connection) -> Result<()> {
-    // 트랜잭션 시작 (원자성 보장)
-    conn.execute("BEGIN IMMEDIATE", [])?;
+/// 모든 데이터 초기화 — DROP + re-CREATE (DELETE 대비 수백 배 빠름)
+pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()> {
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS chunks_fts_vocab;
+         DROP TABLE IF EXISTS chunks_fts;
+         DROP TABLE IF EXISTS files_fts;
+         DROP TABLE IF EXISTS file_tags;
+         DROP TABLE IF EXISTS bookmarks;
+         DROP TABLE IF EXISTS search_queries;
+         DROP TABLE IF EXISTS chunks;
+         DROP TABLE IF EXISTS files;
+         DROP TABLE IF EXISTS watched_folders;
+         DROP TABLE IF EXISTS schema_version;"
+    )?;
 
-    let result = (|| -> Result<()> {
-        // FTS 먼저 삭제
-        conn.execute("DELETE FROM chunks_fts", [])?;
-        conn.execute("DELETE FROM files_fts", [])?;
+    // 동일 Connection으로 테이블 재생성
+    migration::migrate_schema(conn, db_path)?;
 
-        // chunks (CASCADE로 자동 삭제되지만 명시적 삭제)
-        conn.execute("DELETE FROM chunks", [])?;
-
-        // files
-        conn.execute("DELETE FROM files", [])?;
-
-        // watched_folders
-        conn.execute("DELETE FROM watched_folders", [])?;
-
-        // bookmarks
-        let _ = conn.execute("DELETE FROM bookmarks", []);
-
-        // file_tags
-        let _ = conn.execute("DELETE FROM file_tags", []);
-
-        // search_queries (자동완성 히스토리)
-        let _ = conn.execute("DELETE FROM search_queries", []);
-
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            conn.execute("COMMIT", [])?;
-            Ok(())
-        }
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
+    Ok(())
 }
 
 // ==================== 청크 ====================
