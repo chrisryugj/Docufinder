@@ -159,10 +159,14 @@ function AppContent() {
   // ── Global setup effects ──
   useEffect(() => { setupGlobalErrorHandlers(); }, []);
 
-  // 전역 우클릭 방지
+  // 전역 우클릭 방지 (input/textarea는 허용 — 붙여넣기 등 네이티브 동작 보장)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).closest("[data-context-menu]")) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-context-menu]")) return;
+      const tag = target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (target.isContentEditable) return;
       e.preventDefault();
     };
     document.addEventListener("contextmenu", handler);
@@ -188,11 +192,14 @@ function AppContent() {
   }, [idx.status, ui.showOnboarding, ui.tryShowAutoIndexPrompt]);
 
   // ── Cross-cutting: 인덱싱 완료 → 캐시 무효화 ──
+  const prevIndexPhaseRef = useRef(idx.progress?.phase);
   useEffect(() => {
-    if (idx.progress?.phase === "completed") {
+    const phase = idx.progress?.phase;
+    if (phase === "completed" && prevIndexPhaseRef.current !== "completed") {
       clearSearchCache();
       if (search.query.trim()) search.invalidateSearch();
     }
+    prevIndexPhaseRef.current = phase;
   }, [idx.progress?.phase, search.query, search.invalidateSearch]);
 
   // 벡터 인덱싱 완료 → 토스트

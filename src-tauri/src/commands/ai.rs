@@ -439,7 +439,7 @@ pub async fn ask_ai(
     }
 
     // 동시 AI 요청 제한
-    let _permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
+    let permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
         ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
     })?;
 
@@ -465,6 +465,8 @@ pub async fn ask_ai(
     let rid = request_id.clone();
 
     tauri::async_runtime::spawn(async move {
+        // permit을 태스크 완료까지 보유하여 동시 요청 제한 보장
+        let _permit = permit;
         let start = Instant::now();
 
         // 자연어 질문에서 키워드 추출
@@ -688,7 +690,7 @@ pub async fn ask_ai_file(
     }
 
     // 동시 AI 요청 제한
-    let _permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
+    let permit = AI_SEMAPHORE.try_acquire().map_err(|_| {
         ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
     })?;
 
@@ -715,6 +717,8 @@ pub async fn ask_ai_file(
     let query_clone = query.clone();
 
     tauri::async_runtime::spawn(async move {
+        // permit을 태스크 완료까지 보유하여 동시 요청 제한 보장
+        let _permit = permit;
         let start = Instant::now();
 
         // 1단계: 쿼리 기반으로 파일 내 관련 청크 검색 (타겟 검색)

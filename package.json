@@ -11,7 +11,8 @@
     "tauri:dev": "set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--no-proxy-server --disable-background-networking --disable-features=msSmartScreenProtection&& tauri dev",
     "download-model": "powershell -File scripts/download-model.ps1",
     "download-vcredist": "powershell -File scripts/download-vcredist.ps1",
-    "tauri:build": "pnpm run download-vcredist && pnpm run download-model && tauri build"
+    "bundle-kordoc": "powershell -ExecutionPolicy Bypass -File scripts/bundle-kordoc.ps1",
+    "tauri:build": "pnpm run download-vcredist && pnpm run download-model && pnpm run bundle-kordoc && tauri build"
   },
   "keywords": [
     "document",

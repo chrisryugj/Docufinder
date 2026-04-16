@@ -59,3 +59,16 @@ src-tauri/resources/kordoc/
 # Promo video (Remotion)
 promo-video/node_modules/
 promo-video/out/
+
+# Claude Code (personal workspace)
+.claude/
+
+# Tauri signing keys
+.tauri/
+
+# Unrelated projects
+claude-global-config/
+chrisbot-clone/
+
+# Internal docs
+docs/plans/

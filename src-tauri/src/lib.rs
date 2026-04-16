@@ -55,27 +55,38 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
         let logs_dir = data_dir.join("logs");
         let _ = std::fs::create_dir_all(&logs_dir);
 
-        let file_appender = RollingFileAppender::builder()
+        match RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
             .filename_prefix("docufinder")
             .filename_suffix("log")
             .max_log_files(7) // 7일분만 보존, C: 누적 방지
             .build(&logs_dir)
-            .expect("Failed to create log file appender");
+        {
+            Ok(file_appender) => {
+                let file_layer = fmt::layer()
+                    .with_ansi(false)
+                    .with_target(true)
+                    .with_level(true)
+                    .with_writer(file_appender);
 
-        let file_layer = fmt::layer()
-            .with_ansi(false)
-            .with_target(true)
-            .with_level(true)
-            .with_writer(file_appender);
+                tracing_subscriber::registry()
+                    .with(filter)
+                    .with(stdout_layer)
+                    .with(file_layer)
+                    .init();
 
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stdout_layer)
-            .with(file_layer)
-            .init();
+                tracing::info!("Logging initialized. Log dir: {:?}", logs_dir);
+            }
+            Err(e) => {
+                // 파일 로그 생성 실패 시 콘솔 전용으로 fallback (앱 시작은 보장)
+                tracing_subscriber::registry()
+                    .with(filter)
+                    .with(stdout_layer)
+                    .init();
 
-        tracing::info!("Logging initialized. Log dir: {:?}", logs_dir);
+                tracing::warn!("File logging disabled ({}), using console only", e);
+            }
+        }
     } else {
         // 콘솔만
         tracing_subscriber::registry()

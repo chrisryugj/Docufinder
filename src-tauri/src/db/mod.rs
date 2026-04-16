@@ -531,51 +531,62 @@ pub fn insert_chunk(
 
 // ==================== 청크 조회 ====================
 
+/// SQLite SQLITE_MAX_VARIABLE_NUMBER 한계(32766) 방지를 위한 청크 크기
+const SQL_BATCH_SIZE: usize = 500;
+
 /// 여러 chunk_id로 청크 정보 일괄 조회
+/// 대용량(500개 초과) 시 자동 분할하여 SQLITE_MAX_VARIABLE_NUMBER 한계를 방지한다.
 pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<ChunkInfo>> {
     if chunk_ids.is_empty() {
         return Ok(vec![]);
     }
 
-    let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!(
-        "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.page_end, c.location_hint, f.path, f.name,
-                COALESCE(c.content, fts.content) AS content, f.modified_at
-         FROM chunks c
-         JOIN files f ON f.id = c.file_id
-         JOIN chunks_fts fts ON fts.rowid = c.id
-         WHERE c.id IN ({})",
-        placeholders
-    );
+    let mut all_results = Vec::with_capacity(chunk_ids.len());
+    for batch in chunk_ids.chunks(SQL_BATCH_SIZE) {
+        let placeholders: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
+                    c.page_end, c.location_hint, f.path, f.name,
+                    COALESCE(c.content, fts.content) AS content, f.modified_at
+             FROM chunks c
+             JOIN files f ON f.id = c.file_id
+             JOIN chunks_fts fts ON fts.rowid = c.id
+             WHERE c.id IN ({})",
+            placeholders
+        );
 
-    let mut stmt = conn.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::ToSql> = chunk_ids
-        .iter()
-        .map(|id| id as &dyn rusqlite::ToSql)
-        .collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = batch
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
 
-    let results = stmt.query_map(params.as_slice(), |row| {
-        Ok(ChunkInfo {
-            chunk_id: row.get(0)?,
-            file_id: row.get(1)?,
-            chunk_index: row.get(2)?,
-            start_offset: row.get(3)?,
-            end_offset: row.get(4)?,
-            page_number: row.get(5)?,
-            page_end: row.get(6)?,
-            location_hint: row.get(7)?,
-            file_path: row.get(8)?,
-            file_name: row.get(9)?,
-            content: row.get(10)?,
-            modified_at: row.get(11)?,
-        })
-    })?;
+        let results = stmt.query_map(params.as_slice(), |row| {
+            Ok(ChunkInfo {
+                chunk_id: row.get(0)?,
+                file_id: row.get(1)?,
+                chunk_index: row.get(2)?,
+                start_offset: row.get(3)?,
+                end_offset: row.get(4)?,
+                page_number: row.get(5)?,
+                page_end: row.get(6)?,
+                location_hint: row.get(7)?,
+                file_path: row.get(8)?,
+                file_name: row.get(9)?,
+                content: row.get(10)?,
+                modified_at: row.get(11)?,
+            })
+        })?;
 
-    results.collect()
+        for row in results {
+            all_results.push(row?);
+        }
+    }
+    Ok(all_results)
 }
 
 /// 파일 경로 + 청크 인덱스 목록으로 청크 일괄 조회 (RAG 이웃 청크 확장용)
+/// 대용량 시 자동 분할.
 pub fn get_chunks_for_file_indices(
     conn: &Connection,
     file_path: &str,
@@ -585,70 +596,81 @@ pub fn get_chunks_for_file_indices(
         return Ok(vec![]);
     }
 
-    let placeholders: String = chunk_indices.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!(
-        "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
-                c.page_end, c.location_hint, f.path, f.name,
-                COALESCE(c.content, fts.content) AS content, f.modified_at
-         FROM chunks c
-         JOIN files f ON f.id = c.file_id
-         JOIN chunks_fts fts ON fts.rowid = c.id
-         WHERE f.path = ? AND c.chunk_index IN ({})",
-        placeholders
-    );
+    // file_path가 ?1을 차지하므로 배치 크기를 1 줄임
+    let batch_size = SQL_BATCH_SIZE - 1;
+    let mut all_results = Vec::with_capacity(chunk_indices.len());
+    for batch in chunk_indices.chunks(batch_size) {
+        let placeholders: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT c.id, c.file_id, c.chunk_index, c.start_offset, c.end_offset, c.page_number,
+                    c.page_end, c.location_hint, f.path, f.name,
+                    COALESCE(c.content, fts.content) AS content, f.modified_at
+             FROM chunks c
+             JOIN files f ON f.id = c.file_id
+             JOIN chunks_fts fts ON fts.rowid = c.id
+             WHERE f.path = ? AND c.chunk_index IN ({})",
+            placeholders
+        );
 
-    let mut stmt = conn.prepare(&sql)?;
-    let mut params_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(chunk_indices.len() + 1);
-    params_vec.push(&file_path);
-    for idx in chunk_indices {
-        params_vec.push(idx as &dyn rusqlite::ToSql);
+        let mut stmt = conn.prepare(&sql)?;
+        let mut params_vec: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(batch.len() + 1);
+        params_vec.push(&file_path);
+        for idx in batch {
+            params_vec.push(idx as &dyn rusqlite::ToSql);
+        }
+
+        let results = stmt.query_map(params_vec.as_slice(), |row| {
+            Ok(ChunkInfo {
+                chunk_id: row.get(0)?,
+                file_id: row.get(1)?,
+                chunk_index: row.get(2)?,
+                start_offset: row.get(3)?,
+                end_offset: row.get(4)?,
+                page_number: row.get(5)?,
+                page_end: row.get(6)?,
+                location_hint: row.get(7)?,
+                file_path: row.get(8)?,
+                file_name: row.get(9)?,
+                content: row.get(10)?,
+                modified_at: row.get(11)?,
+            })
+        })?;
+
+        for row in results {
+            all_results.push(row?);
+        }
     }
-
-    let results = stmt.query_map(params_vec.as_slice(), |row| {
-        Ok(ChunkInfo {
-            chunk_id: row.get(0)?,
-            file_id: row.get(1)?,
-            chunk_index: row.get(2)?,
-            start_offset: row.get(3)?,
-            end_offset: row.get(4)?,
-            page_number: row.get(5)?,
-            page_end: row.get(6)?,
-            location_hint: row.get(7)?,
-            file_path: row.get(8)?,
-            file_name: row.get(9)?,
-            content: row.get(10)?,
-            modified_at: row.get(11)?,
-        })
-    })?;
-
-    results.collect()
+    Ok(all_results)
 }
 
 /// 청크 ID → 파일 경로 경량 조회 (content 없이 경로만 — 벡터 스코프 프리필터용)
+/// 대용량 시 자동 분할.
 pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<HashMap<i64, String>> {
     if chunk_ids.is_empty() {
         return Ok(HashMap::new());
     }
 
-    let placeholders: String = chunk_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!(
-        "SELECT c.id, f.path FROM chunks c JOIN files f ON f.id = c.file_id WHERE c.id IN ({})",
-        placeholders
-    );
-
-    let mut stmt = conn.prepare(&sql)?;
-    let params: Vec<&dyn rusqlite::ToSql> = chunk_ids
-        .iter()
-        .map(|id| id as &dyn rusqlite::ToSql)
-        .collect();
-
     let mut map = HashMap::with_capacity(chunk_ids.len());
-    let rows = stmt.query_map(params.as_slice(), |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
-    for row in rows {
-        let (id, path) = row?;
-        map.insert(id, path);
+    for batch in chunk_ids.chunks(SQL_BATCH_SIZE) {
+        let placeholders: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT c.id, f.path FROM chunks c JOIN files f ON f.id = c.file_id WHERE c.id IN ({})",
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = batch
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
+
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, path) = row?;
+            map.insert(id, path);
+        }
     }
     Ok(map)
 }

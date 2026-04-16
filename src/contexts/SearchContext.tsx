@@ -204,7 +204,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     }
   }, [searchMode, setFilters]);
 
-  const value: SearchContextValue = {
+  const value: SearchContextValue = useMemo(() => ({
     query, setQuery, results, filenameResults, filteredResults, groupedResults,
     searchTime, isLoading, searchError, clearSearchError,
     searchMode, setSearchMode, filters, setFilters, viewMode, setViewMode,
@@ -222,7 +222,23 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     aiAnswer, isAiStreaming, aiAnalysis, aiError, aiAskedQuery, askAi, resetAi,
     searchInputRef, compactSearchInputRef,
     clearSearchCache,
-  };
+  }), [
+    query, results, filenameResults, filteredResults, groupedResults,
+    searchTime, isLoading, searchError, clearSearchError,
+    searchMode, filters, viewMode,
+    refineQuery, clearRefine,
+    invalidateSearch, paradigm, submitNaturalQuery, parsedQuery, nlSubmitted,
+    keywordMatchMode, minConfidence,
+    isCollapsed, showScrollTop, expand,
+    recentSearches, handleSelectSearch, handleQueryChange,
+    typoSuggestion, dismissTypo,
+    presets, handleSavePreset, handleApplyPreset, removePreset,
+    similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
+    selectedIndex,
+    handleExportCSV, handleCopyAll, memoizedRefineKeywords,
+    aiAnswer, isAiStreaming, aiAnalysis, aiError, aiAskedQuery, askAi, resetAi,
+    clearSearchCache,
+  ]);
 
   return <SearchContext.Provider value={value}>{children}</SearchContext.Provider>;
 }

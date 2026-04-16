@@ -112,6 +112,7 @@ Anything/
 | [PLAN.md](PLAN.md) | 상세 설계 계획 |
 | [BUILD_GUIDE.md](BUILD_GUIDE.md) | 빌드 가이드 |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | 배포 가이드 |
+| [DESIGN.md](DESIGN.md) | 디자인 시스템 |
 
 ## 코딩 컨벤션
 
