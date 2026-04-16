@@ -38,6 +38,7 @@ export default defineConfig({
   // Build settings for Tauri
   build: {
     target: "esnext",
+    chunkSizeWarningLimit: 600,
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
     rollupOptions: {

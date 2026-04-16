@@ -48,7 +48,7 @@ Write-Host "  -> kordoc dist copied"
 Push-Location $kordocOut
 $deps = @("@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4")
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"
-& npm install --omit=dev --no-package-lock --no-fund --no-audit $deps 2>&1 | Write-Host
+& npm.cmd install --omit=dev --no-package-lock --no-fund --no-audit $deps 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) {
     Pop-Location
     Write-Error "npm install failed (exit $LASTEXITCODE)"

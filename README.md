@@ -1,6 +1,6 @@
 # Anything
 
-**내 컴퓨터가 나한테 대답하기 시작했다.** 키워드 검색부터 AI 문서 질의응답까지, 전부 로컬에서.
+**"그 내용 어디서 봤더라?" — 이제 3초면 찾습니다.** 파일명 몰라도, 열어보지 않아도. 문서 안의 내용으로 검색합니다.
 
 [![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/chrisryugj/Docufinder/releases)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2.10-24C8D8.svg)](https://tauri.app)
@@ -73,11 +73,13 @@
 |------|--------|------|
 | 한글 | `.hwpx`, `.hwp` | kordoc 엔진으로 HWP 자동 변환 |
 | 워드 | `.docx` | |
-| 엑셀 | `.xlsx` | 시트·행 위치까지 추적 |
+| 파워포인트 | `.pptx` | |
+| 엑셀 | `.xlsx`, `.xls` | 시트·행 위치까지 추적 |
 | PDF | `.pdf` | 스캔 PDF는 PaddleOCR로 OCR |
-| 텍스트 | `.txt` | EUC-KR/CP949 자동 감지 |
+| 이미지 | `.jpg`, `.png`, `.bmp`, `.tiff` | PaddleOCR로 텍스트 추출 |
+| 텍스트 | `.txt`, `.md` | EUC-KR/CP949 자동 감지 |
 
-검색 엔진은 **하이브리드**입니다. SQLite FTS5 키워드 매칭 + KoSimCSE 벡터 시맨틱 + RRF 병합 + Cross-Encoder 재정렬. 한국어 형태소는 Lindera로 분석합니다.
+검색 엔진은 **SQLite FTS5 키워드 매칭** 기반입니다. 한국어 형태소는 Lindera로 분석합니다. 시맨틱 검색(KoSimCSE 벡터 + RRF 병합 + Cross-Encoder 재정렬)은 설정에서 선택적으로 활성화할 수 있습니다.
 
 ---
 
@@ -175,9 +177,9 @@
 
 | 모드 | 설명 |
 |------|------|
-| **하이브리드** | 기본값. 키워드 + 의미 검색 결합 (추천) |
-| **키워드** | FTS5 정확 매칭 (형태소 분석 기반) |
-| **시맨틱** | 의미 기반 유사 문서 검색 |
+| **키워드** | 기본값. FTS5 정확 매칭 (형태소 분석 기반) |
+| **하이브리드** | 키워드 + 의미 검색 결합 (시맨틱 활성화 시) |
+| **시맨틱** | 의미 기반 유사 문서 검색 (시맨틱 활성화 시) |
 | **파일명** | Everything 스타일 — 인덱싱 불필요 |
 
 ---
@@ -188,10 +190,10 @@
 |------|------|
 | Frontend | React 19 + TypeScript 5.9 + Tailwind CSS 4 |
 | Backend | Rust 2021 + Tauri 2.10 |
-| 검색 | SQLite FTS5 + usearch (HNSW) + RRF 하이브리드 |
-| 임베딩 | ONNX Runtime + KoSimCSE-roberta-multitask (768차원) |
+| 검색 | SQLite FTS5 (키워드) + 선택적 usearch (HNSW) 시맨틱 |
+| 임베딩 | ONNX Runtime + KoSimCSE-roberta-multitask (768차원, 선택) |
 | 형태소 분석 | Lindera 2.0 (한국어) |
-| 재정렬 | ms-marco-MiniLM-L6-v2 (Cross-Encoder) |
+| 재정렬 | ms-marco-MiniLM-L6-v2 (Cross-Encoder, 선택) |
 | AI | Gemini API (RAG 질의응답) |
 | OCR | PaddleOCR ONNX (스캔 PDF) |
 | 파싱 | zip, quick-xml, calamine, pdf-extract, [kordoc](https://www.npmjs.com/package/kordoc) |
