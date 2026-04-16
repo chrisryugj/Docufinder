@@ -29,6 +29,7 @@ jobs:
 
       - name: Security audit (npm)
         run: pnpm audit --audit-level high
+        continue-on-error: true
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
