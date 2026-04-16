@@ -26,6 +26,9 @@ pub struct Settings {
     pub auto_start: bool,
     #[serde(default)]
     pub start_minimized: bool,
+    /// X 버튼 클릭 시 트레이로 숨김 (false면 앱 종료)
+    #[serde(default)]
+    pub close_to_tray: bool,
     /// 파일명 하이라이트 색상 (hex)
     #[serde(default)]
     pub highlight_filename_color: Option<String>,
@@ -153,6 +156,7 @@ impl Default for Settings {
             include_subfolders: true,
             auto_start: false,
             start_minimized: false,
+            close_to_tray: false,
             highlight_filename_color: None,
             highlight_content_color: None,
             semantic_search_enabled: false,

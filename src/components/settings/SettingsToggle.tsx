@@ -5,6 +5,7 @@ interface SettingsToggleProps {
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
 export const SettingsToggle = memo(function SettingsToggle({
@@ -12,6 +13,7 @@ export const SettingsToggle = memo(function SettingsToggle({
   description,
   checked,
   onChange,
+  disabled = false,
 }: SettingsToggleProps) {
   return (
     <div className="flex items-center justify-between">
@@ -30,8 +32,9 @@ export const SettingsToggle = memo(function SettingsToggle({
         type="button"
         role="switch"
         aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        disabled={disabled}
+        onClick={() => !disabled && onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
         style={{
           backgroundColor: checked ? "var(--color-accent)" : "var(--color-bg-tertiary)",
         }}

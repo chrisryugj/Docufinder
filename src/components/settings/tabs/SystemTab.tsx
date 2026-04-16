@@ -39,8 +39,8 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
 
   return (
     <div className="space-y-3">
-      {/* 시작 옵션 (2열) */}
-      <div className="grid grid-cols-2 gap-x-4">
+      {/* 시작 옵션 (3열) */}
+      <div className="grid grid-cols-3 gap-x-4">
         <SettingsToggle
           label="자동 실행"
           description="Windows 시작 시 자동 실행"
@@ -49,9 +49,19 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
         />
         <SettingsToggle
           label="트레이 최소화"
-          description="시작 시 트레이로 숨김"
+          description="X 버튼 시 종료 대신 트레이"
+          checked={settings.close_to_tray ?? false}
+          onChange={(v) => {
+            onChange("close_to_tray", v);
+            if (!v) onChange("start_minimized", false);
+          }}
+        />
+        <SettingsToggle
+          label="시작 시 숨김"
+          description="시작 시 트레이로 최소화"
           checked={settings.start_minimized ?? false}
           onChange={(v) => onChange("start_minimized", v)}
+          disabled={!settings.close_to_tray}
         />
       </div>
 
