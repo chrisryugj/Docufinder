@@ -16,6 +16,8 @@ export interface Settings {
   include_subfolders: boolean;
   auto_start: boolean;
   start_minimized: boolean;
+  /** X 버튼 클릭 시 트레이로 숨김 (false면 앱 종료) */
+  close_to_tray: boolean;
   /** 파일명 하이라이트 색상 (hex) */
   highlight_filename_color?: string;
   /** 문서 내용 하이라이트 색상 (hex) */

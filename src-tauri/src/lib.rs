@@ -767,11 +767,21 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             match event {
-                // X 버튼 클릭 시 트레이로 최소화
                 tauri::WindowEvent::CloseRequested { api, .. } => {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    tracing::debug!("Window hidden to tray");
+                    let app_data_dir = window
+                        .app_handle()
+                        .path()
+                        .app_data_dir()
+                        .unwrap_or_default();
+                    let settings =
+                        commands::settings::get_settings_sync(&app_data_dir);
+                    if settings.close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        tracing::debug!("Window hidden to tray");
+                    } else {
+                        tracing::info!("Window closing (close_to_tray=false)");
+                    }
                 }
                 tauri::WindowEvent::Destroyed => {
                     if let Some(container) = window.try_state::<RwLock<AppContainer>>() {
