@@ -31,12 +31,12 @@ fn validate_output_path(output_path: &str) -> ApiResult<PathBuf> {
     }
 
     // 2. 파일명 분리
-    let parent = path.parent().ok_or_else(|| {
-        ApiError::InvalidPath("저장 경로에 부모 디렉터리가 없습니다".to_string())
-    })?;
-    let file_name = path.file_name().ok_or_else(|| {
-        ApiError::InvalidPath("저장 경로에 파일명이 없습니다".to_string())
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| ApiError::InvalidPath("저장 경로에 부모 디렉터리가 없습니다".to_string()))?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| ApiError::InvalidPath("저장 경로에 파일명이 없습니다".to_string()))?;
 
     // 파일명에 경로 구분자나 상위 이동 금지 (화이트리스트 느낌)
     let fname_str = file_name.to_string_lossy();

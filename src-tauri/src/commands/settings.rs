@@ -310,9 +310,10 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
         ));
     }
     if settings.max_file_size_mb > MAX_FILE_SIZE_LIMIT_MB {
-        return Err(ApiError::Validation(
-            format!("max_file_size_mb는 최대 {}MB입니다", MAX_FILE_SIZE_LIMIT_MB),
-        ));
+        return Err(ApiError::Validation(format!(
+            "max_file_size_mb는 최대 {}MB입니다",
+            MAX_FILE_SIZE_LIMIT_MB
+        )));
     }
     if settings.ai_temperature < 0.0 || settings.ai_temperature > 2.0 {
         return Err(ApiError::Validation(
@@ -423,15 +424,10 @@ pub async fn update_settings(
                         let _ = download_app.emit("model-download-status", "completed");
                         // 다운로드 완료 → VectorIndex OnceCell pre-init
                         // (WatchManager 벡터 삭제 경로 활성화, 재시작 없이 사용 가능)
-                        if let Some(state) =
-                            download_app.try_state::<RwLock<AppContainer>>()
-                        {
+                        if let Some(state) = download_app.try_state::<RwLock<AppContainer>>() {
                             if let Ok(container) = state.read() {
                                 if let Err(e) = container.get_vector_index() {
-                                    tracing::warn!(
-                                        "VectorIndex pre-init 실패(다운로드 후): {}",
-                                        e
-                                    );
+                                    tracing::warn!("VectorIndex pre-init 실패(다운로드 후): {}", e);
                                 }
                             }
                         }

@@ -16,17 +16,63 @@ pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "bmp", "tiff",
 /// 이 확장자들은 파일명 검색 대상에서 제외하여 DB 크기와 검색 품질을 개선.
 pub const METADATA_EXCLUDED_EXTENSIONS: &[&str] = &[
     // Windows 바이너리/시스템 파일
-    "dll", "exe", "sys", "drv", "ocx", "cpl", "scr", // 임시/캐시 파일
-    "tmp", "temp", "bak", "old", "cache", // 빌드 아티팩트
-    "obj", "pdb", "ilk", "exp", "lib", "pch", // 로그 파일
-    "log", "etl", "jsonl", // 설정/레지스트리
-    "ini", "reg", // 데이터베이스/인덱스
-    "db", "db-shm", "db-wal", "sqlite", "sqlite-shm", "sqlite-wal", "idx", "ldb",
+    "dll",
+    "exe",
+    "sys",
+    "drv",
+    "ocx",
+    "cpl",
+    "scr", // 임시/캐시 파일
+    "tmp",
+    "temp",
+    "bak",
+    "old",
+    "cache", // 빌드 아티팩트
+    "obj",
+    "pdb",
+    "ilk",
+    "exp",
+    "lib",
+    "pch", // 로그 파일
+    "log",
+    "etl",
+    "jsonl", // 설정/레지스트리
+    "ini",
+    "reg", // 데이터베이스/인덱스
+    "db",
+    "db-shm",
+    "db-wal",
+    "sqlite",
+    "sqlite-shm",
+    "sqlite-wal",
+    "idx",
+    "ldb",
     // 미디어 (파일명은 필요할 수 있지만 대량 존재 시 제외)
-    "mp3", "mp4", "avi", "mkv", "mov", "wmv", "flv", "m4v", "m4a", "aac", "wav", "flac",
+    "mp3",
+    "mp4",
+    "avi",
+    "mkv",
+    "mov",
+    "wmv",
+    "flv",
+    "m4v",
+    "m4a",
+    "aac",
+    "wav",
+    "flac",
     // 압축 파일 (지원 파서 없음)
-    "zip", "rar", "7z", "tar", "gz", "bz2", "xz", // 기타 바이너리
-    "bin", "dat", "iso", "img", "pb",
+    "zip",
+    "rar",
+    "7z",
+    "tar",
+    "gz",
+    "bz2",
+    "xz", // 기타 바이너리
+    "bin",
+    "dat",
+    "iso",
+    "img",
+    "pb",
 ];
 
 // ============================================

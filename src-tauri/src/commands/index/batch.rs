@@ -179,10 +179,7 @@ async fn run_batch(batch_id: String, paths: Vec<String>, app_handle: AppHandle) 
         if let Some(job) = committing_job {
             emit_job_progress(&app_handle, &batch_id, &job);
         }
-        let db_path = state_handle
-            .read()
-            .ok()
-            .map(|c| c.db_path.clone());
+        let db_path = state_handle.read().ok().map(|c| c.db_path.clone());
         if let Some(db_path) = db_path {
             crate::db::wal_checkpoint(&db_path);
         }

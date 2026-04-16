@@ -556,10 +556,8 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
         );
 
         let mut stmt = conn.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::ToSql> = batch
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
 
         let results = stmt.query_map(params.as_slice(), |row| {
             Ok(ChunkInfo {
@@ -659,10 +657,8 @@ pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<Hash
         );
 
         let mut stmt = conn.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::ToSql> = batch
-            .iter()
-            .map(|id| id as &dyn rusqlite::ToSql)
-            .collect();
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
 
         let rows = stmt.query_map(params.as_slice(), |row| {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))

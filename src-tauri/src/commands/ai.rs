@@ -734,7 +734,9 @@ pub async fn ask_ai_file(
 
         tracing::debug!(
             "파일 QA 검색쿼리: '{}' (원본: '{}', 파일: '{}')",
-            search_query, query_clone, file_path_clone
+            search_query,
+            query_clone,
+            file_path_clone
         );
 
         // 하이브리드 검색 후 대상 파일만 필터
@@ -745,9 +747,7 @@ pub async fn ask_ai_file(
             .map(|resp| {
                 resp.results
                     .into_iter()
-                    .filter(|r| {
-                        r.file_path.eq_ignore_ascii_case(&file_path_clone)
-                    })
+                    .filter(|r| r.file_path.eq_ignore_ascii_case(&file_path_clone))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
@@ -782,7 +782,10 @@ pub async fn ask_ai_file(
                 if sequential.is_empty() {
                     targeted_ctx
                 } else {
-                    format!("[문서 앞부분]\n{}\n\n[질문 관련 부분]\n{}", sequential, targeted_ctx)
+                    format!(
+                        "[문서 앞부분]\n{}\n\n[질문 관련 부분]\n{}",
+                        sequential, targeted_ctx
+                    )
                 }
             } else {
                 targeted_ctx
