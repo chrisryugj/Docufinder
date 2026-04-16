@@ -1,6 +1,6 @@
-# bump-version.ps1 — 3곳의 버전을 동시에 업데이트
-# 사용법: .\scripts\bump-version.ps1 2.1.0
-#         .\scripts\bump-version.ps1 2.1.0 -DryRun
+# bump-version.ps1 — Update version in 3 files simultaneously
+# Usage: .\scripts\bump-version.ps1 2.1.0
+#        .\scripts\bump-version.ps1 2.1.0 -DryRun
 
 param(
     [Parameter(Mandatory=$true, Position=0)]
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 프로젝트 루트 탐지 (package.json 기준)
+# Detect project root (based on package.json)
 $packageJson = Join-Path $PSScriptRoot "..\package.json"
 if (-not (Test-Path $packageJson)) {
     $packageJson = Join-Path (Get-Location) "package.json"

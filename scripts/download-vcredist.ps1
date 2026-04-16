@@ -1,4 +1,4 @@
-# VC++ 2015-2022 Redistributable 다운로드 (빌드 전 1회 실행)
+# Download VC++ 2015-2022 Redistributable (run once before build)
 $dest = Join-Path $PSScriptRoot "..\src-tauri\wix\vc_redist.x64.exe"
 $dest = [System.IO.Path]::GetFullPath($dest)
 
