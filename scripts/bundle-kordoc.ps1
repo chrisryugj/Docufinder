@@ -1,7 +1,7 @@
-# kordoc + Node.js 런타임을 Tauri 번들 리소스로 준비
-# 용도: pnpm tauri:build 전에 실행
-# 결과: src-tauri/resources/kordoc/ (cli.js + chunks + node_modules subset)
-#        src-tauri/resources/node.exe
+# Bundle kordoc + Node.js runtime into Tauri resources
+# Run before: pnpm tauri:build
+# Output: src-tauri/resources/kordoc/ (cli.js + chunks + node_modules subset)
+#         src-tauri/resources/node.exe
 
 param(
     [string]$KordocDir = "c:\github_project\kordoc",
@@ -10,24 +10,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== kordoc 번들 준비 ===" -ForegroundColor Cyan
+Write-Host "=== kordoc bundle ===" -ForegroundColor Cyan
 
-# 1. node.exe 복사
+# 1. Copy node.exe
 $nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
 if (-not $nodeExe) {
-    Write-Error "Node.js가 설치되어 있지 않습니다"
+    Write-Error "Node.js is not installed"
     exit 1
 }
 Write-Host "Node.js: $nodeExe"
 Copy-Item $nodeExe "$OutputDir\node.exe" -Force
-Write-Host "  -> node.exe 복사 완료"
+Write-Host "  -> node.exe copied"
 
-# 2. kordoc dist 복사 (sourcemap 제외)
+# 2. Copy kordoc dist (exclude sourcemaps)
 $kordocOut = "$OutputDir\kordoc"
 if (Test-Path $kordocOut) { Remove-Item $kordocOut -Recurse -Force }
 New-Item $kordocOut -ItemType Directory -Force | Out-Null
 
-# dist 파일 복사 (.map 제외, 서브디렉토리 유지)
 Get-ChildItem "$KordocDir\dist" -Recurse -File |
     Where-Object { $_.Extension -ne ".map" -and $_.Extension -ne ".cts" -and $_.Name -ne "index.d.ts" } |
     ForEach-Object {
@@ -37,27 +36,26 @@ Get-ChildItem "$KordocDir\dist" -Recurse -File |
         if (-not (Test-Path $destDir)) { New-Item $destDir -ItemType Directory -Force | Out-Null }
         Copy-Item $_.FullName $destPath -Force
     }
-Write-Host "  -> kordoc dist 복사 완료"
+Write-Host "  -> kordoc dist copied"
 
-# 3. package.json (ESM 모드)
+# 3. package.json (ESM mode)
 @'
 {"type":"module","name":"kordoc-bundle","private":true}
 '@ | Set-Content "$kordocOut\package.json" -Encoding UTF8
 
-# 4. 런타임 node_modules 설치 (최소한)
+# 4. Install runtime node_modules (minimal)
 Push-Location $kordocOut
-# kordoc의 dependencies + pdfjs-dist (peer dep)
 $deps = @("@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4")
-Write-Host "  -> node_modules 설치 중: $($deps -join ', ')"
+Write-Host "  -> Installing node_modules: $($deps -join ', ')"
 & npm install --omit=dev --no-package-lock --no-fund --no-audit $deps 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) {
     Pop-Location
-    Write-Error "npm install 실패 (exit $LASTEXITCODE)"
+    Write-Error "npm install failed (exit $LASTEXITCODE)"
     exit 1
 }
 Pop-Location
 
-# 불필요한 파일 정리 (typescript defs, docs, tests)
+# Clean up unnecessary files (typescript defs, docs, tests)
 if (Test-Path "$kordocOut\node_modules") {
     Get-ChildItem "$kordocOut\node_modules" -Recurse -Include "*.d.ts","*.d.mts","*.md","LICENSE*","CHANGELOG*","*.map","tsconfig*" |
         Remove-Item -Force -ErrorAction SilentlyContinue
@@ -66,7 +64,7 @@ if (Test-Path "$kordocOut\node_modules") {
 $totalSize = (Get-ChildItem "$OutputDir\kordoc" -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
 $nodeSize = (Get-Item "$OutputDir\node.exe").Length / 1MB
 Write-Host ""
-Write-Host "=== 번들 완료 ===" -ForegroundColor Green
+Write-Host "=== Bundle complete ===" -ForegroundColor Green
 Write-Host "  kordoc: $([math]::Round($totalSize, 1)) MB"
 Write-Host "  node.exe: $([math]::Round($nodeSize, 1)) MB"
-Write-Host "  합계: $([math]::Round($totalSize + $nodeSize, 1)) MB"
+Write-Host "  total: $([math]::Round($totalSize + $nodeSize, 1)) MB"
