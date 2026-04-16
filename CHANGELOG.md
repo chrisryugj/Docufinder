@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.2.0] - 2026-04-17
+
+### Security
+- LIKE 쿼리 ESCAPE 절 + 와일드카드 이스케이프 (`commands/duplicate.rs`)
+- Gemini API 키를 URL 쿼리 → `x-goog-api-key` 헤더로 이동 (로그 유출 차단)
+- `data_root` 경로 검증 (심볼릭 링크/드라이브 루트/시스템 폴더 거부)
+- 파일/미리보기 화이트리스트 무조건 적용 (감시 폴더 미등록 시 거부)
+- kordoc Node 시스템 PATH fallback 제거 (PATH hijacking 방지)
+
+### Changed
+- DB 커넥션 풀 6 → 16 (SQLITE_BUSY 폭주 방지)
+- 벡터 prefetch 스레드 `retry_on_busy` 적용
+- panic hook 필터 확장 (zip/quick-xml/calamine/lopdf crash.log 오염 방지)
+- kordoc 의존성 SHA 고정 (공급망 공격 차단)
+- VCRedist 설치 실패 감지 (`Return=check`)
+- publish workflow `releaseDraft=false`
+- `Ctrl+C` → `Ctrl+Shift+C` 재할당 (일반 복사 충돌 해결)
+- localStorage 키 `docufinder_` prefix 통일 (레거시 키 자동 마이그레이션)
+
+### Fixed
+- 스플래시 스피너 브랜드 녹색 적용 (테라코타 잔존 제거)
+- 누락 CSS 변수 보강 (`--color-text-tertiary`, `--color-accent-border/tertiary`, `--color-error-subtle/border`)
+- `Ctrl+K` 시 질문 textarea 전체선택 방지 (입력 유실 방지)
+- `useWindowFocus`가 모든 모달을 존중 (포커스 트랩 보호)
+
+### Removed
+- 미사용 `dompurify` 의존성
+- 잔존 백업 파일 `wix/dialog.bmp.bak`
+
+### Notes
+- 본 릴리즈는 updater 서명(`.sig`)을 포함하지 않음 — v2.1.0에서의 자동 업데이트는 지원하지 않으며 수동으로 MSI를 받아 설치 필요
+
 ## [2.1.0] - 2026-04-11
 
 ### Added
