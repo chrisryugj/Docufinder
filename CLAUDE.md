@@ -35,7 +35,8 @@ Anything/
 │   │   ├── indexer/        # 인덱싱 (pipeline, manager, vector_worker, background_parser)
 │   │   ├── embedder/       # ONNX 임베딩 (KoSimCSE, 768차원)
 │   │   ├── tokenizer/      # 한국어 형태소 분석 (Lindera)
-│   │   ├── reranker/       # 시맨틱 결과 재정렬
+│   │   ├── ocr/            # PaddleOCR ONNX (이미지/스캔 PDF)
+│   │   ├── llm/            # Gemini API (RAG 질의응답)
 │   │   ├── db/             # SQLite + FTS5 스키마
 │   │   └── utils/          # disk_info, idle_detector
 │   └── Cargo.toml
@@ -65,10 +66,11 @@ Anything/
 | Frontend | React 19 + TypeScript 5.9 + Tailwind CSS 4 |
 | Backend | Rust 2021 + Tauri 2.10 |
 | 검색 | SQLite FTS5 (키워드) + usearch (벡터) + RRF 하이브리드 |
-| 임베딩 | ort 2.0 (ONNX) + KoSimCSE-roberta-multitask (768차원) |
+| 임베딩 | ort 2.0 (ONNX) + KoSimCSE-roberta-multitask INT8 (768차원) |
 | 형태소 분석 | Lindera 2.0 (한국어) |
-| 재정렬 | ms-marco-MiniLM-L6-v2 (Cross-Encoder) |
-| 파싱 | zip, quick-xml, calamine, pdf-extract |
+| OCR | PaddleOCR ONNX (det + rec-ko) |
+| AI 질의응답 | Gemini API (RAG) |
+| 파싱 | zip, quick-xml, calamine, pdf-extract, kordoc (HWP) |
 | 파일 감시 | notify 8 (증분 인덱싱) |
 
 ## 주요 명령어
@@ -94,7 +96,7 @@ Anything/
 
 | 기능 | 설명 |
 |------|------|
-| 하이브리드 검색 | 키워드(FTS5) + 시맨틱(벡터) + RRF 병합 + 재정렬 |
+| 하이브리드 검색 | 키워드(FTS5) + 시맨틱(벡터) + RRF 병합 |
 | 파일명 검색 | Everything 스타일 파일명 검색 (인메모리 캐시) |
 | 실시간 감시 | 폴더 변경 자동 감지 + 증분 인덱싱 |
 | 2단계 인덱싱 | FTS 즉시 완료 → 벡터 백그라운드 처리 |
