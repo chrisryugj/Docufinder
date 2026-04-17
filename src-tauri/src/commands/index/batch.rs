@@ -51,22 +51,26 @@ pub async fn start_indexing_batch(
         container.db_path.clone()
     };
     let mut canonical_paths: Vec<String> = Vec::new();
+    let mut rejected: Vec<(String, String)> = Vec::new();
     for raw in &paths {
         let p = Path::new(raw);
         if !p.exists() {
             tracing::warn!("Batch: skipping non-existent path: {}", raw);
+            rejected.push((raw.clone(), "경로가 존재하지 않습니다".to_string()));
             continue;
         }
         let canonical_buf = match p.canonicalize() {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Batch: canonicalize failed for {}: {}", raw, e);
+                rejected.push((raw.clone(), format!("경로 정규화 실패: {}", e)));
                 continue;
             }
         };
-        // 시스템 폴더 / 드라이브 루트 차단
+        // 시스템 폴더 차단 (드라이브 루트는 허용 — Everything 스타일 전체 검색 지원)
         if let Err(msg) = crate::constants::validate_watch_path(&canonical_buf) {
             tracing::warn!("Batch: rejecting path {}: {}", raw, msg);
+            rejected.push((raw.clone(), msg.to_string()));
             continue;
         }
         let canonical = canonical_buf.to_string_lossy().to_string();
@@ -74,16 +78,36 @@ pub async fn start_indexing_batch(
         if let Ok(conn) = crate::db::get_connection(&db_path) {
             if crate::db::is_folder_watched(&conn, &canonical).unwrap_or(false) {
                 tracing::info!("Batch: already watched, skipping: {}", canonical);
+                rejected.push((raw.clone(), "이미 인덱싱된 폴더입니다".to_string()));
                 continue;
             }
         }
         canonical_paths.push(canonical);
     }
 
+    // 거부된 경로들을 프론트에 알림 (조용한 실패 방지)
+    for (path, reason) in &rejected {
+        let _ = app_handle.emit(
+            "indexing-warning",
+            &serde_json::json!({
+                "type": "path_rejected",
+                "folder_path": path,
+                "message": reason,
+            }),
+        );
+    }
+
     if canonical_paths.is_empty() {
-        return Err(ApiError::IndexingFailed(
-            "인덱싱할 새 폴더가 없습니다".to_string(),
-        ));
+        let reason = if rejected.is_empty() {
+            "선택된 경로가 없습니다".to_string()
+        } else {
+            let details: Vec<String> = rejected
+                .iter()
+                .map(|(p, r)| format!("• {} — {}", p, r))
+                .collect();
+            format!("인덱싱 가능한 경로가 없습니다:\n{}", details.join("\n"))
+        };
+        return Err(ApiError::IndexingFailed(reason));
     }
 
     let batch_id = format!("batch-{}", chrono::Utc::now().timestamp_millis());

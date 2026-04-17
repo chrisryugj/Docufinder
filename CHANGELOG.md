@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.2] - 2026-04-17
+
+### Fixed
+- **전체 드라이브 인덱싱 복원** — v2.3.0 security fix에서 드라이브 루트(`C:\`, `D:\`)를 `validate_watch_path`에서 차단했던 건 Everything 스타일 전체 검색이라는 앱 설계 의도에 반하는 과도한 제한. 제거 후 v2.2.0과 동일하게 `add_folder`에서 drive root 감지 → 경고 emit + 벡터 자동 시작 스킵으로 복구
+- **조용한 실패 제거** — `start_indexing_batch`에서 경로가 거부될 때 `continue`만 하고 에러/이벤트 없어 UI에 반응이 없던 문제. 거부 경로별로 `indexing-warning` 이벤트 emit + 모두 거부된 경우 사유 포함한 상세 에러 메시지 반환
+
 ## [2.3.1] - 2026-04-17
 
 ### Fixed

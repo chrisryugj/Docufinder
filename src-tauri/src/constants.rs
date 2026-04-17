@@ -221,10 +221,10 @@ pub fn is_drive_root(path: &std::path::Path) -> bool {
 /// 실패 시 사용자에게 보여줄 한국어 사유 반환. `add_folder`/`reindex_folder`/
 /// `resume_indexing`/`start_indexing_batch` 등 인덱싱 진입점에서 `canonicalize()`
 /// 직후 호출한다.
+///
+/// 드라이브 루트(`C:\`, `D:\`)는 이 앱의 Everything 스타일 검색 설계상 허용한다.
+/// 단 호출부에서 `is_drive_root`로 감지해 벡터 자동 시작 스킵 + 경고를 띄워야 한다.
 pub fn validate_watch_path(path: &std::path::Path) -> Result<(), &'static str> {
-    if is_drive_root(path) {
-        return Err("드라이브 루트(C:\\, D:\\ 등)는 감시할 수 없습니다. 하위 폴더를 선택해주세요.");
-    }
     if is_blocked_path(path) {
         return Err("시스템 보호 폴더는 감시할 수 없습니다.");
     }

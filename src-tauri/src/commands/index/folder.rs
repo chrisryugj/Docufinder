@@ -135,13 +135,31 @@ pub async fn add_folder(
         }
     }
 
-    // 드라이브 루트는 validate_watch_path에서 이미 차단됨
+    // 드라이브 루트(C:\, D:\ 등) 감지 → 벡터 자동 시작 스킵 + 경고 emit
+    // 드라이브 전체 인덱싱은 Everything 스타일 검색의 정상 기능이지만,
+    // 수백만 파일 대상 벡터 임베딩은 메모리/시간 소모가 커 사용자 수동 선택으로 미룬다.
+    let is_drive_root = crate::constants::is_drive_root(&canonical_path);
+    if is_drive_root {
+        tracing::warn!(
+            "Drive root detected: auto vector indexing disabled for {}",
+            path
+        );
+        let _ = app_handle.emit(
+            "indexing-warning",
+            &serde_json::json!({
+                "type": "drive_root",
+                "folder_path": path,
+                "message": "드라이브 전체 인덱싱이 완료되었습니다. 시맨틱(벡터) 검색은 대용량 드라이브에서 자동 시작되지 않습니다. 필요 시 설정에서 수동으로 시작하세요."
+            }),
+        );
+    }
+
     let auto_vector_started = maybe_start_auto_vector(
         &ctx,
         app_handle,
         was_cancelled,
         result.indexed_count,
-        false,
+        is_drive_root,
         Some(&state),
     );
     if !auto_vector_started {
