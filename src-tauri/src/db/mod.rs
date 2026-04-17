@@ -649,6 +649,43 @@ pub fn get_chunk_file_paths(conn: &Connection, chunk_ids: &[i64]) -> Result<Hash
     Ok(map)
 }
 
+/// 파일 경로 목록 → 파일별 전체 청크 수 batch 조회 (히트맵 절대 스케일용)
+/// 대용량 시 자동 분할.
+pub fn get_chunk_counts_by_file_paths(
+    conn: &Connection,
+    file_paths: &[String],
+) -> Result<HashMap<String, i64>> {
+    if file_paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut map = HashMap::with_capacity(file_paths.len());
+    for batch in file_paths.chunks(SQL_BATCH_SIZE) {
+        let placeholders: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT f.path, COUNT(c.id)
+             FROM files f
+             JOIN chunks c ON c.file_id = f.id
+             WHERE f.path IN ({})
+             GROUP BY f.id",
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            let (path, count) = row?;
+            map.insert(path, count);
+        }
+    }
+    Ok(map)
+}
+
 /// 파일 경로로 chunk ID들 조회 (벡터 인덱스 삭제용)
 pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare(

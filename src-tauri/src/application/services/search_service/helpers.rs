@@ -1,7 +1,33 @@
 //! 검색 헬퍼 함수 — 스코어링, 스니펫, 페이지 보간, 스마트 검색 필터
 
 use crate::application::dto::search::SearchResult;
+use crate::db;
 use crate::search::nl_query::DateFilter;
+use rusqlite::Connection;
+use std::collections::HashSet;
+
+/// 검색 결과에 파일별 total_chunks를 채워 넣는다 (히트맵 절대 스케일용).
+/// 실패 시 조용히 무시 (total_chunks는 0으로 남음).
+pub fn enrich_total_chunks(conn: &Connection, results: &mut [SearchResult]) {
+    if results.is_empty() {
+        return;
+    }
+    let unique_paths: HashSet<String> =
+        results.iter().map(|r| r.file_path.clone()).collect();
+    let paths: Vec<String> = unique_paths.into_iter().collect();
+    let counts = match db::get_chunk_counts_by_file_paths(conn, &paths) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("enrich_total_chunks failed: {}", e);
+            return;
+        }
+    };
+    for r in results.iter_mut() {
+        if let Some(&count) = counts.get(&r.file_path) {
+            r.total_chunks = count;
+        }
+    }
+}
 
 // ── 스코어 정규화 ─────────────────────────────────────
 

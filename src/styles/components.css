@@ -93,6 +93,18 @@
   box-shadow: var(--shadow-md);
 }
 
+/* 프리뷰 패널 - 복사/내보내기 드롭다운 메뉴 버튼 */
+.export-menu-btn {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.export-menu-btn:hover {
+  background-color: var(--color-accent-light);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
 /* Content max-width container */
 .content-column {
   max-width: var(--content-max-width);

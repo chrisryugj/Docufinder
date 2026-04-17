@@ -256,20 +256,56 @@ export const SearchResultList = memo(function SearchResultList({
             // 그룹 뷰
             <>
               <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `grouped-search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "space-y-0.5" : "space-y-1.5"}`}>
-                {groupedResults.slice(0, visibleCount).map((group, index) => (
-                  <GroupedSearchResultItem
-                    key={group.file_path}
-                    domId={`grouped-search-result-${index}`}
-                    group={group}
-                    onOpenFile={onOpenFile}
-                    onCopyPath={onCopyPath}
-                    onOpenFolder={onOpenFolder}
-                    isCompact={isCompact}
-                    searchQuery={query}
-                    isExpanded={expandedGroups.has(group.file_path)}
-                    onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
-                  />
-                ))}
+                {groupedResults.slice(0, visibleCount).map((group, index) => {
+                  const flatIdx = results.findIndex(r => r.file_path === group.file_path);
+                  const selectForPreview = () => { if (flatIdx >= 0) onSelectResult?.(flatIdx); };
+
+                  // 단일 매칭: flat 뷰 UX로 렌더링 (인라인 +300자 컨텍스트 펼침 지원)
+                  if (group.chunks.length === 1) {
+                    const result = group.chunks[0];
+                    return (
+                      <div
+                        key={group.file_path}
+                        onClick={selectForPreview}
+                      >
+                        <SearchResultItem
+                          result={result}
+                          index={index}
+                          isExpanded={expandedGroups.has(group.file_path)}
+                          isCompact={isCompact}
+                          onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
+                          onOpenFile={onOpenFile}
+                          onCopyPath={onCopyPath}
+                          onOpenFolder={onOpenFolder}
+                          refineKeywords={refineKeywords}
+                          query={query}
+                          onFindSimilar={onFindSimilar}
+                          category={categories?.[group.file_path]}
+                        />
+                      </div>
+                    );
+                  }
+
+                  // 다중 매칭: 기존 GroupedSearchResultItem
+                  return (
+                    <div
+                      key={group.file_path}
+                      onClick={selectForPreview}
+                    >
+                      <GroupedSearchResultItem
+                        domId={`grouped-search-result-${index}`}
+                        group={group}
+                        onOpenFile={onOpenFile}
+                        onCopyPath={onCopyPath}
+                        onOpenFolder={onOpenFolder}
+                        isCompact={isCompact}
+                        searchQuery={query}
+                        isExpanded={expandedGroups.has(group.file_path)}
+                        onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
               {groupedResults.length > visibleCount && (
                 <ShowMoreButton

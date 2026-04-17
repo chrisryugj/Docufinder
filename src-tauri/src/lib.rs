@@ -859,6 +859,7 @@ pub fn run() {
             commands::preview::get_bookmarks,
             commands::preview::generate_summary,
             commands::export::export_csv,
+            commands::export::export_markdown,
             commands::search::get_search_history_stats,
             commands::duplicate::find_duplicates,
             commands::tags::add_file_tag,

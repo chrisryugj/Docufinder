@@ -76,6 +76,9 @@ pub struct SearchResult {
     /// 같은 경로에 원본 HWP 파일이 존재하는 HWPX인 경우 true
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub has_hwp_pair: bool,
+    /// 해당 파일의 전체 청크 개수 (히트맵 절대 스케일용)
+    #[serde(default)]
+    pub total_chunks: i64,
 }
 
 /// 검색 응답 DTO

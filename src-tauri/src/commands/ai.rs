@@ -225,6 +225,7 @@ async fn expand_with_neighbors(
             snippet: None,
             modified_at: c.modified_at,
             has_hwp_pair: false,
+            total_chunks: 0,
         });
     }
 

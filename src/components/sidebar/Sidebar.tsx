@@ -1,10 +1,12 @@
 import { useState, memo } from "react";
 import { ChevronLeft, ChevronRight, Plus, Clock, Folder, Trash2, Bookmark } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
 import { SuggestedFolders } from "./SuggestedFolders";
 import { BookmarkList } from "./BookmarkList";
 import { DriveIndexingPanel } from "./DriveIndexingPanel";
+import { Tooltip } from "../ui/Tooltip";
 import type { RecentSearch } from "../../types/search";
 import type { BookmarkInfo } from "../../hooks/useBookmarks";
 import type { BatchState } from "../../types/index";
@@ -261,20 +263,54 @@ export const Sidebar = memo(function Sidebar({
 
             {/* Footer */}
             <div
-              className="px-3 py-1.5 shrink-0 flex flex-col justify-center"
+              className="px-3 py-2 shrink-0 flex items-center justify-center"
               style={{
-                height: "50px",
-                minHeight: "50px",
                 borderTop: "1px solid var(--color-sidebar-border)",
               }}
             >
-              <div
-                className="text-center text-[11px] leading-tight"
-                style={{ color: "var(--color-sidebar-muted)" }}
+              <Tooltip
+                usePortal
+                position="top"
+                maxWidth={220}
+                content={
+                  <div className="flex flex-col gap-0.5 leading-tight">
+                    <span>
+                      <span style={{ color: "var(--color-text-muted)" }}>Developer</span>
+                      <span className="mx-1 opacity-50">·</span>
+                      딴짓하는 류주임
+                    </span>
+                    <span>
+                      <span style={{ color: "var(--color-text-muted)" }}>Icon designer</span>
+                      <span className="mx-1 opacity-50">·</span>
+                      @nellyskykim
+                    </span>
+                  </div>
+                }
               >
-                <p>&copy; 2025&ndash;{new Date().getFullYear()} Chris Ryu</p>
-                <p className="text-[10px]">AI.Do · 서울특별시 광진구청</p>
-              </div>
+                <div
+                  className="text-center leading-[1.35] select-none flex flex-col items-center"
+                  style={{ color: "var(--color-sidebar-muted)" }}
+                >
+                  <p className="text-[10.5px] whitespace-nowrap">
+                    &copy; 2025&ndash;2026 딴짓하는 류주임
+                  </p>
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      invoke("open_url", { url: "https://www.threads.net/@chris_gomdori" });
+                    }}
+                    className="text-[11px] font-semibold tracking-tight transition-colors hover:underline whitespace-nowrap"
+                    style={{ color: "var(--color-accent)" }}
+                    aria-label="Threads @chris_gomdori 열기"
+                  >
+                    @chris_gomdori
+                  </a>
+                  <p className="text-[9.5px] tracking-tight whitespace-nowrap opacity-80">
+                    AI.Do <span className="opacity-60">·</span> 서울특별시 광진구청
+                  </p>
+                </div>
+              </Tooltip>
             </div>
           </>
         )}
