@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.4] - 2026-04-18
+
+### Fixed
+- **Updater 서명 복구** — v2.2.0부터 `TAURI_SIGNING_PRIVATE_KEY` GitHub Secret이 base64 미인코딩 + passphrase 불일치로 릴리스 워크플로우의 signing 단계가 실패해 MSI만 업로드되고 `.sig`가 빠져있었음. 새 minisign 키 쌍 생성 + secrets 재등록 + `tauri.conf.json` pubkey 교체로 복구. **주의: pubkey가 바뀌었으므로 v2.3.3 이하 설치본은 자동 업데이트 체인이 끊김 → v2.3.4는 수동 설치 필요**
+
 ## [2.3.3] - 2026-04-17
 
 ### Fixed

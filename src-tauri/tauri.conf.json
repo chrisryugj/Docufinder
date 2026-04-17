@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Anything",
-  "version": "2.3.3",
+  "version": "2.3.4",
   "identifier": "com.anything.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -62,7 +62,7 @@
       "endpoints": [
         "https://github.com/chrisryugj/Docufinder/releases/latest/download/latest.json"
       ],
-      "pubkey": "RWQBMtE0Nmg+8DY4Ihh424S7tzFc/3MJK7FV2oZvniDoGc0vNf/13c9F"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExQzMyODE1NzNGMUUzNzkKUldSNTQvRnpGU2pERWVOUUtGR2MrM3RvYUlWeVZwYndFTFNSTnR4TFFiMWdCbHEwdXE1L1JSZEgK"
     }
   }
 }
