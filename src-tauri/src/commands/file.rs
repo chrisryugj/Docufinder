@@ -99,8 +99,7 @@ pub async fn open_file(
         };
         let conn = crate::db::get_connection(std::path::Path::new(&db_path))
             .map_err(|_| "내부 오류".to_string())?;
-        let folders =
-            crate::db::get_watched_folders(&conn).map_err(|_| "내부 오류".to_string())?;
+        let folders = crate::db::get_watched_folders(&conn).map_err(|_| "내부 오류".to_string())?;
         if folders.is_empty() {
             return Err("등록된 감시 폴더가 없어 파일을 열 수 없습니다".to_string());
         }

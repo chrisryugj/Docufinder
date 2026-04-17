@@ -40,7 +40,6 @@ pub fn init_database(db_path: &Path) -> Result<()> {
 
 /// 기존 Connection으로 스키마 마이그레이션 (clear_all_data에서도 사용)
 pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
-
     // 스키마 버전 테이블 (항상 먼저 생성)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS schema_version (

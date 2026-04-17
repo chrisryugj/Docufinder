@@ -105,9 +105,7 @@ impl AppContainer {
 
         // 드라이브 루트 거부 (e.g. C:\, D:\)
         let canon_str = canonical.to_string_lossy().to_string();
-        let stripped = canon_str
-            .strip_prefix(r"\\?\")
-            .unwrap_or(&canon_str);
+        let stripped = canon_str.strip_prefix(r"\\?\").unwrap_or(&canon_str);
         if stripped.len() <= 3 && stripped.chars().nth(1) == Some(':') {
             tracing::warn!("data_root cannot be a drive root: {:?}", canonical);
             return None;

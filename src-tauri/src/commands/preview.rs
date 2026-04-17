@@ -24,8 +24,8 @@ fn validate_preview_path(
     };
     let conn = db::get_connection(std::path::Path::new(&db_path))
         .map_err(|e| ApiError::Validation(e.to_string()))?;
-    let folders = db::get_watched_folders(&conn)
-        .map_err(|e| ApiError::Validation(e.to_string()))?;
+    let folders =
+        db::get_watched_folders(&conn).map_err(|e| ApiError::Validation(e.to_string()))?;
     if folders.is_empty() {
         return Err(ApiError::Validation(
             "등록된 감시 폴더가 없어 미리보기할 수 없습니다".to_string(),

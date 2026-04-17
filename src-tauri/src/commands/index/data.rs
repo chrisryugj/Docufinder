@@ -58,7 +58,10 @@ pub async fn clear_all_data(
     emit_step("clearing-database");
     {
         let container = state.read()?;
-        container.index_service().clear_database().map_err(ApiError::from)?;
+        container
+            .index_service()
+            .clear_database()
+            .map_err(ApiError::from)?;
     }
 
     // 5. 파일명 캐시 클리어

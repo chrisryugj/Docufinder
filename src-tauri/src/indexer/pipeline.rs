@@ -429,7 +429,11 @@ fn index_folder_fts_impl(
                                 Err(e) => {
                                     failed += 1;
                                     if errors.len() < MAX_INDEXING_ERRORS {
-                                        errors.push(format!("{}\t{}", clean_path_display(&path), e));
+                                        errors.push(format!(
+                                            "{}\t{}",
+                                            clean_path_display(&path),
+                                            e
+                                        ));
                                     } else {
                                         suppressed_errors += 1;
                                     }

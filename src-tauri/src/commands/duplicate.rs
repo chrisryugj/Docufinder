@@ -129,8 +129,12 @@ fn find_exact_duplicates(
                  AND size IN (SELECT size FROM files WHERE size > 0
                               AND (path LIKE ?1 ESCAPE '\\' OR path LIKE ?2 ESCAPE '\\')
                               GROUP BY size HAVING COUNT(*) >= 2)
-                 ORDER BY size DESC, path".to_string(),
-                vec![Box::new(unix) as Box<dyn rusqlite::types::ToSql>, Box::new(win)],
+                 ORDER BY size DESC, path"
+                    .to_string(),
+                vec![
+                    Box::new(unix) as Box<dyn rusqlite::types::ToSql>,
+                    Box::new(win),
+                ],
             )
         }
         None => (
@@ -237,7 +241,10 @@ fn find_similar_duplicates(
                    AND (f.path LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\')
                  ORDER BY f.path"
                     .to_string(),
-                vec![Box::new(unix) as Box<dyn rusqlite::types::ToSql>, Box::new(win)],
+                vec![
+                    Box::new(unix) as Box<dyn rusqlite::types::ToSql>,
+                    Box::new(win),
+                ],
             )
         }
         None => (
