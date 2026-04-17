@@ -410,7 +410,7 @@ pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()
          DROP TABLE IF EXISTS chunks;
          DROP TABLE IF EXISTS files;
          DROP TABLE IF EXISTS watched_folders;
-         DROP TABLE IF EXISTS schema_version;"
+         DROP TABLE IF EXISTS schema_version;",
     )?;
 
     // 동일 Connection으로 테이블 재생성

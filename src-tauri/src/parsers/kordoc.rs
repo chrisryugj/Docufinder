@@ -348,9 +348,9 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
 
     // pdfjs-dist 등 외부 라이브러리가 stdout에 경고를 출력하는 경우
     // JSON 시작점을 찾아서 앞의 garbage를 제거 (예: "Warning: TT: ...")
-    let json_start = output.find('{').ok_or_else(|| {
-        ParseError::ParseError("kordoc 출력에 JSON이 없습니다".to_string())
-    })?;
+    let json_start = output
+        .find('{')
+        .ok_or_else(|| ParseError::ParseError("kordoc 출력에 JSON이 없습니다".to_string()))?;
     if json_start > 0 {
         debug!(
             "kordoc stdout에 JSON 앞 {}바이트 garbage 제거: {:?}",
