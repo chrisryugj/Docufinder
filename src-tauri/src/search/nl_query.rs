@@ -361,8 +361,7 @@ impl NlQueryParser {
                     // 마지막 값 단어에 접미사가 붙어있는지 확인
                     let last_val = value_words[value_count - 1];
                     for suffix in suffixes {
-                        if last_val.ends_with(suffix) {
-                            let clean_val = &last_val[..last_val.len() - suffix.len()];
+                        if let Some(clean_val) = last_val.strip_suffix(suffix) {
                             if clean_val.is_empty() {
                                 continue;
                             }
