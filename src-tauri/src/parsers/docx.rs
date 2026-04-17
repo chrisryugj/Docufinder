@@ -168,13 +168,12 @@ fn extract_text_with_pages(xml_content: &str) -> Result<(Vec<PageText>, String),
                     }
                 }
             }
-            Ok(Event::Text(e))
-                if in_text => {
-                    let text = e
-                        .unescape()
-                        .map_err(|e| ParseError::ParseError(e.to_string()))?;
-                    current_paragraph.push_str(&text);
-                }
+            Ok(Event::Text(e)) if in_text => {
+                let text = e
+                    .unescape()
+                    .map_err(|e| ParseError::ParseError(e.to_string()))?;
+                current_paragraph.push_str(&text);
+            }
             Ok(Event::End(e)) => {
                 let local_name = e.local_name();
                 let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");

@@ -239,29 +239,27 @@ pub(super) fn parse_page_settings(xml_content: &str) -> PageSettings {
                     parse_page_element(&name_l, &e, &mut settings);
                 }
             }
-            Ok(Event::Empty(e))
-                if in_page_context => {
-                    let local_name = e.local_name();
-                    let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
-                    let name_l = name.to_ascii_lowercase();
-                    parse_page_element(&name_l, &e, &mut settings);
-                }
-            Ok(Event::End(e))
-                if in_page_context => {
-                    let local_name = e.local_name();
-                    let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
-                    let name_l = name.to_ascii_lowercase();
+            Ok(Event::Empty(e)) if in_page_context => {
+                let local_name = e.local_name();
+                let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                let name_l = name.to_ascii_lowercase();
+                parse_page_element(&name_l, &e, &mut settings);
+            }
+            Ok(Event::End(e)) if in_page_context => {
+                let local_name = e.local_name();
+                let name = std::str::from_utf8(local_name.as_ref()).unwrap_or("");
+                let name_l = name.to_ascii_lowercase();
 
-                    if matches!(
-                        name_l.as_str(),
-                        "secpr" | "pagepr" | "masterpage" | "pagelayout"
-                    ) {
-                        in_page_context = false;
-                        context_depth = 0;
-                    } else {
-                        context_depth = context_depth.saturating_sub(1);
-                    }
+                if matches!(
+                    name_l.as_str(),
+                    "secpr" | "pagepr" | "masterpage" | "pagelayout"
+                ) {
+                    in_page_context = false;
+                    context_depth = 0;
+                } else {
+                    context_depth = context_depth.saturating_sub(1);
                 }
+            }
             Ok(Event::Eof) => break,
             Err(_) => break,
             _ => {}
