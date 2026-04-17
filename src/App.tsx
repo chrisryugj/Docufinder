@@ -29,7 +29,6 @@ import { StatisticsModal } from "./components/search/StatisticsModal";
 import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
-import { UpdateBanner } from "./components/ui/UpdateBanner";
 import { OnboardingTour, resetOnboardingTour } from "./components/onboarding/OnboardingTour";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
@@ -348,9 +347,6 @@ function AppContent() {
         본문으로 건너뛰기
       </a>
       <div className="noise-overlay" aria-hidden="true" />
-
-
-      <UpdateBanner updater={ui.updater} />
 
       <Sidebar
         isOpen={ui.sidebarOpen}

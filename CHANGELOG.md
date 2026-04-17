@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
 ## [2.3.5] - 2026-04-18
 
-### Fixed
-- **Updater 서명 복구** — v2.2.0부터 `TAURI_SIGNING_PRIVATE_KEY` GitHub Secret이 base64 미인코딩 + passphrase 불일치로 릴리스 워크플로우의 signing 단계가 실패해 MSI만 업로드되고 `.sig`/`latest.json`이 빠져있었음. 새 minisign 키 쌍 생성 + secrets 재등록 + `tauri.conf.json` pubkey 교체 + `bundle.createUpdaterArtifacts: true` 명시로 복구. **주의: pubkey가 바뀌었으므로 v2.3.3 이하 설치본은 자동 업데이트 체인이 끊김 → v2.3.5는 수동 설치 필요. 이후 버전부터 자동 업데이트 정상 작동**
+### Removed
+- **자동 업데이터 체인 제거** — 릴리스 워크플로우가 updater 서명 단계에서 반복적으로 실패해 왔고(v2.2.0부터 `.sig`/`latest.json` 미생성), Tauri v2의 Windows self-contained updater가 미구현인 구조적 제약이 있어 유지 비용 대비 실효성이 낮다고 판단. `tauri-plugin-updater`, `tauri-plugin-process`, `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process` 의존성과 `useUpdater` 훅, `UpdateBanner` 컴포넌트를 전부 제거. 이제 새 버전은 GitHub Release 페이지에서 MSI를 수동 다운로드해 설치.
 
 ## [2.3.3] - 2026-04-17
 

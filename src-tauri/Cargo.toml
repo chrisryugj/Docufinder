@@ -17,8 +17,6 @@ tauri-build = { version = "^2.5", features = [] }
 tauri = { version = "^2.10", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "^2.6"
 # tauri-plugin-fs = "^2.4"  # 프론트엔드에서 미사용 (capabilities 미부여)
-tauri-plugin-updater = "2"
-tauri-plugin-process = "^2.3"
 tauri-plugin-autostart = "^2.5"
 tauri-plugin-single-instance = "^2"
 tauri-plugin-window-state = "^2.4"

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useRef, useState, useCallback, useEffect, useMemo, type ReactNode, type Dispatch, type SetStateAction } from "react";
 import { useToast, useTheme } from "../hooks";
 import { useFirstRun } from "../hooks/useFirstRun";
-import { useUpdater } from "../hooks/useUpdater";
 import { useBookmarks } from "../hooks/useBookmarks";
 import { useFileTags } from "../hooks/useFileTags";
 import type { ToastData, ToastType } from "../components/ui/Toast";
@@ -69,9 +68,6 @@ export interface UIContextValue {
   tagSuggestions: string[];
   handleAddTag: (filePath: string, tag: string) => Promise<void>;
   handleRemoveTag: (filePath: string, tag: string) => Promise<void>;
-
-  // Updater
-  updater: ReturnType<typeof useUpdater>;
 
   // Refs
   isMountedRef: React.RefObject<boolean>;
@@ -199,9 +195,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     setPreviewTags(updated);
   }, [removeTag, getFileTags]);
 
-  // Updater
-  const updater = useUpdater();
-
   const value: UIContextValue = {
     toasts, showToast, updateToast, dismissToast,
     setTheme,
@@ -216,7 +209,6 @@ export function UIProvider({ children }: { children: ReactNode }) {
     previewFilePath, setPreviewFilePath, previewWidth, handlePreviewClose, handleResizeStart,
     bookmarks, addBookmark, removeBookmark, isBookmarked,
     allTags, getFileTags, previewTags, tagSuggestions, handleAddTag, handleRemoveTag,
-    updater,
     isMountedRef,
   };
 

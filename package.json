@@ -45,8 +45,6 @@
     "@fontsource-variable/outfit": "^5.2.8",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.10.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "react": "^19.2.3",

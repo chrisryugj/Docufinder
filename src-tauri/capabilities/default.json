@@ -9,10 +9,7 @@
     "core:window:allow-set-focus",
     "dialog:allow-open",
     "dialog:allow-save",
-    "dialog:allow-ask",
-    "process:allow-restart",
-    "process:allow-exit",
-    "updater:default"
+    "dialog:allow-ask"
   ],
   "_note": "파일/폴더 열기는 커스텀 커맨드(file.rs)로 처리하며 경로+확장자 검증 완료. shell:allow-open 제거하여 공격 표면 축소."
 }

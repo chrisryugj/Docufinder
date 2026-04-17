@@ -447,8 +447,6 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
