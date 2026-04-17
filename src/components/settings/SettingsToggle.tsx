@@ -16,15 +16,15 @@ export const SettingsToggle = memo(function SettingsToggle({
   disabled = false,
 }: SettingsToggleProps) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0 flex-1" style={{ wordBreak: "keep-all", overflowWrap: "break-word" }}>
         <label
           className="text-sm font-medium"
           style={{ color: "var(--color-text-secondary)" }}
         >
           {label}
         </label>
-        <p className="mt-0.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
+        <p className="mt-0.5 text-xs leading-snug" style={{ color: "var(--color-text-muted)" }}>
           {description}
         </p>
       </div>
@@ -34,7 +34,7 @@ export const SettingsToggle = memo(function SettingsToggle({
         aria-checked={checked}
         disabled={disabled}
         onClick={() => !disabled && onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
         style={{
           backgroundColor: checked ? "var(--color-accent)" : "var(--color-bg-tertiary)",
         }}
