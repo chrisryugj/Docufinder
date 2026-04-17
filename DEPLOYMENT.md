@@ -32,11 +32,12 @@ pnpm tauri:build
 ### 3. 모델 파일
 빌드 시 `pnpm run download-model`로 ONNX 모델을 다운로드합니다.
 - 인터넷 차단 환경: 아래 경로에 수동 배치
+- 무결성 검증: 모든 모델 파일은 SHA-256 해시로 검증됨 (상수는 `src-tauri/src/model_downloader.rs`)
 
 | 모델 | 경로 | 파일 |
 |------|------|------|
-| KoSimCSE (임베딩) | `src-tauri/models/kosimcse-roberta-multitask/` | `model.onnx`, `tokenizer.json`, `onnxruntime.dll` |
-| MiniLM (재정렬) | `src-tauri/models/ms-marco-MiniLM-L6-v2/` | `model.onnx`, `tokenizer.json` |
+| KoSimCSE (임베딩, INT8 양자화) | `src-tauri/models/kosimcse-roberta-multitask/` | `model_int8.onnx`, `tokenizer.json`, `onnxruntime.dll` |
+| PaddleOCR (이미지 OCR) | `src-tauri/models/paddleocr/` | `det.onnx`, `rec.onnx`, `dict.txt` |
 
 ---
 

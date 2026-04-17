@@ -4,13 +4,31 @@
 #         src-tauri/resources/node.exe
 
 param(
-    [string]$KordocDir = "c:\github_project\kordoc",
+    [string]$KordocDir = "",
     [string]$OutputDir = "$PSScriptRoot\..\src-tauri\resources"
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== kordoc bundle ===" -ForegroundColor Cyan
+
+# Resolve kordoc source directory (priority: -KordocDir > $env:KORDOC_DIR > known locations)
+if (-not $KordocDir) { $KordocDir = $env:KORDOC_DIR }
+if (-not $KordocDir) {
+    $candidates = @(
+        "c:\github_project\kordoc",
+        "d:\AI_Project\kordoc",
+        "$PSScriptRoot\..\..\kordoc"
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path "$c\dist") { $KordocDir = (Resolve-Path $c).Path; break }
+    }
+}
+if (-not $KordocDir -or -not (Test-Path "$KordocDir\dist")) {
+    Write-Error "kordoc source not found. Tried: -KordocDir param, `$env:KORDOC_DIR, $($candidates -join ', '). Clone https://github.com/chrisryugj/kordoc and run 'npm install && npm run build' first."
+    exit 1
+}
+Write-Host "kordoc source: $KordocDir"
 
 # 1. Copy node.exe
 $nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
@@ -48,10 +66,15 @@ Write-Host "  -> kordoc dist copied"
 Push-Location $kordocOut
 $deps = @("@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4")
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"
-& npm.cmd install --omit=dev --no-package-lock --no-fund --no-audit $deps 2>&1 | Write-Host
-if ($LASTEXITCODE -ne 0) {
+# npm이 stderr에 warn을 써도 Stop 모드에서 죽지 않도록 이 블록만 Continue로 전환
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+& npm.cmd install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error $deps 2>&1 | ForEach-Object { Write-Host $_ }
+$npmExit = $LASTEXITCODE
+$ErrorActionPreference = $prevErrorAction
+if ($npmExit -ne 0) {
     Pop-Location
-    Write-Error "npm install failed (exit $LASTEXITCODE)"
+    Write-Error "npm install failed (exit $npmExit)"
     exit 1
 }
 Pop-Location
