@@ -843,7 +843,6 @@ pub fn run() {
             commands::index::cancel_indexing_batch,
             commands::settings::get_settings,
             commands::settings::update_settings,
-            commands::settings::verify_admin_code,
             commands::file::open_file,
             commands::file::open_url,
             commands::file::open_folder,

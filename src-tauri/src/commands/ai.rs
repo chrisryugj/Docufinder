@@ -232,10 +232,29 @@ async fn expand_with_neighbors(
     merged
 }
 
+/// 문서 내용에 들어있는 프롬프트 구분자를 치환하여 Prompt Injection 방어
+///
+/// 공격자가 인덱싱된 문서 안에 `--- 질문 ---` 같은 구분자를 삽입해 LLM
+/// 프롬프트 경계를 뚫으려는 시도를 차단한다. 외장 드라이브/공유 폴더처럼
+/// 제3자 파일이 들어올 수 있는 환경에서 실제 위협이 된다.
+fn sanitize_doc_content(s: &str) -> String {
+    // 하이픈 3개(---) 시작 라인의 구분자 패턴을 em-dash로 치환
+    // 의미는 유지하면서 프롬프트 경계와 충돌하지 않도록 함
+    s.replace("--- 질문 ---", "— 질문 —")
+        .replace("--- 문서 ---", "— 문서 —")
+        .replace("--- 문서 내용 ---", "— 문서 내용 —")
+        .replace("--- 답변 ---", "— 답변 —")
+        .replace("--- 시스템 ---", "— 시스템 —")
+        .replace("--- User ---", "— User —")
+        .replace("--- Assistant ---", "— Assistant —")
+        .replace("--- System ---", "— System —")
+}
+
 /// 검색 결과 → RAG 컨텍스트 문자열
 ///
 /// 동일 파일의 청크를 그룹화하여 문맥 연속성 확보.
 /// location_hint(페이지/시트) 포함으로 출처 정확도 향상.
+/// 문서 내용은 sanitize_doc_content로 Prompt Injection 방어.
 fn build_rag_context(
     results: &[crate::application::dto::search::SearchResult],
 ) -> (String, Vec<String>) {
@@ -287,11 +306,12 @@ fn build_rag_context(
                 context.push_str(&format!("(페이지 {})\n", page));
             }
 
-            let content = if r.full_content.is_empty() {
+            let raw = if r.full_content.is_empty() {
                 &r.content_preview
             } else {
                 &r.full_content
             };
+            let content = sanitize_doc_content(raw);
 
             // UTF-8 char boundary 안전한 자르기
             let remaining = MAX_CONTEXT_CHARS.saturating_sub(context.len());
@@ -303,7 +323,7 @@ fn build_rag_context(
                 context.push_str(&content[..end]);
                 break; // 컨텍스트 한계 도달
             } else {
-                context.push_str(content);
+                context.push_str(&content);
             }
 
             // 청크 간 구분 (같은 파일 내)
@@ -319,6 +339,7 @@ fn build_rag_context(
 }
 
 /// 파일 청크 텍스트 로드 (공통 헬퍼)
+/// 각 청크는 sanitize_doc_content로 Prompt Injection 방어된 뒤 연결됨.
 fn load_file_chunks_text(conn: &rusqlite::Connection, file_path: &str) -> Result<String, String> {
     let chunk_ids = db::get_chunk_ids_for_path(conn, file_path)
         .map_err(|e| format!("청크 조회 실패: {}", e))?;
@@ -338,16 +359,17 @@ fn load_file_chunks_text(conn: &rusqlite::Connection, file_path: &str) -> Result
         if text.len() >= MAX_CONTEXT_CHARS {
             break;
         }
+        let sanitized = sanitize_doc_content(&chunk.content);
         let remaining = MAX_CONTEXT_CHARS.saturating_sub(text.len());
-        if chunk.content.len() > remaining {
+        if sanitized.len() > remaining {
             let mut end = remaining;
-            while end > 0 && !chunk.content.is_char_boundary(end) {
+            while end > 0 && !sanitized.is_char_boundary(end) {
                 end -= 1;
             }
-            text.push_str(&chunk.content[..end]);
+            text.push_str(&sanitized[..end]);
             break;
         } else {
-            text.push_str(&chunk.content);
+            text.push_str(&sanitized);
             text.push('\n');
         }
     }
@@ -379,16 +401,17 @@ fn load_file_chunks_text_limited(
         if text.len() >= max_chars {
             break;
         }
+        let sanitized = sanitize_doc_content(&chunk.content);
         let remaining = max_chars.saturating_sub(text.len());
-        if chunk.content.len() > remaining {
+        if sanitized.len() > remaining {
             let mut end = remaining;
-            while end > 0 && !chunk.content.is_char_boundary(end) {
+            while end > 0 && !sanitized.is_char_boundary(end) {
                 end -= 1;
             }
-            text.push_str(&chunk.content[..end]);
+            text.push_str(&sanitized[..end]);
             break;
         } else {
-            text.push_str(&chunk.content);
+            text.push_str(&sanitized);
             text.push('\n');
         }
     }

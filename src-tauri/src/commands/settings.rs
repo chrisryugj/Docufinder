@@ -201,7 +201,29 @@ fn load_api_key(app_data_dir: &Path) -> Option<String> {
         .and_then(|c| c.ai_api_key)
 }
 
+/// API 키 마스킹: "***" + 마지막 4자리 (프론트엔드 메모리에 평문 잔류 방지)
+///
+/// 짧은 키(4자 이하)는 단순히 "***"로 마스킹한다.
+fn mask_api_key(key: &str) -> String {
+    let chars: Vec<char> = key.chars().collect();
+    let n = chars.len();
+    if n <= 4 {
+        return "***".to_string();
+    }
+    let last4: String = chars[n - 4..].iter().collect();
+    format!("***{}", last4)
+}
+
+/// 센티넬 판별: `get_settings`가 반환한 마스킹된 키인지.
+///
+/// 실제 Gemini API 키는 `AIzaSy`로 시작하는 39자이므로 `***`로 시작하는
+/// 짧은 문자열은 안전하게 센티넬로 식별 가능.
+fn is_masked_sentinel(value: &str) -> bool {
+    value.starts_with("***") && value.chars().count() <= 7
+}
+
 /// API 키를 credentials.json에 저장 (atomic write)
+/// Windows에서는 icacls로 현재 사용자만 접근 가능하도록 ACL 격리.
 fn save_api_key(app_data_dir: &Path, key: Option<&str>) -> Result<(), std::io::Error> {
     let path = get_credentials_path(app_data_dir);
     let creds = Credentials {
@@ -210,7 +232,56 @@ fn save_api_key(app_data_dir: &Path, key: Option<&str>) -> Result<(), std::io::E
     let json = serde_json::to_string_pretty(&creds).map_err(std::io::Error::other)?;
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, &json)?;
-    fs::rename(&tmp, &path)
+    fs::rename(&tmp, &path)?;
+
+    // 평문 API 키 파일은 현재 사용자 계정으로만 접근 제한
+    // (멀티유저 PC에서 다른 계정/프로세스 접근 차단)
+    #[cfg(windows)]
+    restrict_file_to_owner(&path);
+
+    Ok(())
+}
+
+/// Windows에서 파일 ACL을 현재 사용자 계정만 접근 가능하도록 제한
+///
+/// `icacls <file> /inheritance:r /grant:r "<USER>":F` 실행:
+/// - `/inheritance:r` → 부모 폴더 ACL 상속 제거 (Users 그룹 등 차단)
+/// - `/grant:r "<USER>":F` → 현재 사용자에게만 Full control 부여
+///
+/// 실패해도 저장 자체는 성공시킨다. ACL 실패는 tracing::warn으로만 기록.
+#[cfg(windows)]
+fn restrict_file_to_owner(path: &Path) {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let username = match std::env::var("USERNAME") {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            tracing::warn!("USERNAME env missing; skipping credentials.json ACL lockdown");
+            return;
+        }
+    };
+
+    let grant = format!(r#"{}:F"#, username);
+    let result = Command::new("icacls")
+        .arg(path)
+        .args(["/inheritance:r", "/grant:r", &grant])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    match result {
+        Ok(out) if out.status.success() => {
+            tracing::debug!("credentials.json ACL restricted to {}", username);
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            tracing::warn!("icacls failed ({}): {}", out.status, stderr.trim());
+        }
+        Err(e) => {
+            tracing::warn!("icacls invocation failed: {}", e);
+        }
+    }
 }
 
 /// 기존 settings.json에 ai_api_key가 남아있으면 credentials.json으로 마이그레이션
@@ -250,10 +321,20 @@ fn migrate_api_key_if_needed(app_data_dir: &Path) {
 }
 
 /// 설정 조회 (캐시에서 읽기, 디스크 I/O 없음)
+///
+/// 프론트엔드 반환 직전에 `ai_api_key`를 마스킹 센티넬로 교체해
+/// renderer 프로세스 메모리에 평문 키가 잔류하지 않도록 한다.
+/// 인메모리 캐시 자체는 평문 유지(LLM 호출용).
 #[tauri::command]
 pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Settings> {
     let container = state.read()?;
-    Ok(container.get_settings())
+    let mut settings = container.get_settings();
+    if let Some(ref k) = settings.ai_api_key {
+        if !k.is_empty() {
+            settings.ai_api_key = Some(mask_api_key(k));
+        }
+    }
+    Ok(settings)
 }
 
 /// 설정 동기 조회 (내부 사용)
@@ -373,9 +454,18 @@ pub async fn update_settings(
         tracing::warn!("Failed to disable autostart: {}", e);
     }
 
+    // 마스킹 센티넬 들어오면 기존 키 유지 (프론트에서 키 안 건드린 경우)
+    // 빈 문자열이면 삭제 의도. 그 외는 신규 키 저장.
+    let effective_key: Option<String> = match settings.ai_api_key.as_deref() {
+        Some(k) if is_masked_sentinel(k) => load_api_key(&app_data_dir),
+        Some(k) if k.is_empty() => None,
+        Some(k) => Some(k.to_string()),
+        None => None,
+    };
+
     // API 키를 credentials.json에 분리 저장
-    let api_key_for_cache = settings.ai_api_key.clone();
-    save_api_key(&app_data_dir, settings.ai_api_key.as_deref())
+    let api_key_for_cache = effective_key.clone();
+    save_api_key(&app_data_dir, effective_key.as_deref())
         .map_err(|e| ApiError::SettingsSave(format!("credentials save failed: {}", e)))?;
 
     // settings.json에는 API 키 없이 저장
@@ -481,23 +571,3 @@ pub async fn update_settings(
     Ok(())
 }
 
-/// 관리자 코드 검증 (시맨틱 검색 활성화 등 보호된 작업에 필요)
-///
-/// NOTE: Obfuscation only — 내부 전용 앱의 실수 방지용 게이트이며,
-/// 암호학적 보안을 제공하지 않음. 외부 배포 시 환경변수/설정파일 기반으로 전환 필요.
-#[tauri::command]
-pub async fn verify_admin_code(code: String) -> ApiResult<bool> {
-    // 상수 시간 비교 (타이밍 사이드채널 방지, 실질적 보안보다는 올바른 관행)
-    const EXPECTED: &[u8] = b"9812";
-    let input = code.as_bytes();
-
-    // 길이가 다르면 false, 같으면 constant-time XOR 비교
-    if input.len() != EXPECTED.len() {
-        return Ok(false);
-    }
-    let mut diff = 0u8;
-    for (a, b) in input.iter().zip(EXPECTED.iter()) {
-        diff |= a ^ b;
-    }
-    Ok(diff == 0)
-}

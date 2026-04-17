@@ -21,6 +21,11 @@ pub async fn add_folder(
     let canonical_path = folder_path
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+
+    // 시스템 폴더 / 드라이브 루트 차단
+    crate::constants::validate_watch_path(&canonical_path)
+        .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
+
     let path = canonical_path.to_string_lossy().to_string();
 
     let ctx = extract_indexing_context(&state)?;
@@ -130,35 +135,13 @@ pub async fn add_folder(
         }
     }
 
-    // 드라이브 루트 감지 (C:\, D:\ 등) → 벡터 인덱싱 자동 시작 안 함 + 경고 알림
-    let is_drive_root = {
-        let p = canonical_path.to_string_lossy();
-        let normalized = p.replace("\\\\?\\", "");
-        normalized.len() <= 3 && normalized.chars().nth(1) == Some(':')
-    };
-    if is_drive_root {
-        tracing::warn!(
-            "Drive root detected: auto vector indexing disabled for {}. \
-             Large drives may take significant time and memory.",
-            path
-        );
-        // 프론트엔드에 경고 알림 (대용량 인덱싱 완료 후)
-        let _ = app_handle.emit(
-            "indexing-warning",
-            &serde_json::json!({
-                "type": "drive_root",
-                "folder_path": path,
-                "message": "드라이브 전체 인덱싱이 완료되었습니다. 시맨틱(벡터) 검색은 대용량 드라이브에서 자동 시작되지 않습니다. 필요 시 설정에서 수동으로 시작하세요."
-            }),
-        );
-    }
-
+    // 드라이브 루트는 validate_watch_path에서 이미 차단됨
     let auto_vector_started = maybe_start_auto_vector(
         &ctx,
         app_handle,
         was_cancelled,
         result.indexed_count,
-        is_drive_root,
+        false,
         Some(&state),
     );
     if !auto_vector_started {
@@ -260,6 +243,10 @@ pub async fn reindex_folder(
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
+    // 시스템 폴더 / 드라이브 루트 차단
+    crate::constants::validate_watch_path(&canonical_path)
+        .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
+
     let ctx = extract_indexing_context(&state)?;
 
     // 인덱싱 상태를 'indexing'으로 설정
@@ -357,6 +344,10 @@ pub async fn resume_indexing(
     let canonical_path = folder_path
         .canonicalize()
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+
+    // 시스템 폴더 / 드라이브 루트 차단 (DB에 남은 오래된 경로 방어)
+    crate::constants::validate_watch_path(&canonical_path)
+        .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
 
     let ctx = extract_indexing_context(&state)?;
 

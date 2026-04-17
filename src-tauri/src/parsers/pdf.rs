@@ -449,6 +449,12 @@ fn extract_page_image(
     })
 }
 
+/// 단일 이미지 최대 픽셀 수 (100M 픽셀 ≈ 10000×10000)
+///
+/// 악성 PDF가 `Width=65535, Height=65535` 같은 값으로 멀티GB 버퍼 할당을 유도하는
+/// OOM 공격 차단용. decompress_flate의 50MB 상한과 함께 2중 방어.
+const MAX_IMAGE_PIXELS: u64 = 100_000_000;
+
 /// PDF 이미지 스트림 디코딩
 fn decode_pdf_image(
     doc: &lopdf::Document,
@@ -456,6 +462,17 @@ fn decode_pdf_image(
     width: u32,
     height: u32,
 ) -> Option<image::DynamicImage> {
+    // 픽셀 수 상한 — 비정상 width/height로 인한 OOM 방어
+    if (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS {
+        tracing::debug!(
+            "PDF 이미지 픽셀 초과, 스킵: {}x{} > {} pixels",
+            width,
+            height,
+            MAX_IMAGE_PIXELS
+        );
+        return None;
+    }
+
     let filter = get_filter_name(&stream.dict);
 
     match filter.as_deref() {

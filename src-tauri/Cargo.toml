@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.2.0"
+version = "2.3.0"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -45,7 +45,9 @@ notify = "8"
 walkdir = "2"
 
 # Semantic search (Phase 3) - 버전 고정
-ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "download-binaries", "tls-native"] }
+# load-dynamic: 런타임에 ORT_DYLIB_PATH로 onnxruntime.dll 로드 (lib.rs setup에서 설정).
+# download-binaries는 빌드 시 DLL을 또 받아 재현성을 훼손하므로 사용하지 않는다.
+ort = { version = "=2.0.0-rc.11", default-features = false, features = ["std", "ndarray", "load-dynamic", "tls-native"] }
 # NOTE: ort 2.0.1 정식 버전 출시 시 업그레이드 권장 (현재 RC가 최신)
 usearch = "2.23"
 tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
