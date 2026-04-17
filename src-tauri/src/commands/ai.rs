@@ -597,6 +597,31 @@ pub async fn ask_ai(
             }
         }
 
+        // 최장 단어 폴백 — NL 파서가 "관련"/"요약" 같은 자연어 보조어까지 키워드로 잡아서
+        // FTS AND 쿼리가 과도하게 좁아진 경우 구제. "금연도시 관련 요약" → "금연도시"만
+        // 단독 검색. 2글자 이상, 원본과 달라야 하고 공백 2개 이상 포함된 쿼리에만 적용.
+        if results.is_empty() && search_query.split_whitespace().count() >= 2 {
+            if let Some(longest) = search_query
+                .split_whitespace()
+                .filter(|w| w.chars().count() >= 2)
+                .max_by_key(|w| w.chars().count())
+            {
+                tracing::debug!("RAG 0건 폴백: 최장 단어 '{}' 재시도", longest);
+                if let Ok(resp) = service
+                    .search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
+                    .await
+                {
+                    results = resp
+                        .results
+                        .into_iter()
+                        .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+                        .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+                        .collect();
+                    tracing::debug!("RAG 최장단어 폴백 결과 {} hits", results.len());
+                }
+            }
+        }
+
         // 이웃 청크 확장 — 표/리스트가 청크 경계에서 잘리는 문제 해결.
         // 검색으로 걸린 청크의 ±RAG_NEIGHBOR_RADIUS 범위 청크를 DB에서 추가 로드하여
         // 같은 파일 내 문맥 연속성을 확보한다. (예: 예산표 중간 청크만 걸렸을 때
@@ -608,7 +633,11 @@ pub async fn ask_ai(
                 "ai-error",
                 AiErrorEvent {
                     request_id: rid,
-                    error: "관련 문서를 찾을 수 없습니다. 먼저 폴더를 인덱싱해주세요.".to_string(),
+                    error: format!(
+                        "'{}' 관련 문서를 찾지 못했습니다. 더 일반적인 키워드로 시도해보세요 \
+                         (예: 조사·서술어 제거, 핵심 명사만 사용).",
+                        query_clone
+                    ),
                 },
             );
             return;

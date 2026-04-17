@@ -357,6 +357,21 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     // API 키는 credentials.json에서 로드
     settings.ai_api_key = load_api_key(app_data_dir);
 
+    // 단종/잘못된 모델 ID 자동 마이그레이션 (Gemini API에 실존하지 않아 404 유발하던 값들)
+    let migrated_model = match settings.ai_model.as_str() {
+        // 오타: Gemini 실제 ID는 하이픈 + preview 접미사 (gemini-3-flash-preview)
+        "gemini-3.0-flash" => Some("gemini-3-flash-preview".to_string()),
+        _ => None,
+    };
+    if let Some(m) = migrated_model {
+        tracing::info!(
+            "ai_model 자동 마이그레이션: '{}' → '{}'",
+            settings.ai_model,
+            m
+        );
+        settings.ai_model = m;
+    }
+
     // 범위 클램핑 (수동 편집된 비정상 값 방어)
     settings.max_results = settings.max_results.clamp(1, 500);
     settings.chunk_size = settings.chunk_size.clamp(256, 4096);
@@ -454,13 +469,16 @@ pub async fn update_settings(
         tracing::warn!("Failed to disable autostart: {}", e);
     }
 
-    // 마스킹 센티넬 들어오면 기존 키 유지 (프론트에서 키 안 건드린 경우)
-    // 빈 문자열이면 삭제 의도. 그 외는 신규 키 저장.
+    // 키 변경 분기:
+    // - 센티넬 → 기존 키 유지 (프론트에서 편집 안 함)
+    // - None/빈 문자열 → **기존 키 유지** (마스킹 UI가 input을 비우기 때문에
+    //   사용자가 다른 설정만 바꿔도 빈 값이 올 수 있음. 실수 삭제 방지).
+    // - 그 외 실제 문자열 → 신규 키 저장
+    // 명시적 삭제는 별도 UI 이벤트(키 삭제 버튼)로 분리 예정.
     let effective_key: Option<String> = match settings.ai_api_key.as_deref() {
         Some(k) if is_masked_sentinel(k) => load_api_key(&app_data_dir),
-        Some("") => None,
+        Some("") | None => load_api_key(&app_data_dir),
         Some(k) => Some(k.to_string()),
-        None => None,
     };
 
     // API 키를 credentials.json에 분리 저장
