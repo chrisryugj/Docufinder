@@ -169,7 +169,6 @@ pub const BLOCKED_PATH_PATTERNS: &[&str] = &[
 ///
 /// BLOCKED_PATH_PATTERNS + DEFAULT_EXCLUDED_DIRS를 모두 검사하여
 /// 시스템/보호 경로 접근을 차단합니다.
-#[allow(dead_code)] // IndexService/FolderService에서 기존 로직 마이그레이션 시 활용
 pub fn is_blocked_path(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy().to_lowercase();
 
@@ -199,4 +198,37 @@ pub fn is_blocked_path(path: &std::path::Path) -> bool {
     }
 
     false
+}
+
+/// 드라이브 루트 여부 판정 (Windows: `C:\`, `D:\` 등)
+///
+/// 드라이브 전체 감시는 notify 이벤트 폭주 + 시스템 리소스 고갈을 유발하므로
+/// 인덱싱 대상에서 제외한다.
+pub fn is_drive_root(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy();
+    // `\\?\C:\` prefix 제거
+    let normalized = s.strip_prefix(r"\\?\").unwrap_or(&s);
+    // `C:\` 또는 `C:/` (길이 2~3, 두번째 문자 `:`)
+    let chars: Vec<char> = normalized.chars().collect();
+    if chars.len() > 3 {
+        return false;
+    }
+    chars.len() >= 2 && chars[1] == ':'
+}
+
+/// 감시 폴더 등록 가능 여부 검증
+///
+/// 실패 시 사용자에게 보여줄 한국어 사유 반환. `add_folder`/`reindex_folder`/
+/// `resume_indexing`/`start_indexing_batch` 등 인덱싱 진입점에서 `canonicalize()`
+/// 직후 호출한다.
+pub fn validate_watch_path(path: &std::path::Path) -> Result<(), &'static str> {
+    if is_drive_root(path) {
+        return Err(
+            "드라이브 루트(C:\\, D:\\ 등)는 감시할 수 없습니다. 하위 폴더를 선택해주세요.",
+        );
+    }
+    if is_blocked_path(path) {
+        return Err("시스템 보호 폴더는 감시할 수 없습니다.");
+    }
+    Ok(())
 }

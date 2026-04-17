@@ -23,14 +23,25 @@ export function AiTab({ settings, onChange }: TabProps) {
         <>
           {/* API 키 */}
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
-              Gemini API 키
+            <label className="flex items-baseline gap-2 text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+              <span>Gemini API 키</span>
+              {(settings.ai_api_key || "").startsWith("***") && (
+                <span className="text-[10px] font-normal" style={{ color: "var(--color-text-muted)" }}>
+                  저장됨 — 바꾸려면 클릭 후 새 키 입력
+                </span>
+              )}
             </label>
             <div className="flex items-center gap-2">
               <input
                 type={showApiKey ? "text" : "password"}
                 value={settings.ai_api_key || ""}
                 onChange={(e) => onChange("ai_api_key", e.target.value || undefined)}
+                onFocus={(e) => {
+                  // 저장된 마스킹 키는 한 번에 교체할 수 있도록 전체 선택
+                  if ((settings.ai_api_key || "").startsWith("***")) {
+                    e.target.select();
+                  }
+                }}
                 placeholder="AIza..."
                 className="flex-1 px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
                 style={{

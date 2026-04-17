@@ -57,13 +57,19 @@ pub async fn start_indexing_batch(
             tracing::warn!("Batch: skipping non-existent path: {}", raw);
             continue;
         }
-        let canonical = match p.canonicalize() {
-            Ok(c) => c.to_string_lossy().to_string(),
+        let canonical_buf = match p.canonicalize() {
+            Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Batch: canonicalize failed for {}: {}", raw, e);
                 continue;
             }
         };
+        // 시스템 폴더 / 드라이브 루트 차단
+        if let Err(msg) = crate::constants::validate_watch_path(&canonical_buf) {
+            tracing::warn!("Batch: rejecting path {}: {}", raw, msg);
+            continue;
+        }
+        let canonical = canonical_buf.to_string_lossy().to_string();
         // 이미 감시 중이면 skip (재인덱싱은 사용자가 명시적으로)
         if let Ok(conn) = crate::db::get_connection(&db_path) {
             if crate::db::is_folder_watched(&conn, &canonical).unwrap_or(false) {

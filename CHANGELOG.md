@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.0] - 2026-04-17
+
+### Security
+- 감시 폴더 등록 시 시스템 폴더(`C:\Windows`, `Program Files` 등)·드라이브 루트 차단 (`constants::validate_watch_path`) — `add_folder`/`reindex_folder`/`resume_indexing`/`start_indexing_batch` 4개 진입점에 일괄 적용
+- RAG 컨텍스트 문서 내용 sanitize — 프롬프트 구분자(`--- 질문 ---`, `--- 문서 ---` 등) 치환으로 Prompt Injection 방어 (`commands/ai.rs::sanitize_doc_content`)
+- QA/File 시스템 프롬프트에 보안 지침 추가 — 문서 내용 안 지시문을 사용자 명령으로 해석하지 않도록 명시
+- `credentials.json` Windows ACL 격리 — `icacls`로 현재 사용자 전용 접근 (멀티 프로세스 환경에서 평문 키 노출 차단)
+- `get_settings` 반환값 AI API 키 마스킹 (`***` + 마지막 4자리) — 프론트엔드 메모리 잔류 차단
+- PDF 이미지 디코딩 픽셀 상한 (100M 픽셀) — 악성 PDF의 비정상 width/height 유도 OOM 방어
+- 데드코드 `verify_admin_code` 커맨드 제거 — 바이너리에 하드코딩 문자열(`"9812"`) 잔존 제거
+
+### Changed
+- ORT runtime feature `download-binaries` → `load-dynamic` — 빌드 타임 중복 다운로드 제거, 재현성 개선 (`ORT_DYLIB_PATH`는 lib.rs setup에서 이미 설정 중)
+- `is_blocked_path` 헬퍼 공용화 + `is_drive_root`/`validate_watch_path` 추가 — 인덱싱 진입점의 경로 검증 로직 통합
+
+### Notes
+- WiX `perMachine`/HKCU 정합성 수정은 VCRedist·업그레이드 경로 QA가 필요해 이번 릴리즈에서 제외, 별도 패치에서 단독 진행 예정
+- 기존 v2.1.x 사용자는 updater 서명 부재로 여전히 수동 MSI 설치 필요
+
 ## [2.2.0] - 2026-04-17
 
 ### Security
