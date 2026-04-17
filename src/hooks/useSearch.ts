@@ -16,6 +16,41 @@ import type {
 } from "../types/search";
 import { DEFAULT_FILTERS } from "../types/search";
 import { SEARCH_COMMANDS } from "../types/api";
+import { textSimilarity } from "../utils/textSimilarity";
+
+/** 동일 파일 내 유사 청크 병합 임계값 (Jaccard bigram) */
+const CHUNK_DEDUP_THRESHOLD = 0.8;
+
+/** 스니펫/프리뷰 정규화 (하이라이트 마커 제거) */
+function chunkCompareText(r: SearchResult): string {
+  const src = r.snippet ?? r.content_preview ?? "";
+  return src.replace(/\[\[\/?HL\]\]/g, "");
+}
+
+/** 같은 파일 내 중복 청크 dedup: 신뢰도 높은 순 greedy. O(N²)이지만 파일당 수십 개 수준. */
+function dedupSimilarChunks(chunks: SearchResult[]): SearchResult[] {
+  if (chunks.length <= 1) return chunks;
+  // 신뢰도 내림차순
+  const sorted = [...chunks].sort((a, b) => b.confidence - a.confidence);
+  const kept: SearchResult[] = [];
+  const keptTexts: string[] = [];
+  for (const chunk of sorted) {
+    const text = chunkCompareText(chunk);
+    if (text.length < 10) {
+      kept.push(chunk);
+      keptTexts.push(text);
+      continue;
+    }
+    const isDup = keptTexts.some((t) => textSimilarity(text, t) >= CHUNK_DEDUP_THRESHOLD);
+    if (!isDup) {
+      kept.push(chunk);
+      keptTexts.push(text);
+    }
+  }
+  // chunk_index 오름차순 복원 (히트맵 렌더 자연스럽게)
+  kept.sort((a, b) => a.chunk_index - b.chunk_index);
+  return kept;
+}
 
 interface UseSearchOptions {
   debounceMs?: number;
@@ -196,7 +231,17 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     } catch {}
     return restored;
   });
-  const [viewMode, setViewMode] = useState<ViewMode>("flat");
+  const [viewMode, setViewModeInternal] = useState<ViewMode>(() => {
+    try {
+      const saved = localStorage.getItem("docufinder_view_mode");
+      if (saved === "flat" || saved === "grouped") return saved;
+    } catch {}
+    return "grouped";
+  });
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeInternal(mode);
+    try { localStorage.setItem("docufinder_view_mode", mode); } catch {}
+  }, []);
   const [refineQuery, setRefineQuery] = useState("");
   const [debouncedRefineQuery, setDebouncedRefineQuery] = useState("");
 
@@ -550,7 +595,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     });
   }, [filenameResults, debouncedRefineQuery]);
 
-  // 파일별 그룹핑 결과
+  // 파일별 그룹핑 결과 (유사 청크 dedup 포함)
   const groupedResults = useMemo(() => {
     const groups = new Map<string, GroupedSearchResult>();
 
@@ -568,6 +613,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
           top_confidence: result.confidence,
           total_matches: 1,
         });
+      }
+    }
+
+    // 동일 파일 내 80%+ 유사 청크 병합 (Jaccard bigram)
+    for (const g of groups.values()) {
+      if (g.chunks.length > 1) {
+        const deduped = dedupSimilarChunks(g.chunks);
+        g.chunks = deduped;
+        g.total_matches = deduped.length;
       }
     }
 

@@ -50,7 +50,7 @@ impl SearchService {
         let scores: Vec<f64> = fts_results.iter().map(|r| r.score).collect();
         let confidences = normalize_fts_confidence(&scores);
 
-        let results: Vec<SearchResult> = fts_results
+        let mut results: Vec<SearchResult> = fts_results
             .into_iter()
             .enumerate()
             .map(|(idx, r)| {
@@ -79,10 +79,12 @@ impl SearchService {
                     snippet: Some(improved),
                     modified_at: r.modified_at,
                     has_hwp_pair: false,
+                    total_chunks: 0,
                 }
             })
             .collect();
 
+        enrich_total_chunks(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
@@ -149,6 +151,7 @@ impl SearchService {
                         snippet: Some(name),
                         modified_at: Some(r.modified_at),
                         has_hwp_pair: false,
+                        total_chunks: 0,
                     }
                 })
                 .collect()
@@ -179,11 +182,15 @@ impl SearchService {
                     snippet: Some(r.file_name),
                     modified_at: r.modified_at,
                     has_hwp_pair: false,
+                    total_chunks: 0,
                 })
                 .collect()
         };
 
-        let results = Self::dedup_hwp_hwpx(results);
+        let mut results = Self::dedup_hwp_hwpx(results);
+        if let Ok(conn) = self.get_connection() {
+            enrich_total_chunks(&conn, &mut results);
+        }
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 

@@ -14,20 +14,21 @@ pub struct ExportRow {
     pub modified_at: Option<i64>,
 }
 
-/// 출력 경로 검증 — 시스템 폴더 차단, .csv 확장자 강제, 부모 canonicalize, 덮어쓰기 차단
-fn validate_output_path(output_path: &str) -> ApiResult<PathBuf> {
+/// 출력 경로 검증 — 시스템 폴더 차단, 확장자 강제, 부모 canonicalize, 덮어쓰기 차단
+fn validate_output_path_ext(output_path: &str, expected_ext: &str) -> ApiResult<PathBuf> {
     let path = Path::new(output_path);
 
-    // 1. 확장자 .csv 강제
-    let has_csv_ext = path
+    // 1. 확장자 강제
+    let has_ext = path
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("csv"))
+        .map(|e| e.eq_ignore_ascii_case(expected_ext))
         .unwrap_or(false);
-    if !has_csv_ext {
-        return Err(ApiError::InvalidPath(
-            "CSV 파일(.csv)로만 저장할 수 있습니다".to_string(),
-        ));
+    if !has_ext {
+        return Err(ApiError::InvalidPath(format!(
+            ".{} 파일로만 저장할 수 있습니다",
+            expected_ext
+        )));
     }
 
     // 2. 파일명 분리
@@ -114,7 +115,7 @@ pub async fn export_csv(
     query: String,
     output_path: String,
 ) -> ApiResult<String> {
-    let final_path = validate_output_path(&output_path)?;
+    let final_path = validate_output_path_ext(&output_path, "csv")?;
     tokio::task::spawn_blocking(move || {
         let _ = &query; // 향후 메타데이터용
         let bom = "\u{FEFF}";
@@ -162,6 +163,40 @@ pub async fn export_csv(
         file.write_all(lines.join("\n").as_bytes())
             .map_err(|e| ApiError::IndexingFailed(format!("CSV 저장 실패: {}", e)))?;
 
+        Ok(final_path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| ApiError::IndexingFailed(e.to_string()))?
+}
+
+/// 프리뷰 마크다운을 .md 파일로 저장
+#[tauri::command]
+pub async fn export_markdown(content: String, output_path: String) -> ApiResult<String> {
+    const MAX_CONTENT_SIZE: usize = 50 * 1024 * 1024; // 50MB 상한
+    if content.len() > MAX_CONTENT_SIZE {
+        return Err(ApiError::Validation(
+            "저장할 내용이 너무 큽니다 (최대 50MB)".to_string(),
+        ));
+    }
+
+    let final_path = validate_output_path_ext(&output_path, "md")?;
+    tokio::task::spawn_blocking(move || {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&final_path)
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    ApiError::AccessDenied(format!(
+                        "이미 같은 이름의 파일이 존재합니다: {}",
+                        final_path.display()
+                    ))
+                } else {
+                    ApiError::IndexingFailed(format!("Markdown 저장 실패: {}", e))
+                }
+            })?;
+        file.write_all(content.as_bytes())
+            .map_err(|e| ApiError::IndexingFailed(format!("Markdown 저장 실패: {}", e)))?;
         Ok(final_path.to_string_lossy().into_owned())
     })
     .await

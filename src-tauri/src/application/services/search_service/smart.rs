@@ -73,6 +73,7 @@ impl SearchService {
                     snippet: None,
                     modified_at: row.get(4)?,
                     has_hwp_pair: false,
+                    total_chunks: 0,
                 })
             })
             .map_err(|e| AppError::SearchFailed(e.to_string()))?

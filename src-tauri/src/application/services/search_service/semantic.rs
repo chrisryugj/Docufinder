@@ -94,6 +94,7 @@ impl SearchService {
                     snippet: Some(truncate_preview(&chunk.content, 200)),
                     modified_at: chunk.modified_at,
                     has_hwp_pair: false,
+                    total_chunks: 0,
                 })
             })
             .collect();
@@ -102,6 +103,7 @@ impl SearchService {
             tracing::warn!("Semantic enrichment failed: {}", e);
         }
 
+        enrich_total_chunks(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
@@ -311,6 +313,7 @@ impl SearchService {
                                 snippet: Some(truncate_preview(&chunk.content, 200)),
                                 modified_at: chunk.modified_at,
                                 has_hwp_pair: false,
+                                total_chunks: 0,
                             };
                         }
                     })
@@ -333,6 +336,7 @@ impl SearchService {
                                 snippet: Some(truncate_preview(&chunk.content, 200)),
                                 modified_at: chunk.modified_at,
                                 has_hwp_pair: false,
+                                total_chunks: 0,
                             },
                         )
                     });
@@ -347,6 +351,7 @@ impl SearchService {
         });
         results.truncate(max_results);
 
+        enrich_total_chunks(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 

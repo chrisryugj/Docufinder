@@ -163,6 +163,7 @@ impl SearchService {
                         snippet: Some(improved),
                         modified_at: fts_r.modified_at,
                         has_hwp_pair: false,
+                        total_chunks: 0,
                     })
                 } else {
                     vector_only_chunks.get(&hr.chunk_id).and_then(|chunk| {
@@ -185,6 +186,7 @@ impl SearchService {
                             snippet: None,
                             modified_at: chunk.modified_at,
                             has_hwp_pair: false,
+                            total_chunks: 0,
                         })
                     })
                 }
@@ -209,6 +211,7 @@ impl SearchService {
             }
         }
 
+        enrich_total_chunks(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 

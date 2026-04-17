@@ -20,6 +20,8 @@ export interface SearchResult {
   modified_at: number | null;
   /** 같은 경로에 원본 HWP 파일이 존재하는 HWPX */
   has_hwp_pair?: boolean;
+  /** 해당 파일의 전체 청크 개수 (히트맵 절대 스케일용, 0이면 미제공) */
+  total_chunks?: number;
 }
 
 /** 검색 매칭 타입 */

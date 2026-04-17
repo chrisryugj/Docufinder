@@ -8,3 +8,10 @@
 @import './styles/components.css';
 @import './styles/utilities.css';
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* 전역: 한글/영문 단어 중간 줄바꿈 방지 — 단어 단위로만 줄바꿈 */
+html, body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-break: strict;
+}

@@ -1,14 +1,16 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { TagInput } from "../ui/TagInput";
 import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
+import { useUIContext } from "../../contexts/UIContext";
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -470,6 +472,51 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 파일 질문 토글
   const [showFileQa, setShowFileQa] = useState(false);
 
+  // 텍스트 내보내기 메뉴 토글
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const { showToast, updateToast } = useUIContext();
+
+  // 파싱된 텍스트 복사
+  const handleCopyText = useCallback(async () => {
+    if (!markdown) return;
+    setShowExportMenu(false);
+    try {
+      await navigator.clipboard.writeText(markdown);
+      showToast(`텍스트 복사 완료 (${markdown.length.toLocaleString()}자)`, "success");
+    } catch {
+      showToast("텍스트 복사 실패", "error");
+    }
+  }, [markdown, showToast]);
+
+  // Markdown 파일로 저장
+  const handleExportMarkdown = useCallback(async () => {
+    if (!markdown || !filePath) return;
+    setShowExportMenu(false);
+    const baseName = filePath.replace(/^\\\\\?\\/, "").split(/[\\/]/).pop() || "preview";
+    const stem = baseName.replace(/\.[^.]+$/, "") || "preview";
+    const safeName = stem.replace(/[<>:"/\\|?*]+/g, "_");
+    let outputPath: string | null = null;
+    try {
+      outputPath = await save({
+        defaultPath: `${safeName}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+    } catch {
+      showToast("파일 저장 창 열기 실패", "error");
+      return;
+    }
+    if (!outputPath) return; // 사용자 취소
+    const toastId = showToast("Markdown 저장 중...", "loading");
+    try {
+      await invoke("export_markdown", { content: markdown, outputPath });
+      updateToast(toastId, { message: "Markdown 파일로 저장했습니다", type: "success" });
+    } catch (e) {
+      const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "저장 실패");
+      updateToast(toastId, { message: `저장 실패: ${msg}`, type: "error" });
+    }
+  }, [markdown, filePath, showToast, updateToast]);
+
   // 파일 변경 시 AI 상태 초기화
   useEffect(() => {
     if (!filePath) {
@@ -481,6 +528,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     setSummaryError(null);
     setShowSummaryMenu(false);
     setShowFileQa(false);
+    setShowExportMenu(false);
 
     let cancelled = false;
     setLoading(true);
@@ -581,7 +629,12 @@ export const PreviewPanel = memo(function PreviewPanel({
         <button onClick={() => onOpenFile?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
           <ExternalLink size={13} />
         </button>
-        <button onClick={() => onCopyPath?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="경로 복사">
+        <button
+          onClick={() => setShowExportMenu((v) => !v)}
+          className={`p-1.5 rounded transition-colors ${showExportMenu ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+          title="복사 / 내보내기"
+          aria-expanded={showExportMenu}
+        >
           <Copy size={13} />
         </button>
         <button onClick={() => onOpenFolder?.(dirPath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="폴더 열기">
@@ -629,6 +682,43 @@ export const PreviewPanel = memo(function PreviewPanel({
           </span>
         )}
       </div>
+
+      {/* 복사 / 내보내기 메뉴 */}
+      {showExportMenu && (
+        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}>
+          <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">복사 / 내보내기:</span>
+          {markdown && (
+            <>
+              <button
+                onClick={handleCopyText}
+                className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
+                title="파싱된 텍스트를 클립보드에 복사"
+              >
+                <ClipboardCopy size={11} />텍스트 복사
+              </button>
+              <button
+                onClick={handleExportMarkdown}
+                className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
+                title=".md 파일로 저장"
+              >
+                <Save size={11} />Markdown 저장
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => { setShowExportMenu(false); onCopyPath?.(filePath); }}
+            className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
+            title="파일 경로를 클립보드에 복사"
+          >
+            <Copy size={11} />경로 복사
+          </button>
+          {markdown && (
+            <span className="ml-auto text-[10px] text-[var(--color-text-muted)] tabular-nums">
+              {markdown.length.toLocaleString()}자
+            </span>
+          )}
+        </div>
+      )}
 
       {/* 요약 유형 선택 메뉴 */}
       {showSummaryMenu && (
