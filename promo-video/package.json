@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "scripts": {
     "start": "remotion studio",
-    "build": "remotion render src/index.ts IntroVideo out/video.mp4"
+    "build": "remotion render src/index.ts IntroVideo out/video.mp4",
+    "build:prologue": "remotion render src/index.ts Prologue out/prologue.mp4 --codec=h264 --crf=18",
+    "build:prologue:gif": "remotion render src/index.ts Prologue out/prologue.gif --codec=gif --width=1280 --height=720",
+    "build:prologue:webm": "remotion render src/index.ts Prologue out/prologue.webm --codec=vp9 --crf=30"
   },
   "dependencies": {
     "react": "^18.2.0",

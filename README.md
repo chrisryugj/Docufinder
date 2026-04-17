@@ -19,6 +19,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
 </p>
 
+<p align="center">
+  <img src="docs/promo.gif" alt="Anything - 문서 내용 검색 데모" width="820" />
+</p>
+
 ---
 
 ## 이런 걸 할 수 있습니다
