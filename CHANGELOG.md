@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
-## [2.3.2] - 2026-04-17
+## [2.3.3] - 2026-04-17
+
+### Fixed
+- 드라이브 인덱싱 전체 진행률을 **완료 job 수 + 현재 active job 진행률 가중** 방식으로 변경. C/E 드라이브 순차 인덱싱 시 한 드라이브가 끝나기 전에도 % 가 부드럽게 증가하도록 개선
+- 사이드바 인덱싱 패널의 현재 파일명 영역이 파일 전환 순간 `current_file` 이 잠깐 비어 높이가 줄어들던 문제 — running 상태면 항상 고정 높이 유지
 
 ### Fixed
 - **전체 드라이브 인덱싱 복원** — v2.3.0 security fix에서 드라이브 루트(`C:\`, `D:\`)를 `validate_watch_path`에서 차단했던 건 Everything 스타일 전체 검색이라는 앱 설계 의도에 반하는 과도한 제한. 제거 후 v2.2.0과 동일하게 `add_folder`에서 drive root 감지 → 경고 emit + 벡터 자동 시작 스킵으로 복구

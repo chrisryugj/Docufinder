@@ -131,14 +131,14 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
         </div>
       )}
 
-      {/* 현재 파일명 (running 상태) */}
-      {job.status === "running" && job.current_file && (
+      {/* 현재 파일명 (running 상태) — 파일 전환 순간 current_file이 비어도 높이 유지 */}
+      {job.status === "running" && (
         <div
-          className="mt-0.5 text-[10px] truncate"
-          style={{ color: "var(--color-text-muted)" }}
-          title={job.current_file}
+          className="mt-0.5 text-[10px] truncate leading-[14px]"
+          style={{ color: "var(--color-text-muted)", minHeight: "14px" }}
+          title={job.current_file ?? undefined}
         >
-          {job.current_file.replace(/^.*[\\/]/, "")}
+          {job.current_file ? job.current_file.replace(/^.*[\\/]/, "") : "\u00A0"}
         </div>
       )}
 
@@ -167,7 +167,19 @@ export const DriveIndexingPanel = memo(function DriveIndexingPanel({
       (j) => j.status === "done" || j.status === "failed" || j.status === "cancelled",
     ).length;
     const totalIndexed = batch.jobs.reduce((acc, j) => acc + j.indexed_count, 0);
-    const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    // 전체 % = (완료 job 수 + 현재 active job의 내부 진행률) / 전체 job 수
+    // → 한 폴더가 끝나기 전에도 부드럽게 증가
+    const activeJob = batch.jobs.find(
+      (j) => j.status === "running" || j.status === "committing",
+    );
+    const activeFraction =
+      activeJob && activeJob.total > 0
+        ? Math.min(1, activeJob.processed / activeJob.total)
+        : 0;
+    const percent =
+      total > 0 ? Math.min(100, Math.round(((done + activeFraction) / total) * 100)) : 0;
+
     return { total, done, totalIndexed, percent };
   }, [batch.jobs]);
 
