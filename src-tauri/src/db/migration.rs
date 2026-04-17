@@ -49,7 +49,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         [],
     )?;
 
-    let current_version = get_schema_version(&conn);
+    let current_version = get_schema_version(conn);
 
     // === v1: 기본 테이블 ===
     if current_version < 1 {
@@ -123,7 +123,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        set_schema_version(&conn, 1)?;
+        set_schema_version(conn, 1)?;
         tracing::info!("Schema migrated to v1 (base tables)");
     }
 
@@ -135,7 +135,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         ) {
             tracing::trace!("Migration v2: is_favorite already exists: {}", e);
         }
-        set_schema_version(&conn, 2)?;
+        set_schema_version(conn, 2)?;
         tracing::info!("Schema migrated to v2 (is_favorite)");
     }
 
@@ -147,7 +147,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         ) {
             tracing::trace!("Migration v3: indexing_status already exists: {}", e);
         }
-        set_schema_version(&conn, 3)?;
+        set_schema_version(conn, 3)?;
         tracing::info!("Schema migrated to v3 (indexing_status)");
     }
 
@@ -173,7 +173,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        set_schema_version(&conn, 4)?;
+        set_schema_version(conn, 4)?;
         tracing::info!("Schema migrated to v4 (two-phase indexing)");
     }
 
@@ -182,7 +182,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         if let Err(e) = conn.execute("ALTER TABLE chunks ADD COLUMN page_end INTEGER", []) {
             tracing::trace!("Migration v5: page_end already exists: {}", e);
         }
-        set_schema_version(&conn, 5)?;
+        set_schema_version(conn, 5)?;
         tracing::info!("Schema migrated to v5 (page_end)");
     }
 
@@ -194,7 +194,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         ) {
             tracing::trace!("Migration v6: last_synced_at already exists: {}", e);
         }
-        set_schema_version(&conn, 6)?;
+        set_schema_version(conn, 6)?;
         tracing::info!("Schema migrated to v6 (last_synced_at)");
     }
 
@@ -217,7 +217,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             "CREATE INDEX IF NOT EXISTS idx_bookmarks_file_path ON bookmarks(file_path)",
             [],
         )?;
-        set_schema_version(&conn, 7)?;
+        set_schema_version(conn, 7)?;
         tracing::info!("Schema migrated to v7 (bookmarks)");
     }
 
@@ -244,7 +244,7 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        set_schema_version(&conn, 8)?;
+        set_schema_version(conn, 8)?;
         tracing::info!("Schema migrated to v8 (autocomplete: fts5vocab + search_queries)");
     }
 
@@ -263,12 +263,12 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookmarks_file_path ON bookmarks(file_path)",
             [],
         )?;
-        set_schema_version(&conn, 9)?;
+        set_schema_version(conn, 9)?;
         tracing::info!("Schema migrated to v9 (bookmark unique constraint)");
     }
 
     // v10: 파일 태그 시스템
-    if get_schema_version(&conn) < 10 {
+    if get_schema_version(conn) < 10 {
         conn.execute(
             "CREATE TABLE IF NOT EXISTS file_tags (
                 id INTEGER PRIMARY KEY,
@@ -286,18 +286,18 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             "CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag)",
             [],
         )?;
-        set_schema_version(&conn, 10)?;
+        set_schema_version(conn, 10)?;
         tracing::info!("Schema migrated to v10 (file tags)");
     }
 
     // === v11: chunks 테이블에 원본 content 컬럼 추가 ===
     // FTS 테이블에는 형태소 토큰이 추가된 텍스트가 저장되므로
     // 미리보기용 원본 텍스트를 별도 보관
-    if get_schema_version(&conn) < 11 {
+    if get_schema_version(conn) < 11 {
         if let Err(e) = conn.execute("ALTER TABLE chunks ADD COLUMN content TEXT", []) {
             tracing::trace!("Migration v11: content column already exists: {}", e);
         }
-        set_schema_version(&conn, 11)?;
+        set_schema_version(conn, 11)?;
         tracing::info!("Schema migrated to v11 (chunks.content for preview)");
     }
 

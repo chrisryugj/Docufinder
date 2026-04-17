@@ -706,7 +706,7 @@ pub fn scan_metadata_only(
             Ok(m) => m,
             Err(e) => {
                 if errors.len() < MAX_INDEXING_ERRORS {
-                    errors.push(format!("{}\t{}", clean_path_display(&path), e));
+                    errors.push(format!("{}\t{}", clean_path_display(path), e));
                 } else {
                     suppressed_errors += 1;
                 }
