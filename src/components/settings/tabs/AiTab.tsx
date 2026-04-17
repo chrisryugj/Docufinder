@@ -22,60 +22,64 @@ export function AiTab({ settings, onChange }: TabProps) {
       {settings.ai_enabled && (
         <>
           {/* API 키 */}
-          <div>
-            <label className="flex items-baseline gap-2 text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
-              <span>Gemini API 키</span>
-              {(settings.ai_api_key || "").startsWith("***") && (
-                <span className="text-[10px] font-normal" style={{ color: "var(--color-text-muted)" }}>
-                  저장됨 — 바꾸려면 클릭 후 새 키 입력
-                </span>
-              )}
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type={showApiKey ? "text" : "password"}
-                value={settings.ai_api_key || ""}
-                onChange={(e) => onChange("ai_api_key", e.target.value || undefined)}
-                onFocus={(e) => {
-                  // 저장된 마스킹 키는 한 번에 교체할 수 있도록 전체 선택
-                  if ((settings.ai_api_key || "").startsWith("***")) {
-                    e.target.select();
-                  }
-                }}
-                placeholder="AIza..."
-                className="flex-1 px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
-                style={{
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  borderColor: "var(--color-border)",
-                  color: "var(--color-text-primary)",
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowApiKey(!showApiKey)}
-                className="px-2 py-1.5 text-xs rounded border hover:bg-[var(--color-bg-tertiary)] transition-colors"
-                style={{
-                  borderColor: "var(--color-border)",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                {showApiKey ? "숨기기" : "보기"}
-              </button>
+          {(() => {
+            const storedKey = settings.ai_api_key || "";
+            const isMasked = storedKey.startsWith("***") && storedKey.length <= 7;
+            const lastFour = isMasked ? storedKey.slice(3) : "";
+            const inputValue = isMasked ? "" : storedKey;
+
+            return (
+            <div>
+              <label className="flex items-baseline gap-2 text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+                <span>Gemini API 키</span>
+                {isMasked && (
+                  <span className="text-[10px] font-normal" style={{ color: "var(--color-text-muted)" }}>
+                    저장됨 (···{lastFour}) — 바꾸려면 새 키 입력
+                  </span>
+                )}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type={showApiKey ? "text" : "password"}
+                  value={inputValue}
+                  onChange={(e) => onChange("ai_api_key", e.target.value || undefined)}
+                  placeholder={isMasked ? `●●●●●●●●●●●●●●●●●●●●●●●●●●●●●●●●●${lastFour}` : "AIza..."}
+                  className="flex-1 px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
+                  style={{
+                    backgroundColor: "var(--color-bg-tertiary)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  disabled={isMasked && inputValue === ""}
+                  className="px-2 py-1.5 text-xs rounded border hover:bg-[var(--color-bg-tertiary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  {showApiKey ? "숨기기" : "보기"}
+                </button>
+              </div>
+              <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    invoke("open_url", { url: "https://aistudio.google.com/apikey" });
+                  }}
+                  className="text-[var(--color-accent)] hover:underline"
+                >
+                  Google AI Studio
+                </a>
+                에서 무료 API 키를 발급받을 수 있습니다.
+              </p>
             </div>
-            <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
-              <a
-                href="#"
-                onClick={(e) => {
-                  e.preventDefault();
-                  invoke("open_url", { url: "https://aistudio.google.com/apikey" });
-                }}
-                className="text-[var(--color-accent)] hover:underline"
-              >
-                Google AI Studio
-              </a>
-              에서 무료 API 키를 발급받을 수 있습니다.
-            </p>
-          </div>
+            );
+          })()}
 
           {/* 모델 선택 */}
           <div>

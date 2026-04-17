@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.1] - 2026-04-17
+
+### Fixed
+- AI API 키 마스킹 UI 개선 — input을 비우고 `●` 35자 + 마지막 4자를 placeholder로 표시 (이전 `***1JHY`처럼 7자만 박혀 "키가 잘렸다"는 오해 유발)
+- `update_settings`에서 `ai_api_key`가 `None`/빈 문자열로 들어와도 기존 키 유지 — 마스킹 UI가 빈 입력을 보내는 구조 때문에 다른 설정만 저장해도 키가 삭제되던 문제
+- AI 질의응답에서 키워드 2어절 이상 쿼리가 FTS AND로 0건일 때 최장 단어 하나로 단독 재검색 (`ask_ai` 폴백)
+- 0건일 때 에러 메시지를 "폴더를 인덱싱해주세요"(오해 유발) → "'…' 관련 문서를 찾지 못했습니다. 더 일반적인 키워드로 시도해보세요"로 변경
+- Gemini 모델 ID 오타 수정: `gemini-3.0-flash` → `gemini-3-flash-preview` (API `/v1beta/models` 응답과 일치). 기존 설정값은 `get_settings_sync` 로드 시 자동 마이그레이션
+
 ## [2.3.0] - 2026-04-17
 
 ### Security
