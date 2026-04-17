@@ -187,11 +187,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 
     // Sanity check: 시뮬레이션 결과 검증
     let estimated_pages = page_map.total_pages();
-    let chars_per_page = if estimated_pages > 0 {
-        total_chars / estimated_pages
-    } else {
-        0
-    };
+    let chars_per_page = total_chars.checked_div(estimated_pages).unwrap_or(0);
 
     // lineSeg 커버리지가 50% 이상이면 시뮬레이션 신뢰도 높음 → fallback 스킵
     // lineSeg 없이 페이지당 250자 미만이면 시뮬레이션 오류로 판단

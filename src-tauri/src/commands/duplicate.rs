@@ -215,7 +215,7 @@ fn find_exact_duplicates(
     }
 
     // 파일 수 내림차순 정렬
-    result.sort_by(|a, b| b.files.len().cmp(&a.files.len()));
+    result.sort_by_key(|b| std::cmp::Reverse(b.files.len()));
 
     Ok(result)
 }

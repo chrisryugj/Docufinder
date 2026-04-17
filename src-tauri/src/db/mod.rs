@@ -1010,7 +1010,7 @@ pub fn get_folder_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> 
         }
     }
 
-    result.sort_by(|a, b| b.1.cmp(&a.1));
+    result.sort_by_key(|b| std::cmp::Reverse(b.1));
     Ok(result)
 }
 

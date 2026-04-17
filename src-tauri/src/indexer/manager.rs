@@ -395,13 +395,12 @@ impl WatchManager {
                     tracing::debug!("File removed: {:?}", path);
                     pending.insert(path.clone());
                 }
-                EventKind::Create(_) | EventKind::Modify(_) => {
+                EventKind::Create(_) | EventKind::Modify(_)
                     // 생성/수정 이벤트: 파일 존재 확인 (디렉토리 제외)
-                    if path.is_file() {
+                    if path.is_file() => {
                         tracing::debug!("File changed: {:?}", path);
                         pending.insert(path.clone());
                     }
-                }
                 _ => {}
             }
         }

@@ -182,13 +182,12 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
                     in_text = true;
                 }
             }
-            Ok(Event::Text(e)) => {
-                if in_text {
+            Ok(Event::Text(e))
+                if in_text => {
                     if let Ok(text) = e.unescape() {
                         current_paragraph.push_str(&text);
                     }
                 }
-            }
             Ok(Event::End(e)) => {
                 let local = e.local_name();
                 let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
