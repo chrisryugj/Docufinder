@@ -55,7 +55,7 @@
         "dialogImagePath": "wix/dialog.bmp"
       }
     },
-    "createUpdaterArtifacts": "v1Compatible"
+    "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {
