@@ -223,9 +223,7 @@ pub fn is_drive_root(path: &std::path::Path) -> bool {
 /// 직후 호출한다.
 pub fn validate_watch_path(path: &std::path::Path) -> Result<(), &'static str> {
     if is_drive_root(path) {
-        return Err(
-            "드라이브 루트(C:\\, D:\\ 등)는 감시할 수 없습니다. 하위 폴더를 선택해주세요.",
-        );
+        return Err("드라이브 루트(C:\\, D:\\ 등)는 감시할 수 없습니다. 하위 폴더를 선택해주세요.");
     }
     if is_blocked_path(path) {
         return Err("시스템 보호 폴더는 감시할 수 없습니다.");

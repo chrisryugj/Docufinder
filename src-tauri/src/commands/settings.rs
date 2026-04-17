@@ -458,7 +458,7 @@ pub async fn update_settings(
     // 빈 문자열이면 삭제 의도. 그 외는 신규 키 저장.
     let effective_key: Option<String> = match settings.ai_api_key.as_deref() {
         Some(k) if is_masked_sentinel(k) => load_api_key(&app_data_dir),
-        Some(k) if k.is_empty() => None,
+        Some("") => None,
         Some(k) => Some(k.to_string()),
         None => None,
     };
@@ -570,4 +570,3 @@ pub async fn update_settings(
 
     Ok(())
 }
-
