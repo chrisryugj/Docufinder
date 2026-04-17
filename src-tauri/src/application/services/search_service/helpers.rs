@@ -12,8 +12,7 @@ pub fn enrich_total_chunks(conn: &Connection, results: &mut [SearchResult]) {
     if results.is_empty() {
         return;
     }
-    let unique_paths: HashSet<String> =
-        results.iter().map(|r| r.file_path.clone()).collect();
+    let unique_paths: HashSet<String> = results.iter().map(|r| r.file_path.clone()).collect();
     let paths: Vec<String> = unique_paths.into_iter().collect();
     let counts = match db::get_chunk_counts_by_file_paths(conn, &paths) {
         Ok(m) => m,
