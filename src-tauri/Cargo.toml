@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.3.6"
+version = "2.3.7"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -41,6 +41,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"
 # File watching
 notify = "8"
 walkdir = "2"
+# .gitignore 파싱 (ripgrep에서 사용하는 공식 구현체)
+ignore = "0.4"
 
 # Semantic search (Phase 3) - 버전 고정
 # load-dynamic: 런타임에 ORT_DYLIB_PATH로 onnxruntime.dll 로드 (lib.rs setup에서 설정).
@@ -85,6 +87,9 @@ dirs = "5"  # 크래시 로그 저장 경로
 # Parallel processing
 rayon = "1.10"
 crossbeam-channel = "0.5"
+
+[dev-dependencies]
+tempfile = "3"
 
 # Windows APIs
 [target.'cfg(windows)'.dependencies]

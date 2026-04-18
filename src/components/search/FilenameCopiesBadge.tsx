@@ -129,14 +129,15 @@ export function FilenameCopiesBadge({ copies, currentFilePath, onOpenFile }: Pro
                       >
                         {cleanPath(c.file_path)}
                       </div>
-                      {c.modified_at && (
+                      {c.modified_at ? (
                         <div
                           className="text-[10px] mt-0.5"
                           style={{ color: "var(--color-text-muted)" }}
+                          title={new Date(c.modified_at * 1000).toLocaleString("ko-KR")}
                         >
-                          {formatRelativeTime(c.modified_at)}
+                          {formatRelativeTime(c.modified_at * 1000)}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </button>
                 );

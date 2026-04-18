@@ -3,6 +3,35 @@ use std::path::Path;
 /// Lightroom 카탈로그 캐시처럼 폴더명이 매번 달라지는 패키지형 디렉토리 접미사.
 const DEFAULT_EXCLUDED_DIR_SUFFIXES: &[&str] = &[".lrdata", ".lrcat-data"];
 
+/// Windows가 상시 변경하는 시스템 파일 — 인덱싱/watcher에서 항상 제외.
+///
+/// ntuser.dat 등 레지스트리 하이브는 사용자 프로파일 루트에 있어 사용자가 `C:\Users\Chris`를
+/// 인덱싱 폴더로 추가할 경우 계속 "파일 변경" 이벤트가 발생해 무한 증분 인덱싱 유발.
+pub fn is_excluded_system_file(file_name: &str) -> bool {
+    let name_lower = file_name.to_ascii_lowercase();
+
+    // 레지스트리 하이브 및 트랜잭션 로그 (ntuser.dat / ntuser.dat.LOG1 / .LOG2 / .regtrans-ms / .blf)
+    if name_lower.starts_with("ntuser.") || name_lower.starts_with("usrclass.") {
+        return true;
+    }
+
+    matches!(
+        name_lower.as_str(),
+        // 윈도우 시스템 파일
+        "desktop.ini"
+            | "thumbs.db"
+            | "pagefile.sys"
+            | "hiberfil.sys"
+            | "swapfile.sys"
+            | "dumpstack.log"
+            | "dumpstack.log.tmp"
+            | "bootnxt"
+            | "bootmgr"
+            // macOS 메타데이터 (크로스 플랫폼 유저 위해)
+            | ".ds_store"
+    )
+}
+
 fn normalize_for_compare(input: &str) -> String {
     input
         .trim()

@@ -48,19 +48,21 @@ pub struct LineageHealthEntry {
 /// 버전 간 diff 항목.
 #[derive(Debug, Serialize)]
 pub struct ChunkDiffEntry {
-    /// "added" | "removed" | "modified"
+    /// "added" | "removed" | "modified" | "unchanged"
     pub kind: String,
-    /// 원본 버전의 청크 인덱스 (removed/modified)
+    /// 원본 버전의 청크 인덱스 (removed/modified/unchanged)
     pub a_index: Option<i64>,
-    /// 비교 대상 버전의 청크 인덱스 (added/modified)
+    /// 비교 대상 버전의 청크 인덱스 (added/modified/unchanged)
     pub b_index: Option<i64>,
     /// 요약 텍스트 (각 청크 앞 100자)
     pub a_preview: Option<String>,
     pub b_preview: Option<String>,
-    /// 코사인 유사도 (modified만)
+    /// 코사인 유사도 (modified/unchanged)
     pub similarity: Option<f32>,
     pub page_number: Option<i64>,
     pub location_hint: Option<String>,
+    /// 바이트 수준 정확히 동일한지 (unchanged에서 "완전 동일" vs "거의 동일" 구분)
+    pub byte_identical: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -297,6 +299,10 @@ pub async fn get_lineage_diff(
         let mut changes: Vec<ChunkDiffEntry> = Vec::new();
         let mut unchanged = 0i64;
 
+        // unchanged 샘플은 최대 20개까지 응답에 포함 (너무 많으면 UI 과부하)
+        const MAX_UNCHANGED_SAMPLES: usize = 20;
+        let mut unchanged_samples: Vec<ChunkDiffEntry> = Vec::new();
+
         for (ai, (a_idx, a_content, a_page, a_hint)) in a_chunks.iter().enumerate() {
             let Some(ae) = &a_emb[ai] else {
                 continue;
@@ -320,6 +326,21 @@ pub async fn get_lineage_diff(
                 Some(bi) if best_sim >= UNCHANGED_THRESHOLD => {
                     b_matched[bi] = true;
                     unchanged += 1;
+                    if unchanged_samples.len() < MAX_UNCHANGED_SAMPLES {
+                        let (b_idx, b_content, _, _) = &b_chunks[bi];
+                        let byte_identical = a_content == b_content;
+                        unchanged_samples.push(ChunkDiffEntry {
+                            kind: "unchanged".into(),
+                            a_index: Some(*a_idx),
+                            b_index: Some(*b_idx),
+                            a_preview: Some(preview(a_content)),
+                            b_preview: Some(preview(b_content)),
+                            similarity: Some(best_sim),
+                            page_number: *a_page,
+                            location_hint: a_hint.clone(),
+                            byte_identical: Some(byte_identical),
+                        });
+                    }
                 }
                 Some(bi) if best_sim >= MODIFIED_THRESHOLD => {
                     b_matched[bi] = true;
@@ -333,6 +354,7 @@ pub async fn get_lineage_diff(
                         similarity: Some(best_sim),
                         page_number: *a_page,
                         location_hint: a_hint.clone(),
+                        byte_identical: None,
                     });
                 }
                 _ => {
@@ -346,6 +368,7 @@ pub async fn get_lineage_diff(
                         similarity: None,
                         page_number: *a_page,
                         location_hint: a_hint.clone(),
+                        byte_identical: None,
                     });
                 }
             }
@@ -367,9 +390,13 @@ pub async fn get_lineage_diff(
                     similarity: None,
                     page_number: *b_page,
                     location_hint: b_hint.clone(),
+                    byte_identical: None,
                 });
             }
         }
+
+        // 변경점이 없을 때 unchanged 샘플을 changes에 append — UI에서 "뭐가 비교됐는지" 보여줌
+        changes.extend(unchanged_samples);
 
         Ok::<_, ApiError>(LineageDiffResponse {
             a_path,

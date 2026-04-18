@@ -32,17 +32,10 @@ export function formatRelativeTime(timestamp: number, compact = false): string {
     return compact ? `${days}d` : `${days}일 전`;
   }
 
-  // 7일 이상은 날짜 표시
+  // 7일 이상은 날짜 표시 (연도 항상 포함)
   const date = new Date(timestamp);
   const month = date.getMonth() + 1;
   const day = date.getDate();
-
-  // 올해면 월/일만, 아니면 년도 포함
-  const thisYear = new Date().getFullYear();
-  if (date.getFullYear() === thisYear) {
-    return compact ? `${month}/${day}` : `${month}월 ${day}일`;
-  }
-
   const year = date.getFullYear();
   return compact ? `${year % 100}/${month}/${day}` : `${year}. ${month}. ${day}`;
 }

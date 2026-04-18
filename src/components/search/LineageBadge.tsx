@@ -211,14 +211,15 @@ export function LineageBadge({
                             {v.file_name}
                           </span>
                         </div>
-                        {v.modified_at && (
+                        {v.modified_at ? (
                           <div
                             className="text-[10px] mt-0.5"
                             style={{ color: "var(--color-text-muted)" }}
+                            title={new Date(v.modified_at * 1000).toLocaleString("ko-KR")}
                           >
-                            {formatRelativeTime(v.modified_at)}
+                            {formatRelativeTime(v.modified_at * 1000)}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                       </button>
                       {!isCurrent && (

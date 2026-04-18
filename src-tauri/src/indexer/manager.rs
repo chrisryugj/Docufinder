@@ -183,6 +183,10 @@ impl WatchManager {
         }
         self.watcher.watch(path, RecursiveMode::Recursive)?;
         self.watched_folders.insert(path.to_path_buf());
+        // git 프로젝트 루트면 gitignore 매처 등록 (startup sync에서도 이 경로 통과)
+        if path.join(".git").exists() {
+            crate::indexer::gitignore_matcher::global().register_root(path);
+        }
         tracing::info!("Started watching: {:?}", path);
         Ok(())
     }
@@ -191,6 +195,7 @@ impl WatchManager {
     pub fn unwatch(&mut self, path: &Path) -> Result<(), notify::Error> {
         self.watcher.unwatch(path)?;
         self.watched_folders.remove(path);
+        crate::indexer::gitignore_matcher::global().unregister_root(path);
         tracing::info!("Stopped watching: {:?}", path);
         Ok(())
     }
@@ -376,6 +381,19 @@ impl WatchManager {
             // 숨김 파일 및 Office 임시 파일 (~$) 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if file_name.starts_with('.') || file_name.starts_with("~$") {
+                continue;
+            }
+
+            // Windows 시스템 파일 (ntuser.dat.LOG2 등이 끊임없이 이벤트 발생시킴)
+            if crate::indexer::exclusions::is_excluded_system_file(file_name) {
+                continue;
+            }
+
+            // .gitignore 매치 — 개발 프로젝트의 node_modules/target/dist 등이 발생시키는
+            // 반복 변경 이벤트 차단 (루트는 collector에서 등록됨)
+            let is_dir_hint = matches!(event.kind, EventKind::Remove(_)) && !path.exists();
+            if crate::indexer::gitignore_matcher::global().is_ignored(path, is_dir_hint) {
+                tracing::debug!("Skipping gitignored path: {:?}", path);
                 continue;
             }
 

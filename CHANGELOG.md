@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.7] - 2026-04-18
+
+### Fixed
+- **검색 결과 수정일 "1970. 1. 21" 버그** — 버전 드롭다운(LineageBadge)과 파일명 복사본 드롭다운(FilenameCopiesBadge)에서 Unix 초(Rust) → ms(JS) 변환 누락. `* 1000` 추가로 정상 날짜 표시 (`src/components/search/LineageBadge.tsx`, `FilenameCopiesBadge.tsx`)
+- **버전 비교 모달 반투명/z-index 깨짐** — `--color-bg-elevated` CSS 변수 미정의로 배경 투명, 부모 stacking context에 갇혀 검색 결과가 모달 위로 비침. fallback 색상 적용 + `createPortal(document.body)`로 탈출 (`src/components/search/VersionDiffModal.tsx`)
+- **날짜 표시 연도 생략** — 올해일 때 연도 빼던 로직 제거. 7일 이상 모든 날짜에 연도 포함 (`src/utils/formatRelativeTime.ts`)
+- **끊임없는 "1개 파일 변경 반영" 토스트** — `C:\Users\...`를 인덱싱 폴더로 추가하면 `ntuser.dat.LOG2`(레지스트리 하이브 트랜잭션 로그)가 Windows에 의해 상시 수정되어 무한 증분 업데이트 유발. Windows 시스템 파일 블랙리스트 도입으로 차단 (`src-tauri/src/indexer/exclusions.rs`)
+
+### Changed
+- **버전 비교 모달 UX 개편** — 변경/추가/제거/동일을 섹션별로 분리 표시, A→B 방향 화살표 및 파일 경로 헤더, 수정된 청크는 2-column 나란히 비교, 동일 청크 샘플(최대 20개)도 제공해 "뭐가 비교됐는지" 시각 확인 가능, 바이트 수준 완전 동일 여부 구분 (`src-tauri/src/commands/lineage.rs`, `src/components/search/VersionDiffModal.tsx`)
+
+### Added
+- **`.gitignore` 자동 존중** — 인덱싱 폴더에 `.git`이 있으면 해당 프로젝트의 `.gitignore` + `.git/info/exclude` 규칙을 자동 적용. `node_modules`, `target`, `dist`, `.next`, `__pycache__` 등 빌드/캐시 산출물이 유발하던 반복 증분 인덱싱을 원천 차단. 중첩 git 프로젝트는 가장 깊이 매칭되는 루트 우선 (`src-tauri/src/indexer/gitignore_matcher.rs`, `ignore` 크레이트 0.4)
+
 ## [2.3.6] - 2026-04-18
 
 ### Added

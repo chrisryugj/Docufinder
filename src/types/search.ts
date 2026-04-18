@@ -64,7 +64,7 @@ export interface LineageHealthReport {
 
 /** 청크 레벨 diff 항목 */
 export interface ChunkDiffEntry {
-  kind: "added" | "removed" | "modified";
+  kind: "added" | "removed" | "modified" | "unchanged";
   a_index: number | null;
   b_index: number | null;
   a_preview: string | null;
@@ -72,6 +72,8 @@ export interface ChunkDiffEntry {
   similarity: number | null;
   page_number: number | null;
   location_hint: string | null;
+  /** unchanged 시 바이트 수준 동일 여부 */
+  byte_identical?: boolean | null;
 }
 
 /** 버전 간 Diff 응답 */

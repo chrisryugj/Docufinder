@@ -5,6 +5,7 @@
 
 use crate::db;
 use crate::indexer::exclusions::is_excluded_dir;
+use crate::indexer::gitignore_matcher;
 use crate::indexer::pipeline::IndexError;
 
 use rusqlite::Connection;
@@ -24,6 +25,11 @@ pub(crate) fn collect_files(
 
     if cancel_flag.load(Ordering::Acquire) {
         return files;
+    }
+
+    // 루트가 git 프로젝트면 gitignore 매처 등록 (전역, 이후 watch 이벤트에서도 사용)
+    if dir.join(".git").exists() {
+        gitignore_matcher::global().register_root(dir);
     }
 
     if recursive {
@@ -64,9 +70,11 @@ fn collect_files_shallow(dir: &Path, files: &mut Vec<PathBuf>, cancel_flag: &Ato
         };
         let path = entry.path();
         if file_type.is_file() {
-            // Office 임시 파일 (~$로 시작) 제외
+            // Office 임시 파일 (~$) 및 Windows 시스템 파일 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if file_name.starts_with("~$") {
+            if file_name.starts_with("~$")
+                || crate::indexer::exclusions::is_excluded_system_file(file_name)
+            {
                 continue;
             }
 
@@ -121,6 +129,17 @@ fn collect_files_recursive(
                 continue;
             }
 
+            // 탐색 도중 중첩된 git 프로젝트 발견 → 해당 루트 등록 (하위 .gitignore 존중)
+            if path.join(".git").exists() {
+                gitignore_matcher::global().register_root(&path);
+            }
+
+            // 상위 git 프로젝트의 .gitignore에 매치되는 폴더면 제외 (node_modules, target 등)
+            if gitignore_matcher::global().is_ignored(&path, true) {
+                tracing::debug!("Skipping gitignored dir: {:?}", path);
+                continue;
+            }
+
             // 심볼릭 링크 순환 방지: 정규화된 경로로 중복 체크
             if let Ok(canonical) = path.canonicalize() {
                 if visited.insert(canonical) {
@@ -134,9 +153,16 @@ fn collect_files_recursive(
                 tracing::debug!("Skipping already visited dir (no canonical): {:?}", path);
             }
         } else if file_type.is_file() {
-            // Office 임시 파일 (~$로 시작) 제외
+            // Office 임시 파일 (~$) 및 Windows 시스템 파일 제외
             let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if file_name.starts_with("~$") {
+            if file_name.starts_with("~$")
+                || crate::indexer::exclusions::is_excluded_system_file(file_name)
+            {
+                continue;
+            }
+
+            // gitignore 매치 (예: *.log, build/*.js 등)
+            if gitignore_matcher::global().is_ignored(&path, false) {
                 continue;
             }
 
