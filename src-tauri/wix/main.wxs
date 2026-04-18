@@ -280,23 +280,32 @@
         </Feature>
 
         <!-- Visual C++ 2015-2022 Runtime (MSI에 번들 포함) -->
+        <!--
+            감지 경로 3중화: 단일 RegistrySearch는 실제 설치 시스템에서도 오탐 발생.
+            VS 키 / DevDiv Servicing / Version 중 하나라도 잡히면 설치 스킵.
+            (여러 RegistrySearch가 한 Property에 묶이면 마지막 성공값이 사용됨)
+        -->
         <Property Id="VCRTINSTALLED">
             <RegistrySearch Id="VCRTInstalledX64" Root="HKLM"
                 Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
                 Name="Installed" Type="raw" Win64="yes" />
+            <RegistrySearch Id="VCRTMinimumX64" Root="HKLM"
+                Key="SOFTWARE\Microsoft\DevDiv\VC\Servicing\14.0\RuntimeMinimum"
+                Name="Install" Type="raw" Win64="yes" />
+            <RegistrySearch Id="VCRTVersionX64" Root="HKLM"
+                Key="SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
+                Name="Version" Type="raw" Win64="yes" />
         </Property>
         <Binary Id="VCRedist" SourceFile="$(sys.SOURCEFILEDIR)..\..\..\..\wix\vc_redist.x64.exe" />
         <!--
-            Return="check"로 설치 실패를 명시적으로 감지.
-            이전 "ignore"는 VCRedist 실패(권한 부족, 손상된 파일 등)를 무음 통과시켜
-            앱 기동 시 VCRUNTIME140.dll 누락으로 크래시하는 블랙박스 디버깅 문제를 초래했음.
-            exit code 3010(재부팅 필요)/1638(동일/상위 버전 이미 설치)은 실패로 간주되지만,
-            1638은 NOT(VCRTINSTALLED) 조건에서 이미 걸러지므로 실무상 문제 없음.
+            Return="ignore": 이미 동일/상위 버전이 설치된 시스템에서 vc_redist가
+            exit 1638을 반환해 MSI 전체가 롤백되던 문제(v2.3.0~v2.3.7)를 차단.
+            진짜 런타임 누락이면 앱 기동 시 DLL 로드 실패로 드러나므로 블랙박스 아님.
         -->
         <CustomAction Id="InstallVCRedist" BinaryKey="VCRedist" Execute="deferred"
             Impersonate="no"
             ExeCommand="/install /quiet /norestart"
-            Return="check" />
+            Return="ignore" />
         <InstallExecuteSequence>
             <Custom Action="InstallVCRedist" Before="InstallFinalize">
                 <![CDATA[NOT(REMOVE) AND NOT(VCRTINSTALLED)]]>
@@ -322,7 +331,7 @@
         <!-- Embedded webview bootstrapper mode -->
         {{#if webview2_bootstrapper_path}}
         <Binary Id="MicrosoftEdgeWebview2Setup.exe" SourceFile="{{webview2_bootstrapper_path}}"/>
-        <CustomAction Id='InvokeBootstrapper' BinaryKey='MicrosoftEdgeWebview2Setup.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='check' />
+        <CustomAction Id='InvokeBootstrapper' BinaryKey='MicrosoftEdgeWebview2Setup.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='ignore' />
         <InstallExecuteSequence>
             <Custom Action='InvokeBootstrapper' Before='InstallFinalize'>
                 <![CDATA[NOT(REMOVE OR WVRTINSTALLED)]]>
@@ -333,7 +342,7 @@
         <!-- Embedded offline installer -->
         {{#if webview2_installer_path}}
         <Binary Id="MicrosoftEdgeWebView2RuntimeInstaller.exe" SourceFile="{{webview2_installer_path}}"/>
-        <CustomAction Id='InvokeStandalone' BinaryKey='MicrosoftEdgeWebView2RuntimeInstaller.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='check' />
+        <CustomAction Id='InvokeStandalone' BinaryKey='MicrosoftEdgeWebView2RuntimeInstaller.exe' Execute="deferred" ExeCommand='{{webview_installer_args}} /install' Return='ignore' />
         <InstallExecuteSequence>
             <Custom Action='InvokeStandalone' Before='InstallFinalize'>
                 <![CDATA[NOT(REMOVE OR WVRTINSTALLED)]]>

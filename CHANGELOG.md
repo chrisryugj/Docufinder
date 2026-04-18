@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.8] - 2026-04-19
+
+### Fixed
+- **MSI 설치 중 "프로그램이 예상대로 완료되지 않았습니다" 오류 핫픽스** — v2.3.0부터 WiX 커스텀 액션 `InstallVCRedist` / `InvokeBootstrapper`(WebView2)의 `Return` 속성이 `"check"`로 설정돼 있어, 이미 동일/상위 런타임이 설치된 시스템에서도 재설치 시 exit 1638(=already installed) 등이 설치 실패로 해석되어 MSI 전체가 롤백되던 문제. 두 CA의 `Return`을 `"ignore"`로 되돌리고, VC++ 감지 레지스트리를 3중화(VS 14.0 Installed / DevDiv Servicing RuntimeMinimum / VS 14.0 Version)하여 불필요한 재설치 시도 자체를 줄임 (`src-tauri/wix/main.wxs`)
+
 ## [2.3.7] - 2026-04-18
 
 ### Fixed
