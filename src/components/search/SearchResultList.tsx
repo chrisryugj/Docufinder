@@ -12,6 +12,7 @@ import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
+import { FilenameCopiesBadge } from "./FilenameCopiesBadge";
 
 interface SearchResultListProps {
   results: SearchResult[];
@@ -120,6 +121,7 @@ export const SearchResultList = memo(function SearchResultList({
   const isCompact = viewDensity === "compact";
   const listRef = useRef<HTMLDivElement>(null);
   const pendingScrollAnchorRef = useRef<PendingScrollAnchor | null>(null);
+  const pointerSelectRef = useRef(false);
 
   const captureScrollAnchor = useCallback((itemId: string) => {
     const listElement = listRef.current;
@@ -168,8 +170,14 @@ export const SearchResultList = memo(function SearchResultList({
     }
   }, [selectedIndex, visibleCount]);
 
-  // 키보드로 선택 변경 시 스크롤 따라가기 (flat/grouped 뷰 모두 대응)
+  // 키보드로 선택 변경 시만 스크롤 따라가기 (마우스 클릭은 pointerSelectRef로 스킵)
+  // 재발 방지: 클릭 시 `scrollIntoView({block:"nearest"})`가 viewport 하단에 걸친 카드를
+  // 아래쪽 edge로 끌어당겨 "저 밑으로 스크롤" 버그를 만든다. 키보드 내비게이션만 대상으로 제한.
   useEffect(() => {
+    if (pointerSelectRef.current) {
+      pointerSelectRef.current = false;
+      return;
+    }
     if (selectedIndex == null || selectedIndex < 0) return;
     const flatId = `search-result-${selectedIndex}`;
     const groupedId = `grouped-search-result-${selectedIndex}`;
@@ -266,7 +274,10 @@ export const SearchResultList = memo(function SearchResultList({
                     return (
                       <div
                         key={group.file_path}
-                        onClick={selectForPreview}
+                        onClick={() => {
+                          pointerSelectRef.current = true;
+                          selectForPreview();
+                        }}
                       >
                         <SearchResultItem
                           result={result}
@@ -290,7 +301,10 @@ export const SearchResultList = memo(function SearchResultList({
                   return (
                     <div
                       key={group.file_path}
-                      onClick={selectForPreview}
+                      onClick={() => {
+                        pointerSelectRef.current = true;
+                        selectForPreview();
+                      }}
                     >
                       <GroupedSearchResultItem
                         domId={`grouped-search-result-${index}`}
@@ -327,7 +341,10 @@ export const SearchResultList = memo(function SearchResultList({
                       contain: "layout style",
                       ...(index < 10 && { animationDelay: `${index * 30}ms` }),
                     }}
-                    onClick={() => onSelectResult?.(index)}
+                    onClick={() => {
+                      pointerSelectRef.current = true;
+                      onSelectResult?.(index);
+                    }}
                   >
                     <SearchResultItem
                       result={result}
@@ -763,16 +780,49 @@ function FilenameResultsSection({
         </button>
         {!isCollapsed && (
           <div className={isCompact ? "space-y-1" : "space-y-2"}>
-            {filenameResults.map((result, index) => (
-              <FilenameResultItem
-                key={`filename-${result.file_path}-${index}`}
-                result={result}
-                query={query}
-                onOpenFile={onOpenFile}
-                onCopyPath={onCopyPath}
-                onOpenFolder={onOpenFolder}
-              />
-            ))}
+            {(() => {
+              // 같은 file_name 기준 그룹화 — 3개 이상이면 대표 1개로 접고 복사본 뱃지 표시 (Everything 스타일)
+              const GROUP_THRESHOLD = 3;
+              const groupsByName = new Map<string, SearchResult[]>();
+              for (const r of filenameResults) {
+                const arr = groupsByName.get(r.file_name) ?? [];
+                arr.push(r);
+                groupsByName.set(r.file_name, arr);
+              }
+              const rendered = new Set<string>();
+              return filenameResults
+                .map((result, index) => {
+                  if (rendered.has(result.file_name)) return null;
+                  rendered.add(result.file_name);
+                  const group = groupsByName.get(result.file_name) ?? [result];
+                  if (group.length >= GROUP_THRESHOLD) {
+                    // 접기: 대표(첫 번째) + 복사본 뱃지
+                    return (
+                      <FilenameResultItem
+                        key={`filename-group-${result.file_name}-${index}`}
+                        result={group[0]}
+                        query={query}
+                        onOpenFile={onOpenFile}
+                        onCopyPath={onCopyPath}
+                        onOpenFolder={onOpenFolder}
+                        copies={group}
+                      />
+                    );
+                  }
+                  // 2개 이하: 모두 개별 노출
+                  return group.map((r, gi) => (
+                    <FilenameResultItem
+                      key={`filename-${r.file_path}-${index}-${gi}`}
+                      result={r}
+                      query={query}
+                      onOpenFile={onOpenFile}
+                      onCopyPath={onCopyPath}
+                      onOpenFolder={onOpenFolder}
+                    />
+                  ));
+                })
+                .filter(Boolean);
+            })()}
           </div>
         )}
       </div>
@@ -807,19 +857,22 @@ function FilenameResultsSection({
   );
 }
 
-/** 파일명 매치 결과 아이템 (컨텍스트 메뉴 포함) */
+/** 파일명 매치 결과 아이템 (컨텍스트 메뉴 포함).
+ *  copies prop이 주어지면(≥3개) 복사본 뱃지를 표시하고 대표 경로만 노출. */
 function FilenameResultItem({
   result,
   query,
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  copies,
 }: {
   result: SearchResult;
   query: string;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  copies?: SearchResult[];
 }) {
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -870,6 +923,13 @@ function FilenameResultItem({
       <Badge variant={getFileTypeBadgeVariant(result.file_name)}>
         {(result.file_name.split('.').pop() || '').toUpperCase()}
       </Badge>
+      {copies && copies.length >= 2 && (
+        <FilenameCopiesBadge
+          copies={copies}
+          currentFilePath={result.file_path}
+          onOpenFile={onOpenFile}
+        />
+      )}
       <ResultContextMenu
         filePath={result.file_path}
         folderPath={folderPath}

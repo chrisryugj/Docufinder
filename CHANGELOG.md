@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.6] - 2026-04-18
+
+### Added
+- **Document Lineage Graph** — 같은 문서의 여러 버전(`최종`/`최최종`/`v2`)을 자동 그룹핑해 검색 결과에서 대표 1개로 표시. 버전 뱃지 클릭 시 포털 드롭다운으로 모든 버전 탐색. 청크 레벨 Diff 모달(added/removed/modified) 제공. Behavioral Canonical(자주 여는 파일 자동 승격) + Cross-Folder Reunion(다른 폴더 같은 문서 벡터 0.95 이상이면 병합) + 건강도 리포트(정리 대상 감지) 포함 (`commands/lineage.rs`, `indexer/lineage.rs`, `components/search/LineageBadge.tsx`, `components/search/VersionDiffModal.tsx`)
+- **파일명 매치 복사본 뱃지** — 같은 파일명이 3개 이상 경로에 분산돼 있을 때 대표 1개만 표시하고 `📍 N곳` 뱃지 제공. 뱃지 클릭 시 모든 경로를 포털 드롭다운으로 나열. 2개 이하면 Everything 스타일로 전부 노출 (`components/search/FilenameCopiesBadge.tsx`)
+- **없는 파일 정리 (prune)** — 디스크에서 삭제됐으나 DB에 남은 고아 레코드를 일괄 제거. 앱 시작 시 startup sync 말미에 자동 실행 + 설정 > "없는 파일 정리" 버튼으로 수동 실행 가능 (`commands/maintenance.rs`, `commands/index/init.rs`)
+- v13 마이그레이션: `files.open_count`, `files.last_opened_at` 컬럼 (Behavioral Canonical 점수 계산용)
+
+### Fixed
+- **검색 결과 선택/프리뷰/스크롤 재발 버그 3종** — 리팩토링 때마다 재발하던 증상을 불변식으로 고정
+  1. 인덱싱 중 결과 refresh 시 `selectedIndex`가 다른 파일을 가리키게 되어 프리뷰 자동 전환되던 문제 — `useResultSelection`을 path 기반으로 재작성, 결과 변경 시 index만 조용히 재매핑 (`src/hooks/useResultSelection.ts`)
+  2. 마우스 클릭 시 `scrollIntoView({block:"nearest"})`가 viewport 하단에 걸친 카드를 아래로 끌어당기던 문제 — `pointerSelectRef` 플래그로 키보드 네비게이션에만 적용되도록 분리 (`src/components/search/SearchResultList.tsx`)
+  3. 파일명 매치에 `collapse_by_lineage`가 적용되어 같은 이름의 다른 경로 복사본이 1개로 축소되던 문제 — 파일명 검색 결과는 collapse 우회, 내용 매치에만 유지 (`src-tauri/src/commands/search.rs`)
+- **LineageBadge popover UI** — 배경이 반투명해 하위 콘텐츠가 비쳐 보이던 문제(명시적 불투명 배경 + shadow 강화) + 창 좁을 때 우측 잘림(viewport 경계 체크로 좌표 보정, 하단 경계 시 위로 띄움)
+- **fixture 파일 인덱싱 오염** — `src-tauri/tests/fixtures/real_filenames.txt`(7388줄, 개발자 정규식 regression 전용)가 사용자 DB에 들어가던 문제. `.list` 확장자로 변경해 Docufinder 파서 대상 제외. 기존에 들어간 잔재는 startup prune 또는 설정 버튼으로 정리 (`src-tauri/src/utils/filename_normalize.rs`)
+
+### Changed
+- `DEFAULT_EXCLUDED_DIRS`에 포함된 개발 폴더(`target`, `node_modules`, `.git`, `.cache`)가 전체 드라이브 인덱싱에서 확실히 제외되도록 재확인 (기존 동작 유지)
+
 ## [2.3.5] - 2026-04-18
 
 ### Removed

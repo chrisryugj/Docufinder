@@ -266,6 +266,22 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
             }
         }
 
+        // stale prune — sync 대상이 아니었던 폴더 (인덱싱 중/skip)에도 잔재 레코드 남을 수 있음.
+        // 디스크에 실재하지 않는 모든 files 레코드를 일괄 삭제. 10만 파일 기준 수초.
+        let db_path_for_prune = db_path.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            match crate::commands::maintenance::prune_missing_files_impl(&db_path_for_prune) {
+                Ok(r) if r.pruned > 0 => tracing::info!(
+                    "[Startup Prune] {} stale records cleaned ({}ms)",
+                    r.pruned,
+                    r.elapsed_ms
+                ),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("[Startup Prune] failed: {:?}", e),
+            }
+        })
+        .await;
+
         // 루프 완료 후 watcher 복구
         if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
             if let Ok(c) = cs.read() {

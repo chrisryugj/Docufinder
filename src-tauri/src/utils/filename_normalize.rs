@@ -332,10 +332,11 @@ mod tests {
     }
 
     // === 실환경 파일명 7388개 regression 스위트 ===
-    // fixtures/real_filenames.txt: 사용자 E:\ 드라이브에서 실제 수집된 파일명.
+    // fixtures/real_filenames.list: 사용자 E:\ 드라이브에서 실제 수집된 파일명.
+    // .list 확장자 — Docufinder 파서(hwpx/docx/xlsx/pdf/txt) 대상 아님 → 사용자 DB 인덱싱 오염 방지.
     // 정규화 규칙을 수정한 뒤 이 스위트를 돌려 false positive/negative를 모니터링한다.
 
-    const REAL_FIXTURE: &str = include_str!("../../tests/fixtures/real_filenames.txt");
+    const REAL_FIXTURE: &str = include_str!("../../tests/fixtures/real_filenames.list");
 
     fn load_real_filenames() -> Vec<String> {
         REAL_FIXTURE

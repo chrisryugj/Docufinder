@@ -25,9 +25,38 @@ interface LineageHealthReport {
   unassigned_files: number;
 }
 
+interface PruneResult {
+  total_checked: number;
+  pruned: number;
+  elapsed_ms: number;
+}
+
 export function SearchTab({ settings, onChange }: TabProps) {
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<string | null>(null);
+  const [pruning, setPruning] = useState(false);
+
+  async function handlePruneMissing() {
+    if (pruning) return;
+    setPruning(true);
+    setRebuildResult(null);
+    try {
+      const res = await invokeWithTimeout<PruneResult>(
+        "prune_missing_files",
+        undefined,
+        300_000,
+      );
+      setRebuildResult(
+        res.pruned === 0
+          ? `✅ 정리할 레코드 없음 (${res.total_checked.toLocaleString()}개 검사 · ${(res.elapsed_ms / 1000).toFixed(1)}s)`
+          : `🧹 ${res.pruned.toLocaleString()}개 고아 레코드 삭제 · 전체 ${res.total_checked.toLocaleString()}개 · ${(res.elapsed_ms / 1000).toFixed(1)}s`,
+      );
+    } catch (e) {
+      setRebuildResult(`정리 실패: ${e}`);
+    } finally {
+      setPruning(false);
+    }
+  }
 
   async function handleRebuildLineage() {
     if (rebuilding) return;
@@ -211,6 +240,20 @@ export function SearchTab({ settings, onChange }: TabProps) {
               }}
             >
               건강도 확인
+            </button>
+            <button
+              type="button"
+              onClick={handlePruneMissing}
+              disabled={rebuilding || pruning}
+              title="디스크에 없는 파일의 DB 잔재 레코드를 삭제합니다"
+              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                color: "var(--color-text-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              {pruning ? "정리 중..." : "없는 파일 정리"}
             </button>
           </div>
           {rebuildResult && (

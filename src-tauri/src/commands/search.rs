@@ -95,17 +95,19 @@ pub async fn search_filename(
         });
     }
 
-    let (service, max_results, group_versions) = {
+    let (service, max_results) = {
         let container = state.read()?;
         let s = container.get_settings();
-        (container.search_service(), s.max_results, s.group_versions)
+        (container.search_service(), s.max_results)
     };
 
+    // 파일명 매치는 Everything 스타일 — lineage collapse 적용 안 함.
+    // 같은 파일명의 다른 경로 복사본을 모두 노출한다 (사용자 UX 요구).
     let response = service
         .search_filename(&query, max_results, folder_scope.as_deref())
         .await
         .map_err(ApiError::from)?;
-    Ok(apply_lineage_collapse(response, group_versions))
+    Ok(response)
 }
 
 /// 시맨틱 검색 (벡터)

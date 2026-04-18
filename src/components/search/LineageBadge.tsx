@@ -56,7 +56,19 @@ export function LineageBadge({
       e.stopPropagation();
       if (!isOpen && triggerRef.current) {
         const rect = triggerRef.current.getBoundingClientRect();
-        setPos({ top: rect.bottom + 4, left: rect.left });
+        // 창 우측 잘림 방지: popover 최대폭(480) + margin(12)이 viewport 안에 들어가도록 왼쪽 좌표 보정
+        const POPOVER_MAX_WIDTH = 480;
+        const MARGIN = 12;
+        const desiredLeft = rect.left;
+        const maxLeft = window.innerWidth - POPOVER_MAX_WIDTH - MARGIN;
+        const left = Math.max(MARGIN, Math.min(desiredLeft, maxLeft));
+        // 하단 경계: 화면 밑으로 잘리면 뱃지 위쪽으로 띄움
+        const POPOVER_MAX_HEIGHT = 360;
+        const top =
+          rect.bottom + POPOVER_MAX_HEIGHT + MARGIN > window.innerHeight
+            ? Math.max(MARGIN, rect.top - POPOVER_MAX_HEIGHT - 4)
+            : rect.bottom + 4;
+        setPos({ top, left });
         fetchVersions();
       }
       setIsOpen((v) => !v);
@@ -107,15 +119,18 @@ export function LineageBadge({
         createPortal(
           <div
             ref={popoverRef}
-            className="fixed z-50 rounded-lg shadow-lg overflow-hidden"
+            className="fixed z-50 rounded-lg shadow-2xl overflow-hidden"
             style={{
               top: pos.top,
               left: pos.left,
               minWidth: 320,
               maxWidth: 480,
               maxHeight: 360,
-              backgroundColor: "var(--color-bg-elevated)",
+              // 불투명 배경: 테마 변수 위에 --color-bg-primary를 깔아 투명도 제거
+              backgroundColor: "var(--color-bg-elevated, var(--color-bg-primary))",
+              backgroundImage: "linear-gradient(var(--color-bg-elevated, var(--color-bg-primary)), var(--color-bg-elevated, var(--color-bg-primary)))",
               border: "1px solid var(--color-border)",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.08)",
             }}
           >
             <div
