@@ -4,6 +4,7 @@
 //! Handles only: input validation, settings retrieval, service invocation.
 
 use crate::application::dto::search::SearchResponse;
+use crate::application::services::search_service::helpers::collapse_by_lineage;
 use crate::error::{ApiError, ApiResult};
 use crate::search::KeywordMode;
 use crate::AppContainer;
@@ -11,6 +12,20 @@ use std::sync::RwLock;
 use tauri::State;
 
 const MAX_QUERY_LEN: usize = 1000;
+
+/// `group_versions` 설정이 켜져 있을 때 검색 결과에서 같은 lineage의 중복 버전을 접는다.
+fn apply_lineage_collapse(mut response: SearchResponse, group_versions: bool) -> SearchResponse {
+    if group_versions {
+        let before = response.results.len();
+        response.results = collapse_by_lineage(response.results);
+        response.total_count = response.results.len();
+        let after = response.total_count;
+        if before != after {
+            tracing::debug!("lineage collapse: {} → {} ({} 개 버전 접힘)", before, after, before - after);
+        }
+    }
+    response
+}
 
 fn parse_keyword_mode(mode: Option<&str>) -> KeywordMode {
     match mode {
@@ -50,16 +65,17 @@ pub async fn search_keyword(
 
     let mode = parse_keyword_mode(keyword_mode.as_deref());
 
-    let (service, max_results) = {
+    let (service, max_results, group_versions) = {
         let container = state.read()?;
-        let max_results = container.get_settings().max_results;
-        (container.search_service(), max_results)
+        let s = container.get_settings();
+        (container.search_service(), s.max_results, s.group_versions)
     };
 
-    service
+    let response = service
         .search_keyword_with_mode(&query, max_results, folder_scope.as_deref(), mode)
         .await
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    Ok(apply_lineage_collapse(response, group_versions))
 }
 
 /// 파일명 검색 (FTS5)
@@ -79,16 +95,17 @@ pub async fn search_filename(
         });
     }
 
-    let (service, max_results) = {
+    let (service, max_results, group_versions) = {
         let container = state.read()?;
-        let max_results = container.get_settings().max_results;
-        (container.search_service(), max_results)
+        let s = container.get_settings();
+        (container.search_service(), s.max_results, s.group_versions)
     };
 
-    service
+    let response = service
         .search_filename(&query, max_results, folder_scope.as_deref())
         .await
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    Ok(apply_lineage_collapse(response, group_versions))
 }
 
 /// 시맨틱 검색 (벡터)
@@ -108,13 +125,14 @@ pub async fn search_semantic(
         });
     }
 
-    let (service, max_results, semantic_enabled) = {
+    let (service, max_results, semantic_enabled, group_versions) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
             container.search_service(),
             settings.max_results,
             settings.semantic_search_enabled,
+            settings.group_versions,
         )
     };
 
@@ -122,10 +140,11 @@ pub async fn search_semantic(
         return Err(ApiError::SemanticSearchDisabled);
     }
 
-    service
+    let response = service
         .search_semantic(&query, max_results, folder_scope.as_deref())
         .await
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    Ok(apply_lineage_collapse(response, group_versions))
 }
 
 /// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
@@ -149,28 +168,31 @@ pub async fn search_hybrid(
 
     let mode = parse_keyword_mode(keyword_mode.as_deref());
 
-    let (service, max_results, semantic_enabled) = {
+    let (service, max_results, semantic_enabled, group_versions) = {
         let container = state.read()?;
         let settings = container.get_settings();
         (
             container.search_service(),
             settings.max_results,
             settings.semantic_search_enabled,
+            settings.group_versions,
         )
     };
 
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
     if !semantic_enabled {
-        return service
+        let response = service
             .search_keyword_with_mode(&query, max_results, folder_scope.as_deref(), mode)
             .await
-            .map_err(ApiError::from);
+            .map_err(ApiError::from)?;
+        return Ok(apply_lineage_collapse(response, group_versions));
     }
 
-    service
+    let response = service
         .search_hybrid_with_mode(&query, max_results, folder_scope.as_deref(), mode)
         .await
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    Ok(apply_lineage_collapse(response, group_versions))
 }
 
 /// 스마트(자연어) 검색
@@ -191,16 +213,29 @@ pub async fn search_smart(
         });
     }
 
-    let (service, max_results) = {
+    let (service, max_results, group_versions) = {
         let container = state.read()?;
-        let max_results = container.get_settings().max_results;
-        (container.search_service(), max_results)
+        let s = container.get_settings();
+        (container.search_service(), s.max_results, s.group_versions)
     };
 
-    service
+    let mut response = service
         .search_smart(&query, max_results, folder_scope.as_deref())
         .await
-        .map_err(ApiError::from)
+        .map_err(ApiError::from)?;
+    if group_versions {
+        let before = response.results.len();
+        response.results = collapse_by_lineage(response.results);
+        response.total_count = response.results.len();
+        if before != response.total_count {
+            tracing::debug!(
+                "smart lineage collapse: {} → {}",
+                before,
+                response.total_count
+            );
+        }
+    }
+    Ok(response)
 }
 
 /// 유사 문서 검색 (파일 경로 기반)

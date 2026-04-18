@@ -3,6 +3,7 @@ pub mod duplicate;
 pub mod export;
 pub mod file;
 pub mod index;
+pub mod lineage;
 pub mod preview;
 pub mod search;
 pub mod settings;

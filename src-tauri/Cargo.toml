@@ -69,6 +69,9 @@ base64 = "0.22"
 # Text encoding detection (EUC-KR, CP949 etc.)
 encoding_rs = "0.8"
 
+# Regex (파일명 정규화 — lineage 추론)
+regex = "1"
+
 # Utilities
 which = "7"
 thiserror = "2"

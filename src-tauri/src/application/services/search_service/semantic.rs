@@ -95,6 +95,10 @@ impl SearchService {
                     modified_at: chunk.modified_at,
                     has_hwp_pair: false,
                     total_chunks: 0,
+                    lineage_id: None,
+                    lineage_role: None,
+                    version_label: None,
+                    version_count: 0,
                 })
             })
             .collect();
@@ -104,6 +108,7 @@ impl SearchService {
         }
 
         enrich_total_chunks(&conn, &mut results);
+        enrich_lineage_info(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
@@ -314,6 +319,10 @@ impl SearchService {
                                 modified_at: chunk.modified_at,
                                 has_hwp_pair: false,
                                 total_chunks: 0,
+                                lineage_id: None,
+                                lineage_role: None,
+                                version_label: None,
+                                version_count: 0,
                             };
                         }
                     })
@@ -337,6 +346,10 @@ impl SearchService {
                                 modified_at: chunk.modified_at,
                                 has_hwp_pair: false,
                                 total_chunks: 0,
+                                lineage_id: None,
+                                lineage_role: None,
+                                version_label: None,
+                                version_count: 0,
                             },
                         )
                     });
@@ -352,6 +365,7 @@ impl SearchService {
         results.truncate(max_results);
 
         enrich_total_chunks(&conn, &mut results);
+        enrich_lineage_info(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 

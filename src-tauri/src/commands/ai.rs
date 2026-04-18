@@ -226,6 +226,10 @@ async fn expand_with_neighbors(
             modified_at: c.modified_at,
             has_hwp_pair: false,
             total_chunks: 0,
+            lineage_id: None,
+            lineage_role: None,
+            version_label: None,
+            version_count: 0,
         });
     }
 

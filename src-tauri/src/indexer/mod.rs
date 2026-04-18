@@ -2,6 +2,7 @@ pub mod background_parser;
 pub mod batch;
 pub mod collector;
 pub mod exclusions;
+pub mod lineage;
 pub mod manager;
 pub mod pipeline;
 pub mod sync;

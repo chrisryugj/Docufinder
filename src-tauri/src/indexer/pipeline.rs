@@ -542,6 +542,13 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
         db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
             .map_err(|e| IndexError::DbError(e.to_string()))?;
 
+    // Lineage 부여 — 같은 stem/폴더의 기존 canonical과 점수 비교 후 승자 지정
+    if let Err(e) = crate::indexer::lineage::assign_for_file(
+        conn, file_id, &path_str, &file_name, Some(modified_at),
+    ) {
+        tracing::warn!("lineage assign failed for {}: {}", path_str, e);
+    }
+
     // _no_tx 버전 사용: 호출자(index_folder_fts_only)가 이미 트랜잭션을 관리하므로
     // 중첩 BEGIN 방지 (SQLite는 중첩 트랜잭션 미지원)
     db::delete_chunks_for_file_no_tx(conn, file_id)
