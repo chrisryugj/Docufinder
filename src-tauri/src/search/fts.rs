@@ -69,16 +69,16 @@ fn search_internal(
         return Ok(vec![]);
     }
 
-    // folder_scope가 있으면 path LIKE 조건 추가 (Windows: case-insensitive)
-    let (scope_clause, scope_pattern) = match folder_scope {
-        Some(scope) if !scope.is_empty() => {
-            let escaped = crate::db::escape_like_pattern(&scope.to_lowercase());
-            (
-                "AND LOWER(f.path) LIKE ? ESCAPE '\\'",
-                Some(format!("{}%", escaped)),
-            )
-        }
-        _ => ("", None),
+    // folder_scope가 있으면 segment 경계(scope/)에서 끊기는 LIKE 패턴 사용.
+    // sibling 폴더 오탐 차단을 위해 path 와 pattern 모두 `/` 로 통일 + 소문자 비교.
+    let (scope_clause, scope_pattern) = match crate::utils::folder_scope::scope_like_pattern(
+        folder_scope.unwrap_or(""),
+    ) {
+        Some(pat) => (
+            "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
+            Some(pat),
+        ),
+        None => ("", None),
     };
 
     let sql = format!(
@@ -190,6 +190,65 @@ fn sanitize_fts_query(
     terms.join(join_op)
 }
 
+/// 단일 파일 내부 FTS5 검색.
+///
+/// 전역 top-N 에서 파일 필터를 걸던 기존 방식은 큰 문서에서 질문 관련 청크가
+/// 전역 top-N 밖으로 밀려날 수 있다. 이 함수는 처음부터 `f.path = ?` 로 좁혀
+/// 해당 파일 내부에서 BM25 상위 limit 만 반환한다.
+pub fn search_in_file(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+    file_path: &str,
+    tokenizer: Option<&dyn TextTokenizer>,
+    mode: KeywordMode,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    let safe_query = sanitize_fts_query(query, tokenizer, mode);
+    if safe_query.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let sql = "SELECT
+            c.id, f.path, f.name, c.chunk_index,
+            COALESCE(c.content, fts.content) AS content,
+            bm25(chunks_fts) as score,
+            c.start_offset, c.end_offset, c.page_number, c.page_end, c.location_hint,
+            snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 64) as snippet,
+            f.modified_at
+         FROM chunks_fts fts
+         JOIN chunks c ON c.id = fts.rowid
+         JOIN files f ON f.id = c.file_id
+         WHERE chunks_fts MATCH ? AND f.path = ?
+         ORDER BY score
+         LIMIT ?";
+
+    let mut stmt = conn.prepare(sql)?;
+    let results: Vec<FtsResult> = stmt
+        .query_map(
+            rusqlite::params![safe_query, file_path, limit as i64],
+            |row| {
+                Ok(FtsResult {
+                    chunk_id: row.get(0)?,
+                    file_path: row.get(1)?,
+                    file_name: row.get(2)?,
+                    chunk_index: row.get(3)?,
+                    content: row.get(4)?,
+                    score: row.get(5)?,
+                    start_offset: row.get(6)?,
+                    end_offset: row.get(7)?,
+                    page_number: row.get(8)?,
+                    page_end: row.get(9)?,
+                    location_hint: row.get(10)?,
+                    snippet: row.get(11)?,
+                    modified_at: row.get(12)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(results)
+}
+
 /// ParsedQuery 기반 FTS5 쿼리 생성 (NOT 연산자 지원)
 ///
 /// exclude가 비어있으면 기존 sanitize_fts_query와 동일.
@@ -247,15 +306,14 @@ fn search_like_fallback(
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     let like_pattern = format!("%{}%", query);
 
-    let (scope_clause, scope_pattern) = match folder_scope {
-        Some(scope) if !scope.is_empty() => {
-            let escaped = crate::db::escape_like_pattern(&scope.to_lowercase());
-            (
-                "AND LOWER(f.path) LIKE ? ESCAPE '\\'",
-                Some(format!("{}%", escaped)),
-            )
-        }
-        _ => ("", None),
+    let (scope_clause, scope_pattern) = match crate::utils::folder_scope::scope_like_pattern(
+        folder_scope.unwrap_or(""),
+    ) {
+        Some(pat) => (
+            "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
+            Some(pat),
+        ),
+        None => ("", None),
     };
 
     let sql = format!(

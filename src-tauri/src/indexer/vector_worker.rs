@@ -256,11 +256,14 @@ fn run_vector_indexing(
     let mut processed = 0;
     let mut last_save = 0;
     let recv_timeout = Duration::from_millis(100);
+    // 취소 플래그: 최종 is_complete 이벤트를 정확히 내보내기 위한 추적
+    let mut was_cancelled = false;
 
     loop {
         // 취소 확인
         if cancel_flag.load(Ordering::Acquire) {
             tracing::info!("[VectorWorker] Cancelled");
+            was_cancelled = true;
             send_progress(processed, None, false);
             break;
         }
@@ -329,6 +332,7 @@ fn run_vector_indexing(
                     // 취소 확인
                     if cancel_flag.load(Ordering::Acquire) {
                         cancelled_mid_file = true;
+                        was_cancelled = true;
                         break;
                     }
 
@@ -341,11 +345,13 @@ fn run_vector_indexing(
                         Err(e) => {
                             tracing::warn!("[VectorWorker] Embedding failed: {}", e);
                             file_failed_chunks += batch.len();
+                            // 배치 전체 실패 → processed 에 반영하지 않고 다음 배치로
                             continue;
                         }
                     };
 
-                    // 벡터 인덱스에 추가
+                    // 벡터 인덱스에 추가 (batch 단위로 실제 성공 수만 카운트)
+                    let mut batch_failed = 0usize;
                     for (chunk_id, embedding) in chunk_ids.iter().zip(embeddings.iter()) {
                         if let Err(e) = vector_index.add(*chunk_id, embedding) {
                             tracing::warn!(
@@ -353,12 +359,16 @@ fn run_vector_indexing(
                                 chunk_id,
                                 e
                             );
-                            file_failed_chunks += 1;
+                            batch_failed += 1;
                         }
                     }
+                    file_failed_chunks += batch_failed;
+                    let batch_succeeded = batch.len() - batch_failed;
 
-                    processed += batch.len();
-                    processed_chunks_in_file += batch.len();
+                    // 진행률은 **실제로 벡터 인덱스에 추가된 청크** 만 집계한다.
+                    // 실패한 청크까지 더하면 "완료 100%"로 보이는데도 재시도 대상이 남는다.
+                    processed += batch_succeeded;
+                    processed_chunks_in_file += batch_succeeded;
 
                     // Embedder Mutex 양보: 검색 스레드가 끼어들 수 있도록
                     std::thread::yield_now();
@@ -444,19 +454,28 @@ fn run_vector_indexing(
     }
 
     tracing::info!(
-        "[VectorWorker] Completed. {} chunks processed this session, {} total in index",
+        "[VectorWorker] Completed. {} chunks embedded this session, {} total in index, cancelled={}",
         processed,
-        final_chunk_count
+        final_chunk_count,
+        was_cancelled
     );
 
-    // 상태 업데이트 (누적)
+    // 상태 업데이트 — 취소/실패 여부를 정확히 반영.
+    // 이전 코드는 취소로 빠져나와도 pending=0, is_complete=true 를 보내 사용자에게
+    // "완료됨"으로 보였다. 이제는 실제로 남은 pending 수를 다시 집계한다.
+    let final_pending = match db::retry_on_busy(|| db::get_vector_indexing_stats(&conn)) {
+        Ok(s) => s.pending_chunks,
+        Err(_) => 0,
+    };
+    let fully_done = !was_cancelled && final_pending == 0;
+
     if let Ok(mut s) = status.write() {
         s.processed_chunks = base_processed + processed;
         s.current_file = None;
-        s.pending_chunks = 0;
+        s.pending_chunks = final_pending;
     }
 
-    send_progress(processed, None, true);
+    send_progress(processed, None, fully_done);
 
     Ok(())
 }

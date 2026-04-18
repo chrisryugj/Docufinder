@@ -31,14 +31,9 @@ fn validate_preview_path(
             "등록된 감시 폴더가 없어 미리보기할 수 없습니다".to_string(),
         ));
     }
-    let strip = |p: &str| -> String {
-        p.strip_prefix(r"\\?\")
-            .unwrap_or(p)
-            .replace('\\', "/")
-            .to_lowercase()
-    };
-    let normalized = strip(&canonical_str);
-    let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
+    let in_scope = folders
+        .iter()
+        .any(|f| crate::utils::folder_scope::path_in_scope(&canonical_str, f));
     if !in_scope {
         return Err(ApiError::Validation(
             "감시 폴더 외부 파일은 미리보기할 수 없습니다".to_string(),

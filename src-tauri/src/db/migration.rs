@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 13;
+const CURRENT_SCHEMA_VERSION: i32 = 14;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -349,6 +349,39 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         }
         set_schema_version(conn, 13)?;
         tracing::info!("Schema migrated to v13 (behavioral canonical)");
+    }
+
+    // === v14: 벡터 임베딩 재색인 트리거 ===
+    // v2.3.8 이하에서는 벡터 워커가 `fts.content`(원문 + 형태소 토큰) 를 읽어
+    // 임베딩을 생성했다. 그 결과 시맨틱 공간이 검색용 보강 토큰으로 오염돼
+    // 하이브리드/RAG 품질이 구조적으로 저하된 상태였다.
+    //
+    // v2.3.9 에서 워커가 `c.content`(원문) 를 읽도록 수정되었으므로,
+    // 기존 벡터는 원문이 아닌 오염된 임베딩이기 때문에 **전면 재색인**이 필요하다.
+    //
+    //   1) 모든 파일의 `vector_indexed_at = NULL` 로 리셋 → 다음 부팅 때 재임베딩
+    //   2) 기존 `vectors.usearch` 파일 삭제 → 디스크의 오염된 벡터 회수
+    if get_schema_version(conn) < 14 {
+        let reset = conn.execute("UPDATE files SET vector_indexed_at = NULL", [])?;
+        tracing::info!(
+            "Migration v14: reset vector_indexed_at on {} files (will re-embed)",
+            reset
+        );
+
+        // vector index 파일은 DB 디렉터리 옆 `vectors.usearch` 로 관리된다.
+        if let Some(dir) = db_path.parent() {
+            for name in ["vectors.usearch", "vectors.usearch.lock"] {
+                let p = dir.join(name);
+                if p.exists() {
+                    match std::fs::remove_file(&p) {
+                        Ok(_) => tracing::info!("Migration v14: removed {:?}", p),
+                        Err(e) => tracing::warn!("Migration v14: cannot remove {:?}: {}", p, e),
+                    }
+                }
+            }
+        }
+        set_schema_version(conn, 14)?;
+        tracing::info!("Schema migrated to v14 (vector re-embedding trigger)");
     }
 
     tracing::info!(
