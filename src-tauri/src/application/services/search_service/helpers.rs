@@ -291,11 +291,12 @@ pub fn interpolate_page_from_snippet(
 
 // ── 벡터 검색 folder_scope 필터 ──────────────────────
 
-/// 벡터 검색 결과의 folder_scope 후처리 필터 (Windows: case-insensitive)
+/// 벡터 검색 결과의 folder_scope 후처리 필터.
+/// segment 경계(`scope/`)에서만 매치되어 sibling 폴더 오탐을 차단한다.
 pub fn matches_folder_scope(file_path: &str, folder_scope: Option<&str>) -> bool {
     match folder_scope {
         Some(scope) if !scope.is_empty() => {
-            file_path.to_lowercase().starts_with(&scope.to_lowercase())
+            crate::utils::folder_scope::path_in_scope(file_path, scope)
         }
         _ => true,
     }

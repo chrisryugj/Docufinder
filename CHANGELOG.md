@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.9] - 2026-04-19
+
+### Fixed (코덱스 리뷰 기반 품질/보안 핫픽스 6종)
+- **[High] 폴더 scope sibling 오탐 차단** — `starts_with(scope)` prefix 매칭이 `C:\docs\a` 로 `C:\docs\a-old` 까지 허용하던 문제. 파일 열기/미리보기 화이트리스트, FTS LIKE, 파일명 캐시, 벡터 후처리 필터, 파일명 캐시 삭제 경로 전부를 segment 경계(`scope/`) 기반으로 통일. 공통 헬퍼 `utils::folder_scope` 도입하여 슬래시·대소문자·`\\?\` prefix 를 단일 규칙으로 정규화 (`utils/folder_scope.rs`, `commands/file.rs:113`, `commands/preview.rs:41`, `search/fts.rs:77`, `search_service/helpers.rs:matches_folder_scope`, `search/filename_cache.rs:188`)
+- **[High] 벡터 임베딩 오염 수정 + 재색인 마이그레이션 (v14)** — 벡터 워커가 `fts.content`(원문 + 형태소 토큰) 를 읽어 임베딩을 만들어 시맨틱 공간이 검색용 보강 토큰으로 오염되던 문제. `c.content`(원문) 로 변경하고, 기존 사용자 DB 의 오염된 벡터를 자동 교체하기 위해 마이그레이션 v14 에서 `vector_indexed_at` 전면 리셋 + `vectors.usearch` 삭제 → 다음 부팅 시 원문 기반으로 재임베딩 (`db/mod.rs:931 get_pending_vector_chunks_for_file`, `db/migration.rs:v14`)
+- **[High] RAG vector-only 히트 200자 잘림 수정** — 하이브리드 검색의 vector-only 결과가 `full_content=""` 로 저장돼 RAG 컨텍스트 빌드 시 200자 preview 만 LLM 에 전달되던 문제. 의미 검색이 찾아낸 핵심 증거가 잘린 채 전달되지 않도록 `full_content` 에 원문 청크 저장 (`application/services/search_service/hybrid.rs:182`)
+- **[High] 벡터 인덱싱 진행률/완료 상태 정확도** — `vector_index.add` 실패 청크까지 `processed` 에 포함시켜 "완료 100%"로 보이지만 재시도 대상이 남아 있던 문제, 취소 시에도 `pending_chunks=0 / is_complete=true` 최종 이벤트를 보내 "완료됨"으로 표시되던 문제 수정. 실제 성공 청크 수만 카운트하고, 최종 이벤트는 DB 에서 남은 pending 을 재조회해 `is_complete = !cancelled && pending==0` 기준으로 결정 (`indexer/vector_worker.rs:run_vector_indexing`)
+- **[Medium] 단일 파일 QA 스코프** — 전역 top-25 를 뽑고 파일 필터를 거는 기존 구현은 큰 문서의 관련 청크가 전역 랭킹 밖으로 밀려날 때 "파일 QA 가 정작 질문 위치를 놓치고 앞부분 위주로 답하는" 현상을 유발. `SearchService::search_hybrid_in_file` + `fts::search_in_file` 신설로 처음부터 `f.path = ?` 스코프에서 BM25 상위 청크만 뽑도록 수정 (`application/services/search_service/hybrid.rs`, `search/fts.rs:search_in_file`, `commands/ai.rs:ask_ai_file`)
+- **[Medium] Gemini 스트리밍 무증상 실패 감지** — 스트리밍 파서가 `text` 토큰만 이어붙이고 `error.message`, `promptFeedback.blockReason`, `finishReason`(SAFETY/RECITATION/BLOCKLIST/PROHIBITED_CONTENT/SPII) 을 무시해 차단/서버오류가 "빈 정상 응답" 으로 끝나던 문제. 각 SSE 청크에서 종료 사유를 검사하고, 텍스트 한 글자 없이 끝난 경우도 명시적 에러로 승격 (`llm/gemini.rs:generate_stream`)
+
+### Changed
+- **RAG 경로에도 lineage collapse 적용** — 검색 커맨드 경로(`apply_lineage_collapse`)는 `group_versions` 설정을 지켰으나 RAG(`ask_ai`) 는 `search_hybrid` 결과를 그대로 사용해 버전 문서들이 컨텍스트 예산을 잠식하던 문제. `group_versions=true` 일 때 이웃 청크 확장 직전 `collapse_by_lineage` 적용 (`commands/ai.rs:ask_ai`)
+
+### Migration
+- 스키마 v14 — 자동 적용. 기존 벡터가 오염된 상태이므로 **첫 실행 시 벡터 전면 재색인**이 트리거된다. FTS 검색은 영향 없이 즉시 사용 가능하며, 벡터/RAG 품질은 재색인 진행률에 따라 회복된다.
+
 ## [2.3.8] - 2026-04-19
 
 ### Fixed

@@ -927,8 +927,11 @@ pub fn get_pending_vector_chunks_for_file(
     conn: &Connection,
     file_id: i64,
 ) -> Result<Vec<PendingChunk>> {
+    // 벡터 임베딩은 **원문 content** 를 사용해야 한다.
+    // fts.content 에는 형태소 토큰이 덧붙어 있어 임베딩 공간이 오염된다.
+    // c.content 가 비어있는 legacy 레코드(v11 이전)만 fts.content 로 fallback.
     let mut stmt = conn.prepare(
-        "SELECT c.id, fts.content, f.path
+        "SELECT c.id, COALESCE(c.content, fts.content) AS content, f.path
          FROM chunks c
          JOIN files f ON f.id = c.file_id
          JOIN chunks_fts fts ON fts.rowid = c.id

@@ -6,7 +6,7 @@
 
 use crate::application::dto::search::{AiAnalysis, MatchType, SearchResult, TokenUsage};
 use crate::application::services::search_service::helpers::{
-    smart_apply_exclude_filter, smart_apply_file_type_filter,
+    collapse_by_lineage, smart_apply_exclude_filter, smart_apply_file_type_filter,
 };
 use crate::db;
 use crate::error::{ApiError, ApiResult};
@@ -471,7 +471,7 @@ pub async fn ask_ai(
         ApiError::AiError("AI 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.".to_string())
     })?;
 
-    let (client, service, config, tokenizer, db_path) = {
+    let (client, service, config, tokenizer, db_path, group_versions) = {
         let container = state.read()?;
         let client = build_llm_client(&container)?;
         let service = container.search_service();
@@ -482,7 +482,8 @@ pub async fn ask_ai(
         };
         let tokenizer = container.get_tokenizer().ok();
         let db_path = container.db_path.clone();
-        (client, service, config, tokenizer, db_path)
+        let group_versions = settings.group_versions;
+        (client, service, config, tokenizer, db_path, group_versions)
     };
 
     // 이전 요청 취소 + 새 취소 토큰 발급
@@ -623,6 +624,23 @@ pub async fn ask_ai(
                         .collect();
                     tracing::debug!("RAG 최장단어 폴백 결과 {} hits", results.len());
                 }
+            }
+        }
+
+        // lineage collapse — group_versions 설정이 켜졌을 때 같은 lineage 의
+        // 중복 버전을 접어 컨텍스트 예산이 버전 문서들로 잠식되는 현상을 방지.
+        // 검색 경로(commands/search.rs) 는 이미 collapse 를 적용하지만 RAG 는 service 를
+        // 직접 호출하기 때문에 여기서 한 번 더 걸어준다.
+        if group_versions {
+            let before = results.len();
+            results = collapse_by_lineage(results);
+            if before != results.len() {
+                tracing::debug!(
+                    "RAG lineage collapse: {} → {} ({} 버전 접힘)",
+                    before,
+                    results.len(),
+                    before - results.len()
+                );
             }
         }
 
@@ -796,17 +814,13 @@ pub async fn ask_ai_file(
             file_path_clone
         );
 
-        // 하이브리드 검색 후 대상 파일만 필터
+        // 단일 파일 스코프 FTS 검색 — 전역 top-25 에서 파일 필터하는 기존 방식은
+        // 큰 문서에서 관련 청크가 전역 랭킹 밖으로 밀려날 수 있어 파일 QA 품질이
+        // 떨어진다. 처음부터 `f.path = ?` 로 좁혀 파일 내부 BM25 상위 청크를 뽑는다.
         let targeted_results = service
-            .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, None)
+            .search_hybrid_in_file(&search_query, RAG_RETRIEVE_LIMIT, &file_path_clone)
             .await
-            .ok()
-            .map(|resp| {
-                resp.results
-                    .into_iter()
-                    .filter(|r| r.file_path.eq_ignore_ascii_case(&file_path_clone))
-                    .collect::<Vec<_>>()
-            })
+            .map(|resp| resp.results)
             .unwrap_or_default();
 
         if cancel_token.load(Ordering::Relaxed) {

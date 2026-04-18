@@ -92,9 +92,11 @@ impl FilenameCache {
             let name: String = row.get(2)?;
             let path: String = row.get(1)?;
             let file_type: String = row.get(3)?;
+            // path_lower 는 scope 매칭용 정규화 (슬래시 통일 + 소문자)
+            let path_lower = crate::utils::folder_scope::normalize_for_scope(&path);
             Ok(FilenameEntry {
                 file_id: row.get(0)?,
-                path_lower: path.to_lowercase().into_boxed_str(),
+                path_lower: path_lower.into_boxed_str(),
                 path: path.into_boxed_str(),
                 name_lower: name.to_lowercase().into_boxed_str(),
                 file_type: file_type.into_boxed_str(),
@@ -173,19 +175,18 @@ impl FilenameCache {
             Err(_) => return vec![],
         };
 
-        // scope를 루프 밖에서 pre-compute (O(n)번 반복 호출 방지)
-        let scope_lower = folder_scope
+        // scope 를 segment 경계(`scope/`)로 정규화하여 sibling 폴더 오탐 차단
+        let scope_prefix = folder_scope
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_lowercase());
+            .and_then(crate::utils::folder_scope::normalize_scope_prefix);
 
         // O(n) 스캔 - 모든 검색어가 포함된 파일만 + 폴더 범위 필터
         cache
             .entries
             .iter()
             .filter(|e| {
-                // 폴더 범위 필터 (Windows: case-insensitive, path_lower 사전 계산 활용)
-                if let Some(ref scope) = scope_lower {
-                    if !e.path_lower.starts_with(scope.as_str()) {
+                if let Some(ref prefix) = scope_prefix {
+                    if !e.path_lower.starts_with(prefix.as_str()) {
                         return false;
                     }
                 }
@@ -227,14 +228,16 @@ impl FilenameCache {
         }
     }
 
-    /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축
-    /// Windows: case-insensitive 경로 비교
+    /// 경로로 삭제 (폴더 삭제 시) - 삭제 후 인덱스 재구축.
+    /// segment 경계(`prefix/`)에서 끊어 sibling 폴더 오삭제 차단.
     pub fn remove_by_path_prefix(&self, path_prefix: &str) {
-        let prefix_lower = path_prefix.to_lowercase();
+        let Some(prefix) = crate::utils::folder_scope::normalize_scope_prefix(path_prefix) else {
+            return;
+        };
         if let Ok(mut cache) = self.data.write() {
             cache
                 .entries
-                .retain(|e| !e.path_lower.starts_with(&prefix_lower));
+                .retain(|e| !e.path_lower.starts_with(prefix.as_str()));
             cache.rebuild_index();
         }
     }
@@ -275,9 +278,10 @@ mod tests {
 
     fn create_test_entry(id: i64, name: &str) -> FilenameEntry {
         let path = format!("C:\\test\\{}", name);
+        let path_lower = crate::utils::folder_scope::normalize_for_scope(&path);
         FilenameEntry {
             file_id: id,
-            path_lower: path.to_lowercase().into_boxed_str(),
+            path_lower: path_lower.into_boxed_str(),
             path: path.into_boxed_str(),
             name_lower: name.to_lowercase().into_boxed_str(),
             file_type: "txt".to_string().into_boxed_str(),

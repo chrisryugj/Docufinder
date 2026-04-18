@@ -103,14 +103,10 @@ pub async fn open_file(
         if folders.is_empty() {
             return Err("등록된 감시 폴더가 없어 파일을 열 수 없습니다".to_string());
         }
-        let strip = |p: &str| -> String {
-            p.strip_prefix(r"\\?\")
-                .unwrap_or(p)
-                .replace('\\', "/")
-                .to_lowercase()
-        };
-        let normalized = strip(&canonical_path.to_string_lossy());
-        let in_scope = folders.iter().any(|f| normalized.starts_with(&strip(f)));
+        let canonical_str = canonical_path.to_string_lossy();
+        let in_scope = folders
+            .iter()
+            .any(|f| crate::utils::folder_scope::path_in_scope(&canonical_str, f));
         if !in_scope {
             return Err("감시 폴더 외부 파일은 열 수 없습니다".to_string());
         }

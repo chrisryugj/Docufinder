@@ -626,9 +626,10 @@ impl WatchManager {
                 let name: String = row.get(2)?;
                 let path: String = row.get(1)?;
                 let file_type: String = row.get(3)?;
+                let path_lower = crate::utils::folder_scope::normalize_for_scope(&path);
                 Ok(FilenameEntry {
                     file_id: row.get(0)?,
-                    path_lower: path.to_lowercase().into_boxed_str(),
+                    path_lower: path_lower.into_boxed_str(),
                     path: path.into_boxed_str(),
                     name_lower: name.to_lowercase().into_boxed_str(),
                     file_type: file_type.into_boxed_str(),
