@@ -863,6 +863,7 @@ pub fn run() {
             commands::lineage::get_lineage_versions,
             commands::lineage::get_lineage_health,
             commands::lineage::get_lineage_diff,
+            commands::maintenance::prune_missing_files,
             commands::tags::add_file_tag,
             commands::tags::remove_file_tag,
             commands::tags::get_file_tags,
