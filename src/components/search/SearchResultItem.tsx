@@ -10,6 +10,7 @@ import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
+import { LineageBadge } from "./LineageBadge";
 
 interface SearchResultItemProps {
   result: SearchResult;
@@ -205,6 +206,16 @@ export const SearchResultItem = memo(function SearchResultItem({
           </Badge>
           {category && category !== "기타" && (
             <Badge variant="secondary">{category}</Badge>
+          )}
+          {/* Document Lineage: 같은 문서의 다른 버전이 있을 때만 표시 */}
+          {result.lineage_id && result.version_count && result.version_count >= 2 && (
+            <LineageBadge
+              lineageId={result.lineage_id}
+              versionCount={result.version_count}
+              versionLabel={result.version_label}
+              currentFilePath={result.file_path}
+              onOpenFile={(path) => onOpenFile(path)}
+            />
           )}
         </div>
       </div>

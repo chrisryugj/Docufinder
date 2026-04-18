@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 11;
+const CURRENT_SCHEMA_VERSION: i32 = 13;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -299,6 +299,56 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         }
         set_schema_version(conn, 11)?;
         tracing::info!("Schema migrated to v11 (chunks.content for preview)");
+    }
+
+    // === v12: Document Lineage Graph ===
+    // 같은 논리 문서의 여러 버전 파일(계약서_최종, 계약서_최최종, ...)을
+    // 하나의 lineage_id로 묶어 검색 결과에서 중복 노이즈를 제거한다.
+    //   lineage_id:     그룹 UUID (같은 lineage끼리 공유)
+    //   parent_file_id: 추정된 이전 버전 파일 id (계보 체인용)
+    //   lineage_role:   'canonical' | 'version'
+    //   version_label:  UI 표시용 라벨 ("최최종", "v3", "수정본")
+    //   stem_norm:      파일명 정규화 결과 (1차 그루핑 키, 인덱스)
+    if get_schema_version(conn) < 12 {
+        for stmt in [
+            "ALTER TABLE files ADD COLUMN lineage_id TEXT",
+            "ALTER TABLE files ADD COLUMN parent_file_id INTEGER",
+            "ALTER TABLE files ADD COLUMN lineage_role TEXT",
+            "ALTER TABLE files ADD COLUMN version_label TEXT",
+            "ALTER TABLE files ADD COLUMN stem_norm TEXT",
+        ] {
+            if let Err(e) = conn.execute(stmt, []) {
+                tracing::trace!("Migration v12: column already exists: {}", e);
+            }
+        }
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_lineage ON files(lineage_id)",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_stem_norm ON files(stem_norm)",
+            [],
+        )?;
+        set_schema_version(conn, 12)?;
+        tracing::info!("Schema migrated to v12 (document lineage graph)");
+    }
+
+    // === v13: Behavioral Canonical ===
+    // 사용자가 실제로 여는 파일을 추적해 "진짜 최신본"을 학습한다.
+    //   open_count:     사용자가 이 파일을 연 총 횟수
+    //   last_opened_at: 마지막으로 연 시각 (Unix seconds)
+    // 두 지표는 canonical_score에 반영되어 파일명 라벨을 보정한다.
+    if get_schema_version(conn) < 13 {
+        for stmt in [
+            "ALTER TABLE files ADD COLUMN open_count INTEGER DEFAULT 0",
+            "ALTER TABLE files ADD COLUMN last_opened_at INTEGER",
+        ] {
+            if let Err(e) = conn.execute(stmt, []) {
+                tracing::trace!("Migration v13: column already exists: {}", e);
+            }
+        }
+        set_schema_version(conn, 13)?;
+        tracing::info!("Schema migrated to v13 (behavioral canonical)");
     }
 
     tracing::info!(

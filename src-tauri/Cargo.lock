@@ -1263,6 +1263,7 @@ dependencies = [
  "pdf-extract",
  "quick-xml 0.37.5",
  "rayon",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

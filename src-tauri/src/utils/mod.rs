@@ -1,4 +1,5 @@
 pub mod disk_info;
+pub mod filename_normalize;
 pub mod idle_detector;
 
 /// PowerShell `-EncodedCommand`용 Base64(UTF-16LE) 인코딩.

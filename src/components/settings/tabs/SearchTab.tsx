@@ -1,9 +1,85 @@
+import { useState } from "react";
 import { InfoTooltip } from "../../ui/Tooltip";
 import { SettingsToggle } from "../SettingsToggle";
+import { invokeWithTimeout } from "../../../utils/invokeWithTimeout";
 import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
 
+interface RebuildLineageResponse {
+  files_updated: number;
+  lineages_created: number;
+  vector_split: number;
+  reunited: number;
+  elapsed_ms: number;
+}
+
+interface LineageHealthReport {
+  total_lineages: number;
+  multi_version_lineages: number;
+  problem_lineages: Array<{
+    canonical_name: string;
+    file_count: number;
+    status: string;
+    issues: string[];
+  }>;
+  unassigned_files: number;
+}
+
 export function SearchTab({ settings, onChange }: TabProps) {
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<string | null>(null);
+
+  async function handleRebuildLineage() {
+    if (rebuilding) return;
+    setRebuilding(true);
+    setRebuildResult(null);
+    try {
+      const res = await invokeWithTimeout<RebuildLineageResponse>(
+        "rebuild_lineage",
+        undefined,
+        600_000,
+      );
+      const parts = [
+        `${res.files_updated.toLocaleString()}개 파일`,
+        `${res.lineages_created.toLocaleString()}개 그룹`,
+      ];
+      if (res.vector_split > 0) parts.push(`벡터 분리 ${res.vector_split}`);
+      if (res.reunited > 0) parts.push(`폴더 병합 ${res.reunited}`);
+      parts.push(`${(res.elapsed_ms / 1000).toFixed(1)}s`);
+      setRebuildResult(parts.join(" · "));
+    } catch (e) {
+      setRebuildResult(`실패: ${e}`);
+    } finally {
+      setRebuilding(false);
+    }
+  }
+
+  async function handleCheckHealth() {
+    try {
+      const res = await invokeWithTimeout<LineageHealthReport>(
+        "get_lineage_health",
+        { limit: 10 },
+        30_000,
+      );
+      const summary = [
+        `전체 ${res.total_lineages.toLocaleString()}개 문서`,
+        `다중버전 ${res.multi_version_lineages}개`,
+        `미분류 ${res.unassigned_files}개`,
+      ].join(" · ");
+      if (res.problem_lineages.length === 0) {
+        setRebuildResult(`✅ ${summary} — 정리 필요 lineage 없음`);
+      } else {
+        const top = res.problem_lineages
+          .slice(0, 3)
+          .map((p) => `• ${p.canonical_name || "(미지정)"} (${p.file_count}개, ${p.issues.join(", ")})`)
+          .join("\n");
+        setRebuildResult(`⚠️ ${summary}\n정리 대상 ${res.problem_lineages.length}개:\n${top}`);
+      }
+    } catch (e) {
+      setRebuildResult(`건강도 조회 실패: ${e}`);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* 최소 신뢰도 */}
@@ -98,6 +174,54 @@ export function SearchTab({ settings, onChange }: TabProps) {
           checked={settings.ocr_enabled ?? false}
           onChange={(v) => onChange("ocr_enabled", v)}
         />
+      </div>
+
+      {/* 문서 버전 그룹핑 (Document Lineage) */}
+      <div>
+        <SettingsToggle
+          label="문서 버전 그룹핑"
+          description="같은 문서의 여러 버전(최종/최최종/v2)을 검색 결과에서 대표 1개로 표시. 펼치면 모든 버전 확인 가능."
+          checked={settings.group_versions ?? true}
+          onChange={(v) => onChange("group_versions", v)}
+        />
+        <div className="mt-2 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRebuildLineage}
+              disabled={rebuilding}
+              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                color: "var(--color-text-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              {rebuilding ? "재계산 중..." : "버전 그룹 재계산"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCheckHealth}
+              disabled={rebuilding}
+              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{
+                backgroundColor: "var(--color-bg-secondary)",
+                color: "var(--color-text-secondary)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              건강도 확인
+            </button>
+          </div>
+          {rebuildResult && (
+            <pre
+              className="text-[11px] whitespace-pre-wrap font-sans"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              {rebuildResult}
+            </pre>
+          )}
+        </div>
       </div>
     </div>
   );

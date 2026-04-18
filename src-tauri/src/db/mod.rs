@@ -686,6 +686,94 @@ pub fn get_chunk_counts_by_file_paths(
     Ok(map)
 }
 
+/// Document Lineage 정보 — 검색 결과 enrichment용.
+#[derive(Debug, Clone, Default)]
+pub struct LineageInfo {
+    pub lineage_id: Option<String>,
+    pub lineage_role: Option<String>,
+    pub version_label: Option<String>,
+    pub version_count: i64,
+}
+
+/// 주어진 파일 경로들의 lineage 정보를 한 번에 조회한다.
+/// 각 파일의 (lineage_id, role, version_label) + 그 lineage의 전체 멤버 수를 반환.
+pub fn get_lineage_info_by_file_paths(
+    conn: &Connection,
+    file_paths: &[String],
+) -> Result<HashMap<String, LineageInfo>> {
+    if file_paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // 1단계: path별 기본 lineage 정보
+    let mut raw: HashMap<String, (Option<String>, Option<String>, Option<String>)> =
+        HashMap::with_capacity(file_paths.len());
+    for batch in file_paths.chunks(SQL_BATCH_SIZE) {
+        let ph: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT path, lineage_id, lineage_role, version_label FROM files WHERE path IN ({})",
+            ph
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (path, lid, role, label) = row?;
+            raw.insert(path, (lid, role, label));
+        }
+    }
+
+    // 2단계: 등장한 lineage_id들의 멤버 수
+    let lineage_ids: std::collections::HashSet<String> = raw
+        .values()
+        .filter_map(|(lid, _, _)| lid.clone())
+        .collect();
+    let ids_vec: Vec<String> = lineage_ids.into_iter().collect();
+
+    let mut counts: HashMap<String, i64> = HashMap::with_capacity(ids_vec.len());
+    for batch in ids_vec.chunks(SQL_BATCH_SIZE) {
+        let ph: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT lineage_id, COUNT(*) FROM files WHERE lineage_id IN ({}) GROUP BY lineage_id",
+            ph
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt.query_map(params.as_slice(), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        for row in rows {
+            let (lid, c) = row?;
+            counts.insert(lid, c);
+        }
+    }
+
+    // 3단계: 조립
+    let mut out: HashMap<String, LineageInfo> = HashMap::with_capacity(raw.len());
+    for (path, (lid, role, label)) in raw {
+        let count = lid.as_ref().and_then(|l| counts.get(l)).copied().unwrap_or(0);
+        out.insert(
+            path,
+            LineageInfo {
+                lineage_id: lid,
+                lineage_role: role,
+                version_label: label,
+                version_count: count,
+            },
+        );
+    }
+    Ok(out)
+}
+
 /// 파일 경로로 chunk ID들 조회 (벡터 인덱스 삭제용)
 pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare(

@@ -75,6 +75,13 @@ pub struct Settings {
     /// OCR 기능 활성화 (이미지 파일 텍스트 인식)
     #[serde(default)]
     pub ocr_enabled: bool,
+    /// 검색 결과에서 같은 문서의 여러 버전을 대표 1개로 접기 (Document Lineage Graph)
+    #[serde(default = "default_group_versions")]
+    pub group_versions: bool,
+}
+
+fn default_group_versions() -> bool {
+    true
 }
 
 fn default_include_subfolders() -> bool {
@@ -172,6 +179,7 @@ impl Default for Settings {
             ai_temperature: default_ai_temperature(),
             ai_max_tokens: default_ai_max_tokens(),
             ocr_enabled: false,
+            group_versions: true,
         }
     }
 }

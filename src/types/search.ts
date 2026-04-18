@@ -22,6 +22,66 @@ export interface SearchResult {
   has_hwp_pair?: boolean;
   /** 해당 파일의 전체 청크 개수 (히트맵 절대 스케일용, 0이면 미제공) */
   total_chunks?: number;
+  /** Document Lineage Graph: 같은 논리 문서의 버전 그룹 ID */
+  lineage_id?: string;
+  /** Lineage 내 역할 — "canonical" | "version" */
+  lineage_role?: "canonical" | "version";
+  /** 파일명에서 추출한 버전 라벨 — "최최종", "v3" 등 */
+  version_label?: string;
+  /** 같은 lineage에 속한 전체 파일 수 (자기 자신 포함). 2 이상이면 UI 뱃지 표시 */
+  version_count?: number;
+}
+
+/** Lineage 버전 항목 (펼치기용) */
+export interface LineageVersion {
+  file_path: string;
+  file_name: string;
+  lineage_role: "canonical" | "version" | null;
+  version_label: string | null;
+  modified_at: number | null;
+  size: number | null;
+}
+
+/** Lineage 건강도 항목 */
+export interface LineageHealthEntry {
+  lineage_id: string;
+  canonical_name: string;
+  canonical_path: string;
+  file_count: number;
+  total_size: number;
+  status: "healthy" | "cluttered" | "ambiguous" | "abandoned";
+  issues: string[];
+  stale_count: number;
+}
+
+/** Lineage 건강도 리포트 */
+export interface LineageHealthReport {
+  total_lineages: number;
+  multi_version_lineages: number;
+  problem_lineages: LineageHealthEntry[];
+  unassigned_files: number;
+}
+
+/** 청크 레벨 diff 항목 */
+export interface ChunkDiffEntry {
+  kind: "added" | "removed" | "modified";
+  a_index: number | null;
+  b_index: number | null;
+  a_preview: string | null;
+  b_preview: string | null;
+  similarity: number | null;
+  page_number: number | null;
+  location_hint: string | null;
+}
+
+/** 버전 간 Diff 응답 */
+export interface LineageDiffResponse {
+  a_path: string;
+  b_path: string;
+  a_total_chunks: number;
+  b_total_chunks: number;
+  changes: ChunkDiffEntry[];
+  unchanged_count: number;
 }
 
 /** 검색 매칭 타입 */

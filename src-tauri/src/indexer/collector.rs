@@ -179,10 +179,21 @@ pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<
     // - 문서 파일: FTS 인덱싱 시 save_document_to_db_fts_only_no_tx에서 자동 삭제
     // - DLL/EXE 등 바이너리: 애초에 chunk가 없어 no-op DELETE만 발생 → DB 락 경쟁 원인
 
-    db::retry_on_busy(|| {
+    let file_id = db::retry_on_busy(|| {
         db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
     })
     .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    // Lineage 부여 — 메타데이터만 수집된 파일도 즉시 그룹핑 가능하게
+    if let Err(e) = crate::indexer::lineage::assign_for_file(
+        conn,
+        file_id,
+        &path_str,
+        &file_name,
+        Some(modified_at),
+    ) {
+        tracing::warn!("lineage assign (metadata) failed for {}: {}", path_str, e);
+    }
 
     Ok(())
 }

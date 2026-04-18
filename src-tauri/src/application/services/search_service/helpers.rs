@@ -28,6 +28,69 @@ pub fn enrich_total_chunks(conn: &Connection, results: &mut [SearchResult]) {
     }
 }
 
+/// 검색 결과에 Document Lineage 정보(lineage_id / role / version_label / version_count)를 채운다.
+/// 실패 시 조용히 무시 (필드는 None/0으로 남음).
+pub fn enrich_lineage_info(conn: &Connection, results: &mut [SearchResult]) {
+    if results.is_empty() {
+        return;
+    }
+    let unique_paths: HashSet<String> = results.iter().map(|r| r.file_path.clone()).collect();
+    let paths: Vec<String> = unique_paths.into_iter().collect();
+    let info = match db::get_lineage_info_by_file_paths(conn, &paths) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("enrich_lineage_info failed: {}", e);
+            return;
+        }
+    };
+    for r in results.iter_mut() {
+        if let Some(li) = info.get(&r.file_path) {
+            r.lineage_id.clone_from(&li.lineage_id);
+            r.lineage_role.clone_from(&li.lineage_role);
+            r.version_label.clone_from(&li.version_label);
+            r.version_count = li.version_count;
+        }
+    }
+}
+
+/// 같은 lineage의 다른 버전 파일들을 접는다.
+///
+/// 각 lineage 그룹에서 대표(canonical → 없으면 최고 점수)를 선출하고, 그 외 버전의 결과를 제거한다.
+/// 같은 파일의 여러 청크는 그대로 유지된다 (대표 파일의 청크만 남음).
+/// lineage_id가 없는 결과(orphan)는 영향받지 않는다.
+pub fn collapse_by_lineage(results: Vec<SearchResult>) -> Vec<SearchResult> {
+    use std::collections::HashMap;
+
+    // 1. lineage_id → 대표 file_path 선정
+    // canonical이 포함되면 무조건 대표, 아니면 최고 점수 버전.
+    let mut rep: HashMap<String, (String, bool, f64)> = HashMap::new(); // lineage_id → (path, is_canonical, score)
+    for r in &results {
+        let Some(lid) = r.lineage_id.as_ref() else {
+            continue;
+        };
+        let is_canonical = r.lineage_role.as_deref() == Some("canonical");
+        match rep.get(lid) {
+            Some((_, true, _)) if !is_canonical => continue, // canonical 확정, 무시
+            Some((_, false, sc)) if !is_canonical && r.score <= *sc => continue,
+            _ => {
+                rep.insert(lid.clone(), (r.file_path.clone(), is_canonical, r.score));
+            }
+        }
+    }
+
+    // 2. 대표 경로와 일치하는 결과만 유지
+    results
+        .into_iter()
+        .filter(|r| match r.lineage_id.as_ref() {
+            Some(lid) => rep
+                .get(lid)
+                .map(|(p, _, _)| p == &r.file_path)
+                .unwrap_or(true),
+            None => true,
+        })
+        .collect()
+}
+
 // ── 스코어 정규화 ─────────────────────────────────────
 
 /// FTS5 BM25 스코어를 confidence로 변환

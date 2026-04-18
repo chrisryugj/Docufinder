@@ -185,6 +185,43 @@ pub async fn open_file(
         open_with_default(&path_str)?;
     }
 
+    // Behavioral Canonical: 파일 열람 횟수 + 최근 열람 시각 기록.
+    // canonical_score 계산에 반영되어 "실제로 사용되는 버전"이 canonical로 승격된다.
+    // DB 오류는 무시 (파일 열기는 성공했으므로 UX 방해 금지).
+    {
+        let db_path_opt = state
+            .read()
+            .ok()
+            .map(|c| c.db_path.clone());
+        if let Some(db_path) = db_path_opt {
+            let path_for_track = path_str.clone();
+            tokio::spawn(async move {
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(conn) = crate::db::get_connection(&db_path) {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0);
+                        let _ = conn.execute(
+                            "UPDATE files
+                             SET open_count = COALESCE(open_count, 0) + 1,
+                                 last_opened_at = ?1
+                             WHERE path = ?2",
+                            rusqlite::params![now, path_for_track],
+                        );
+
+                        // Canonical 재선출 — 같은 lineage 내에서 open 기반 점수 재평가
+                        let _ = crate::indexer::lineage::rebalance_canonical_for_opened(
+                            &conn,
+                            &path_for_track,
+                        );
+                    }
+                })
+                .await;
+            });
+        }
+    }
+
     Ok(())
 }
 

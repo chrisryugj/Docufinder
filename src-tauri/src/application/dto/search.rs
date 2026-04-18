@@ -79,6 +79,18 @@ pub struct SearchResult {
     /// 해당 파일의 전체 청크 개수 (히트맵 절대 스케일용)
     #[serde(default)]
     pub total_chunks: i64,
+    /// Document Lineage Graph: 같은 논리 문서의 버전 그룹 ID (SHA-256 16자)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lineage_id: Option<String>,
+    /// Lineage 내 역할 — "canonical" | "version"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lineage_role: Option<String>,
+    /// 파일명에서 추출한 버전 라벨 — "최최종", "v3" 등
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version_label: Option<String>,
+    /// 같은 lineage에 속한 전체 파일 수 (자기 자신 포함)
+    #[serde(default)]
+    pub version_count: i64,
 }
 
 /// 검색 응답 DTO
