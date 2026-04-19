@@ -29,6 +29,8 @@ pnpm-debug.log*
 
 # Tauri
 src-tauri/target/
+src-tauri/gen/schemas/linux-schema.json
+src-tauri/gen/schemas/macos-schema.json
 
 # Database (local)
 *.db
