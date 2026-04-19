@@ -185,10 +185,7 @@ pub async fn open_file(
     // canonical_score 계산에 반영되어 "실제로 사용되는 버전"이 canonical로 승격된다.
     // DB 오류는 무시 (파일 열기는 성공했으므로 UX 방해 금지).
     {
-        let db_path_opt = state
-            .read()
-            .ok()
-            .map(|c| c.db_path.clone());
+        let db_path_opt = state.read().ok().map(|c| c.db_path.clone());
         if let Some(db_path) = db_path_opt {
             let path_for_track = path_str.clone();
             tokio::spawn(async move {

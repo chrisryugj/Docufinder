@@ -21,7 +21,12 @@ fn apply_lineage_collapse(mut response: SearchResponse, group_versions: bool) ->
         response.total_count = response.results.len();
         let after = response.total_count;
         if before != after {
-            tracing::debug!("lineage collapse: {} → {} ({} 개 버전 접힘)", before, after, before - after);
+            tracing::debug!(
+                "lineage collapse: {} → {} ({} 개 버전 접힘)",
+                before,
+                after,
+                before - after
+            );
         }
     }
     response
