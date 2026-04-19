@@ -71,15 +71,14 @@ fn search_internal(
 
     // folder_scope가 있으면 segment 경계(scope/)에서 끊기는 LIKE 패턴 사용.
     // sibling 폴더 오탐 차단을 위해 path 와 pattern 모두 `/` 로 통일 + 소문자 비교.
-    let (scope_clause, scope_pattern) = match crate::utils::folder_scope::scope_like_pattern(
-        folder_scope.unwrap_or(""),
-    ) {
-        Some(pat) => (
-            "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
-            Some(pat),
-        ),
-        None => ("", None),
-    };
+    let (scope_clause, scope_pattern) =
+        match crate::utils::folder_scope::scope_like_pattern(folder_scope.unwrap_or("")) {
+            Some(pat) => (
+                "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
+                Some(pat),
+            ),
+            None => ("", None),
+        };
 
     let sql = format!(
         "SELECT
@@ -306,15 +305,14 @@ fn search_like_fallback(
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     let like_pattern = format!("%{}%", query);
 
-    let (scope_clause, scope_pattern) = match crate::utils::folder_scope::scope_like_pattern(
-        folder_scope.unwrap_or(""),
-    ) {
-        Some(pat) => (
-            "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
-            Some(pat),
-        ),
-        None => ("", None),
-    };
+    let (scope_clause, scope_pattern) =
+        match crate::utils::folder_scope::scope_like_pattern(folder_scope.unwrap_or("")) {
+            Some(pat) => (
+                "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
+                Some(pat),
+            ),
+            None => ("", None),
+        };
 
     let sql = format!(
         "SELECT

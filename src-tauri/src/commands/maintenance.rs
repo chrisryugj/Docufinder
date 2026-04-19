@@ -22,8 +22,7 @@ pub struct PruneResult {
 /// 10만 파일 기준 수초 소요 (stat만). chunks_fts / files_fts / chunks 모두 cascade 삭제.
 pub fn prune_missing_files_impl(db_path: &Path) -> ApiResult<PruneResult> {
     let start = std::time::Instant::now();
-    let conn = db::get_connection(db_path)
-        .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+    let conn = db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
     let paths: Vec<String> = {
         let mut stmt = conn
@@ -65,9 +64,7 @@ pub fn prune_missing_files_impl(db_path: &Path) -> ApiResult<PruneResult> {
 
 /// 수동 실행용 Tauri 커맨드 (설정 > "없는 파일 정리" 버튼).
 #[tauri::command]
-pub async fn prune_missing_files(
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<PruneResult> {
+pub async fn prune_missing_files(state: State<'_, RwLock<AppContainer>>) -> ApiResult<PruneResult> {
     let db_path = {
         let c = state
             .read()

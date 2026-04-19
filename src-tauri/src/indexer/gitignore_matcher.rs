@@ -172,7 +172,11 @@ mod tests {
     fn matches_gitignore_rules() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join(".git")).unwrap();
-        fs::write(dir.path().join(".gitignore"), "node_modules/\n*.log\ndist/\n").unwrap();
+        fs::write(
+            dir.path().join(".gitignore"),
+            "node_modules/\n*.log\ndist/\n",
+        )
+        .unwrap();
 
         let m = RootGitignore::try_build(dir.path()).expect("should build");
 

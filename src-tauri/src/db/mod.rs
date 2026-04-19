@@ -732,10 +732,8 @@ pub fn get_lineage_info_by_file_paths(
     }
 
     // 2단계: 등장한 lineage_id들의 멤버 수
-    let lineage_ids: std::collections::HashSet<String> = raw
-        .values()
-        .filter_map(|(lid, _, _)| lid.clone())
-        .collect();
+    let lineage_ids: std::collections::HashSet<String> =
+        raw.values().filter_map(|(lid, _, _)| lid.clone()).collect();
     let ids_vec: Vec<String> = lineage_ids.into_iter().collect();
 
     let mut counts: HashMap<String, i64> = HashMap::with_capacity(ids_vec.len());
@@ -760,7 +758,11 @@ pub fn get_lineage_info_by_file_paths(
     // 3단계: 조립
     let mut out: HashMap<String, LineageInfo> = HashMap::with_capacity(raw.len());
     for (path, (lid, role, label)) in raw {
-        let count = lid.as_ref().and_then(|l| counts.get(l)).copied().unwrap_or(0);
+        let count = lid
+            .as_ref()
+            .and_then(|l| counts.get(l))
+            .copied()
+            .unwrap_or(0);
         out.insert(
             path,
             LineageInfo {

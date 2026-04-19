@@ -102,9 +102,8 @@ pub fn rebuild_all(conn: &Connection) -> rusqlite::Result<(usize, usize)> {
     // 1단계: 전체 파일 로드 (명시적 루프로 stmt lifetime 문제 회피)
     let mut files: Vec<FileRow> = Vec::new();
     {
-        let mut stmt = conn.prepare(
-            "SELECT id, path, name, modified_at, COALESCE(open_count, 0) FROM files",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id, path, name, modified_at, COALESCE(open_count, 0) FROM files")?;
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
             files.push(FileRow {
@@ -416,7 +415,10 @@ pub fn reunite_cross_folder(
 ///
 /// 사용자가 `_수정본.hwp`를 자주 여는데 canonical이 `_최종.hwp`로 잘못 잡혀 있으면,
 /// 이 함수가 호출되어 `_수정본.hwp`를 canonical로 승격시킨다.
-pub fn rebalance_canonical_for_opened(conn: &Connection, opened_path: &str) -> rusqlite::Result<()> {
+pub fn rebalance_canonical_for_opened(
+    conn: &Connection,
+    opened_path: &str,
+) -> rusqlite::Result<()> {
     // 1. 해당 파일의 lineage_id 조회
     let lineage_id: Option<String> = conn
         .query_row(
@@ -740,9 +742,7 @@ mod tests {
                 )
                 .unwrap();
             let members: Vec<(String, String, Option<String>, Option<i64>)> = s
-                .query_map([&lid], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-                })
+                .query_map([&lid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
                 .unwrap()
                 .filter_map(|r| r.ok())
                 .collect();

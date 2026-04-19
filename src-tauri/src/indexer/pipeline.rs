@@ -544,7 +544,11 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
 
     // Lineage 부여 — 같은 stem/폴더의 기존 canonical과 점수 비교 후 승자 지정
     if let Err(e) = crate::indexer::lineage::assign_for_file(
-        conn, file_id, &path_str, &file_name, Some(modified_at),
+        conn,
+        file_id,
+        &path_str,
+        &file_name,
+        Some(modified_at),
     ) {
         tracing::warn!("lineage assign failed for {}: {}", path_str, e);
     }

@@ -107,8 +107,8 @@ pub async fn rebuild_lineage(
                 .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
             // 1. 파일명 기반 1차 그루핑
-            let (files_updated, lineages_created) = lineage::rebuild_all(&conn)
-                .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+            let (files_updated, lineages_created) =
+                lineage::rebuild_all(&conn).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
             // 2. 벡터 유사도 검증으로 같은 lineage 내 다른 내용 파일 분리
             let vector_split = if let Some(emb) = embedder.as_ref() {
@@ -155,8 +155,8 @@ pub async fn get_lineage_versions(
     };
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)
-            .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let conn =
+            db::get_connection(&db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
         let mut stmt = conn
             .prepare(
                 "SELECT path, name, lineage_role, version_label, modified_at, size
@@ -226,35 +226,34 @@ pub async fn get_lineage_diff(
     })?;
 
     tokio::task::spawn_blocking(move || {
-        let conn = db::get_connection(&db_path)
-            .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let conn =
+            db::get_connection(&db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
         // 각 파일의 청크 조회
-        let load_chunks = |path: &str| -> rusqlite::Result<Vec<(i64, String, Option<i64>, Option<String>)>> {
-            let mut stmt = conn.prepare(
-                "SELECT c.chunk_index, c.content, c.page_number, c.location_hint
+        let load_chunks =
+            |path: &str| -> rusqlite::Result<Vec<(i64, String, Option<i64>, Option<String>)>> {
+                let mut stmt = conn.prepare(
+                    "SELECT c.chunk_index, c.content, c.page_number, c.location_hint
                  FROM chunks c
                  JOIN files f ON f.id = c.file_id
                  WHERE f.path = ?1
                  ORDER BY c.chunk_index LIMIT ?2",
-            )?;
-            let mut rows = stmt.query(params![path, MAX_CHUNKS_PER_FILE as i64])?;
-            let mut out = Vec::new();
-            while let Some(row) = rows.next()? {
-                out.push((
-                    row.get(0)?,
-                    row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-                    row.get(2)?,
-                    row.get(3)?,
-                ));
-            }
-            Ok(out)
-        };
+                )?;
+                let mut rows = stmt.query(params![path, MAX_CHUNKS_PER_FILE as i64])?;
+                let mut out = Vec::new();
+                while let Some(row) = rows.next()? {
+                    out.push((
+                        row.get(0)?,
+                        row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        row.get(2)?,
+                        row.get(3)?,
+                    ));
+                }
+                Ok(out)
+            };
 
-        let a_chunks = load_chunks(&a_path)
-            .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
-        let b_chunks = load_chunks(&b_path)
-            .map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let a_chunks = load_chunks(&a_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
+        let b_chunks = load_chunks(&b_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;
 
         if a_chunks.is_empty() && b_chunks.is_empty() {
             return Ok(LineageDiffResponse {
@@ -268,18 +267,19 @@ pub async fn get_lineage_diff(
         }
 
         // 임베딩 (배치 가능하면 효율적, 없으면 개별)
-        let embed_chunks = |chunks: &[(i64, String, Option<i64>, Option<String>)]| -> Vec<Option<Vec<f32>>> {
-            chunks
-                .iter()
-                .map(|(_, content, _, _)| {
-                    if content.len() < 20 {
-                        None
-                    } else {
-                        embedder.embed(content, false).ok()
-                    }
-                })
-                .collect()
-        };
+        let embed_chunks =
+            |chunks: &[(i64, String, Option<i64>, Option<String>)]| -> Vec<Option<Vec<f32>>> {
+                chunks
+                    .iter()
+                    .map(|(_, content, _, _)| {
+                        if content.len() < 20 {
+                            None
+                        } else {
+                            embedder.embed(content, false).ok()
+                        }
+                    })
+                    .collect()
+            };
 
         let a_emb = embed_chunks(&a_chunks);
         let b_emb = embed_chunks(&b_chunks);
