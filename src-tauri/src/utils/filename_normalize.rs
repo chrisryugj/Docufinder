@@ -70,8 +70,7 @@ static WHITESPACE_NORMALIZE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[\s_]+").un
 
 /// 전체 stem이 `YYYYMMDD[_\s]HHMMSS` 패턴이면 (사진·스크린샷) 6자리 제거를 건너뛴다.
 /// HHMMSS 중간 2자리(예: `121128` → 11)가 우연히 유효 MM/DD가 되는 함정을 차단한다.
-static PHOTO_TIMESTAMP: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\d{8}[_\s\-]\d{6}\b").unwrap());
+static PHOTO_TIMESTAMP: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\d{8}[_\s\-]\d{6}\b").unwrap());
 
 /// 6자리 날짜 suffix 탐지용: `XXX_YYMMDD` 또는 `XXX YYMMDD`, `XXX-YYMMDD` 끝.
 static SIX_DIGIT_SUFFIX: Lazy<Regex> =
@@ -159,8 +158,7 @@ pub fn extract_version_label(filename: &str) -> Option<String> {
     };
 
     // "최최종", "최최최종" 등 (가장 구체적인 것 우선)
-    static LABEL_FINAL_STACK: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"(최최+종)").unwrap());
+    static LABEL_FINAL_STACK: Lazy<Regex> = Lazy::new(|| Regex::new(r"(최최+종)").unwrap());
     if let Some(m) = LABEL_FINAL_STACK.captures(stem) {
         return Some(m[1].to_string());
     }
@@ -171,9 +169,8 @@ pub fn extract_version_label(filename: &str) -> Option<String> {
     }
 
     // v숫자 — `\b`는 `_`와 `v` 사이에서 매치 안 되므로 직접 앞경계 명시.
-    static LABEL_V: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"(?i)(?:^|[\s_\-])v(?:er\.?)?\s*[._\-]?(\d+(?:\.\d+)*)").unwrap()
-    });
+    static LABEL_V: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"(?i)(?:^|[\s_\-])v(?:er\.?)?\s*[._\-]?(\d+(?:\.\d+)*)").unwrap());
     if let Some(m) = LABEL_V.captures(stem) {
         return Some(format!("v{}", &m[1]));
     }
@@ -281,7 +278,9 @@ mod tests {
 
     #[test]
     fn plus_converted_to_space() {
-        let s = normalize_stem("[공고문]2019년도+제1회+경상북도+지방공무원+공개경쟁임용시험+최종합격자+공고.pdf");
+        let s = normalize_stem(
+            "[공고문]2019년도+제1회+경상북도+지방공무원+공개경쟁임용시험+최종합격자+공고.pdf",
+        );
         assert!(!s.contains('+'));
         assert!(s.contains("2019년도 제1회"));
     }
@@ -350,7 +349,11 @@ mod tests {
     #[test]
     fn real_all_normalize_without_empty() {
         let names = load_real_filenames();
-        assert!(names.len() > 5000, "fixture 파일명이 너무 적다: {}", names.len());
+        assert!(
+            names.len() > 5000,
+            "fixture 파일명이 너무 적다: {}",
+            names.len()
+        );
         for n in &names {
             let stem = normalize_stem(n);
             assert!(!stem.is_empty(), "빈 stem 발생: {}", n);
@@ -394,7 +397,10 @@ mod tests {
                 "2024년 10월 고용산재 산출내역(최종 확인용).xlsx",
             ),
             ("계약서_최종.hwpx", "계약서_최최종.hwpx"),
-            ("일시불 현금서비스 내역 (1).xls", "일시불 현금서비스 내역.xls"),
+            (
+                "일시불 현금서비스 내역 (1).xls",
+                "일시불 현금서비스 내역.xls",
+            ),
             // 6자리 YYMMDD 유효 날짜 suffix 제거 (사용자 요청)
             ("계약서_240418.hwpx", "계약서.hwpx"),
             ("report_221216.hwp", "report.hwp"),
@@ -464,7 +470,11 @@ mod tests {
 
         eprintln!("\n=== Lineage 그루핑 통계 ===");
         eprintln!("총 파일: {}", total);
-        eprintln!("고유 stem: {} (collapse ratio: {:.1}%)", unique, collapse * 100.0);
+        eprintln!(
+            "고유 stem: {} (collapse ratio: {:.1}%)",
+            unique,
+            collapse * 100.0
+        );
         eprintln!("2개 이상 묶인 그룹: {}", multi);
         eprintln!("가장 큰 그룹 크기: {}", largest);
 

@@ -181,9 +181,7 @@ impl LlmProvider for GeminiClient {
                 }
 
                 // 3) 정상 텍스트 토큰
-                if let Some(text) =
-                    json["candidates"][0]["content"]["parts"][0]["text"].as_str()
-                {
+                if let Some(text) = json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
                     if !text.is_empty() {
                         on_token(text);
                         full_text.push_str(text);
@@ -200,15 +198,13 @@ impl LlmProvider for GeminiClient {
                         }
                         other => {
                             stream_error = Some(match other {
-                                "SAFETY" => {
-                                    "안전 필터에 의해 응답이 차단되었습니다".to_string()
+                                "SAFETY" => "안전 필터에 의해 응답이 차단되었습니다".to_string(),
+                                "RECITATION" => {
+                                    "저작권 정책에 의해 응답이 차단되었습니다".to_string()
                                 }
-                                "RECITATION" => "저작권 정책에 의해 응답이 차단되었습니다"
-                                    .to_string(),
-                                "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" => format!(
-                                    "정책에 의해 응답이 차단되었습니다 ({})",
-                                    other
-                                ),
+                                "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" => {
+                                    format!("정책에 의해 응답이 차단되었습니다 ({})", other)
+                                }
                                 _ => format!("응답이 비정상 종료되었습니다 ({})", other),
                             });
                             finished = true;
