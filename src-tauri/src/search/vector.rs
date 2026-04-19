@@ -128,8 +128,7 @@ impl VectorIndex {
             // usearch 헤더만으로도 64바이트 이상은 되어야 하므로 그보다 작으면
             // 손상 간주하고 즉시 정리 → 빈 인덱스로 시작한다.
             const MIN_USEARCH_BYTES: u64 = 64;
-            let too_small = usearch_size < MIN_USEARCH_BYTES;
-            if too_small {
+            if usearch_size < MIN_USEARCH_BYTES {
                 tracing::warn!(
                     "Vector index file looks truncated ({} bytes < {}). Deleting and starting fresh.",
                     usearch_size,
@@ -137,13 +136,11 @@ impl VectorIndex {
                 );
                 let _ = std::fs::remove_file(path);
                 let _ = std::fs::remove_file(&map_path);
-            }
-
-            // mmap (view) 모드로 로드 시도, 실패 시 full load 폴백,
-            // 둘 다 실패하면 손상 파일을 회수하고 빈 인덱스로 부팅을 보장한다.
-            // (Err 를 그대로 반환하면 lib.rs:564 가 경고만 하지만, 다음 검색/인덱싱
-            // 마다 동일 실패가 반복되어 사용자가 사실상 벡터 기능을 못 쓰게 된다.)
-            if !too_small {
+            } else {
+                // mmap (view) 모드로 로드 시도, 실패 시 full load 폴백,
+                // 둘 다 실패하면 손상 파일을 회수하고 빈 인덱스로 부팅을 보장한다.
+                // (Err 를 그대로 반환하면 lib.rs:564 가 경고만 하지만, 다음 검색/인덱싱
+                // 마다 동일 실패가 반복되어 사용자가 사실상 벡터 기능을 못 쓰게 된다.)
                 match vector_index.load_index(true) {
                     Ok(()) => {
                         *vector_index
@@ -152,10 +149,10 @@ impl VectorIndex {
                             .map_err(|_| VectorError::LockPoisoned)? = IndexMode::View;
                         tracing::info!("Vector index loaded via mmap (view mode) — RAM optimized");
                     }
-                    Err(e) => {
+                    Err(view_err) => {
                         tracing::warn!(
                             "mmap view failed, falling back to full in-memory load: {}",
-                            e
+                            view_err
                         );
                         match vector_index.load_index(false) {
                             Ok(()) => {
@@ -164,10 +161,11 @@ impl VectorIndex {
                                     .write()
                                     .map_err(|_| VectorError::LockPoisoned)? = IndexMode::Loaded;
                             }
-                            Err(e2) => {
+                            Err(load_err) => {
                                 tracing::error!(
                                     "Both mmap view and full load failed (view={}, load={}). Deleting corrupt files and starting fresh.",
-                                    e, e2
+                                    view_err,
+                                    load_err
                                 );
                                 let _ = std::fs::remove_file(path);
                                 let _ = std::fs::remove_file(&map_path);
