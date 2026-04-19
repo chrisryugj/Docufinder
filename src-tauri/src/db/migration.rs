@@ -368,20 +368,42 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             reset
         );
 
-        // vector index 파일은 DB 디렉터리 옆 `vectors.usearch` 로 관리된다.
+        // vector index 는 `.usearch` 본체, `.usearch.map`(chunk_id ↔ key 매핑),
+        // `.usearch.lock` 세 파일로 구성된다. `.map` 만 남기면 다음 부팅 때
+        // VectorIndex::new 가 결국 회복하긴 하지만, 그 전에 usearch FFI 가
+        // 부분 기록된 mmap 위에서 segfault 를 낼 수 있어 **세 파일을 함께** 회수한다.
+        //
+        // 또한 잠금/AV 등으로 삭제가 실패하면 schema_version 을 전진시키지 않고
+        // 다음 부팅에 재시도한다 — 반쯤 적용된 채 schema_version 만 올라가면
+        // 디스크엔 구포맷 벡터가 남고 DB 는 NULL 인 영구 불일치 상태가 된다.
+        let mut all_removed = true;
         if let Some(dir) = db_path.parent() {
-            for name in ["vectors.usearch", "vectors.usearch.lock"] {
+            for name in [
+                "vectors.usearch",
+                "vectors.usearch.map",
+                "vectors.usearch.lock",
+            ] {
                 let p = dir.join(name);
                 if p.exists() {
                     match std::fs::remove_file(&p) {
                         Ok(_) => tracing::info!("Migration v14: removed {:?}", p),
-                        Err(e) => tracing::warn!("Migration v14: cannot remove {:?}: {}", p, e),
+                        Err(e) => {
+                            tracing::warn!("Migration v14: cannot remove {:?}: {}", p, e);
+                            all_removed = false;
+                        }
                     }
                 }
             }
         }
-        set_schema_version(conn, 14)?;
-        tracing::info!("Schema migrated to v14 (vector re-embedding trigger)");
+
+        if all_removed {
+            set_schema_version(conn, 14)?;
+            tracing::info!("Schema migrated to v14 (vector re-embedding trigger)");
+        } else {
+            tracing::warn!(
+                "Migration v14: 일부 벡터 인덱스 파일을 회수하지 못해 schema_version 전진을 보류합니다 (다음 재시작 시 재시도)"
+            );
+        }
     }
 
     tracing::info!(
