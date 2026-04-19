@@ -706,8 +706,8 @@ pub fn get_lineage_info_by_file_paths(
     }
 
     // 1단계: path별 기본 lineage 정보
-    let mut raw: HashMap<String, (Option<String>, Option<String>, Option<String>)> =
-        HashMap::with_capacity(file_paths.len());
+    type LineageTriple = (Option<String>, Option<String>, Option<String>);
+    let mut raw: HashMap<String, LineageTriple> = HashMap::with_capacity(file_paths.len());
     for batch in file_paths.chunks(SQL_BATCH_SIZE) {
         let ph: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(

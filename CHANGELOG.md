@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/ko/).
 
+## [2.3.10] - 2026-04-20
+
+### Fixed
+- **[Critical] v2.3.9 마이그레이션 v14 치명 결함 수정 — "업데이트 후 재실행 시 앱이 안 켜진다"** — v14 가 지우려 했던 `vectors.usearch.map` 파일은 실제로는 존재하지 않는 이름이었다. `Path::with_extension("map")` 은 기존 `.usearch` 확장자를 **교체**하므로 실제 맵 파일명은 `vectors.map` 이다. 결과적으로 v14 마이그레이션은 `.usearch` 본체만 지우고 `.map` 은 그대로 두어, 다음 부팅의 `VectorIndex::new` 가 짝이 맞지 않는 mmap 위에서 usearch FFI segfault 를 낼 수 있었다. 파일명 목록을 실제 구성(`vectors.usearch` + `vectors.map`)에 맞추고, save 중간산출물(`vectors.usearch.tmp`, `vectors.map.tmp`) 까지 보수적으로 함께 회수 (`src-tauri/src/db/migration.rs:370-400`)
+- **[Build] Rust 1.95 신규 clippy 린트 4건 (CI 빌드 차단 해제)** — `type_complexity` 2건(`commands/lineage.rs:234`, `db/mod.rs:709`) 은 type alias 로 분리, `needless_range_loop` 1건(`indexer/lineage.rs:357`) 은 `enumerate().take(n)` 로 전환, `needless_borrows_for_generic_args` 1건(`indexer/lineage.rs:552`) 은 불필요한 `&` 제거
+
+### Migration
+- 스키마 v14 재진입 — 이미 v2.3.9 에서 v14 가 "성공"으로 기록됐다면 마이그레이션이 재실행되지 않는다. 이 경우 사용자 PC 에 `vectors.map` 이 남아 있을 수 있으나, `VectorIndex::new` 의 이중 폴백(mmap view → full load → 빈 인덱스 회수) 로 부팅 안정성은 확보된다. 손상된 맵은 다음 벡터 재색인 주기에 정상 파일로 교체됨.
+
 ## [2.3.9] - 2026-04-19
 
 ### Fixed (코덱스 리뷰 기반 품질/보안 핫픽스 6종)

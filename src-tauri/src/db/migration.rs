@@ -368,10 +368,16 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             reset
         );
 
-        // vector index 는 `.usearch` 본체, `.usearch.map`(chunk_id ↔ key 매핑),
-        // `.usearch.lock` 세 파일로 구성된다. `.map` 만 남기면 다음 부팅 때
-        // VectorIndex::new 가 결국 회복하긴 하지만, 그 전에 usearch FFI 가
-        // 부분 기록된 mmap 위에서 segfault 를 낼 수 있어 **세 파일을 함께** 회수한다.
+        // vector index 는 `vectors.usearch` 본체 + `vectors.map`(chunk_id ↔ key 매핑)
+        // 두 파일이 짝으로 존재해야 정합. `Path::with_extension("map")` 은 기존
+        // `.usearch` 를 **교체**하므로 실제 파일명은 `vectors.map` 이다.
+        // (과거 주석이 `vectors.usearch.map` 으로 잘못 표기돼 있었으나 그런 파일은 만들어진
+        // 적이 없다 — v2.3.9 migration 이 실제 `.map` 을 못 지워 다음 부팅에 구포맷
+        // mmap 으로 usearch FFI 가 segfault 를 낼 수 있던 원인.)
+        //
+        // 본체만 지우고 `.map` 만 남으면 usearch FFI 가 부분 기록된 mmap 위에서
+        // segfault 를 낼 수 있어 **두 본체 파일과 save 중간산출물(.tmp) 까지 함께** 회수한다.
+        // `.usearch.lock` 은 usearch 런타임이 만들 수 있는 파일로 보수적으로 같이 제거.
         //
         // 또한 잠금/AV 등으로 삭제가 실패하면 schema_version 을 전진시키지 않고
         // 다음 부팅에 재시도한다 — 반쯤 적용된 채 schema_version 만 올라가면
@@ -380,7 +386,9 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         if let Some(dir) = db_path.parent() {
             for name in [
                 "vectors.usearch",
-                "vectors.usearch.map",
+                "vectors.map",
+                "vectors.usearch.tmp",
+                "vectors.map.tmp",
                 "vectors.usearch.lock",
             ] {
                 let p = dir.join(name);

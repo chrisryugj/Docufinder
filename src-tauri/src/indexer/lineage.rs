@@ -354,12 +354,9 @@ pub fn reunite_cross_folder(
 
         // 5. 컴포넌트별로 lineage 병합 (대표 lineage_id로 모든 파일 이동)
         let mut groups: HashMap<usize, Vec<String>> = HashMap::new();
-        for i in 0..n {
+        for (i, (lid, _)) in embeddings.iter().enumerate().take(n) {
             let root = find(&mut parent, i);
-            groups
-                .entry(root)
-                .or_default()
-                .push(embeddings[i].0.clone());
+            groups.entry(root).or_default().push(lid.clone());
         }
 
         for (_, lineages) in groups {
@@ -549,7 +546,7 @@ pub fn refine_with_vector(conn: &Connection, embedder: &Arc<Embedder>) -> rusqli
             let mut h = Sha256::new();
             h.update(lid.as_bytes());
             h.update(b"::split::");
-            h.update(&oid.to_le_bytes());
+            h.update(oid.to_le_bytes());
             let mut new_id = String::with_capacity(16);
             for b in h.finalize().iter().take(8) {
                 new_id.push_str(&format!("{:02x}", b));
