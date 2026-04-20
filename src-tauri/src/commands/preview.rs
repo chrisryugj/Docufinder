@@ -267,33 +267,35 @@ pub async fn load_markdown_preview(
         .unwrap_or("")
         .to_string();
 
-    let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
-        let path = std::path::Path::new(&fp);
+    let ext_lower = std::path::Path::new(&fp)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let is_pdf = ext_lower == "pdf";
 
-        // kordoc 지원 확장자 확인
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+    let fp_for_kordoc = fp.clone();
+    let ext_for_kordoc = ext_lower.clone();
+    let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        let path = std::path::Path::new(&fp_for_kordoc);
 
         let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
-        if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
+        if kordoc_exts.contains(&ext_for_kordoc.as_str()) && crate::parsers::kordoc::is_available() {
             match crate::parsers::kordoc::get_markdown(path) {
                 Ok(md) => {
-                    tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
+                    tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp_for_kordoc);
                     return Ok(md);
                 }
                 Err(e) => {
-                    tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp, e);
+                    tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp_for_kordoc, e);
                 }
             }
         } else {
             tracing::debug!(
                 "preview: kordoc 미사용 (ext={}, available={}) — {}",
-                ext,
+                ext_for_kordoc,
                 crate::parsers::kordoc::is_available(),
-                fp
+                fp_for_kordoc
             );
         }
 
@@ -302,6 +304,41 @@ pub async fn load_markdown_preview(
     })
     .await?;
 
+    // PDF 는 세 가지 이슈 대응:
+    //  (1) 스캔본: kordoc 은 임베디드 텍스트만(짧음) → DB(OCR) 사용
+    //  (2) CID 디코딩 실패: kordoc 이 쓰레기 유니코드 반환 → DB 사용
+    //  (3) 정상: kordoc 사용
+    let result = if is_pdf {
+        let kordoc_md = result.ok().unwrap_or_default();
+        let db_md = fetch_db_markdown(&file_path, &state).await.unwrap_or_default();
+        let kordoc_len = kordoc_md.chars().count();
+        let db_len = db_md.chars().count();
+        let kordoc_garbage = crate::parsers::pdf::looks_like_garbage_text(&kordoc_md);
+        let much_longer_in_db = db_len > kordoc_len.saturating_mul(2).max(kordoc_len + 500);
+
+        if kordoc_garbage && !db_md.is_empty() {
+            tracing::info!(
+                "preview: PDF CID 깨짐 감지 — DB 사용 (kordoc {}자, DB {}자)",
+                kordoc_len, db_len
+            );
+            Ok(db_md)
+        } else if much_longer_in_db {
+            tracing::info!(
+                "preview: PDF OCR 감지 — DB 사용 (kordoc {}자 vs DB {}자)",
+                kordoc_len, db_len
+            );
+            Ok(db_md)
+        } else if !kordoc_md.is_empty() && !kordoc_garbage {
+            Ok(kordoc_md)
+        } else if !db_md.is_empty() {
+            Ok(db_md)
+        } else {
+            Err(ApiError::IndexingFailed("본문 없음".to_string()))
+        }
+    } else {
+        result
+    };
+
     match result {
         Ok(markdown) => Ok(MarkdownPreviewResponse {
             file_path,
@@ -309,43 +346,7 @@ pub async fn load_markdown_preview(
             markdown,
         }),
         Err(_) => {
-            // fallback: 기존 load_document_preview 로직으로 plain text 반환
-            let db_path = {
-                let container = state.read()?;
-                container.db_path.to_string_lossy().to_string()
-            };
-
-            let fp2 = file_path.clone();
-            let markdown = tokio::task::spawn_blocking(move || -> ApiResult<String> {
-                let conn = db::get_connection(std::path::Path::new(&db_path))?;
-                let chunk_ids = db::get_chunk_ids_for_path(&conn, &fp2)
-                    .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
-
-                if chunk_ids.is_empty() {
-                    return Ok(String::new());
-                }
-
-                let chunk_infos = db::get_chunks_by_ids(&conn, &chunk_ids)
-                    .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
-
-                let mut sorted = chunk_infos;
-                sorted.sort_by_key(|c| c.chunk_index);
-
-                let sections = merge_chunks_into_sections(&sorted);
-                Ok(sections
-                    .into_iter()
-                    .map(|s| {
-                        if let Some(label) = s.label {
-                            format!("## {}\n\n{}", label, s.content)
-                        } else {
-                            s.content
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n"))
-            })
-            .await??;
-
+            let markdown = fetch_db_markdown(&file_path, &state).await.unwrap_or_default();
             Ok(MarkdownPreviewResponse {
                 file_path,
                 file_name,
@@ -353,6 +354,48 @@ pub async fn load_markdown_preview(
             })
         }
     }
+}
+
+/// DB 청크를 병합해 마크다운 본문 생성 (스캔 PDF OCR 결과 복원용)
+async fn fetch_db_markdown(
+    file_path: &str,
+    state: &State<'_, RwLock<AppContainer>>,
+) -> ApiResult<String> {
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.to_string_lossy().to_string()
+    };
+    let fp = file_path.to_string();
+
+    tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        let conn = db::get_connection(std::path::Path::new(&db_path))?;
+        let chunk_ids = db::get_chunk_ids_for_path(&conn, &fp)
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        if chunk_ids.is_empty() {
+            return Ok(String::new());
+        }
+
+        let chunk_infos = db::get_chunks_by_ids(&conn, &chunk_ids)
+            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+        let mut sorted = chunk_infos;
+        sorted.sort_by_key(|c| c.chunk_index);
+
+        let sections = merge_chunks_into_sections(&sorted);
+        Ok(sections
+            .into_iter()
+            .map(|s| {
+                if let Some(label) = s.label {
+                    format!("## {}\n\n{}", label, s.content)
+                } else {
+                    s.content
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n"))
+    })
+    .await?
 }
 
 // ======================== 북마크 ========================

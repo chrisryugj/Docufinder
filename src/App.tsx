@@ -432,7 +432,7 @@ function AppContent() {
           </div>
         )}
 
-        {/* Search Bar + Filters */}
+        {/* Search Bar (expanded only) */}
         {!search.isCollapsed && (
           <div className="px-4 pt-4 pb-2">
             <SearchBar
@@ -461,31 +461,6 @@ function AppContent() {
               onCancel={idx.cancelVectorIndexing}
             />
 
-            {search.paradigm !== "question" && search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
-              <div className="mt-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-                {search.paradigm === "natural" && search.parsedQuery ? (
-                  <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
-                ) : (
-                  <SearchFilters
-                    filters={search.filters}
-                    onFiltersChange={search.setFilters}
-                    showRefineSearch={search.results.length > 0 || search.filenameResults.length > 0}
-                    searchMode={search.searchMode}
-                    refineQuery={search.refineQuery}
-                    onRefineQueryChange={search.setRefineQuery}
-                    onRefineQueryClear={search.clearRefine}
-                    watchedFolders={idx.status?.watched_folders ?? []}
-                    keywordMatchMode={search.keywordMatchMode}
-                    onKeywordMatchModeChange={search.setKeywordMatchMode}
-                    presets={search.presets}
-                    onSavePreset={search.handleSavePreset}
-                    onApplyPreset={search.handleApplyPreset}
-                    onRemovePreset={search.removePreset}
-                  />
-                )}
-              </div>
-            )}
-
             {search.typoSuggestion && (
               <div className="mt-1.5">
                 <TypoSuggestion
@@ -508,12 +483,41 @@ function AppContent() {
           </div>
         )}
 
+        {/* Filter bar — 스크롤 중에도 항상 보이도록 top-level (flex-col 에서 scroll 영역 위에 고정) */}
+        {search.paradigm !== "question" && search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
+          <div
+            className={`${search.isCollapsed ? "px-4 pt-2" : "px-4"} pb-2 border-b bg-[var(--color-bg-primary)]/95 backdrop-blur-md`}
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            {search.paradigm === "natural" && search.parsedQuery ? (
+              <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
+            ) : (
+              <SearchFilters
+                filters={search.filters}
+                onFiltersChange={search.setFilters}
+                showRefineSearch={search.results.length > 0 || search.filenameResults.length > 0}
+                searchMode={search.searchMode}
+                refineQuery={search.refineQuery}
+                onRefineQueryChange={search.setRefineQuery}
+                onRefineQueryClear={search.clearRefine}
+                watchedFolders={idx.status?.watched_folders ?? []}
+                keywordMatchMode={search.keywordMatchMode}
+                onKeywordMatchModeChange={search.setKeywordMatchMode}
+                presets={search.presets}
+                onSavePreset={search.handleSavePreset}
+                onApplyPreset={search.handleApplyPreset}
+                onRemovePreset={search.removePreset}
+              />
+            )}
+          </div>
+        )}
+
         {/* Scrollable Content + Preview */}
         <div ref={contentFlexRef} className="flex-1 flex overflow-hidden relative">
           <div
             ref={search.scrollContainerRef}
             onScroll={search.handleScroll}
-            className="flex-1 overflow-y-auto overflow-x-hidden"
+            className="flex-1 overflow-y-auto overflow-x-hidden results-scroll"
             style={{ overflowAnchor: "none" }}
           >
             {search.isCollapsed && error && (

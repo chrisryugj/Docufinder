@@ -32,12 +32,16 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
     ? Math.round((progress.processed_files / progress.total_files) * 100)
     : 0;
 
-  // 배치 요약 계산
+  // 배치 요약 계산 — 사이드바 DriveIndexingPanel 과 동일한 smooth 계산
   const batchSummary = batch ? (() => {
     const total = batch.jobs.length;
     const done = batch.jobs.filter(j => j.status === "done" || j.status === "failed" || j.status === "cancelled").length;
-    const p = total > 0 ? Math.round((done / total) * 100) : 0;
-    const current = batch.jobs[batch.current_index];
+    const activeJob = batch.jobs.find(j => j.status === "running" || j.status === "committing");
+    const activeFraction = activeJob && activeJob.total > 0
+      ? Math.min(1, activeJob.processed / activeJob.total)
+      : 0;
+    const p = total > 0 ? Math.min(100, Math.round(((done + activeFraction) / total) * 100)) : 0;
+    const current = activeJob ?? batch.jobs[batch.current_index];
     return { total, done, percent: p, current };
   })() : null;
 
@@ -65,13 +69,24 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
               {batchSummary.done}/{batchSummary.total} 드라이브
             </span>
             {batchSummary.current && batchSummary.current.status === "running" && (
-              <span
-                className="truncate text-xs min-w-0"
-                style={{ color: "var(--color-text-muted)" }}
-                title={batchSummary.current.path}
-              >
-                · {batchSummary.current.path.replace(/^\\\\\?\\/, "")}
-              </span>
+              <>
+                <span
+                  className="shrink-0 text-xs"
+                  style={{ color: "var(--color-text-muted)" }}
+                  title={batchSummary.current.path}
+                >
+                  · {batchSummary.current.path.replace(/^\\\\\?\\/, "")}
+                </span>
+                {batchSummary.current.current_file && (
+                  <span
+                    className="truncate text-xs min-w-0"
+                    style={{ color: "var(--color-text-muted)", opacity: 0.75 }}
+                    title={batchSummary.current.current_file}
+                  >
+                    · {batchSummary.current.current_file.replace(/^.*[\\/]/, "")}
+                  </span>
+                )}
+              </>
             )}
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>{batchSummary.percent}%</span>

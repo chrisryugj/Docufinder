@@ -238,10 +238,11 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
             );
             vec![]
         } else {
-            // 스캔 페이지 존재 여부를 빠르게 확인 (clean 전 raw 텍스트로)
+            // 스캔 페이지 존재 여부: (1) 텍스트 10자 미만 OR (2) CID 디코딩 실패로 깨진 페이지
             let has_scanned = raw_text.split('\x0c').any(|p| {
                 let trimmed = p.trim();
                 trimmed.chars().count() < SCANNED_PAGE_CHAR_THRESHOLD
+                    || looks_like_garbage_text(trimmed)
             });
             if has_scanned {
                 // OCR 경로: cleaned_pages 전체 필요 (lopdf가 페이지 번호로 접근하므로)
@@ -272,6 +273,17 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
         };
 
         if page_text.is_empty() {
+            continue;
+        }
+
+        // CID 디코딩 실패로 깨진 페이지에 OCR 도 실패하면 저장하지 않음
+        // (검색 인덱스에 쓰레기 문자가 들어가는 것을 방지)
+        if looks_like_garbage_text(page_text) {
+            tracing::warn!(
+                "PDF page {} has garbage-looking text (CID decode failed + OCR unavailable), skipping: {:?}",
+                page_idx + 1,
+                path
+            );
             continue;
         }
 
@@ -333,8 +345,10 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
         .iter()
         .enumerate()
         .map(|(page_idx, text)| {
-            // 텍스트 충분한 페이지는 스킵
-            if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD {
+            // 텍스트 충분한 페이지는 스킵 (단, CID 디코딩 실패 페이지는 OCR 강제)
+            if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD
+                && !looks_like_garbage_text(text)
+            {
                 return None;
             }
 
@@ -685,6 +699,49 @@ fn chunk_text_with_page(
     }
 
     chunks
+}
+
+/// CID 디코딩 실패로 깨진 텍스트 감지.
+///
+/// Adobe InDesign 등에서 한글/한자 폰트를 Identity-H CID 로 임베드하면서
+/// ToUnicode CMap 을 누락하면 pdf-extract/pdfjs 가 CID 를 복원하지 못해
+/// - ASCII 제어 문자 (< 0x20, 공백류 제외)
+/// - Private Use Area (U+E000~U+F8FF)
+/// - 랜덤 한자 (한글/가나 미포함 CJK) 가 섞여 나옴.
+///
+/// 정상 한국어/영어 텍스트는 제어 문자가 거의 없고, Hangul/Latin 비중이 지배적.
+/// 이런 깨진 페이지는 스캔 페이지처럼 OCR 로 fallback 해야 함.
+pub(crate) fn looks_like_garbage_text(text: &str) -> bool {
+    let total = text.chars().count();
+    if total < SCANNED_PAGE_CHAR_THRESHOLD {
+        return false; // 짧은 텍스트는 별도 '스캔 페이지' 경로에서 처리
+    }
+
+    let mut control = 0usize;
+    let mut pua = 0usize;
+    let mut readable = 0usize; // Hangul + Latin alnum + 공백
+
+    for c in text.chars() {
+        match c as u32 {
+            0x00..=0x08 | 0x0B | 0x0E..=0x1F => control += 1,
+            0xE000..=0xF8FF => pua += 1,
+            _ => {}
+        }
+        let is_hangul = matches!(c as u32,
+            0xAC00..=0xD7A3 | 0x1100..=0x11FF | 0x3130..=0x318F);
+        let is_latin_alnum = c.is_ascii_alphanumeric();
+        let is_space = c.is_whitespace();
+        if is_hangul || is_latin_alnum || is_space {
+            readable += 1;
+        }
+    }
+
+    let control_ratio = control as f64 / total as f64;
+    let pua_ratio = pua as f64 / total as f64;
+    let readable_ratio = readable as f64 / total as f64;
+
+    // 제어 문자 5% 이상 OR PUA 5% 이상 OR 한글+라틴+공백 비율 30% 미만
+    control_ratio > 0.05 || pua_ratio > 0.05 || readable_ratio < 0.30
 }
 
 /// PDF 텍스트 정리

@@ -228,6 +228,27 @@ mark.hl-filename {
   background-clip: content-box;
 }
 
+/* Results scroll area — 기본 얇게, 호버 시 드래그하기 쉽게 확대 */
+.results-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.results-scroll:hover::-webkit-scrollbar,
+.results-scroll:focus-within::-webkit-scrollbar {
+  width: 14px;
+}
+.results-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+}
+.results-scroll:hover::-webkit-scrollbar-thumb,
+.results-scroll:focus-within::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  background: var(--color-text-muted);
+}
+.dark .results-scroll:hover::-webkit-scrollbar-thumb,
+.dark .results-scroll:focus-within::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+}
+
 /* Lucide 아이콘 기본 stroke-width: 2 → 1.5 (더 세련된 미학) */
 .lucide {
   stroke-width: 1.5 !important;
@@ -485,10 +506,14 @@ mark.hl-filename {
   border: 1px solid var(--color-border);
 }
 .doc-table {
-  width: 100%;
+  /* width:100% 제거 — 내용 기반 auto 폭, wrapper 가 좁으면 가로 스크롤.
+     좁은 창에서 한글이 글자 단위로 세로 분해되는 현상 방지 */
+  width: auto;
+  max-width: 100%;
   border-collapse: collapse;
   font-size: 0.85em;
   line-height: 1.5;
+  table-layout: auto;
 }
 .doc-thead {
   background-color: var(--color-bg-tertiary);
@@ -499,12 +524,18 @@ mark.hl-filename {
   text-align: left;
   color: var(--color-text-primary);
   border-bottom: 2px solid var(--color-border);
-  white-space: nowrap;
+  /* nowrap 제거 — 헤더도 필요시 줄바꿈, 대신 한글은 단어 경계 유지 */
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 .doc-td {
   padding: 6px 10px;
   border-bottom: 1px solid var(--color-border);
   vertical-align: top;
+  /* 한국어 단어 경계 유지 + 긴 토큰은 break */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 .doc-table tr:last-child .doc-td {
   border-bottom: none;
