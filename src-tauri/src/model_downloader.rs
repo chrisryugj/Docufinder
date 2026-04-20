@@ -14,7 +14,10 @@ use std::time::Duration;
 // 모델 URL 및 SHA-256 해시 (무결성 검증용)
 // ============================================================================
 
-const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip";
+// ort 2.0.0-rc.11 은 ONNX Runtime **>= 1.23.x** 를 요구한다.
+// v1.20.1 을 쓰던 구 빌드에서 업그레이드하면 DLL 버전 불일치로 부팅 단계 panic 발생.
+// URL 갱신 시 반드시 ZIP/DLL SHA-256 을 함께 갱신해야 한다.
+const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.23.0/onnxruntime-win-x64-1.23.0.zip";
 // KoSimCSE-roberta-multitask (HuggingFace) — INT8 동적 양자화 모델
 const E5_MODEL_URL: &str =
     "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model_int8.onnx";
@@ -40,9 +43,14 @@ const E5_MODEL_DATA_SHA256: &str =
     "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
 const E5_TOKENIZER_SHA256: &str =
     "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
-// ONNX Runtime ZIP SHA-256 (v1.20.1 win-x64)
+// ONNX Runtime ZIP SHA-256 (v1.23.0 win-x64, Microsoft 공식 릴리스 78,078,377 바이트)
 const ONNX_RUNTIME_ZIP_SHA256: &str =
-    "78d447051e48bd2e1e778bba378bec4ece11191c9e538cf7b2c4a4565e8f5581";
+    "72c23470310ec79a7d42d27fe9d257e6c98540c73fa5a1db1f67f538c6c16f2f";
+
+// 추출된 onnxruntime.dll SHA-256 (v1.23.0 win-x64, 14,197,760 바이트, 빌드 1.23.20250925.2.be835ef)
+// ZIP 해시만 검증하면 추출 중 손상/다른 소스 교체를 못 잡으므로 DLL 본체도 검증한다.
+const ONNX_RUNTIME_DLL_SHA256: &str =
+    "b4b7f9aed3cf6b04000f595bddcbdf12e87214bc401d1b81beadae3dbf28d2bd";
 
 // PaddleOCR ONNX 모델 (Hugging Face: monkt/paddleocr-onnx)
 const OCR_DET_URL: &str =
@@ -89,9 +97,19 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
         tokenizer_downloaded: false,
     };
 
-    // ONNX Runtime DLL 다운로드
-    if !dll_path.exists() {
-        tracing::info!("ONNX Runtime 다운로드 중...");
+    // ONNX Runtime DLL — 존재해도 SHA-256 을 검증해 구버전(v1.20.1 등) 잔재를 강제로 교체.
+    // 기존엔 존재 여부만 확인했기 때문에 ort 크레이트 업그레이드 후에도 구 DLL 을 계속 로드해
+    // 부팅 단계에서 "ort 2.x is not compatible ... got '1.20.1'" panic 이 발생했다.
+    if needs_dll_replacement(&dll_path) {
+        if dll_path.exists() {
+            tracing::warn!(
+                "ONNX Runtime DLL 해시 불일치 감지 — 구버전 제거 후 재다운로드합니다: {}",
+                dll_path.display()
+            );
+            let _ = fs::remove_file(&dll_path);
+        } else {
+            tracing::info!("ONNX Runtime 다운로드 중...");
+        }
         download_onnx_runtime(&e5_dir)?;
         result.onnx_runtime_downloaded = true;
         tracing::info!("ONNX Runtime 다운로드 완료");
@@ -127,6 +145,51 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
     }
 
     Ok(result)
+}
+
+/// 기존 DLL 이 없거나 SHA-256 이 기대값과 다르면 true.
+/// 구버전 ONNX Runtime 이 디스크에 남아 ort::init 시 panic 을 유발하는 경로를 차단한다.
+fn needs_dll_replacement(dll_path: &Path) -> bool {
+    if !dll_path.exists() {
+        return true;
+    }
+    match compute_sha256(dll_path) {
+        Ok(hash) if hash == ONNX_RUNTIME_DLL_SHA256 => false,
+        Ok(hash) => {
+            tracing::warn!(
+                "ONNX Runtime DLL SHA 불일치: 기대 {}, 실제 {}",
+                ONNX_RUNTIME_DLL_SHA256,
+                hash
+            );
+            true
+        }
+        Err(e) => {
+            tracing::warn!("ONNX Runtime DLL SHA 계산 실패 (교체 진행): {}", e);
+            true
+        }
+    }
+}
+
+/// setup() 에서 sync 로 호출해 ONNX Runtime DLL 을 먼저 준비한다.
+/// 정상이면 즉시 반환, 구버전/손상이면 삭제 후 새 버전 다운로드(~14MB).
+/// 실패 시 Err 를 반환하지만 app 은 계속 부팅된다(시맨틱/OCR 기능 비활성).
+pub fn ensure_onnx_runtime_dll(models_dir: &Path) -> Result<(), String> {
+    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
+    fs::create_dir_all(&e5_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    let dll_path = e5_dir.join("onnxruntime.dll");
+
+    if !needs_dll_replacement(&dll_path) {
+        return Ok(());
+    }
+
+    if dll_path.exists() {
+        tracing::warn!(
+            "구버전 ONNX Runtime DLL 감지 → 삭제 후 v1.23.0 다운로드 진행: {}",
+            dll_path.display()
+        );
+        let _ = fs::remove_file(&dll_path);
+    }
+    download_onnx_runtime(&e5_dir)
 }
 
 /// PaddleOCR 모델 다운로드 (Detection + Korean Recognition + Dictionary)
@@ -384,6 +447,18 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
     if !dll_found {
         return Err("ZIP에서 onnxruntime.dll을 찾을 수 없습니다".to_string());
     }
+
+    // 추출된 DLL 무결성 검증 — ZIP 해시만 믿으면 추출 과정의 손상/중간 변조를 못 잡는다.
+    let dll_path = dest_dir.join(dll_name);
+    let actual_dll_hash = compute_sha256(&dll_path)?;
+    if actual_dll_hash != ONNX_RUNTIME_DLL_SHA256 {
+        let _ = fs::remove_file(&dll_path);
+        return Err(format!(
+            "ONNX Runtime DLL 무결성 검증 실패!\n예상: {}\n실제: {}",
+            ONNX_RUNTIME_DLL_SHA256, actual_dll_hash
+        ));
+    }
+    tracing::info!("ONNX Runtime DLL SHA-256 검증 성공 (v1.23.0)");
 
     Ok(())
 }
