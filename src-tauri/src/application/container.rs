@@ -16,7 +16,7 @@ use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use crate::ApiError;
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, RwLock};
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
@@ -61,6 +61,10 @@ pub struct AppContainer {
     /// 증분 인덱싱 완료 시 프론트엔드 알림 콜백
     incremental_update_callback: IncrementalCallback,
     vector_progress_callback: VectorProgressState,
+    /// 마지막 주기 sync 완료 시각 (epoch seconds). 0이면 아직 실행 전.
+    last_sync_at: Arc<AtomicI64>,
+    /// 주기 sync task 종료 신호. 앱 종료 시 true로 세트해 루프 중단.
+    sync_shutdown: Arc<AtomicBool>,
 }
 
 impl AppContainer {
@@ -168,7 +172,46 @@ impl AppContainer {
             settings_cache: Arc::new(RwLock::new(cached_settings)),
             incremental_update_callback: RwLock::new(None),
             vector_progress_callback: Arc::new(RwLock::new(None)),
+            last_sync_at: Arc::new(AtomicI64::new(0)),
+            sync_shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    // ============================================
+    // Periodic Sync (v2.5.2)
+    // ============================================
+
+    /// 주기 sync 마지막 완료 시각 (epoch seconds, 0=아직 없음)
+    pub fn get_last_sync_at(&self) -> i64 {
+        self.last_sync_at.load(Ordering::Acquire)
+    }
+
+    /// 주기 sync 완료 시 호출 — 현재 시각 기록
+    pub fn mark_sync_done(&self, ts: i64) {
+        self.last_sync_at.store(ts, Ordering::Release);
+    }
+
+    /// 주기 sync task 종료 신호 Arc 공유 (lib.rs setup에서 루프가 읽음)
+    pub fn sync_shutdown_flag(&self) -> Arc<AtomicBool> {
+        self.sync_shutdown.clone()
+    }
+
+    /// 앱 종료 시 호출 — 주기 sync task 루프 탈출 유도
+    pub fn signal_sync_shutdown(&self) {
+        self.sync_shutdown.store(true, Ordering::Release);
+    }
+
+    /// 배치/벡터 인덱싱 중인지 (주기 sync skip 판단)
+    pub fn is_indexing_busy(&self) -> bool {
+        if self.batch_controller.is_running() {
+            return true;
+        }
+        if let Ok(worker) = self.vector_worker.read() {
+            if worker.is_running() {
+                return true;
+            }
+        }
+        false
     }
 
     // ============================================

@@ -1,8 +1,13 @@
 import { useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { logToBackend } from "../utils/errorLogger";
 
 const FOCUS_DEBOUNCE_MS = 500;
+
+/// 포커스 복귀 시 sync 트리거 최소 경과 시간 (초).
+/// 너무 자주 alt-tab 하는 사용자가 매번 sync 를 유발하지 않도록 2분 하한.
+const SYNC_ON_FOCUS_MIN_ELAPSED_SECS = 120;
 
 /**
  * 윈도우 포커스 복귀 시 검색창 자동 포커스
@@ -46,12 +51,24 @@ export function useWindowFocus(
       });
     };
 
+    const maybeTriggerSync = () => {
+      // 창 포커스 복귀 시 백엔드에 stale sync 요청.
+      // 백엔드가 last_sync_at / 배치 상태를 확인 후 실제 실행 여부 판단.
+      invoke<boolean>("trigger_sync_if_stale", {
+        minElapsedSecs: SYNC_ON_FOCUS_MIN_ELAPSED_SECS,
+      }).catch((err) => {
+        // 커맨드 등록 전 호출 등 edge case — 조용히 로그만.
+        logToBackend("warn", "trigger_sync_if_stale failed", String(err), "App");
+      });
+    };
+
     const setup = async () => {
       const window = getCurrentWindow();
       try {
         unlisten = await window.onFocusChanged(({ payload }) => {
           if (payload) {
             resetSearchFocus();
+            maybeTriggerSync();
           }
         });
       } catch (err) {

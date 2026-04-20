@@ -50,4 +50,6 @@ export interface Settings {
   ocr_enabled: boolean;
   /** 검색 결과에서 같은 문서의 여러 버전을 대표 1개로 접기 (Document Lineage) */
   group_versions: boolean;
+  /** 자동 동기화 주기 (분). 0 = 끄기, 기본 10분. watcher 이벤트 누락 보완. */
+  auto_sync_interval_minutes: number;
 }

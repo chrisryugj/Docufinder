@@ -8,7 +8,7 @@ import { Modal } from "../../ui/Modal";
 import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
-import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB } from "./types";
+import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
 
 interface SystemTabProps extends TabProps {
   onClose: () => void;
@@ -116,6 +116,20 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
               초과 파일은 인덱싱 스킵 · 큰 값은 메모리/속도 부담
             </p>
           </div>
+        </div>
+        <div className="mt-3">
+          <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+            자동 동기화 주기
+          </label>
+          <Dropdown
+            options={AUTO_SYNC_INTERVAL_OPTIONS}
+            value={String(settings.auto_sync_interval_minutes ?? 10)}
+            onChange={(value) => onChange("auto_sync_interval_minutes", parseInt(value))}
+            placeholder="주기 선택"
+          />
+          <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+            실시간 감시가 놓친 변경분을 주기적으로 재정합 · 창 복귀 시에도 자동 실행
+          </p>
         </div>
       </div>
 

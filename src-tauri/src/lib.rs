@@ -269,6 +269,9 @@ fn validate_vector_index(container: &AppContainer) {
 
 /// 벡터 워커 정리 + 인덱스 저장 + DB 최적화 (종료/트레이 quit 공통)
 fn cleanup_vector_resources(container: &AppContainer) {
+    // 주기 sync task 중단 신호 (v2.5.2) — 루프가 최대 60초 내 탈출
+    container.signal_sync_shutdown();
+
     let vector_worker = container.get_vector_worker();
     if let Ok(mut worker) = vector_worker.write() {
         if worker.is_running() {
@@ -657,6 +660,11 @@ pub fn run() {
             // Store app container
             app.manage(RwLock::new(container));
 
+            // 🔄 주기 sync task 시작 (v2.5.2) — watcher 이벤트 누락 보완.
+            // lib.rs setup 에서 1회만 spawn. AtomicBool shutdown 신호는
+            // cleanup_vector_resources / 앱 종료 시 세팅되어 루프가 탈출한다.
+            indexer::periodic_sync::spawn_periodic_sync_task(app.handle().clone());
+
             // 미완료 벡터 인덱싱 + startup sync 모두 initialize_app에서 처리.
             // (면책 동의 후 프론트엔드 호출 → spawn_startup_sync_async)
             // lib.rs에서 spawn_startup_sync를 별도로 호출하면
@@ -888,6 +896,7 @@ pub fn run() {
             commands::ai::ask_ai,
             commands::ai::ask_ai_file,
             commands::ai::summarize_ai,
+            indexer::periodic_sync::trigger_sync_if_stale,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
