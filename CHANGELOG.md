@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.5.2] - 2026-04-20
+
+**자동 동기화 주기 — watcher 이벤트 누락 보완**
+
+### 추가
+- **백그라운드 주기 sync (기본 10분)** — Windows `ReadDirectoryChangesW` 버퍼 오버플로로 notify 이벤트가 누락되어도 최대 10분 안에 새 파일/삭제/수정이 자동 감지된다. 전체 드라이브 감시 시 특히 유용. 배치/벡터 인덱싱 중에는 skip, 실행 전 watcher pause → sync 후 resume 순서로 DB 락 경쟁 회피.
+- **창 포커스 복귀 즉시 sync** — 앱을 잠시 벗어났다 돌아오면(`onFocusChanged`) 마지막 sync 로부터 2분 이상 경과했을 때 즉시 재정합. 다른 창에서 파일 복사 후 바로 검색하는 흐름이 자연스러워짐.
+- **설정 > 시스템 > 성능 > "자동 동기화 주기"** — 끄기 / 5분 / 10분(기본) / 30분 선택. 0(끄기)로 두면 주기 sync 와 포커스 sync 모두 비활성.
+
+### 변경/개선
+- `AppContainer` 에 `last_sync_at`(AtomicI64) + `sync_shutdown`(AtomicBool) 추가 — 주기 task 종료 신호 공유.
+- 앱 종료 시 `cleanup_vector_resources` 가 sync shutdown 을 먼저 세팅하여 task 가 최대 60초 내 탈출.
+- 신규 Tauri 커맨드 `trigger_sync_if_stale(min_elapsed_secs)` — 프론트가 호출, 응답 즉시 반환(block 없음).
+- 변경분 발견 시 `periodic-sync-updated` 이벤트 emit + FilenameCache 자동 재로드.
+
+### 내부
+- 신규 모듈 [src-tauri/src/indexer/periodic_sync.rs](src-tauri/src/indexer/periodic_sync.rs) — 기존 `IndexService::sync_folder` + `pause_watching`/`resume_watching` 재사용.
+
+---
+
 ## [2.5.1] - 2026-04-20
 
 **PDF 인코딩 깨짐 대응 + 테이블 렌더링 개선 + UX 폴리싱**

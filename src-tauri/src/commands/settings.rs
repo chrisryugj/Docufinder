@@ -78,10 +78,18 @@ pub struct Settings {
     /// 검색 결과에서 같은 문서의 여러 버전을 대표 1개로 접기 (Document Lineage Graph)
     #[serde(default = "default_group_versions")]
     pub group_versions: bool,
+    /// 자동 동기화 주기 (분). 0 = 끄기, 기본 10분.
+    /// 주기 sync 는 watcher 이벤트 누락(전체 드라이브 감시 시 흔함)을 보완.
+    #[serde(default = "default_auto_sync_interval_minutes")]
+    pub auto_sync_interval_minutes: u32,
 }
 
 fn default_group_versions() -> bool {
     true
+}
+
+fn default_auto_sync_interval_minutes() -> u32 {
+    10
 }
 
 fn default_include_subfolders() -> bool {
@@ -180,6 +188,7 @@ impl Default for Settings {
             ai_max_tokens: default_ai_max_tokens(),
             ocr_enabled: false,
             group_versions: true,
+            auto_sync_interval_minutes: default_auto_sync_interval_minutes(),
         }
     }
 }
@@ -391,6 +400,10 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     settings.min_confidence = settings.min_confidence.min(100);
     settings.ai_temperature = settings.ai_temperature.clamp(0.0, 2.0);
     settings.ai_max_tokens = settings.ai_max_tokens.clamp(1, 8192);
+    // auto_sync_interval_minutes: 0(끄기) 또는 [1, 60*24] 범위
+    if settings.auto_sync_interval_minutes > 60 * 24 {
+        settings.auto_sync_interval_minutes = 60 * 24;
+    }
 
     settings
 }
@@ -436,6 +449,11 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
     if settings.min_confidence > 100 {
         return Err(ApiError::Validation(
             "min_confidence는 0~100 범위여야 합니다".into(),
+        ));
+    }
+    if settings.auto_sync_interval_minutes > 60 * 24 {
+        return Err(ApiError::Validation(
+            "auto_sync_interval_minutes는 0(끄기)~1440(24시간) 범위여야 합니다".into(),
         ));
     }
     Ok(())

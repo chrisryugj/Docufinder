@@ -54,6 +54,13 @@ export const DEFAULT_MAX_FILE_SIZE_MB = 200;
 /// 단일 파일 크기 절대 상한 (MB) — src-tauri/src/constants.rs::MAX_FILE_SIZE_LIMIT_MB와 동기화
 export const MAX_FILE_SIZE_LIMIT_MB = 500;
 
+export const AUTO_SYNC_INTERVAL_OPTIONS = [
+  { value: "0", label: "끄기" },
+  { value: "5", label: "5분" },
+  { value: "10", label: "10분 (기본)" },
+  { value: "30", label: "30분" },
+];
+
 export const MAX_FILE_SIZE_OPTIONS = [50, 100, 200, 400, 500].map((mb) => ({
   value: String(mb),
   label:

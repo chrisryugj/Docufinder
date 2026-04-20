@@ -5,6 +5,7 @@ pub mod exclusions;
 pub mod gitignore_matcher;
 pub mod lineage;
 pub mod manager;
+pub mod periodic_sync;
 pub mod pipeline;
 pub mod sync;
 pub mod vector_worker;
