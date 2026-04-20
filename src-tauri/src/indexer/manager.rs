@@ -12,7 +12,7 @@ use crate::indexer::pipeline;
 use crate::ocr::OcrEngine;
 use crate::search::filename_cache::{FilenameCache, FilenameEntry};
 use crate::search::vector::VectorIndex;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::OnceCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -88,6 +88,12 @@ impl WatchPauseHandle {
 /// 파일 감시 + 인덱싱 매니저
 pub struct WatchManager {
     watcher: RecommendedWatcher,
+    /// 네트워크 폴더(UNC) 전용 폴링 watcher.
+    /// notify 의 RecommendedWatcher 는 SMB 위에서 inotify/ReadDirectoryChangesW 가 없어
+    /// 이벤트가 누락되거나 아예 동작하지 않으므로, 네트워크 경로는 30초 주기 폴링으로 대체한다.
+    poll_watcher: PollWatcher,
+    /// 어느 watcher 에 등록되었는지 추적 (unwatch 시 분기용)
+    poll_watched: HashSet<PathBuf>,
     stop_tx: Sender<()>,
     watched_folders: HashSet<PathBuf>,
     /// 🔴 Critical 버그 수정: worker thread handle 저장
@@ -144,14 +150,28 @@ impl WatchManager {
         let processing_lock = Arc::new(Mutex::new(()));
         let processing_lock_for_loop = processing_lock.clone();
 
-        // 파일 변경 이벤트를 채널로 전송
+        // 두 watcher 가 같은 채널로 이벤트를 보낸다 (consumer 입장에선 출처 무관).
+        let event_tx_for_recommended = event_tx.clone();
         let watcher = RecommendedWatcher::new(
+            move |res: Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    let _ = event_tx_for_recommended.send(event);
+                }
+            },
+            Config::default().with_poll_interval(Duration::from_secs(2)),
+        )?;
+
+        // 네트워크 폴더 전용 PollWatcher (30초 주기). compare_contents=false 로 두어
+        // 메타데이터(mtime/size)만 비교 — 내용 다이제스트 계산이 SMB 왕복을 무한 늘리는 것을 방지.
+        let poll_watcher = PollWatcher::new(
             move |res: Result<Event, notify::Error>| {
                 if let Ok(event) = res {
                     let _ = event_tx.send(event);
                 }
             },
-            Config::default().with_poll_interval(Duration::from_secs(2)),
+            Config::default()
+                .with_poll_interval(Duration::from_secs(30))
+                .with_compare_contents(false),
         )?;
 
         // 백그라운드 이벤트 처리 스레드 (handle 저장)
@@ -167,6 +187,8 @@ impl WatchManager {
 
         Ok(Self {
             watcher,
+            poll_watcher,
+            poll_watched: HashSet::new(),
             stop_tx,
             watched_folders: HashSet::new(),
             worker_thread: Some(worker_thread),
@@ -175,25 +197,36 @@ impl WatchManager {
         })
     }
 
-    /// 폴더 감시 시작
+    /// 폴더 감시 시작.
+    /// UNC 경로(`\\server\share\...`)는 PollWatcher 30초 주기로, 그 외는 RecommendedWatcher 로 등록한다.
     pub fn watch(&mut self, path: &Path) -> Result<(), notify::Error> {
         if self.watched_folders.contains(path) {
             tracing::debug!("Already watching: {:?}", path);
             return Ok(());
         }
-        self.watcher.watch(path, RecursiveMode::Recursive)?;
+        if crate::utils::network_path::is_network(path) {
+            self.poll_watcher.watch(path, RecursiveMode::Recursive)?;
+            self.poll_watched.insert(path.to_path_buf());
+            tracing::info!("Started watching (PollWatcher 30s, network): {:?}", path);
+        } else {
+            self.watcher.watch(path, RecursiveMode::Recursive)?;
+            tracing::info!("Started watching (RecommendedWatcher): {:?}", path);
+        }
         self.watched_folders.insert(path.to_path_buf());
         // git 프로젝트 루트면 gitignore 매처 등록 (startup sync에서도 이 경로 통과)
         if path.join(".git").exists() {
             crate::indexer::gitignore_matcher::global().register_root(path);
         }
-        tracing::info!("Started watching: {:?}", path);
         Ok(())
     }
 
     /// 폴더 감시 중지
     pub fn unwatch(&mut self, path: &Path) -> Result<(), notify::Error> {
-        self.watcher.unwatch(path)?;
+        if self.poll_watched.remove(path) {
+            self.poll_watcher.unwatch(path)?;
+        } else {
+            self.watcher.unwatch(path)?;
+        }
         self.watched_folders.remove(path);
         crate::indexer::gitignore_matcher::global().unregister_root(path);
         tracing::info!("Stopped watching: {:?}", path);
@@ -208,7 +241,11 @@ impl WatchManager {
     /// 모든 폴더 감시 중지
     pub fn unwatch_all(&mut self) {
         for path in self.watched_folders.drain() {
-            let _ = self.watcher.unwatch(&path);
+            if self.poll_watched.remove(&path) {
+                let _ = self.poll_watcher.unwatch(&path);
+            } else {
+                let _ = self.watcher.unwatch(&path);
+            }
             tracing::debug!("Stopped watching: {:?}", path);
         }
         tracing::info!("All watchers stopped");

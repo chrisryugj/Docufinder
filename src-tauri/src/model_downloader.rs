@@ -474,3 +474,74 @@ pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
         e5_dir.join("tokenizer.json").exists(),
     )
 }
+
+/// 번들된 리소스(ONNX Runtime DLL + PaddleOCR 3종)를 APPDATA/models/ 로 복사한다.
+/// MSI 설치본은 이 4개를 함께 배포하므로 사용자가 huggingface/github 다운로드를 못 해도
+/// 첫 실행 즉시 시맨틱·OCR 가능해진다. 실패해도 panic 하지 않고 기존 다운로드 경로로 자연 fallback.
+pub fn seed_bundled_models(resource_dir: &Path, models_dir: &Path) {
+    let bundled_root = resource_dir.join("resources");
+
+    // ONNX Runtime DLL → models/kosimcse-roberta-multitask/onnxruntime.dll
+    let dll_dest_dir = models_dir.join("kosimcse-roberta-multitask");
+    if let Err(e) = fs::create_dir_all(&dll_dest_dir) {
+        tracing::warn!("seed: ONNX Runtime 디렉토리 생성 실패: {}", e);
+    } else {
+        seed_one(
+            &bundled_root.join("onnxruntime").join("onnxruntime.dll"),
+            &dll_dest_dir.join("onnxruntime.dll"),
+            ONNX_RUNTIME_DLL_SHA256,
+            "ONNX Runtime DLL",
+        );
+    }
+
+    // PaddleOCR 3종 → models/paddleocr/*
+    let ocr_dest_dir = models_dir.join("paddleocr");
+    if let Err(e) = fs::create_dir_all(&ocr_dest_dir) {
+        tracing::warn!("seed: OCR 디렉토리 생성 실패: {}", e);
+        return;
+    }
+    for (name, hash, label) in [
+        ("det.onnx", OCR_DET_SHA256, "OCR Detection"),
+        ("rec.onnx", OCR_REC_KO_SHA256, "OCR Recognition (ko)"),
+        ("dict.txt", OCR_DICT_KO_SHA256, "OCR Dictionary (ko)"),
+    ] {
+        seed_one(
+            &bundled_root.join("paddleocr").join(name),
+            &ocr_dest_dir.join(name),
+            hash,
+            label,
+        );
+    }
+}
+
+/// 번들 파일 1개를 dest 로 복사. 이미 동일 해시면 skip, 해시 다르면 덮어씀.
+/// 번들 원본이 없거나 복사 실패해도 warn 만 남기고 진행 — 다운로드 fallback 이 따라온다.
+fn seed_one(src: &Path, dest: &Path, expected_hash: &str, label: &str) {
+    if !src.exists() {
+        tracing::debug!(
+            "seed: 번들 {} 미발견({:?}) → 다운로드 fallback 사용",
+            label,
+            src.display()
+        );
+        return;
+    }
+
+    if dest.exists() {
+        if let Ok(h) = compute_sha256(dest) {
+            if h == expected_hash {
+                return; // 이미 최신
+            }
+        }
+        let _ = fs::remove_file(dest);
+    }
+
+    match fs::copy(src, dest) {
+        Ok(bytes) => tracing::info!(
+            "seed: 번들 {} 적용 완료 ({} bytes) → {}",
+            label,
+            bytes,
+            dest.display()
+        ),
+        Err(e) => tracing::warn!("seed: 번들 {} 복사 실패: {}", label, e),
+    }
+}

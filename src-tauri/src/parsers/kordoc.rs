@@ -235,16 +235,18 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
     let node = which_node()
         .ok_or_else(|| ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string()))?;
 
-    // Windows \\?\ prefix 제거 (Node.js/kordoc가 처리하지 못함)
-    let file_str = file_path.to_string_lossy();
-    let file_str = file_str.strip_prefix(r"\\?\").unwrap_or(&file_str);
+    // Windows extended-length / UNC prefix 제거 (Node.js/kordoc가 처리하지 못함).
+    // 단순 strip("\\?\\") 만 하면 \\?\UNC\server\share\... 가 UNC\server\... 로 깨지므로
+    // dunce::simplified 로 \\srv\share\... 형태까지 정확히 복원한다.
+    let file_owned = crate::utils::network_path::simplify(file_path);
+    let file_str = file_owned.to_string_lossy();
     let cli_str = cli_path.to_string_lossy();
 
     debug!("kordoc: {} {} --format json --silent", cli_str, file_str);
 
     let mut cmd = std::process::Command::new(node);
     cmd.arg(cli_str.as_ref())
-        .arg(file_str)
+        .arg(file_str.as_ref())
         .arg("--format")
         .arg("json")
         .arg("--silent")

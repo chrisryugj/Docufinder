@@ -295,7 +295,16 @@ fn get_next_pending_file(
 /// 파일 파싱 + FTS 인덱싱
 fn parse_and_index_file(conn: &Connection, path: &Path, file_id: i64) -> Result<usize, String> {
     // 파싱
-    let document = parse_file(path, None).map_err(|e| e.to_string())?;
+    let document = match parse_file(path, None) {
+        Ok(doc) => doc,
+        Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
+            // 클라우드 placeholder: 본문 hydrate 회피. fts_indexed_at 마킹해 다음 사이클에서 재시도 방지.
+            tracing::debug!("BackgroundParser: skip cloud placeholder body parse: {:?}", path);
+            mark_file_fts_indexed(conn, file_id).map_err(|e| e.to_string())?;
+            return Ok(0);
+        }
+        Err(e) => return Err(e.to_string()),
+    };
 
     // 기존 청크 삭제
     db::delete_chunks_for_file(conn, file_id).map_err(|e| e.to_string())?;

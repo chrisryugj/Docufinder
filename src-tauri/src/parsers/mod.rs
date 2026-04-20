@@ -29,6 +29,10 @@ pub enum ParseError {
     ParseError(String),
     #[error("Password protected: {0}")]
     PasswordProtected(String),
+    /// 클라우드 placeholder (OneDrive 등): 파일 본문이 로컬에 없음.
+    /// 본문 파싱을 호출하면 OS 가 hydrate 를 트리거하므로 의도적으로 skip.
+    #[error("Cloud placeholder (skip body parse): {0}")]
+    CloudPlaceholder(String),
 }
 
 /// 파싱 결과
@@ -63,6 +67,13 @@ pub struct DocumentChunk {
 ///
 /// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
+    // 클라우드 placeholder 차단 — fs::read 류 호출이 Windows CldAPI 를 통해
+    // 원본을 자동 다운로드(hydrate)해 인덱싱 사이드이펙트로 수백 GB 를 끌어오는 사고를 막는다.
+    // 메타데이터(이름·크기·수정일)는 placeholder 에도 캐시되어 있어 호출자가 별도로 인덱싱 가능.
+    if crate::utils::cloud_detect::is_cloud_placeholder(path) {
+        return Err(ParseError::CloudPlaceholder(path.display().to_string()));
+    }
+
     let extension = path
         .extension()
         .and_then(|e| e.to_str())

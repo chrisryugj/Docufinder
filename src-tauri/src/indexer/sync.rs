@@ -374,6 +374,9 @@ pub fn sync_folder_fts(
                             path: path.clone(),
                             document: doc,
                         },
+                        Ok(Err(crate::parsers::ParseError::CloudPlaceholder(_))) => {
+                            ParseResult::CloudSkipped { path: path.clone() }
+                        }
                         Ok(Err(e)) => ParseResult::Failure {
                             path: path.clone(),
                             error: e.to_string(),
@@ -453,6 +456,17 @@ pub fn sync_folder_fts(
                             errors.push(format!("{:?}: {}", path, error));
                         } else {
                             suppressed_errors += 1;
+                        }
+                    }
+                    ParseResult::CloudSkipped { path } => {
+                        // 클라우드 placeholder: 메타데이터만 저장 (파일명 검색은 가능),
+                        // 본문 다운로드는 회피.
+                        if let Err(e) = save_file_metadata_only(conn, &path) {
+                            tracing::warn!(
+                                "Failed to save metadata for cloud placeholder {:?}: {}",
+                                path,
+                                e
+                            );
                         }
                     }
                 }

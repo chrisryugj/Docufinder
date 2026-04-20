@@ -486,6 +486,13 @@ pub fn run() {
             // 이전 다운로드 중 크래시로 남은 .tmp 파일 정리
             cleanup_tmp_files(&models_dir);
 
+            // 번들 모델 적용: ONNX Runtime DLL + PaddleOCR 3종을 MSI 리소스에서 APPDATA/models/ 로 복사.
+            // 이미 같은 해시면 skip, 다르면 덮어쓰기. 실패해도 다운로드 fallback 으로 자연 진행.
+            // 회사망/방화벽 등으로 huggingface·github 차단된 환경에서도 첫 실행 즉시 OCR/시맨틱 가능.
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                model_downloader::seed_bundled_models(&resource_dir, &models_dir);
+            }
+
             // ONNX Runtime DLL 선제 준비 (sync, 14MB).
             // ort 2.x 는 DLL 버전 불일치 시 ort::init 단계에서 panic 을 일으키므로
             // OCR/Embedder 가 처음 DLL 을 건드리기 전에 SHA-256 검증으로 구버전을 강제 교체한다.

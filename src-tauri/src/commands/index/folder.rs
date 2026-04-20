@@ -17,9 +17,10 @@ pub async fn add_folder(
         return Err(ApiError::PathNotFound(path));
     }
 
-    // 경로 정규화
-    let canonical_path = folder_path
-        .canonicalize()
+    // 경로 정규화 — std::canonicalize 는 UNC 를 \\?\UNC\... 로 만들어 외부 도구 호환을 깨고
+    // 네트워크 폴더면 서버 응답을 기다리며 수십 초 block 될 수 있다.
+    // dunce::canonicalize 는 가능한 곳까지 정규화 후 \\srv\share\... 형태로 보존한다.
+    let canonical_path = dunce::canonicalize(folder_path)
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
     // 시스템 폴더 / 드라이브 루트 차단

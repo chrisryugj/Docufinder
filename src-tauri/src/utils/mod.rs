@@ -1,7 +1,9 @@
+pub mod cloud_detect;
 pub mod disk_info;
 pub mod filename_normalize;
 pub mod folder_scope;
 pub mod idle_detector;
+pub mod network_path;
 
 /// PowerShell `-EncodedCommand`용 Base64(UTF-16LE) 인코딩.
 /// 문자열 보간 기반 인젝션을 원천 차단한다.
