@@ -486,14 +486,22 @@ pub fn run() {
             // 이전 다운로드 중 크래시로 남은 .tmp 파일 정리
             cleanup_tmp_files(&models_dir);
 
+            // ONNX Runtime DLL 선제 준비 (sync, 14MB).
+            // ort 2.x 는 DLL 버전 불일치 시 ort::init 단계에서 panic 을 일으키므로
+            // OCR/Embedder 가 처음 DLL 을 건드리기 전에 SHA-256 검증으로 구버전을 강제 교체한다.
+            // 검증만 하면 수백 ms, 다운로드가 필요하면 수초. 실패해도 앱 자체는 부팅시킨다
+            // (시맨틱/OCR 기능이 비활성될 뿐 키워드 검색은 동작).
+            if let Err(e) = model_downloader::ensure_onnx_runtime_dll(&models_dir) {
+                tracing::error!(
+                    "ONNX Runtime DLL 준비 실패: {}. 시맨틱/OCR 기능이 비활성됩니다.",
+                    e
+                );
+            }
+
             // ORT_DYLIB_PATH 설정: 단일 스레드(setup) 시점에서 환경변수 설정
             // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
             // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
             // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
-            //
-            // ⚠️ 파일 존재 여부와 무관하게 항상 설정: 첫 실행 시 모델이 없어도,
-            // 백그라운드 다운로드 완료 후 사용자가 앱을 재시작하지 않고도 임베더를
-            // 초기화할 수 있어야 한다 (그 시점엔 DLL이 생성돼 있음).
             {
                 let dll_path = models_dir
                     .join("kosimcse-roberta-multitask")
