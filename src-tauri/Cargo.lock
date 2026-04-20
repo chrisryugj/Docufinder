@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "docufinder"
-version = "2.4.0"
+version = "2.5.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1261,6 +1261,7 @@ dependencies = [
  "chrono",
  "crossbeam-channel",
  "dirs 5.0.1",
+ "dunce",
  "encoding_rs",
  "flate2",
  "ignore",

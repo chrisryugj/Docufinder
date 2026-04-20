@@ -6,9 +6,13 @@
 //! 끊어지도록 한다. 또한 Windows 백슬래시 / POSIX 슬래시를 통일해
 //! DB 저장 포맷과 입력 포맷이 달라도 일관된 결과를 낸다.
 
-/// 경로를 scope 비교용으로 정규화 (lowercase + 슬래시 통일 + `\\?\` 제거).
+/// 경로를 scope 비교용으로 정규화 (lowercase + 슬래시 통일 + `\\?\` / `\\?\UNC\` 제거).
+/// UNC 경로는 dunce 로 `\\?\UNC\srv\share\...` → `\\srv\share\...` 까지 복원한 뒤
+/// `//srv/share/...` 로 슬래시 통일한다.
 pub fn normalize_for_scope(path: &str) -> String {
-    path.trim_start_matches(r"\\?\")
+    let simplified = crate::utils::network_path::simplify(std::path::Path::new(path));
+    simplified
+        .to_string_lossy()
         .replace('\\', "/")
         .to_lowercase()
 }

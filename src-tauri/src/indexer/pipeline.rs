@@ -69,6 +69,11 @@ pub(crate) enum ParseResult {
         path: PathBuf,
         error: String,
     },
+    /// 클라우드 placeholder 라 본문 파싱 의도적 skip — 실패 카운터에 잡으면 안 된다.
+    /// 메타데이터(이름·크기·수정일)는 저장해 파일명 검색은 가능하게 한다.
+    CloudSkipped {
+        path: PathBuf,
+    },
 }
 
 // ==================== 2단계 인덱싱: FTS 전용 ====================
@@ -301,6 +306,7 @@ fn index_folder_fts_impl(
             errors: vec![],
             was_cancelled: true,
             ocr_image_count: 0,
+            cloud_skipped_count: 0,
         });
     }
 
@@ -345,6 +351,9 @@ fn index_folder_fts_impl(
                             path: path.clone(),
                             document: doc,
                         },
+                        Ok(Err(crate::parsers::ParseError::CloudPlaceholder(_))) => {
+                            ParseResult::CloudSkipped { path: path.clone() }
+                        }
                         Ok(Err(e)) => ParseResult::Failure {
                             path: path.clone(),
                             error: e.to_string(),
@@ -368,6 +377,7 @@ fn index_folder_fts_impl(
     // 3. Consumer: FTS만 저장 (벡터 제외) - 배치 트랜잭션 적용
     let mut indexed = 0;
     let mut failed = 0;
+    let mut cloud_skipped: usize = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut suppressed_errors: usize = 0;
     let mut ocr_image_count: usize = 0;
@@ -453,6 +463,19 @@ fn index_folder_fts_impl(
                             send_progress("indexing", total, processed, None, false);
                             // throttled
                         }
+                        ParseResult::CloudSkipped { path } => {
+                            // OneDrive 등 클라우드 placeholder: 본문 다운로드 회피.
+                            // 메타데이터만 저장해 파일명 검색은 가능하게 두고, 실패로는 분류하지 않는다.
+                            if let Err(e) = save_file_metadata_only(conn, &path) {
+                                tracing::warn!(
+                                    "Failed to save metadata for cloud placeholder {:?}: {}",
+                                    path,
+                                    e
+                                );
+                            }
+                            cloud_skipped += 1;
+                            send_progress("indexing", total, processed, None, false);
+                        }
                     }
 
                     // 배치 크기마다 커밋 후 새 트랜잭션 시작
@@ -495,6 +518,13 @@ fn index_folder_fts_impl(
         errors.push(format!("... 외 {}건 에러 생략", suppressed_errors));
     }
 
+    if cloud_skipped > 0 {
+        tracing::info!(
+            "클라우드 placeholder {}개의 본문 파싱은 skip(메타데이터만 인덱싱). 사용자가 파일을 한 번이라도 열어 로컬로 내려받으면 다음 인덱싱에서 본문도 들어갑니다.",
+            cloud_skipped
+        );
+    }
+
     Ok(FolderIndexResult {
         folder_path: folder_str,
         indexed_count: indexed,
@@ -503,6 +533,7 @@ fn index_folder_fts_impl(
         errors,
         was_cancelled,
         ocr_image_count,
+        cloud_skipped_count: cloud_skipped,
     })
 }
 
@@ -799,8 +830,21 @@ pub(crate) fn index_file_fts_only_no_tx(
     path: &Path,
     ocr_engine: Option<&OcrEngine>,
 ) -> Result<IndexResult, IndexError> {
-    let document =
-        parse_file(path, ocr_engine).map_err(|e| IndexError::ParseError(e.to_string()))?;
+    let document = match parse_file(path, ocr_engine) {
+        Ok(doc) => doc,
+        Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
+            // 클라우드 placeholder: 본문 hydrate 회피, 메타데이터만 저장.
+            save_file_metadata_only(conn, path)
+                .map_err(|e| IndexError::DbError(e.to_string()))?;
+            return Ok(IndexResult {
+                file_path: path.to_string_lossy().to_string(),
+                chunks_count: 0,
+                vectors_count: 0,
+                total_chars: 0,
+            });
+        }
+        Err(e) => return Err(IndexError::ParseError(e.to_string())),
+    };
     let total_chars = document.content.len();
 
     let chunks_count = save_document_to_db_fts_only_no_tx(
@@ -878,6 +922,8 @@ pub struct FolderIndexResult {
     pub was_cancelled: bool,
     /// OCR로 인덱싱된 이미지 파일 수
     pub ocr_image_count: usize,
+    /// 클라우드 placeholder 라 본문 파싱이 의도적으로 skip 된 파일 수 (메타데이터는 인덱싱됨)
+    pub cloud_skipped_count: usize,
 }
 
 #[derive(Debug, thiserror::Error)]
