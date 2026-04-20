@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../../utils/invokeWithTimeout";
 import { Button } from "../../ui/Button";
 import { Dropdown } from "../../ui/Dropdown";
+import { Modal } from "../../ui/Modal";
 import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
@@ -27,6 +28,27 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
   const [isAutoIndexing, setIsAutoIndexing] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [clearStep, setClearStep] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+
+  useEffect(() => {
+    if (!confirmOpen) setAgreed(false);
+  }, [confirmOpen]);
+
+  const runClearData = async () => {
+    if (!onClearData) return;
+    setConfirmOpen(false);
+    setIsClearing(true);
+    try {
+      await onClearData();
+      onClose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError?.(`초기화 실패: ${message}`);
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   useEffect(() => {
     if (!isClearing) return;
@@ -217,28 +239,60 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
           size="sm"
           isLoading={isClearing}
           disabled={isClearing}
-          onClick={async () => {
-            const confirmed = await ask(
-              "모든 인덱싱 데이터와 등록된 폴더가 삭제됩니다.\n원본 파일은 영향 없습니다.\n\n계속하시겠습니까?",
-              { title: "데이터 초기화", kind: "warning", okLabel: "초기화", cancelLabel: "취소" }
-            );
-            if (confirmed && onClearData) {
-              setIsClearing(true);
-              try {
-                await onClearData();
-                onClose();
-              } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                setError?.(`초기화 실패: ${message}`);
-              } finally {
-                setIsClearing(false);
-              }
-            }
-          }}
+          onClick={() => setConfirmOpen(true)}
         >
           초기화
         </Button>
       </div>
+
+      <Modal
+        isOpen={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="데이터 초기화"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmOpen(false)}>
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              disabled={!agreed}
+              onClick={runClearData}
+            >
+              초기화
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-primary)" }}>
+            모든 인덱싱 데이터와 등록된 폴더가 삭제됩니다.
+          </p>
+          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            원본 파일은 영향이 없습니다. 이 작업은 되돌릴 수 없습니다.
+          </p>
+          <label
+            className="flex items-start gap-2 p-2.5 rounded-md cursor-pointer select-none"
+            style={{
+              backgroundColor: "var(--color-bg-primary)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(e) => setAgreed(e.target.checked)}
+              className="mt-0.5"
+              data-autofocus
+            />
+            <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+              위 내용을 이해했으며 모든 데이터 삭제에 동의합니다.
+            </span>
+          </label>
+        </div>
+      </Modal>
     </div>
   );
 }
