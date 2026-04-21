@@ -332,6 +332,15 @@ impl WatchManager {
         }
     }
 
+    /// 현재 pause 상태 여부 (중첩 카운터 > 0 이면 paused).
+    ///
+    /// 다른 sync 작업(startup/periodic)이 진행 중인지 확인하는 용도로도 쓰인다.
+    pub fn is_paused(&self) -> bool {
+        self.pause_count
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > 0
+    }
+
     /// 🔴 Critical 버그 수정: 명시적 종료 메서드
     ///
     /// stop 신호 전송 후 worker thread가 종료될 때까지 대기

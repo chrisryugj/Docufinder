@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.5.3] - 2026-04-21
+
+**v2.5.2 부팅 CPU/메모리 피크 핫픽스 + 정렬/컨텍스트 메뉴 버그 3종**
+
+### 수정
+- **부팅 직후 3~5분 CPU 60%+ / 메모리 1.2GB 피크** — v2.5.2 에서 추가된 주기 sync(`periodic_sync`) 가 startup sync 진행 중에도 창 포커스 복귀마다 재트리거되어 같은 드라이브를 2~3중으로 병렬 파싱/FTS 하던 race condition. 두 계층으로 차단:
+  - `is_busy()` 에 `WatchManager::is_paused()` 체크 추가 — startup sync 등 다른 경로가 watcher 를 pause 한 상태면 periodic_sync 는 skip.
+  - `run_sync_all` 진입부에 전역 `AtomicBool SYNC_RUNNING` CAS lock + RAII guard — interval / focus 트리거끼리의 중첩 실행 자체를 차단, 패닉/early-return 시에도 자동 해제.
+- **키워드 검색 결과 "관련도순 / 최신순" 정렬이 안 먹는 것처럼 보이던 문제** — 내용 매치 섹션에는 정렬이 적용되지만 상단 "파일명 매치" 섹션에는 정렬 로직이 없어 드롭다운 변경이 무반응으로 체감되던 문제. `filteredFilenameResults` 에도 내용 섹션과 동일한 `sortBy` 분기(confidence / date_desc / date_asc / name) 적용.
+- **파일명 매치 결과 우클릭 → "폴더 열기" 시 파일도 함께 열리던 문제** — `ResultContextMenu` 가 `createPortal(document.body)` 로 렌더되어 DOM 은 분리되어 있지만 React synthetic event 는 여전히 원래 부모로 버블링된다. `FilenameResultItem` 의 부모 div `onClick` = `onOpenFile` 이 같이 실행되어 파일이 딸려 열림. 메뉴 버튼 4종(파일 열기 / 폴더 열기 / 경로 복사 / 유사 문서) 의 onClick 에 `e.stopPropagation()` 추가.
+
+### 내부
+- `WatchManager` 에 `is_paused() -> bool` 공개 API 추가 (기존 `pause_count` 내부 상태 노출).
+- `periodic_sync.rs` 상단에 `SYNC_RUNNING` static + `SyncGuard` (Drop 구현) 추가 — 함수 중간에 panic 이 나도 lock 이 풀림.
+
+---
+
 ## [2.5.2] - 2026-04-20
 
 **자동 동기화 주기 — watcher 이벤트 누락 보완**
