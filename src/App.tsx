@@ -483,10 +483,12 @@ function AppContent() {
           </div>
         )}
 
-        {/* Filter bar — 스크롤 중에도 항상 보이도록 top-level (flex-col 에서 scroll 영역 위에 고정) */}
+        {/* Filter bar — 스크롤 중에도 항상 보이도록 top-level (flex-col 에서 scroll 영역 위에 고정).
+            `relative z-40` 로 stacking level 확보 — 하위 CustomSelect 드롭다운이 결과 카드
+            (transform 애니메이션으로 자체 stacking context 생성) 위로 뜨도록 한다. */}
         {search.paradigm !== "question" && search.query && (search.results.length > 0 || search.filenameResults.length > 0) && (
           <div
-            className={`${search.isCollapsed ? "px-4 pt-2" : "px-4"} pb-2 border-b bg-[var(--color-bg-primary)]/95 backdrop-blur-md`}
+            className={`${search.isCollapsed ? "px-4 pt-2" : "px-4"} pb-2 border-b bg-[var(--color-bg-primary)]/95 backdrop-blur-md relative z-40`}
             style={{ borderColor: "var(--color-border)" }}
           >
             {search.paradigm === "natural" && search.parsedQuery ? (

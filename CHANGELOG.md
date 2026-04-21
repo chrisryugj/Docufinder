@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.5.5] - 2026-04-21
+
+**v2.5.3 이후에도 남아있던 정렬 버그 + 드롭다운 z-index 버그 최종 해결**
+
+### 수정
+- **키워드 검색 후 "최신순/이름순" 정렬이 그룹 뷰에서 먹지 않던 문제** — 기본 뷰가 **그룹 뷰** (기존 localStorage 없으면 `"grouped"` 로 초기화) 인데 [useSearch.ts](src/hooks/useSearch.ts) 의 `groupedResults` 가 `filteredResults` (정렬 반영됨)를 받은 뒤 **마지막에 무조건 `top_confidence` 로 재정렬**하고 있어 `filters.sortBy` 가 완전히 무시되던 것. `filters.sortBy === "relevance"` 일 때만 신뢰도 재정렬을 적용하고, 그 외엔 Map 삽입 순서(= filteredResults 의 정렬된 순서) 를 유지하도록 수정. `useMemo` 의존성에 `filters.sortBy` 추가.
+- **정렬/확장자/기간 드롭다운 옵션이 결과 카드에 가려져 클릭 불가능하던 z-index 버그** — 결과 카드의 `stagger-item` 애니메이션(`transform: translateY`) 이 카드마다 새 stacking context 를 생성. 처음엔 `SearchFilters` root 자체에만 `relative z-40 isolate` 를 줬지만, **SearchFilters 의 부모 wrapper (App.tsx 의 filter bar 컨테이너) 가 stacking 을 갖지 않아** 효과가 국소화되어 여전히 스크롤 영역(DOM 상 뒤 형제) 이 위로 렌더되던 것이 진짜 원인. [App.tsx](src/App.tsx) 의 filter bar wrapper 에 `relative z-40` 직접 부여. `SearchFilters` / `ResultsToolbar` 의 보조 stacking 도 유지 (내부 드롭다운 보호).
+
+### 내부
+- 정렬/신뢰도 관련 주석 보강 — `groupedResults` 가 왜 relevance 에서만 재정렬하는지, Map 삽입 순서가 어떤 의미인지 명시.
+
+> 📝 v2.5.4 는 위 2 버그의 **부분 수정판**으로 내부 빌드만 생성되었고 외부 배포되지 않았습니다. 본 v2.5.5 에 완전 통합.
+
+---
+
 ## [2.5.3] - 2026-04-21
 
 **v2.5.2 부팅 CPU/메모리 피크 핫픽스 + 정렬/컨텍스트 메뉴 버그 3종**

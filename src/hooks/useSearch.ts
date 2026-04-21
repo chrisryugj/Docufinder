@@ -648,11 +648,16 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       }
     }
 
-    // 최고 신뢰도순 정렬
-    return Array.from(groups.values()).sort(
-      (a, b) => b.top_confidence - a.top_confidence
-    );
-  }, [filteredResults]);
+    // 정렬: sortBy=relevance 일 때만 top_confidence 로 재정렬.
+    // 나머지(confidence/date_desc/date_asc/name)는 filteredResults 의 순서를
+    // 유지해야 하므로 Map 삽입 순서 그대로 반환한다. Map 은 insertion order
+    // 를 보장하므로 각 파일의 "첫 청크" 순서 = filteredResults 의 정렬 순서.
+    const groupList = Array.from(groups.values());
+    if (filters.sortBy === "relevance") {
+      groupList.sort((a, b) => b.top_confidence - a.top_confidence);
+    }
+    return groupList;
+  }, [filteredResults, filters.sortBy]);
 
   // 캐시 무효화 + 재검색 (폴더 삭제 등 데이터 변경 시)
   const invalidate = useCallback(() => {

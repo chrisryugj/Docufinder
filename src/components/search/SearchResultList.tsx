@@ -644,7 +644,7 @@ function ResultsToolbar({
   onExportCSV?: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 mb-2">
+    <div className="flex items-center gap-3 mb-2 relative z-30 isolate">
       <div className="flex items-center gap-2">
         {onViewModeChange && (
           <div className="flex items-center gap-0.5 border rounded-md p-0.5" style={{ backgroundColor: "var(--color-bg-tertiary)", borderColor: "var(--color-border)" }}>

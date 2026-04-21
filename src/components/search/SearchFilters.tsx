@@ -89,7 +89,7 @@ export const SearchFilters = memo(function SearchFilters({
 
   return (
     <div
-      className="flex flex-wrap items-center gap-1.5 py-1 text-xs"
+      className="flex flex-wrap items-center gap-1.5 py-1 text-xs relative z-40 isolate"
       role="toolbar"
       aria-label="검색 필터"
       data-tour="search-filters"
