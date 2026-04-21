@@ -163,7 +163,7 @@ export function ResultContextMenu({
       {/* 파일 열기 (Primary action) */}
       <button
         role="menuitem"
-        onClick={() => { closeContextMenu(); onOpenFile(filePath, pageNumber); }}
+        onClick={(e) => { e.stopPropagation(); closeContextMenu(); onOpenFile(filePath, pageNumber); }}
         className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
       >
         <ExternalLink className="w-4 h-4 clr-info" />
@@ -177,7 +177,7 @@ export function ResultContextMenu({
       {onOpenFolder && (
         <button
           role="menuitem"
-          onClick={() => { closeContextMenu(); onOpenFolder(folderPath); }}
+          onClick={(e) => { e.stopPropagation(); closeContextMenu(); onOpenFolder(folderPath); }}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
           <FolderOpen className="w-4 h-4 clr-warning" />
@@ -187,7 +187,8 @@ export function ResultContextMenu({
 
       <button
         role="menuitem"
-        onClick={() => {
+        onClick={(e) => {
+          e.stopPropagation();
           closeContextMenu();
           if (onCopyPath) { onCopyPath(filePath); } else { navigator.clipboard.writeText(filePath); }
         }}
@@ -203,7 +204,7 @@ export function ResultContextMenu({
           <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
           <button
             role="menuitem"
-            onClick={() => { closeContextMenu(); onFindSimilar(filePath); }}
+            onClick={(e) => { e.stopPropagation(); closeContextMenu(); onFindSimilar(filePath); }}
             className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
           >
             <Search className="w-4 h-4 clr-info" />

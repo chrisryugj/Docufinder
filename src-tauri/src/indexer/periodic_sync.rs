@@ -13,10 +13,23 @@
 use crate::application::container::AppContainer;
 use crate::db;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
+
+/// 전역 sync 실행 lock — periodic_sync(interval + focus) 끼리의 중첩 실행 차단.
+///
+/// startup sync 는 별도 경로이지만 `is_busy()` 의 watcher pause_count 체크로 차단된다.
+/// RAII guard (SyncGuard) 로 패닉/early-return 시에도 반드시 해제됨을 보장.
+static SYNC_RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct SyncGuard;
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        SYNC_RUNNING.store(false, Ordering::Release);
+    }
+}
 
 /// 주기 sync 변경분 요약 (프론트 알림용)
 #[derive(serde::Serialize, Clone)]
@@ -39,7 +52,19 @@ fn is_busy(app: &AppHandle) -> bool {
     let Ok(container) = state.read() else {
         return true;
     };
-    container.is_indexing_busy()
+    if container.is_indexing_busy() {
+        return true;
+    }
+    // startup sync / 외부 pause 감지 — pause 중이면 다른 sync 경로가 이미 DB 를 잡고 있다.
+    // v2.5.2 에서 sync_folder 중복 실행으로 C:\ 를 3중으로 파싱하던 race 를 차단한다.
+    if let Ok(wm) = container.get_watch_manager() {
+        if let Ok(wm) = wm.read() {
+            if wm.is_paused() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn fetch_watched_folders(app: &AppHandle) -> Vec<PathBuf> {
@@ -101,6 +126,20 @@ fn resume_watching_inner(app: &AppHandle, db_path: &Path) {
 ///
 /// `trigger` 는 "interval"(주기) 또는 "focus"(창 포커스 복귀) — 로깅/이벤트 payload 용.
 pub async fn run_sync_all(app: AppHandle, trigger: &'static str) {
+    // 전역 lock: 이미 다른 periodic_sync 가 실행 중이면 skip.
+    // compare_exchange 로 진입 직전에 false→true 전환, Drop 시 해제.
+    if SYNC_RUNNING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        tracing::debug!(
+            "[periodic_sync] skip: already running (trigger={})",
+            trigger
+        );
+        return;
+    }
+    let _guard = SyncGuard;
+
     if is_busy(&app) {
         tracing::debug!("[periodic_sync] skip: indexing busy (trigger={})", trigger);
         return;

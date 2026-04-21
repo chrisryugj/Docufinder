@@ -582,18 +582,41 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     return filtered;
   }, [results, filters, minConfidence, debouncedRefineQuery]);
 
-  // 파일명 검색 결과도 결과 내 검색 필터링
+  // 파일명 검색 결과도 결과 내 검색 필터링 + 정렬 (내용 섹션과 동일 정책)
   const filteredFilenameResults = useMemo(() => {
-    if (!debouncedRefineQuery.trim()) {
-      return filenameResults;
+    const needsRefine = debouncedRefineQuery.trim().length > 0;
+    const needsSort = filters.sortBy !== "relevance";
+    if (!needsRefine && !needsSort) return filenameResults;
+
+    let list = filenameResults;
+    if (needsRefine) {
+      const keywords = debouncedRefineQuery.trim().toLowerCase().split(/\s+/);
+      list = list.filter((r) => {
+        const fileName = r.file_name.toLowerCase();
+        return keywords.every((kw) => fileName.includes(kw));
+      });
     }
-    const keywords = debouncedRefineQuery.trim().toLowerCase().split(/\s+/);
-    return filenameResults.filter((r) => {
-      const fileName = r.file_name.toLowerCase();
-      // 파일명에서 키워드 검색
-      return keywords.every((kw) => fileName.includes(kw));
-    });
-  }, [filenameResults, debouncedRefineQuery]);
+
+    if (needsSort) {
+      const sorted = list === filenameResults ? [...list] : list;
+      switch (filters.sortBy) {
+        case "confidence":
+          sorted.sort((a, b) => b.confidence - a.confidence);
+          break;
+        case "date_desc":
+          sorted.sort((a, b) => (b.modified_at ?? 0) - (a.modified_at ?? 0));
+          break;
+        case "date_asc":
+          sorted.sort((a, b) => (a.modified_at ?? 0) - (b.modified_at ?? 0));
+          break;
+        case "name":
+          sorted.sort((a, b) => a.file_name.localeCompare(b.file_name, "ko"));
+          break;
+      }
+      return sorted;
+    }
+    return list;
+  }, [filenameResults, debouncedRefineQuery, filters.sortBy]);
 
   // 파일별 그룹핑 결과 (유사 청크 dedup 포함)
   const groupedResults = useMemo(() => {
