@@ -912,6 +912,8 @@ pub fn run() {
             commands::ai::ask_ai_file,
             commands::ai::summarize_ai,
             commands::telemetry::report_error,
+            commands::formula::get_formula_models_status,
+            commands::formula::download_formula_models,
             indexer::periodic_sync::trigger_sync_if_stale,
         ])
         .run(tauri::generate_context!())

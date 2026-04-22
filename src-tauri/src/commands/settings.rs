@@ -86,6 +86,11 @@ pub struct Settings {
     /// 파일 경로는 익명화, 문서 내용/검색어는 전송하지 않음.
     #[serde(default = "default_error_reporting_enabled")]
     pub error_reporting_enabled: bool,
+
+    /// PDF 수식 OCR 활성화 (기본 false). kordoc CLI 에 `--formula-ocr` 전달.
+    /// 첫 사용 시 Pix2Text MFD + MFR ONNX 모델(~155MB)이 HuggingFace 에서 자동 다운로드됨.
+    #[serde(default)]
+    pub formula_ocr_enabled: bool,
 }
 
 fn default_group_versions() -> bool {
@@ -198,6 +203,7 @@ impl Default for Settings {
             group_versions: true,
             auto_sync_interval_minutes: default_auto_sync_interval_minutes(),
             error_reporting_enabled: default_error_reporting_enabled(),
+            formula_ocr_enabled: false,
         }
     }
 }
@@ -539,6 +545,9 @@ pub async fn update_settings(
         let container = state.read()?;
         container.update_settings_cache(settings.clone());
     }
+
+    // 전역 formula OCR 토글 — kordoc 사이드카 호출 시 --formula-ocr 플래그 전파용
+    crate::parsers::kordoc::set_formula_ocr_enabled(settings.formula_ocr_enabled);
 
     tracing::info!("Settings saved to {:?}", settings_path);
 

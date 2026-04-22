@@ -63,8 +63,19 @@ Write-Host "  -> kordoc dist copied"
 '@ | Set-Content "$kordocOut\package.json" -Encoding UTF8
 
 # 4. Install runtime node_modules (minimal)
+#
+# 수식 OCR optional deps:
+#   @hyzyla/pdfium        — PDF 페이지 → 비트맵 렌더
+#   onnxruntime-node       — MFD + MFR ONNX 추론
+#   sharp                  — 수식 영역 crop + raw RGBA 변환
+#   @huggingface/transformers — XLMRoberta tokenizer (tokenizer.json 로드)
+# 이들이 번들에 포함되지 않으면 `--formula-ocr` 플래그가 tryImport 단계에서 실패.
+# 모델(~155MB)은 런타임 HuggingFace 다운로드이므로 여기서는 SDK 바이너리만 포함.
 Push-Location $kordocOut
-$deps = @("@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4")
+$deps = @(
+    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4",
+    "@hyzyla/pdfium@^2", "onnxruntime-node@^1.24", "sharp@^0.34", "@huggingface/transformers@^4"
+)
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"
 # npm이 stderr에 warn을 써도 Stop 모드에서 죽지 않도록 이 블록만 Continue로 전환
 $prevErrorAction = $ErrorActionPreference

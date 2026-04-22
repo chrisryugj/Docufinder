@@ -94,6 +94,11 @@ pub enum ApiError {
     /// AI 처리 실패
     #[error("AI 처리 실패: {0}")]
     AiError(String),
+
+    // ============ 서브프로세스/커맨드 ============
+    /// 사이드카/커맨드 실행 실패
+    #[error("커맨드 실행 실패: {0}")]
+    CommandFailed(String),
 }
 
 /// API 결과 타입 별칭

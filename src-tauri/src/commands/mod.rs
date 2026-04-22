@@ -2,6 +2,7 @@ pub mod ai;
 pub mod duplicate;
 pub mod export;
 pub mod file;
+pub mod formula;
 pub mod index;
 pub mod lineage;
 pub mod maintenance;

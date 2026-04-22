@@ -2,6 +2,9 @@ import { memo, useCallback, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import type { AiAnalysis } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { ResultContextMenu, useContextMenu } from "./ResultContextMenu";
@@ -211,8 +214,13 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               />
             </span>
           ) : (
-            // 완료: 마크다운 렌더링
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText}</ReactMarkdown>
+            // 완료: 마크다운 렌더링 ($...$ 수식은 KaTeX 로)
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+            >
+              {cleanText}
+            </ReactMarkdown>
           )}
         </div>
       </div>

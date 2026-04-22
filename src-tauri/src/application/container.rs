@@ -142,6 +142,8 @@ impl AppContainer {
     pub fn new(app_data_dir: &Path) -> Self {
         // 디스크에서 설정 로드 (1회만, 이후 캐시 사용)
         let cached_settings = settings::get_settings_sync(app_data_dir);
+        // 전역 수식 OCR 토글 초기화 — kordoc 사이드카 호출 시 --formula-ocr 전파용
+        crate::parsers::kordoc::set_formula_ocr_enabled(cached_settings.formula_ocr_enabled);
 
         // data_root가 설정되어 있으면 해당 경로에 DB/벡터 저장
         // 보안: 사용자 입력 경로 검증 (심볼릭 링크, 드라이브 루트, 시스템 폴더 거부)
