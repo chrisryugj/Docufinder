@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
+import { setErrorReportingEnabled } from "../utils/errorLogger";
 import type { Settings, VectorIndexingMode, ViewDensity } from "../types/settings";
 import type { SearchMode } from "../types/search";
 
@@ -63,6 +64,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
         setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
         setResultsPerPage(settings.results_per_page ?? 50);
+        setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
 
         applyHighlightColors(settings);
       } catch {
@@ -81,6 +83,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
       setSemanticEnabled(settings.semantic_search_enabled ?? false);
       setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
       setResultsPerPage(settings.results_per_page ?? 50);
+      setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
       applyHighlightColors(settings);
     },
     [setSearchMode, setMinConfidence, applyHighlightColors]

@@ -1,5 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
-import { Home, Plus, HelpCircle, Settings, BarChart3, Files, MoreHorizontal } from "lucide-react";
+import { Home, Plus, HelpCircle, Settings, BarChart3, Files, MoreHorizontal, Download } from "lucide-react";
+import type { UpdatePhase } from "../../hooks/useUpdater";
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -11,9 +12,16 @@ interface HeaderProps {
   isIndexing: boolean;
   isSidebarOpen: boolean;
   hasQuery?: boolean;
+  updatePhase?: UpdatePhase;
+  onOpenUpdate?: () => void;
 }
 
-export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onGoHome, isIndexing, isSidebarOpen, hasQuery }: HeaderProps) {
+export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onGoHome, isIndexing, isSidebarOpen, hasQuery, updatePhase, onOpenUpdate }: HeaderProps) {
+  const updateVisible =
+    updatePhase === "available" ||
+    updatePhase === "downloading" ||
+    updatePhase === "installing" ||
+    updatePhase === "ready-to-restart";
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -69,8 +77,27 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         )}
       </button>
 
-      {/* Right: Action buttons — 폴더추가 + 오버플로우 + 설정 */}
+      {/* Right: Action buttons — 업데이트 + 폴더추가 + 오버플로우 + 설정 */}
       <div className="flex items-center gap-0.5">
+        {updateVisible && onOpenUpdate && (
+          <button
+            onClick={onOpenUpdate}
+            className="relative p-1.5 rounded-md transition-colors btn-icon-hover"
+            aria-label="업데이트"
+            title={
+              updatePhase === "available" ? "업데이트 사용 가능 — 클릭하여 설치" :
+              updatePhase === "downloading" ? "업데이트 다운로드 중" :
+              updatePhase === "installing" ? "업데이트 설치 중" :
+              "재시작 필요"
+            }
+          >
+            <Download className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
+            <span
+              className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: "var(--color-accent)" }}
+            />
+          </button>
+        )}
         <button
           onClick={onAddFolder}
           disabled={isIndexing}

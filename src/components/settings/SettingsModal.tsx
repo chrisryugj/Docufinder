@@ -4,7 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import type { Settings } from "../../types/settings";
-import { GeneralTab, SearchTab, AiTab, SystemTab } from "./tabs";
+import { GeneralTab, SearchTab, AiTab, SystemTab, DiagnosticsTab } from "./tabs";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -15,13 +15,14 @@ interface SettingsModalProps {
   onAutoIndexAllDrives?: () => Promise<void>;
 }
 
-type SettingsTab = "general" | "search" | "ai" | "system";
+type SettingsTab = "general" | "search" | "ai" | "system" | "diagnostics";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "일반" },
   { id: "search", label: "검색" },
   { id: "ai", label: "AI" },
   { id: "system", label: "시스템" },
+  { id: "diagnostics", label: "진단" },
 ];
 
 export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData, onAutoIndexAllDrives }: SettingsModalProps) {
@@ -187,6 +188,15 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
                 onClose={onClose}
                 onClearData={onClearData}
                 onAutoIndexAllDrives={onAutoIndexAllDrives}
+              />
+            </div>
+          )}
+          {activeTab === "diagnostics" && (
+            <div role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics">
+              <DiagnosticsTab
+                settings={settings}
+                onChange={handleChange}
+                setError={setError}
               />
             </div>
           )}

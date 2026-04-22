@@ -8,6 +8,7 @@ interface UpdateModalProps {
   state: UpdateState;
   onInstall: () => void;
   onRestart: () => void;
+  onCancel?: () => void;
 }
 
 function formatBytes(n: number): string {
@@ -22,10 +23,9 @@ function formatBytes(n: number): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart }: UpdateModalProps) {
+export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart, onCancel }: UpdateModalProps) {
   const { phase, version, notes, downloadedBytes, totalBytes, error } = state;
   const progress = totalBytes > 0 ? Math.min(100, (downloadedBytes / totalBytes) * 100) : 0;
-  const isBusy = phase === "downloading" || phase === "installing" || phase === "checking";
 
   const title =
     phase === "available"
@@ -45,7 +45,7 @@ export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart }: Up
   return (
     <Modal
       isOpen={isOpen}
-      onClose={isBusy ? () => {} : onClose}
+      onClose={phase === "installing" ? () => {} : onClose}
       title={title}
       size="md"
       footer={
@@ -65,8 +65,19 @@ export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart }: Up
           {(phase === "up-to-date" || phase === "error") && (
             <Button size="sm" onClick={onClose}>닫기</Button>
           )}
-          {isBusy && (
-            <Button size="sm" variant="ghost" disabled>진행 중...</Button>
+          {(phase === "downloading" || phase === "installing") && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                onCancel?.();
+                onClose();
+              }}
+              disabled={phase === "installing"}
+              title={phase === "installing" ? "설치 중에는 취소할 수 없습니다" : "다운로드 취소"}
+            >
+              취소
+            </Button>
           )}
         </div>
       }
