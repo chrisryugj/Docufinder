@@ -130,7 +130,7 @@ export function Dropdown<T extends string | number>({
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+        className="dropdown-trigger flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md transition-all disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
         style={{
           backgroundColor: "var(--color-bg-tertiary)",
           border: `1px solid ${isOpen ? "var(--color-accent)" : "var(--color-border)"}`,

@@ -121,7 +121,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
               aria-selected={activeTab === tab.id}
               aria-controls={`settings-panel-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
-              className="px-2.5 py-1 text-sm transition-colors rounded-md"
+              className={`settings-tab-btn px-2.5 py-1 text-sm rounded-md ${activeTab === tab.id ? "active" : ""}`}
               style={{
                 color: activeTab === tab.id ? "var(--color-accent)" : "var(--color-text-muted)",
                 fontWeight: activeTab === tab.id ? 600 : 400,

@@ -12,6 +12,7 @@ import { useFileActions } from "./hooks/useFileActions";
 import { useAppSettings } from "./hooks/useAppSettings";
 import { useAppEvents } from "./hooks/useAppEvents";
 import { useWindowFocus } from "./hooks/useWindowFocus";
+import { useUpdater } from "./hooks/useUpdater";
 import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 
 // Components
@@ -30,6 +31,8 @@ import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { OnboardingTour, resetOnboardingTour } from "./components/onboarding/OnboardingTour";
+import { UpdateBadge } from "./components/updater/UpdateBadge";
+import { UpdateModal } from "./components/updater/UpdateModal";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
@@ -98,6 +101,19 @@ function AppContent() {
 
   // ── AI Disclaimer ──
   const [showAiDisclaimer, setShowAiDisclaimer] = useState(false);
+
+  // ── 자동 업데이트 ──
+  const updater = useUpdater(true);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  // 업데이트 사용 가능 / 진행 중 / 재시작 대기 상태가 되면 모달 자동 열기
+  useEffect(() => {
+    if (
+      updater.state.phase === "available" ||
+      updater.state.phase === "ready-to-restart"
+    ) {
+      setUpdateModalOpen(true);
+    }
+  }, [updater.state.phase]);
 
   const executeAiQuery = useCallback(() => {
     search.askAi(search.query, search.filters.searchScope);
@@ -752,6 +768,22 @@ function AppContent() {
       <FloatingUI
         showScrollTop={search.showScrollTop}
         onScrollToTop={search.scrollToTop}
+      />
+
+      {/* 업데이트 알림 뱃지 — 우측 상단 floating */}
+      <div className="fixed top-3 right-4 z-[9999] pointer-events-auto">
+        <UpdateBadge state={updater.state} onClick={() => setUpdateModalOpen(true)} />
+      </div>
+
+      <UpdateModal
+        isOpen={updateModalOpen}
+        onClose={() => {
+          setUpdateModalOpen(false);
+          updater.dismiss();
+        }}
+        state={updater.state}
+        onInstall={updater.downloadAndInstall}
+        onRestart={updater.restart}
       />
 
       {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능 */}

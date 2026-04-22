@@ -86,10 +86,31 @@
 }
 .hover-btn-ghost:hover:not(:disabled) {
   background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-hover);
   color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 .hover-btn-ghost:active:not(:disabled) {
   transform: scale(0.98);
+  box-shadow: none;
+}
+
+/* Dropdown Trigger Hover */
+.dropdown-trigger:hover:not(:disabled) {
+  border-color: var(--color-border-hover) !important;
+  background-color: var(--color-bg-hover, var(--color-bg-tertiary));
+}
+.dropdown-trigger:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+/* Settings Tab Button Hover (비활성 탭만) */
+.settings-tab-btn:not(.active):hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+.settings-tab-btn {
+  transition: all var(--transition-fast);
 }
 
 /* Danger Button Hover */

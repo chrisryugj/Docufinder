@@ -1,6 +1,6 @@
 {
   "name": "anything",
-  "version": "2.5.7",
+  "version": "2.5.8",
   "description": "로컬 문서 검색 앱 - Everything 대항마",
   "type": "module",
   "scripts": {
@@ -45,6 +45,8 @@
     "@fontsource-variable/outfit": "^5.2.8",
     "@tauri-apps/api": "^2.9.1",
     "@tauri-apps/plugin-dialog": "^2.6.0",
+    "@tauri-apps/plugin-updater": "^2.9.0",
+    "@tauri-apps/plugin-process": "^2.3.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.469.0",
     "react": "^19.2.3",

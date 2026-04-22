@@ -452,6 +452,10 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        // 자동 업데이트 (GitHub Releases + ed25519 서명 검증)
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // relaunch() 지원 — updater가 설치 완료 후 앱 재시작
+        .plugin(tauri_plugin_process::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
