@@ -835,8 +835,7 @@ pub(crate) fn index_file_fts_only_no_tx(
         Ok(doc) => doc,
         Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
             // 클라우드 placeholder: 본문 hydrate 회피, 메타데이터만 저장.
-            save_file_metadata_only(conn, path)
-                .map_err(|e| IndexError::DbError(e.to_string()))?;
+            save_file_metadata_only(conn, path).map_err(|e| IndexError::DbError(e.to_string()))?;
             return Ok(IndexResult {
                 file_path: path.to_string_lossy().to_string(),
                 chunks_count: 0,

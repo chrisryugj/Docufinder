@@ -280,14 +280,19 @@ pub async fn load_markdown_preview(
         let path = std::path::Path::new(&fp_for_kordoc);
 
         let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
-        if kordoc_exts.contains(&ext_for_kordoc.as_str()) && crate::parsers::kordoc::is_available() {
+        if kordoc_exts.contains(&ext_for_kordoc.as_str()) && crate::parsers::kordoc::is_available()
+        {
             match crate::parsers::kordoc::get_markdown(path) {
                 Ok(md) => {
                     tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp_for_kordoc);
                     return Ok(md);
                 }
                 Err(e) => {
-                    tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp_for_kordoc, e);
+                    tracing::warn!(
+                        "preview: kordoc 실패, fallback 사용 — {} — {:?}",
+                        fp_for_kordoc,
+                        e
+                    );
                 }
             }
         } else {
@@ -310,7 +315,9 @@ pub async fn load_markdown_preview(
     //  (3) 정상: kordoc 사용
     let result = if is_pdf {
         let kordoc_md = result.ok().unwrap_or_default();
-        let db_md = fetch_db_markdown(&file_path, &state).await.unwrap_or_default();
+        let db_md = fetch_db_markdown(&file_path, &state)
+            .await
+            .unwrap_or_default();
         let kordoc_len = kordoc_md.chars().count();
         let db_len = db_md.chars().count();
         let kordoc_garbage = crate::parsers::pdf::looks_like_garbage_text(&kordoc_md);
@@ -319,13 +326,15 @@ pub async fn load_markdown_preview(
         if kordoc_garbage && !db_md.is_empty() {
             tracing::info!(
                 "preview: PDF CID 깨짐 감지 — DB 사용 (kordoc {}자, DB {}자)",
-                kordoc_len, db_len
+                kordoc_len,
+                db_len
             );
             Ok(db_md)
         } else if much_longer_in_db {
             tracing::info!(
                 "preview: PDF OCR 감지 — DB 사용 (kordoc {}자 vs DB {}자)",
-                kordoc_len, db_len
+                kordoc_len,
+                db_len
             );
             Ok(db_md)
         } else if !kordoc_md.is_empty() && !kordoc_garbage {
@@ -346,7 +355,9 @@ pub async fn load_markdown_preview(
             markdown,
         }),
         Err(_) => {
-            let markdown = fetch_db_markdown(&file_path, &state).await.unwrap_or_default();
+            let markdown = fetch_db_markdown(&file_path, &state)
+                .await
+                .unwrap_or_default();
             Ok(MarkdownPreviewResponse {
                 file_path,
                 file_name,

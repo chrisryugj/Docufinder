@@ -23,8 +23,7 @@ pub fn simplify(path: &Path) -> PathBuf {
 pub fn is_network(path: &Path) -> bool {
     let s = path.as_os_str();
     let bytes = s.to_string_lossy();
-    bytes.starts_with(r"\\") && !bytes.starts_with(r"\\?\")
-        || bytes.starts_with(r"\\?\UNC\")
+    bytes.starts_with(r"\\") && !bytes.starts_with(r"\\?\") || bytes.starts_with(r"\\?\UNC\")
 }
 
 #[cfg(test)]

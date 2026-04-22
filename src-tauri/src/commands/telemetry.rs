@@ -173,9 +173,13 @@ pub fn spawn_flush_pending_crash_logs() {
         return;
     }
     std::thread::spawn(|| {
-        let Some(data_dir) = dirs::data_dir() else { return };
+        let Some(data_dir) = dirs::data_dir() else {
+            return;
+        };
         let crash_dir = data_dir.join("com.anything.app");
-        let Ok(entries) = std::fs::read_dir(&crash_dir) else { return };
+        let Ok(entries) = std::fs::read_dir(&crash_dir) else {
+            return;
+        };
 
         for entry in entries.flatten() {
             let path = entry.path();
@@ -186,7 +190,9 @@ pub fn spawn_flush_pending_crash_logs() {
             if !name.starts_with("crash-") || name.ends_with(".sent") {
                 continue;
             }
-            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
             if content.trim().is_empty() {
                 continue;
             }

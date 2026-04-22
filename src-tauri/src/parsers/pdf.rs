@@ -346,8 +346,7 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
         .enumerate()
         .map(|(page_idx, text)| {
             // 텍스트 충분한 페이지는 스킵 (단, CID 디코딩 실패 페이지는 OCR 강제)
-            if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD
-                && !looks_like_garbage_text(text)
+            if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD && !looks_like_garbage_text(text)
             {
                 return None;
             }

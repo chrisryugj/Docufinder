@@ -299,7 +299,10 @@ fn parse_and_index_file(conn: &Connection, path: &Path, file_id: i64) -> Result<
         Ok(doc) => doc,
         Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
             // 클라우드 placeholder: 본문 hydrate 회피. fts_indexed_at 마킹해 다음 사이클에서 재시도 방지.
-            tracing::debug!("BackgroundParser: skip cloud placeholder body parse: {:?}", path);
+            tracing::debug!(
+                "BackgroundParser: skip cloud placeholder body parse: {:?}",
+                path
+            );
             mark_file_fts_indexed(conn, file_id).map_err(|e| e.to_string())?;
             return Ok(0);
         }
