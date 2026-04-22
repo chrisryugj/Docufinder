@@ -356,7 +356,10 @@ pub fn run() {
             "lopdf",
             "quick-xml",
             "calamine",
-            "zip-", // zip-2.x, zip-rs 등
+            "zip-",    // zip-2.x, zip-rs 등
+            "ort",     // ONNX Runtime 내부 panic (세션 초기화 / DLL 로드)
+            "usearch", // 벡터 인덱스 C++ 바인딩 panic (reserve / add 중)
+            "lindera", // 형태소 사전 로드 panic (embedded ko-dic 압축 해제)
         ];
         if BENIGN_PANIC_SOURCES
             .iter()

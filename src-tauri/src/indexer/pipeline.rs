@@ -40,8 +40,9 @@ pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> =
     });
 
 /// 스트리밍 파이프라인 채널 버퍼 크기
-/// 32: 8GB RAM PC에서 대용량 문서(XLSX/PDF) 동시 버퍼링 시 메모리 피크 억제
-pub(crate) const CHANNEL_BUFFER_SIZE: usize = 32;
+/// 16: 파서 스레드가 HDD 2 / SSD 4 로 제한되므로 16도 충분한 여유. 32 대비 메모리 피크 절반
+/// 으로, 저사양 PC (8GB RAM) + Downloads 폴더 같은 부적합 타깃에서 OOM 방어.
+pub(crate) const CHANNEL_BUFFER_SIZE: usize = 16;
 
 /// FTS 배치 트랜잭션 크기 - fsync 오버헤드 감소 (3~5배 성능 향상)
 pub(crate) const TRANSACTION_BATCH_SIZE: usize = 200;

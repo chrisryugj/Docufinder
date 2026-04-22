@@ -86,6 +86,15 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         match kordoc::parse(path) {
             Ok(doc) => return Ok(doc),
             Err(e) => {
+                // 이미지 기반 PDF + OCR 비활성: Rust pdf-extract 재시도해도 텍스트 없음.
+                // Downloads 등 스캔 PDF 다수 폴더에서 kordoc → pdf-extract 2중 호출로 인한
+                // 리소스 낭비를 방지. 메타데이터는 상위 파이프라인이 Failure 경로에서 저장.
+                if extension == "pdf" && ocr.is_none() && e.to_string().contains("이미지 기반 PDF")
+                {
+                    return Err(ParseError::ParseError(
+                        "이미지 기반 PDF: OCR 비활성 상태에서 본문 추출 스킵".to_string(),
+                    ));
+                }
                 tracing::warn!("kordoc fallback → Rust 파서: {} ({})", path.display(), e);
             }
         }

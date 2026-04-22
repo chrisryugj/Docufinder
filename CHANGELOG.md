@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.5.6] - 2026-04-22
+
+**인덱싱 중 강제 종료 예방 + 관련도→최신순 전환 시 스크롤 튀는 버그 수정**
+
+### 수정
+- **관련도순 → 최신순/이름순/오래된순 전환 시 스크롤이 중간으로 튀는 버그** — 정렬을 바꾸면 [useResultSelection](src/hooks/useResultSelection.ts) 이 "선택된 파일의 새 index" 로 `selectedIndex` 를 자동 재매핑하는데, [SearchResultList](src/components/search/SearchResultList.tsx) 의 `scrollIntoView` 가 이걸 "사용자가 새 항목을 선택한 것" 으로 오해해서 해당 위치로 스크롤. 결과적으로 "정렬이 안 먹히는 것 같다" 는 체감 이슈도 같이 유발. 선택된 **파일 경로** 를 `lastScrolledPathRef` 에 기록해 두고, 경로가 그대로면 (= 같은 파일이 index 만 바뀐 재매핑이면) `scrollIntoView` 를 건너뛰도록 수정. 키보드 내비게이션 (다른 파일로 이동) 은 기존 그대로 동작.
+- **이미지 기반(스캔) PDF 다수 폴더 인덱싱 중 앱 강제 종료 예방** — Downloads 같이 스캔 PDF 가 수백~수천 개 쌓인 폴더에서 kordoc(Node.js) → Rust pdf-extract 순으로 2 중 재시도가 돌아가면서 Node.js 자식 프로세스 spawn + pdf-extract 메모리 사용이 누적되어 OOM 으로 OS 가 앱을 강제 종료. [parsers/kordoc.rs](src-tauri/src/parsers/kordoc.rs) stderr 에서 "이미지 기반 PDF" 마커를 에러 메시지에 태그하고, [parsers/mod.rs](src-tauri/src/parsers/mod.rs) 에서 OCR 비활성 + 이미지 PDF 조합이면 Rust 재시도를 건너뛰고 메타데이터만 저장하도록 조기 분기. OCR 활성 상태에서는 기존대로 Rust 파서 + OCR fallback 이 돌아가 기능 손실 없음.
+
+### 개선
+- `CHANNEL_BUFFER_SIZE` 32 → 16 ([pipeline.rs](src-tauri/src/indexer/pipeline.rs)). 실제 파싱 스레드는 HDD 2 / SSD 4 개로 제한되어 있어 16 이면 충분한 여유. 저사양 PC (8GB RAM) + 부적합 인덱싱 타깃 조합에서 메모리 피크 절반 수준으로 감소.
+- `panic hook` 의 `BENIGN_PANIC_SOURCES` 에 `ort`, `usearch`, `lindera` 추가 ([lib.rs](src-tauri/src/lib.rs)). ONNX Runtime / 벡터 인덱스 C++ 바인딩 / 형태소 사전 로드 중 발생하는 알려진 panic 이 사용자 `crash.log` 를 오염시키던 문제 제거.
+
+---
+
 ## [2.5.5] - 2026-04-21
 
 **v2.5.3 이후에도 남아있던 정렬 버그 + 드롭다운 z-index 버그 최종 해결**

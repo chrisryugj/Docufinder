@@ -330,6 +330,13 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
     if !status.success() {
         let stderr = String::from_utf8_lossy(&stderr_buf);
         warn!("kordoc failed (exit {}): {}", status, stderr);
+        // "이미지 기반 PDF"는 kordoc이 본문 없는 스캔 PDF를 만났을 때 내는 마커.
+        // parse_file 이 OCR 여부 보고 Rust 재시도를 건너뛸 수 있게 에러 문자열에 태그 유지.
+        if stderr.contains("이미지 기반 PDF") {
+            return Err(ParseError::ParseError(format!(
+                "kordoc: 이미지 기반 PDF (exit {status})"
+            )));
+        }
         return Err(ParseError::ParseError(format!(
             "kordoc 실행 실패 (exit {status})"
         )));

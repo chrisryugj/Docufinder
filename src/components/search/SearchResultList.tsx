@@ -122,6 +122,9 @@ export const SearchResultList = memo(function SearchResultList({
   const listRef = useRef<HTMLDivElement>(null);
   const pendingScrollAnchorRef = useRef<PendingScrollAnchor | null>(null);
   const pointerSelectRef = useRef(false);
+  // 마지막으로 scroll 대상이었던 파일 경로. 정렬/필터 변경으로 같은 파일이
+  // 다른 index 로 재매핑되면 scrollIntoView 를 건너뛰기 위해 사용.
+  const lastScrolledPathRef = useRef<string | null>(null);
 
   const captureScrollAnchor = useCallback((itemId: string) => {
     const listElement = listRef.current;
@@ -171,19 +174,31 @@ export const SearchResultList = memo(function SearchResultList({
   }, [selectedIndex, visibleCount]);
 
   // 키보드로 선택 변경 시만 스크롤 따라가기 (마우스 클릭은 pointerSelectRef로 스킵)
-  // 재발 방지: 클릭 시 `scrollIntoView({block:"nearest"})`가 viewport 하단에 걸친 카드를
-  // 아래쪽 edge로 끌어당겨 "저 밑으로 스크롤" 버그를 만든다. 키보드 내비게이션만 대상으로 제한.
+  // 재발 방지 1: 클릭 시 `scrollIntoView({block:"nearest"})`가 viewport 하단에 걸친 카드를
+  //   아래쪽 edge로 끌어당겨 "저 밑으로 스크롤" 버그를 만든다. 키보드 내비게이션만 대상으로 제한.
+  // 재발 방지 2: 정렬/필터 변경으로 같은 파일이 다른 index 로 자동 재매핑
+  //   (useResultSelection) 되면 selectedIndex 가 바뀐 것처럼 보여 scrollIntoView 가 호출되고
+  //   결과적으로 사용자는 "관련도 → 최신순 누르니 스크롤이 중간으로 튄다"로 체감. 선택된
+  //   파일 경로가 같으면 index 가 바뀌어도 scroll 은 건드리지 않는다.
   useEffect(() => {
     if (pointerSelectRef.current) {
       pointerSelectRef.current = false;
       return;
     }
-    if (selectedIndex == null || selectedIndex < 0) return;
+    if (selectedIndex == null || selectedIndex < 0) {
+      lastScrolledPathRef.current = null;
+      return;
+    }
+    const currentPath = results[selectedIndex]?.file_path ?? null;
+    if (currentPath !== null && currentPath === lastScrolledPathRef.current) {
+      return;
+    }
+    lastScrolledPathRef.current = currentPath;
     const flatId = `search-result-${selectedIndex}`;
     const groupedId = `grouped-search-result-${selectedIndex}`;
     const el = document.getElementById(flatId) || document.getElementById(groupedId);
     el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [selectedIndex]);
+  }, [selectedIndex, results]);
 
   // 확장 토글 핸들러
   const handleToggleExpand = useCallback((index: number) => {
