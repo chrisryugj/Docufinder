@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.5.7] - 2026-04-22
+
+**kordoc 2.5.2 반영 — macOS 한컴 HWPX 호환 + HWP5 배포용 COM fallback**
+
+### 개선
+- **번들 kordoc 파서 2.5.0 → 2.5.2 업그레이드** — Docufinder 가 내부적으로 쓰는 Node.js 사이드카 파서([kordoc](https://github.com/chrisryugj/kordoc)) 를 최신으로 교체. HWP/HWPX 변환 품질이 조용히 개선됨. 앱 UI 변경 없음.
+  - **macOS 한컴오피스에서 "파일 깨짐" 거부되던 HWPX 생성 이슈 해결** — `markdownToHwpx` 가 만드는 HWPX 의 테이블 XML 을 최소 스켈레톤에서 **완전 스펙 형태**로 재작성. `<hp:tbl>` 필수 속성, `<hp:sz>`/`<hp:pos>`/`<hp:outMargin>`/`<hp:inMargin>` 블록, `<hp:subList>` 래퍼 + `<hp:cellAddr>`/`<hp:cellSpan>`/`<hp:cellSz>`/`<hp:cellMargin>` 추가. `Preview/PrvText.txt` 동봉. (kordoc #4)
+  - **테이블 테두리 / 볼드 / 순서 있는 목록 시각 품질 개선** — 테두리 단위 공백 포함(`"0.12 mm"`), 볼드 전용 fontface(HY견고딕/Arial Black) id=2 추가, indent 레벨별 러닝 카운터로 `1. 2. 3.` 자동 번호 정상 동작. (kordoc #4 후속)
+  - **HWP 5.x "배포용 문서 상위 버전" 경고 플레이스홀더 COM 재시도** — `.hwp` 바이너리에서 `"이 문서는 상위 버전의 배포용 문서입니다..."` 로만 떨어지는 케이스에서, Windows + 한컴오피스 환경이면 자동으로 `HWPFrame.HwpObject` COM API 로 재시도. 기존 HWPX DRM fallback 인프라 재활용. (kordoc #25)
+- **PDF 세로선 없는 표 오인식 수정** — 세로선 없는 표를 1 열 다행 그리드로 잘못 잡아 **본문이 한 줄에 평평화(flatten) 되어 표시되던 현상** 수정. 검색 결과 스니펫 품질 체감 개선. (kordoc fix)
+
+### 의존성
+- `kordoc` 2.5.0 → 2.5.2 (번들 재빌드)
+
+---
+
 ## [2.5.6] - 2026-04-22
 
 **인덱싱 중 강제 종료 예방 + 관련도→최신순 전환 시 스크롤 튀는 버그 수정**
