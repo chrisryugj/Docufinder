@@ -73,12 +73,21 @@ jobs:
         run: |
           & scripts/download-vcredist.ps1
 
+      # 자동 업데이트:
+      #   - TAURI_SIGNING_PRIVATE_KEY: ed25519 개인키 (`pnpm tauri signer generate -w`로 생성한 ~/.tauri/docufinder.key 내용)
+      #   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 키 생성 시 비밀번호 (없으면 생략 가능)
+      # includeUpdaterJson=true 이면 tauri-action 이 latest.json 을 NSIS zip + .sig 와 함께
+      # Release 에 업로드 → tauri-plugin-updater 가 자동 인식.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: 'Anything v__VERSION__'
           releaseBody: 'See the assets to download and install.'
           releaseDraft: false
           prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true

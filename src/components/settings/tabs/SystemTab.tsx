@@ -6,6 +6,8 @@ import { Button } from "../../ui/Button";
 import { Dropdown } from "../../ui/Dropdown";
 import { Modal } from "../../ui/Modal";
 import { SettingsToggle } from "../SettingsToggle";
+import { useUpdater } from "../../../hooks/useUpdater";
+import { UpdateModal } from "../../updater/UpdateModal";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
 import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
@@ -30,6 +32,14 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
   const [clearStep, setClearStep] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
+
+  // 업데이트 확인 (수동) — 자동 체크는 App.tsx에서 담당하므로 auto=false
+  const updater = useUpdater(false);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const handleCheckUpdate = async () => {
+    setUpdateModalOpen(true);
+    await updater.checkForUpdate();
+  };
 
   useEffect(() => {
     if (!confirmOpen) setAgreed(false);
@@ -130,6 +140,28 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
           <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
             실시간 감시가 놓친 변경분을 주기적으로 재정합 · 창 복귀 시에도 자동 실행
           </p>
+        </div>
+      </div>
+
+      {/* 업데이트 */}
+      <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+        <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>업데이트</h3>
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>자동 업데이트 확인</label>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              앱 시작 시 + 6시간마다 자동 체크 · 새 버전 발견 시 알림
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCheckUpdate}
+            isLoading={updater.state.phase === "checking"}
+            disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
+          >
+            지금 확인
+          </Button>
         </div>
       </div>
 
@@ -307,6 +339,17 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
           </label>
         </div>
       </Modal>
+
+      <UpdateModal
+        isOpen={updateModalOpen}
+        onClose={() => {
+          setUpdateModalOpen(false);
+          updater.dismiss();
+        }}
+        state={updater.state}
+        onInstall={updater.downloadAndInstall}
+        onRestart={updater.restart}
+      />
     </div>
   );
 }

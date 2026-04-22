@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.5.7"
+version = "2.5.8"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -20,6 +20,10 @@ tauri-plugin-dialog = "^2.6"
 tauri-plugin-autostart = "^2.5"
 tauri-plugin-single-instance = "^2"
 tauri-plugin-window-state = "^2.4"
+# 자동 업데이트 (GitHub Releases + ed25519)
+tauri-plugin-updater = "^2.9"
+# relaunch() — 업데이트 설치 후 재시작
+tauri-plugin-process = "^2.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
