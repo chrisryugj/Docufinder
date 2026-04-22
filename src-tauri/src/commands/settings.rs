@@ -82,6 +82,10 @@ pub struct Settings {
     /// 주기 sync 는 watcher 이벤트 누락(전체 드라이브 감시 시 흔함)을 보완.
     #[serde(default = "default_auto_sync_interval_minutes")]
     pub auto_sync_interval_minutes: u32,
+    /// 오류 발생 시 개발자에게 자동 리포트 전송 (Telegram Bot).
+    /// 파일 경로는 익명화, 문서 내용/검색어는 전송하지 않음.
+    #[serde(default = "default_error_reporting_enabled")]
+    pub error_reporting_enabled: bool,
 }
 
 fn default_group_versions() -> bool {
@@ -114,6 +118,10 @@ fn default_ai_temperature() -> f32 {
 
 fn default_ai_max_tokens() -> u32 {
     2048
+}
+
+fn default_error_reporting_enabled() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
@@ -189,6 +197,7 @@ impl Default for Settings {
             ocr_enabled: false,
             group_versions: true,
             auto_sync_interval_minutes: default_auto_sync_interval_minutes(),
+            error_reporting_enabled: default_error_reporting_enabled(),
         }
     }
 }

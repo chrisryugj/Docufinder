@@ -383,6 +383,10 @@ pub fn run() {
         eprintln!("Message: {}", message);
         eprintln!("Please contact the development team to report this issue.");
 
+        // Telegram 자동 전송 (빌드 시 토큰 주입됐을 때만; 사용자 설정 체크는 생략 —
+        // panic 은 치명적이므로 best-effort 로 알림).
+        crate::commands::telemetry::report_panic_sync(&location, &message);
+
         // 긴급 로그 flush — 날짜 기반 로테이션 (최대 3개 파일 유지)
         if let Some(data_dir) = dirs::data_dir() {
             let crash_dir = data_dir.join("com.anything.app");
@@ -577,6 +581,10 @@ pub fn run() {
             }
 
             tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);
+
+            // 이전 세션에서 남긴 미전송 crash log 를 Telegram 으로 지연 전송
+            // (네이티브 크래시/OOM kill 등 panic hook 이 실행되지 못한 경우 대비)
+            commands::telemetry::spawn_flush_pending_crash_logs();
 
             // Check semantic search availability
             if container.is_semantic_available() {
@@ -903,6 +911,7 @@ pub fn run() {
             commands::ai::ask_ai,
             commands::ai::ask_ai_file,
             commands::ai::summarize_ai,
+            commands::telemetry::report_error,
             indexer::periodic_sync::trigger_sync_if_stale,
         ])
         .run(tauri::generate_context!())

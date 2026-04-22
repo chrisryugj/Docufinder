@@ -1,13 +1,10 @@
 import { useState, useEffect } from "react";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
-import { invokeWithTimeout, IPC_TIMEOUT } from "../../../utils/invokeWithTimeout";
 import { Button } from "../../ui/Button";
 import { Dropdown } from "../../ui/Dropdown";
 import { Modal } from "../../ui/Modal";
 import { SettingsToggle } from "../SettingsToggle";
-import { useUpdater } from "../../../hooks/useUpdater";
-import { UpdateModal } from "../../updater/UpdateModal";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
 import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
@@ -32,14 +29,6 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
   const [clearStep, setClearStep] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [agreed, setAgreed] = useState(false);
-
-  // 업데이트 확인 (수동) — 자동 체크는 App.tsx에서 담당하므로 auto=false
-  const updater = useUpdater(false);
-  const [updateModalOpen, setUpdateModalOpen] = useState(false);
-  const handleCheckUpdate = async () => {
-    setUpdateModalOpen(true);
-    await updater.checkForUpdate();
-  };
 
   useEffect(() => {
     if (!confirmOpen) setAgreed(false);
@@ -143,28 +132,6 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
         </div>
       </div>
 
-      {/* 업데이트 */}
-      <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
-        <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>업데이트</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>자동 업데이트 확인</label>
-            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              앱 시작 시 + 6시간마다 자동 체크 · 새 버전 발견 시 알림
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCheckUpdate}
-            isLoading={updater.state.phase === "checking"}
-            disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
-          >
-            지금 확인
-          </Button>
-        </div>
-      </div>
-
       {/* 데이터 관리 */}
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>데이터 관리</h3>
@@ -210,28 +177,6 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             </Button>
           )}
         </div>
-      </div>
-
-      {/* 액션 버튼 행 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>로그 폴더</label>
-          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>오류 로그 (7일 보존)</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={async () => {
-            try {
-              await invokeWithTimeout("open_log_dir", undefined, IPC_TIMEOUT.FILE_ACTION);
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              setError?.(`로그 폴더 열기 실패: ${message}`);
-            }
-          }}
-        >
-          폴더 열기
-        </Button>
       </div>
 
       {onAutoIndexAllDrives && (
@@ -340,16 +285,6 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
         </div>
       </Modal>
 
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={() => {
-          setUpdateModalOpen(false);
-          updater.dismiss();
-        }}
-        state={updater.state}
-        onInstall={updater.downloadAndInstall}
-        onRestart={updater.restart}
-      />
     </div>
   );
 }

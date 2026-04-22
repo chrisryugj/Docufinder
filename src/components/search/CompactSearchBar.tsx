@@ -1,5 +1,6 @@
 import { forwardRef, memo, useCallback, useMemo } from "react";
-import { Search, HelpCircle, Settings } from "lucide-react";
+import { Search, HelpCircle, Settings, Download } from "lucide-react";
+import type { UpdatePhase } from "../../hooks/useUpdater";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import { SearchModeDropdown } from "./SearchModeDropdown";
 import type { SearchMode, SearchParadigm } from "../../types/search";
@@ -45,6 +46,9 @@ interface CompactSearchBarProps {
   onParadigmChange?: (p: SearchParadigm) => void;
   /** 자연어 검색 실행 */
   onSubmitNatural?: () => void;
+  /** 업데이트 배지 */
+  updatePhase?: UpdatePhase;
+  onOpenUpdate?: () => void;
 }
 
 export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchBarProps>(
@@ -75,9 +79,16 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       paradigm = "instant",
       onParadigmChange,
       onSubmitNatural,
+      updatePhase,
+      onOpenUpdate,
     },
     ref
   ) => {
+    const updateVisible =
+      updatePhase === "available" ||
+      updatePhase === "downloading" ||
+      updatePhase === "installing" ||
+      updatePhase === "ready-to-restart";
     const isNatural = paradigm === "natural";
     const { innerRef, imeHandlers } = useSearchInput({
       query,
@@ -267,6 +278,27 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
 
         {/* 구분선 */}
         <div className="w-px h-5 flex-shrink-0" style={{ backgroundColor: "var(--color-border)" }} />
+
+        {/* 업데이트 배지 */}
+        {updateVisible && onOpenUpdate && (
+          <button
+            onClick={onOpenUpdate}
+            className="relative p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] transition-colors flex-shrink-0"
+            aria-label="업데이트"
+            title={
+              updatePhase === "available" ? "업데이트 사용 가능" :
+              updatePhase === "downloading" ? "다운로드 중" :
+              updatePhase === "installing" ? "설치 중" :
+              "재시작 필요"
+            }
+          >
+            <Download className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
+            <span
+              className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full animate-pulse"
+              style={{ backgroundColor: "var(--color-accent)" }}
+            />
+          </button>
+        )}
 
         {/* 도움말 */}
         <button

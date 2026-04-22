@@ -32,6 +32,10 @@ export function useUpdater(auto: boolean = true) {
     totalBytes: 0,
   });
   const updateRef = useRef<Update | null>(null);
+  // 취소 플래그: 사용자가 다운로드 중간에 "취소" 클릭 시 set.
+  // plugin-updater 의 downloadAndInstall 은 AbortController 지원 X 이므로,
+  // 진행 이벤트 콜백에서 이 플래그를 읽어 UI state 를 idle 로 되돌리고 이후 이벤트 무시.
+  const cancelledRef = useRef(false);
 
   const checkForUpdate = useCallback(async (): Promise<Update | null> => {
     setState((s) => ({ ...s, phase: "checking", error: undefined }));
@@ -65,6 +69,7 @@ export function useUpdater(auto: boolean = true) {
     const u = updateRef.current;
     if (!u) return;
 
+    cancelledRef.current = false;
     setState((s) => ({ ...s, phase: "downloading", downloadedBytes: 0, totalBytes: 0 }));
 
     try {
@@ -72,6 +77,8 @@ export function useUpdater(auto: boolean = true) {
       let downloaded = 0;
 
       await u.downloadAndInstall((event) => {
+        // 취소 후 뒤늦게 도착하는 이벤트는 무시 (UI state 덮어쓰기 방지)
+        if (cancelledRef.current) return;
         switch (event.event) {
           case "Started":
             total = event.data.contentLength ?? 0;
@@ -87,11 +94,19 @@ export function useUpdater(auto: boolean = true) {
         }
       });
 
-      setState((s) => ({ ...s, phase: "ready-to-restart" }));
+      if (!cancelledRef.current) {
+        setState((s) => ({ ...s, phase: "ready-to-restart" }));
+      }
     } catch (err) {
+      if (cancelledRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       setState((s) => ({ ...s, phase: "error", error: msg }));
     }
+  }, []);
+
+  const cancel = useCallback(() => {
+    cancelledRef.current = true;
+    setState((s) => ({ ...s, phase: "idle", downloadedBytes: 0, totalBytes: 0 }));
   }, []);
 
   const restart = useCallback(async () => {
@@ -123,5 +138,5 @@ export function useUpdater(auto: boolean = true) {
     };
   }, [auto, checkForUpdate]);
 
-  return { state, checkForUpdate, downloadAndInstall, restart, dismiss };
+  return { state, checkForUpdate, downloadAndInstall, restart, dismiss, cancel };
 }

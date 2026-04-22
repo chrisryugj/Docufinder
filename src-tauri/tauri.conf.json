@@ -29,7 +29,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis", "msi"],
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -52,12 +52,6 @@
       "timestampUrl": "https://timestamp.digicert.com",
       "webviewInstallMode": {
         "type": "embedBootstrapper"
-      },
-      "wix": {
-        "language": "ko-KR",
-        "template": "wix/main.wxs",
-        "bannerPath": "wix/banner.bmp",
-        "dialogImagePath": "wix/dialog.bmp"
       },
       "nsis": {
         "languages": ["Korean", "English"],

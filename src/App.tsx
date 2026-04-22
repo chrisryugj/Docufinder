@@ -31,7 +31,6 @@ import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { OnboardingTour, resetOnboardingTour } from "./components/onboarding/OnboardingTour";
-import { UpdateBadge } from "./components/updater/UpdateBadge";
 import { UpdateModal } from "./components/updater/UpdateModal";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
@@ -421,6 +420,8 @@ function AppContent() {
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
               onSubmitNatural={handleSubmitQuery}
+              updatePhase={updater.state.phase}
+              onOpenUpdate={() => setUpdateModalOpen(true)}
             />
           </div>
         )}
@@ -444,6 +445,8 @@ function AppContent() {
               isIndexing={idx.isIndexing}
               isSidebarOpen={ui.sidebarOpen}
               hasQuery={search.query.length > 0}
+              updatePhase={updater.state.phase}
+              onOpenUpdate={() => setUpdateModalOpen(true)}
             />
           </div>
         )}
@@ -770,11 +773,6 @@ function AppContent() {
         onScrollToTop={search.scrollToTop}
       />
 
-      {/* 업데이트 알림 뱃지 — 우측 상단 floating */}
-      <div className="fixed top-3 right-4 z-[9999] pointer-events-auto">
-        <UpdateBadge state={updater.state} onClick={() => setUpdateModalOpen(true)} />
-      </div>
-
       <UpdateModal
         isOpen={updateModalOpen}
         onClose={() => {
@@ -784,6 +782,7 @@ function AppContent() {
         state={updater.state}
         onInstall={updater.downloadAndInstall}
         onRestart={updater.restart}
+        onCancel={updater.cancel}
       />
 
       {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능 */}
