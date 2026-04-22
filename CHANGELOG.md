@@ -1,5 +1,63 @@
 # Changelog
 
+## [2.5.11] - 2026-04-23
+
+**kordoc v2.6.2 반영 — PDF 수식 OCR 품질 대폭 개선 (90%+ 정확도)**
+
+### 개선
+- **PDF 수식 OCR noise 제거 대폭 강화** — [kordoc v2.6.1](https://github.com/chrisryugj/kordoc/releases/tag/v2.6.1) + [v2.6.2](https://github.com/chrisryugj/kordoc/releases/tag/v2.6.2) 반영. arxiv Attention 논문 기준 순수 noise 1개만 남아 **96% 정확도** 달성. ResNet (Figure 많은 논문) 기준 **90%**. 핵심 수식 100% 유지.
+  - **trivial 수식 필터 12개 규칙 추가** — 단일 글자 (`$O$`, `$a$`), 단일 `\cmd` (`$\imath$`, `$\varPi$`), 장식 `\mathrm{...}` (`$\mathrm{fcloc}$`), 반복 기호 (`$\pm\pm\pm\pm$`), substring 반복 (`\alpha_{N}=` 연쇄), `\square` placeholder, 단독 숫자, 괄호 그룹 중복, 함수 인자 반복, `\frac{X}{X}`, matrix placeholder, `\mathsf`/`\mathtt`/`\texttt` 등.
+  - **MFR tokenizer 과공백 정규화** — `\mathrm { m o d d }` → `\mathrm{modd}`, `6 4` → `64`, `( Q, K, V )` → `(Q,K,V)`.
+  - **`\cmd` 뒤 공백 누락 복원** — `\cdotd` → `\cdot d`, `\timesd_{k}` → `\times d_{k}` (알려진 LaTeX 명령어 사전 기반).
+  - **수식 bbox y 좌표 매핑** — 이전엔 검출된 수식이 페이지 끝에 몰렸는데, 이제 pdfjs 블록 사이 **올바른 위치**에 삽입. MultiHead/FFN/PE 수식이 논문 흐름에 맞게 배치.
+  - **pdfjs 중복 블록 제거** — 수식 bbox 와 60%+ 겹치는 pdfjs 텍스트 블록 자동 삭제. 동일 수식이 두 번 나타나던 현상 해결.
+  - **`cleanPdfText` 수식 라인 공백 보호** — `collapseEvenSpacing` 이 수식 내부 LaTeX 공백을 "균등배분" 으로 오인식해 `\cdot d` → `\cdotd` 로 합쳐지던 숨은 버그 수정.
+
+### 의존성
+- `kordoc` 2.6.0 → 2.6.2 (번들 재빌드)
+
+---
+
+## [2.5.10] - 2026-04-23
+
+**kordoc v2.6.1 (수식 OCR 품질 개선) 반영**
+
+### 개선
+- kordoc v2.6.1 초기 반영. v2.5.11 에서 더 다듬어진 상태로 배포되었으므로 상세 내역은 v2.5.11 항목 참고.
+
+### 의존성
+- `kordoc` 2.6.0 → 2.6.1
+
+---
+
+## [2.5.9] - 2026-04-23
+
+**kordoc v2.6.0 (PDF 수식 OCR) + KaTeX 미리보기**
+
+### 추가
+- **PDF 이미지 기반 수식 OCR** — kordoc v2.6.0 의 [Pix2Text MFD + MFR](https://github.com/breezedeus/pix2text) ONNX 모델 연동. 스캔 PDF / 이미지 삽입 수식이 자동으로 LaTeX (`$...$`, `$$...$$`) 로 추출되어 인덱싱 + 검색 대상 포함. 기본 활성화.
+- **검색 결과 수식 KaTeX 미리보기** — 결과 뷰어에서 LaTeX 수식을 KaTeX 로 즉시 렌더. 인라인 `$...$` 와 display `$$...$$` 모두 지원.
+- **수식 4포맷 지원** — HWPX / DOCX / HWP5 의 수식(EQN 블록) 도 kordoc 2.5.3 이상에서 LaTeX 로 변환되어 검색 가능.
+
+### 의존성
+- `kordoc` 2.5.2 → 2.6.0 (ort, sharp, @huggingface/transformers, @hyzyla/pdfium 추가)
+
+---
+
+## [2.5.8] - 2026-04-23
+
+**자동 업데이트 시스템 도입 + Telegram 오류 리포트 + 진단 탭**
+
+### 추가
+- **GitHub Releases 기반 자동 업데이트** — ed25519 서명 검증 포함. 앱이 최신 버전 감지 시 배지 노출, "지금 확인" 버튼으로 수동 체크도 가능. Tauri updater plugin.
+- **진단 탭 (설정 > 진단)** — 앱 상태 / DB / 인덱스 / 모델 위치 / 로그 한눈에 확인. 사용자 문의 대응 편의.
+- **Telegram 오류 리포트** — 크래시 / panic 발생 시 사용자 동의하에 Telegram 채널로 비식별화된 스택 전송 (opt-in).
+
+### 개선
+- 다양한 UX 폴리싱 (세부는 커밋 [eac8858](https://github.com/chrisryugj/Docufinder/commit/eac8858) 참고)
+
+---
+
 ## [2.5.7] - 2026-04-22
 
 **kordoc 2.5.2 반영 — macOS 한컴 HWPX 호환 + HWP5 배포용 COM fallback**
