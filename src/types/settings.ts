@@ -54,4 +54,9 @@ export interface Settings {
   auto_sync_interval_minutes: number;
   /** 오류 자동 리포트 (Telegram). 파일 경로는 익명화, 문서 내용은 전송하지 않음. */
   error_reporting_enabled: boolean;
+  /**
+   * PDF 수식 OCR 활성화 (기본 false). 토글 켜면 첫 사용 시 ~155MB 모델 자동 다운로드.
+   * 인식된 수식은 `$...$` (inline) / `$$...$$` (display) 로 검색/미리보기에 반영.
+   */
+  formula_ocr_enabled: boolean;
 }

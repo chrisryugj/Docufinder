@@ -12,8 +12,49 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tracing::{debug, warn};
 
-/// kordoc 프로세스 타임아웃 (초)
+/// kordoc 프로세스 기본 타임아웃 (초)
 const KORDOC_TIMEOUT_SECS: u64 = 60;
+/// 수식 OCR 활성화 시 타임아웃 (초) — 모델 로드 + 페이지별 MFD/MFR 추론으로 시간이 늘어남.
+const KORDOC_FORMULA_TIMEOUT_SECS: u64 = 600;
+
+/// kordoc 호출 옵션
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KordocOptions {
+    /// PDF 수식 OCR 활성화 (--formula-ocr)
+    pub formula_ocr: bool,
+}
+
+/// 전역 수식 OCR 토글. Settings 에서 변경될 때 set_formula_ocr_enabled 로 갱신.
+///
+/// parse_file / parse / get_markdown 등 모든 경로에서 옵션을 일일이 전달하지 않고,
+/// PDF 파일일 때만 이 값을 KordocOptions 로 주입한다.
+static FORMULA_OCR_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Settings 로딩/변경 시 호출되어 전역 토글을 갱신한다.
+pub fn set_formula_ocr_enabled(enabled: bool) {
+    FORMULA_OCR_ENABLED.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// 현재 전역 formula OCR 토글 상태.
+pub fn is_formula_ocr_enabled() -> bool {
+    FORMULA_OCR_ENABLED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// PDF 경로인 경우에만 formula_ocr 전파 — HWPX/DOCX/HWP5 에는 영향 없음 (kordoc 내부에서
+/// formulaOcr 플래그는 PDF 파서 분기에만 사용됨).
+fn options_for_path(path: &Path) -> KordocOptions {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext == "pdf" && is_formula_ocr_enabled() {
+        KordocOptions { formula_ocr: true }
+    } else {
+        KordocOptions::default()
+    }
+}
 
 // ─── JSON 응답 구조체 ─────────────────────────────────
 
@@ -88,15 +129,20 @@ fn find_kordoc_cli() -> Option<PathBuf> {
 
 // ─── 공개 API ─────────────────────────────────────────
 
-/// kordoc으로 파일 파싱 → ParsedDocument
+/// kordoc으로 파일 파싱 → ParsedDocument (전역 formula OCR 토글 자동 반영).
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    parse_with_options(path, options_for_path(path))
+}
+
+/// kordoc 옵션을 지정해 파싱 (예: formula_ocr).
+pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocument, ParseError> {
     // 파일 크기 제한 (기존 Rust 파서와 동일)
     validate_file_size(path)?;
 
     let cli_path = find_kordoc_cli()
         .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
 
-    let json = call_kordoc_sync(&cli_path, path)?;
+    let json = call_kordoc_sync(&cli_path, path, opts)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
         warn!("kordoc JSON 파싱 실패: {e}");
         ParseError::ParseError("kordoc 응답 파싱 실패".to_string())
@@ -143,14 +189,19 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     })
 }
 
-/// kordoc으로 파일의 full markdown만 추출 (미리보기용)
+/// kordoc으로 파일의 full markdown만 추출 (미리보기용, 전역 formula OCR 토글 반영).
 pub fn get_markdown(path: &Path) -> Result<String, ParseError> {
+    get_markdown_with_options(path, options_for_path(path))
+}
+
+/// get_markdown + 옵션 지정
+pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<String, ParseError> {
     validate_file_size(path)?;
 
     let cli_path = find_kordoc_cli()
         .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
 
-    let json = call_kordoc_sync(&cli_path, path)?;
+    let json = call_kordoc_sync(&cli_path, path, opts)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
         warn!("kordoc JSON 파싱 실패: {e}");
         ParseError::ParseError("kordoc 응답 파싱 실패".to_string())
@@ -170,6 +221,16 @@ pub fn get_markdown(path: &Path) -> Result<String, ParseError> {
 /// kordoc 사용 가능 여부
 pub fn is_available() -> bool {
     find_kordoc_cli().is_some() && which_node().is_some()
+}
+
+/// 외부 모듈(commands::formula)에서 사이드카 경로 조회용으로 노출.
+pub fn find_kordoc_cli_public() -> Option<PathBuf> {
+    find_kordoc_cli()
+}
+
+/// 외부 모듈(commands::formula)에서 node 실행 경로 조회용으로 노출.
+pub fn which_node_public() -> Option<PathBuf> {
+    which_node()
 }
 
 // ─── 내부 헬퍼 ────────────────────────────────────────
@@ -226,7 +287,11 @@ fn validate_file_size(path: &Path) -> Result<(), ParseError> {
 /// - stdout/stderr를 별도 스레드에서 drain하여 파이프 블록 방지
 /// - 메인 스레드는 try_wait 폴링 (std::process::Child는 Drop에서 kill하지 않으므로
 ///   타임아웃 시 명시적 child.kill() 호출 필수)
-fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseError> {
+fn call_kordoc_sync(
+    cli_path: &Path,
+    file_path: &Path,
+    opts: KordocOptions,
+) -> Result<String, ParseError> {
     use std::io::Read;
     use std::sync::mpsc;
     use std::thread;
@@ -242,7 +307,16 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
     let file_str = file_owned.to_string_lossy();
     let cli_str = cli_path.to_string_lossy();
 
-    debug!("kordoc: {} {} --format json --silent", cli_str, file_str);
+    debug!(
+        "kordoc: {} {} --format json --silent{}",
+        cli_str,
+        file_str,
+        if opts.formula_ocr {
+            " --formula-ocr"
+        } else {
+            ""
+        }
+    );
 
     let mut cmd = std::process::Command::new(node);
     cmd.arg(cli_str.as_ref())
@@ -253,6 +327,10 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if opts.formula_ocr {
+        cmd.arg("--formula-ocr");
+    }
 
     #[cfg(windows)]
     {
@@ -265,7 +343,12 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
         .map_err(|e| ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}")))?;
 
     let file_display = file_path.display().to_string();
-    let timeout = Duration::from_secs(KORDOC_TIMEOUT_SECS);
+    let timeout_secs = if opts.formula_ocr {
+        KORDOC_FORMULA_TIMEOUT_SECS
+    } else {
+        KORDOC_TIMEOUT_SECS
+    };
+    let timeout = Duration::from_secs(timeout_secs);
 
     // stdout/stderr drain 스레드 (파이프 블록 방지)
     let mut stdout_pipe = child
@@ -303,11 +386,11 @@ fn call_kordoc_sync(cli_path: &Path, file_path: &Path) -> Result<String, ParseEr
                     let _ = child.wait();
                     warn!(
                         "kordoc 타임아웃 ({}초 초과), 프로세스 강제 종료: {}",
-                        KORDOC_TIMEOUT_SECS, file_display
+                        timeout_secs, file_display
                     );
                     return Err(ParseError::ParseError(format!(
                         "kordoc 타임아웃 ({}초 초과): {}",
-                        KORDOC_TIMEOUT_SECS, file_display
+                        timeout_secs, file_display
                     )));
                 }
                 thread::sleep(Duration::from_millis(50));

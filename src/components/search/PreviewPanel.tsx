@@ -4,6 +4,9 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -418,7 +421,12 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
             </div>
           ) : (
             <div className="text-[12.5px] leading-[1.8] text-[var(--color-text-primary)] doc-preview summary-inline ai-answer-prose">
-              <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]}>{answer}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
+                rehypePlugins={[rehypeKatex]}
+              >
+                {answer}
+              </ReactMarkdown>
             </div>
           )}
 
@@ -804,7 +812,11 @@ export const PreviewPanel = memo(function PreviewPanel({
               </button>
               {summaryExpanded && (
                 <div className="px-3 pb-3 text-[13px] leading-relaxed text-[var(--color-text-primary)] doc-preview summary-inline" style={{ backgroundColor: "var(--color-bg-primary)" }}>
-                  <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={markdownComponents}>
+                  <ReactMarkdown
+                    remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
+                    rehypePlugins={[rehypeKatex]}
+                    components={markdownComponents}
+                  >
                     {aiSummary.answer}
                   </ReactMarkdown>
                 </div>
@@ -842,7 +854,11 @@ export const PreviewPanel = memo(function PreviewPanel({
         {/* 마크다운 렌더링 */}
         {!loading && !error && markdown && (
           <div className="doc-preview px-6 py-5">
-            <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={markdownComponents}>
+            <ReactMarkdown
+              remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
+              rehypePlugins={[rehypeKatex]}
+              components={markdownComponents}
+            >
               {stripHtmlForMarkdown(markdown)}
             </ReactMarkdown>
           </div>

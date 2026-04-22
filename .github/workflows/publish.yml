@@ -39,13 +39,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v2.4.0 (HWPX DRM COM fallback) — 2026-04-16
+      # 현재: v2.6.0 (PDF 수식 OCR + HWPX/DOCX/HWP5 수식) — 2026-04-23
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 5feacad6adc8055bbc18c76bf063cac0282e8c18
+          ref: ab18aa6b949e354aa90519a515bfa285e8b7626e
 
       - name: Build kordoc dist
         working-directory: kordoc-src
