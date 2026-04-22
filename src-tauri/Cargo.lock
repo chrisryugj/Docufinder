@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "docufinder"
-version = "2.5.6"
+version = "2.5.7"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
