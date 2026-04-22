@@ -39,13 +39,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v2.6.1 (PDF 수식 OCR 품질 개선 — trivial 필터/공백 정규화/위치 매핑) — 2026-04-23
+      # 현재: v2.6.2 (수식 OCR noise 추가 필터 — 90%+ 정확도) — 2026-04-23
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 2ef0d1f362188ce4589c825d8dfdaed5979a1f54
+          ref: 29c512757fc4e6281274b8471d6837e49303550c
 
       - name: Build kordoc dist
         working-directory: kordoc-src
