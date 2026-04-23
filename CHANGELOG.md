@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.5.12] - 2026-04-23
+
+**안정성 / 종료 / 정렬 크래시 대응 라운드**
+
+### 수정
+- **인덱싱 중 트레이 "종료" 무반응** — 트레이 quit / X 버튼(close_to_tray=false) 핸들러가 FTS cancel 신호를 보내지 않아 파이프라인 스레드가 그대로 돌던 문제. 이제 cancel_indexing + vector worker cancel 을 즉시 broadcast 하고, cleanup 이 3초 내 끝나지 않으면 **watchdog 이 std::process::exit(0) 으로 강제 종료**. 인덱싱 중에도 트레이 우클릭 → 종료가 즉시 동작.
+- **트레이 최소화 토글이 꺼지지 않던 버그** — 설정 모달의 `handleChange` 가 stale state 로 `setSettings` 를 호출해, "트레이 최소화" 토글이 `close_to_tray` + `start_minimized` 를 같은 틱에 업데이트할 때 뒤 호출이 앞 호출을 덮어썼음. functional update (`setSettings(prev => ...)`) 로 교체.
+- **"모든 데이터 초기화" 첫 시도 지연 (~수 초)** — FTS 파이프라인의 잔존 WAL read lock 이 DROP TABLE 과 경쟁해 발생. 취소 신호를 **맨 먼저** broadcast + 200ms 유예 + `db::pool::drain_pool()` 후 DROP. 첫 시도도 즉시 완료.
+- **smallsort "total order" 패닉** — Rust 1.81+ sort 가 엄격한 전이성을 요구하는데 `partial_cmp().unwrap_or(Equal)` 패턴은 NaN 섞이면 전이성 위반. 검색 랭킹 / 중복 유사도 / 교정 후보 / OCR 바운딩박스 정렬 5곳을 모두 `f32::total_cmp` / `f64::total_cmp` 로 교체.
+- **`type1-encoding-parser` / `cff-parser` / `tao` 관련 알림 스팸** — 손상된 PDF Type1 폰트 / 앱 종료 시 Windows 이벤트 루프 race 에서 발생하는 패닉이 crash log / Telegram 으로 전송되던 문제. `BENIGN_PANIC_SOURCES` 에 추가해 알림만 억제 (해당 패닉은 이미 `catch_unwind` 또는 종료 시점이라 앱 동작에는 영향 없음).
+
+### 개선
+- **PDF 수식 OCR 설정을 "검색" 탭으로 이동** — 이전에는 "진단" 탭에 있어 발견이 어려웠음. 빨간 경고 배너로 "PDF 인덱싱 속도가 수 배 ~ 수십 배 느려질 수 있음" 을 강조.
+- **크래시 로그 재전송 스팸 차단** — 앱 시작 시 미전송 crash log 를 Telegram 으로 플러시하는 경로에서, **오늘자 `crash-YYYY-MM-DD.log` 만 전송**하고 이전 날짜 로그는 조용히 `.sent` 로 마킹. 재설치 사용자의 묵은 로그가 채널로 올라오던 문제 해결.
+
+### 내부
+- `cleanup_vector_resources` 가 FTS 파이프라인도 cancel 하도록 확장 (기존엔 벡터 워커만).
+
+---
+
 ## [2.5.11] - 2026-04-23
 
 **kordoc v2.6.2 반영 — PDF 수식 OCR 품질 대폭 개선 (90%+ 정확도)**

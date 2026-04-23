@@ -357,11 +357,7 @@ impl SearchService {
         }
 
         let mut results: Vec<SearchResult> = file_best.into_values().map(|(_, r)| r).collect();
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(max_results);
 
         enrich_total_chunks(&conn, &mut results);

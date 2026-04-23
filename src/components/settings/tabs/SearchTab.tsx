@@ -1,9 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { InfoTooltip } from "../../ui/Tooltip";
+import { Button } from "../../ui/Button";
 import { SettingsToggle } from "../SettingsToggle";
 import { invokeWithTimeout } from "../../../utils/invokeWithTimeout";
 import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
+
+interface FormulaModelInfo {
+  name: string;
+  filename: string;
+  sizeMb: number;
+  exists: boolean;
+  verified: boolean;
+  path: string;
+  invalidReason?: string | null;
+}
+
+interface FormulaModelsStatus {
+  modelsDir: string;
+  allReady: boolean;
+  models: FormulaModelInfo[];
+}
 
 interface RebuildLineageResponse {
   files_updated: number;
@@ -35,6 +54,59 @@ export function SearchTab({ settings, onChange }: TabProps) {
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<string | null>(null);
   const [pruning, setPruning] = useState(false);
+
+  // ────────── 수식 OCR 모델 상태 ──────────
+  const [formulaStatus, setFormulaStatus] = useState<FormulaModelsStatus | null>(null);
+  const [formulaChecking, setFormulaChecking] = useState(false);
+  const [formulaDownloading, setFormulaDownloading] = useState(false);
+  const [formulaProgress, setFormulaProgress] = useState<string | null>(null);
+  const [formulaError, setFormulaError] = useState<string | null>(null);
+
+  const checkFormulaStatus = useCallback(async () => {
+    setFormulaChecking(true);
+    setFormulaError(null);
+    try {
+      const s = await invoke<FormulaModelsStatus>("get_formula_models_status");
+      setFormulaStatus(s);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFormulaError(msg);
+    } finally {
+      setFormulaChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (settings.formula_ocr_enabled && !formulaStatus && !formulaChecking) {
+      void checkFormulaStatus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.formula_ocr_enabled]);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    listen<string>("formula-model-progress", (ev) => {
+      setFormulaProgress(ev.payload);
+    })
+      .then((fn) => { unlisten = fn; })
+      .catch(() => {});
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  const handleDownloadFormula = useCallback(async () => {
+    setFormulaDownloading(true);
+    setFormulaError(null);
+    setFormulaProgress("다운로드 시작…");
+    try {
+      await invoke("download_formula_models");
+      await checkFormulaStatus();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setFormulaError(msg);
+    } finally {
+      setFormulaDownloading(false);
+    }
+  }, [checkFormulaStatus]);
 
   async function handlePruneMissing() {
     if (pruning) return;
@@ -203,6 +275,102 @@ export function SearchTab({ settings, onChange }: TabProps) {
           checked={settings.ocr_enabled ?? false}
           onChange={(v) => onChange("ocr_enabled", v)}
         />
+      </div>
+
+      {/* PDF 수식 OCR */}
+      <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+        <SettingsToggle
+          label="PDF 수식 OCR"
+          description="PDF 페이지에서 수식(Pix2Text ONNX)을 LaTeX로 자동 추출 → 검색/미리보기에 KaTeX 렌더 · 모델 ~155MB (최초 1회 자동 다운로드)"
+          checked={settings.formula_ocr_enabled ?? false}
+          onChange={(v) => {
+            onChange("formula_ocr_enabled", v);
+            if (v) void checkFormulaStatus();
+          }}
+        />
+        {/* ⚠️ 강조된 경고 배너 */}
+        <div
+          className="mt-2 p-2.5 rounded-md text-xs leading-relaxed"
+          style={{
+            backgroundColor: "rgba(239, 68, 68, 0.08)",
+            border: "1px solid var(--color-error, #ef4444)",
+            color: "var(--color-error, #ef4444)",
+          }}
+        >
+          <strong>⚠️ 주의:</strong> PDF 인덱싱 속도가 <strong>수 배 ~ 수십 배</strong> 느려집니다.
+          페이지마다 수식 영역 검출 + ONNX 추론이 필요해 CPU 부하가 큽니다.
+          대량 PDF 폴더라면 비활성화를 권장합니다.
+        </div>
+        {settings.formula_ocr_enabled && (
+          <div
+            className="mt-2 p-3 rounded text-xs"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-medium" style={{ color: "var(--color-text-primary)" }}>
+                모델 상태
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={checkFormulaStatus}
+                  isLoading={formulaChecking}
+                  disabled={formulaChecking || formulaDownloading}
+                >
+                  확인
+                </Button>
+                {formulaStatus && !formulaStatus.allReady && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleDownloadFormula}
+                    isLoading={formulaDownloading}
+                    disabled={formulaDownloading}
+                  >
+                    다운로드
+                  </Button>
+                )}
+              </div>
+            </div>
+            {formulaError && (
+              <p className="mb-2" style={{ color: "var(--color-error)" }}>오류: {formulaError}</p>
+            )}
+            {formulaProgress && formulaDownloading && (
+              <p className="mb-2" style={{ color: "var(--color-text-muted)" }}>{formulaProgress}</p>
+            )}
+            {formulaStatus ? (
+              <ul className="space-y-1">
+                {formulaStatus.models.map((m) => (
+                  <li key={m.filename} className="flex items-center justify-between">
+                    <span>{m.name} ({m.sizeMb}MB)</span>
+                    <span
+                      style={{
+                        color: m.verified
+                          ? "var(--color-success)"
+                          : m.exists
+                            ? "var(--color-warning)"
+                            : "var(--color-text-muted)",
+                      }}
+                    >
+                      {m.verified ? "✓ 준비됨" : m.exists ? "⚠ SHA 불일치" : "— 없음"}
+                    </span>
+                  </li>
+                ))}
+                <li className="pt-1 mt-1 border-t" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+                  저장 위치: {formulaStatus.modelsDir}
+                </li>
+              </ul>
+            ) : (
+              <p style={{ color: "var(--color-text-muted)" }}>
+                상태 확인 필요 — "확인" 버튼을 눌러주세요.
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 문서 버전 그룹핑 (Document Lineage) */}

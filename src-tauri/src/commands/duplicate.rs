@@ -361,12 +361,8 @@ fn find_similar_duplicates(
         }
     }
 
-    // 유사도 내림차순 정렬
-    groups.sort_by(|a, b| {
-        b.similarity
-            .partial_cmp(&a.similarity)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // 유사도 내림차순 정렬 (total_cmp: NaN 전이성 위반 방지)
+    groups.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
 
     Ok(groups)
 }
