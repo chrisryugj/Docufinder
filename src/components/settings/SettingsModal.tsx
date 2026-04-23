@@ -80,9 +80,9 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   };
 
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    if (!settings) return;
-
-    setSettings({ ...settings, [key]: value });
+    // functional update: 같은 틱에 연속 호출돼도 stale 상태로 덮어쓰지 않게.
+    // (e.g. 트레이 최소화 토글이 start_minimized 까지 동시 변경할 때 꺼지지 않던 버그)
+    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
 
     if (key === "theme" && onThemeChange) {
       onThemeChange(value as Settings["theme"]);

@@ -181,6 +181,12 @@ pub fn spawn_flush_pending_crash_logs() {
             return;
         };
 
+        // 오늘자 크래시만 전송 (이전 날짜 로그는 조용히 .sent 처리 — 재전송 스팸 방지)
+        let today_name = format!(
+            "crash-{}.log",
+            chrono::Local::now().format("%Y-%m-%d")
+        );
+
         for entry in entries.flatten() {
             let path = entry.path();
             let name = match path.file_name().and_then(|n| n.to_str()) {
@@ -188,6 +194,12 @@ pub fn spawn_flush_pending_crash_logs() {
                 None => continue,
             };
             if !name.starts_with("crash-") || name.ends_with(".sent") {
+                continue;
+            }
+            // 오늘자 파일이 아니면 전송 건너뛰고 .sent 로 마킹해 다음 실행 때도 재검사 안 함.
+            if name != today_name {
+                let new_path = path.with_file_name(format!("{}.sent", name));
+                let _ = std::fs::rename(&path, &new_path);
                 continue;
             }
             let Ok(content) = std::fs::read_to_string(&path) else {

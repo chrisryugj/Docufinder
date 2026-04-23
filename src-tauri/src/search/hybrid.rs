@@ -30,11 +30,8 @@ pub fn merge_results(
         .map(|(chunk_id, score)| HybridResult { chunk_id, score })
         .collect();
 
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    // total_cmp: partial_cmp+unwrap_or(Equal) 은 NaN 섞이면 전이성 위반 (Rust 1.81+ smallsort panic)
+    results.sort_by(|a, b| b.score.total_cmp(&a.score));
 
     results
 }

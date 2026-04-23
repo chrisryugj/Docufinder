@@ -234,12 +234,8 @@ pub async fn suggest_correction(
                 })
                 .collect();
 
-            // distance 우선, 같으면 빈도 높은 순
-            scored.sort_by(|a, b| {
-                a.1.partial_cmp(&b.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(b.2.cmp(&a.2))
-            });
+            // distance 우선, 같으면 빈도 높은 순 (total_cmp: NaN 전이성 위반 방지)
+            scored.sort_by(|a, b| a.1.total_cmp(&b.1).then(b.2.cmp(&a.2)));
 
             for (term, dist, freq) in scored.into_iter().take(3) {
                 all_suggestions.push(SuggestedWord {

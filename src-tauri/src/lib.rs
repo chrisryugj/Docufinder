@@ -269,6 +269,8 @@ fn validate_vector_index(container: &AppContainer) {
 
 /// 벡터 워커 정리 + 인덱스 저장 + DB 최적화 (종료/트레이 quit 공통)
 fn cleanup_vector_resources(container: &AppContainer) {
+    // FTS 파이프라인 즉시 취소 신호 (인덱싱 중 종료 시 스레드가 빠르게 탈출하도록)
+    container.cancel_indexing();
     // 주기 sync task 중단 신호 (v2.5.2) — 루프가 최대 60초 내 탈출
     container.signal_sync_shutdown();
 
@@ -354,12 +356,15 @@ pub fn run() {
         const BENIGN_PANIC_SOURCES: &[&str] = &[
             "pdf-extract",
             "lopdf",
+            "type1-encoding-parser", // pdf-extract transitive: 손상된 Type1 폰트
+            "cff-parser",            // pdf-extract transitive: CFF 폰트 파서
             "quick-xml",
             "calamine",
             "zip-",    // zip-2.x, zip-rs 등
             "ort",     // ONNX Runtime 내부 panic (세션 초기화 / DLL 로드)
             "usearch", // 벡터 인덱스 C++ 바인딩 panic (reserve / add 중)
             "lindera", // 형태소 사전 로드 panic (embedded ko-dic 압축 해제)
+            "tao",     // Windows event loop 내부 상태 전이 패닉 (앱 종료 시점)
         ];
         if BENIGN_PANIC_SOURCES
             .iter()
@@ -745,6 +750,23 @@ pub fn run() {
                         }
                     }
                     "quit" => {
+                        // 즉시 취소 신호 (인덱싱 스레드가 최대한 빨리 탈출하도록)
+                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(container) = container.read() {
+                                container.cancel_indexing();
+                                container.signal_sync_shutdown();
+                                if let Ok(worker) = container.get_vector_worker().read() {
+                                    worker.cancel();
+                                }
+                            }
+                        }
+                        // Watchdog: cleanup 교착 시 3초 후 강제 종료 (인덱싱 중 종료 안 되는 버그 방지)
+                        std::thread::spawn(|| {
+                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            tracing::warn!("Cleanup timeout — forcing process exit");
+                            std::process::exit(0);
+                        });
+                        // 정상 cleanup 시도
                         if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
                             if let Ok(container) = container.read() {
                                 cleanup_vector_resources(&container);
@@ -830,6 +852,22 @@ pub fn run() {
                         tracing::info!("Window closing (close_to_tray=false)");
                         // 트레이 아이콘이 프로세스를 유지시키므로 명시적 종료 필요
                         let app = window.app_handle().clone();
+                        // 즉시 취소 신호
+                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(container) = container.read() {
+                                container.cancel_indexing();
+                                container.signal_sync_shutdown();
+                                if let Ok(worker) = container.get_vector_worker().read() {
+                                    worker.cancel();
+                                }
+                            }
+                        }
+                        // Watchdog: 3초 후 강제 종료
+                        std::thread::spawn(|| {
+                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            tracing::warn!("Cleanup timeout — forcing process exit");
+                            std::process::exit(0);
+                        });
                         if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
                             if let Ok(container) = container.read() {
                                 cleanup_vector_resources(&container);

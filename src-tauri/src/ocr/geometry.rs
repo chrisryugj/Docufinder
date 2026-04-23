@@ -184,15 +184,11 @@ pub fn sort_boxes_reading_order(boxes: &mut [Quad]) {
         let bh = b.points[2].1 - b.points[0].1;
         let threshold = (ah.min(bh)) * 0.5;
 
+        // total_cmp: NaN 전이성 위반 방지 (Rust 1.81+ smallsort panic)
         if (ay - by).abs() < threshold {
-            // 같은 줄 → x 순
-            a.points[0]
-                .0
-                .partial_cmp(&b.points[0].0)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            a.points[0].0.total_cmp(&b.points[0].0)
         } else {
-            // 다른 줄 → y 순
-            ay.partial_cmp(&by).unwrap_or(std::cmp::Ordering::Equal)
+            ay.total_cmp(&by)
         }
     });
 }
