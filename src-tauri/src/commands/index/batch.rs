@@ -59,7 +59,9 @@ pub async fn start_indexing_batch(
             rejected.push((raw.clone(), "경로가 존재하지 않습니다".to_string()));
             continue;
         }
-        let canonical_buf = match p.canonicalize() {
+        // UNC/네트워크 경로는 dunce 로 정규화해야 `\\server\share\...` 형태가 유지됨.
+        // std::canonicalize 는 `\\?\UNC\server\share\...` 로 바꿔 DB 경로 매칭을 깨뜨린다.
+        let canonical_buf = match dunce::canonicalize(p) {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!("Batch: canonicalize failed for {}: {}", raw, e);
@@ -323,8 +325,8 @@ async fn run_folder_index_job_batch(
 ) -> Result<JobOutcome, String> {
     let ctx = extract_indexing_context(state).map_err(|e| e.to_string())?;
     let folder_path = Path::new(path);
-    let canonical_path = folder_path
-        .canonicalize()
+    // UNC 보존: dunce 로 통일 (add_folder 와 동일 규칙).
+    let canonical_path = dunce::canonicalize(folder_path)
         .map_err(|e| format!("canonicalize failed: {}", e))?;
     let path_str = canonical_path.to_string_lossy().to_string();
 

@@ -258,8 +258,10 @@ pub async fn reindex_folder(
         return Err(ApiError::PathNotFound(path));
     }
 
-    let canonical_path = folder_path
-        .canonicalize()
+    // UNC/네트워크 경로 보존 정규화. std::canonicalize 는 `\\server\share` 를
+    // `\\?\UNC\server\share` 로 바꿔 DB 에 기록된 감시 경로와 불일치해 재인덱싱 대상이
+    // 0건으로 보이는 현상을 일으킨다. dunce 는 `\\server\share\...` 형태를 유지한다.
+    let canonical_path = dunce::canonicalize(folder_path)
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
     // 시스템 폴더 / 드라이브 루트 차단
@@ -360,8 +362,8 @@ pub async fn resume_indexing(
         return Err(ApiError::PathNotFound(path));
     }
 
-    let canonical_path = folder_path
-        .canonicalize()
+    // UNC/네트워크 경로 보존 정규화 — add_folder 와 동일 (dunce 로 통일)
+    let canonical_path = dunce::canonicalize(folder_path)
         .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
 
     // 시스템 폴더 / 드라이브 루트 차단 (DB에 남은 오래된 경로 방어)

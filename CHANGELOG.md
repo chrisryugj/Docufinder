@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.5.13] - 2026-04-23
+
+**네트워크(UNC) 폴더 재인덱싱 / 배치 인덱싱 예방 패치** — [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)
+
+### 수정
+- **네트워크 폴더 재인덱싱·Resume·배치 인덱싱 실패 가능성 차단** — v2.5.0 에서 `add_folder` 는 `dunce::canonicalize` 로 `\\server\share\...` 형태를 보존하도록 바꿨는데, `reindex_folder` / `resume_indexing` / `start_indexing_batch` / `run_folder_index_job_batch` 네 경로는 여전히 `std::fs::canonicalize` 를 써서 UNC 를 `\\?\UNC\server\share\...` 로 변환하고 있었음. 이 경우 DB 에 기록된 감시 경로(`\\server\share\...`)와 불일치해 "변경분 0건" 으로 오인식되거나 status 업데이트가 엉뚱한 키로 저장되는 문제가 있었음. **네 경로 모두 `dunce::canonicalize` 로 통일.**
+
+### 알려진 제약 (다음 라운드)
+- 매핑드라이브(Z:\, X:\ 등)는 여전히 로컬로 취급됨 (PollWatcher 분기 안 탐). SMB 매핑드라이브에서 실시간 이벤트 누락 가능 — `GetDriveTypeW` 기반 분기 검토 예정.
+- AI 질의응답(Gemini) 은 여전히 인터넷 필요. 망분리 환경에서는 검색/파일명/벡터 기능만 동작 (ONNX·PaddleOCR·Lindera 는 이미 MSI 에 번들되어 오프라인 OK).
+
+---
+
 ## [2.5.12] - 2026-04-23
 
 **안정성 / 종료 / 정렬 크래시 대응 라운드**
