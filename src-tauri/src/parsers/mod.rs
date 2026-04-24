@@ -2,6 +2,7 @@ pub mod docx;
 pub mod hwpx;
 pub mod image_ocr;
 pub mod kordoc;
+pub mod password_detect;
 pub mod pdf;
 pub mod pptx;
 pub mod txt;
@@ -72,6 +73,13 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
     // 메타데이터(이름·크기·수정일)는 placeholder 에도 캐시되어 있어 호출자가 별도로 인덱싱 가능.
     if crate::utils::cloud_detect::is_cloud_placeholder(path) {
         return Err(ParseError::CloudPlaceholder(path.display().to_string()));
+    }
+
+    // 암호 보호 파일 사전 감지 — kordoc(Node.js 사이드카) 호출 전에 차단해야
+    // 내부에서 한컴/Office COM 이 시스템 모달 다이얼로그를 띄우는 사고를 막는다.
+    // HWP/HWPX/DOCX/XLSX/PPTX/PDF 지원, 감지 실패 시 기존 파서 에러 기반 경로가 fallback.
+    if password_detect::is_password_protected(path) {
+        return Err(ParseError::PasswordProtected(path.display().to_string()));
     }
 
     let extension = path

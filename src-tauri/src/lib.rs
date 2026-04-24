@@ -10,6 +10,7 @@ mod infrastructure; // 클린 아키텍처: Infrastructure Layer
 mod llm; // LLM 클라이언트 (RAG + AI 요약)
 mod model_downloader; // 모델 자동 다운로드
 pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
+pub mod panic_filter; // crash.log BENIGN 필터 (panic hook + deferred flush 공유)
 pub mod parsers;
 mod search;
 mod tokenizer; // 한국어 형태소 분석 (Phase 5)
@@ -353,23 +354,8 @@ pub fn run() {
 
         // 파서 라이브러리의 알려진 패닉은 catch_unwind로 처리됨 → crash.log 오염 방지.
         // 해당 파일은 에러로 스킵되고 앱은 정상 동작하므로 crash 기록 불필요.
-        const BENIGN_PANIC_SOURCES: &[&str] = &[
-            "pdf-extract",
-            "lopdf",
-            "type1-encoding-parser", // pdf-extract transitive: 손상된 Type1 폰트
-            "cff-parser",            // pdf-extract transitive: CFF 폰트 파서
-            "quick-xml",
-            "calamine",
-            "zip-",    // zip-2.x, zip-rs 등
-            "ort",     // ONNX Runtime 내부 panic (세션 초기화 / DLL 로드)
-            "usearch", // 벡터 인덱스 C++ 바인딩 panic (reserve / add 중)
-            "lindera", // 형태소 사전 로드 panic (embedded ko-dic 압축 해제)
-            "tao",     // Windows event loop 내부 상태 전이 패닉 (앱 종료 시점)
-        ];
-        if BENIGN_PANIC_SOURCES
-            .iter()
-            .any(|src| location.contains(src))
-        {
+        // 패턴은 `panic_filter` 모듈에서 공유 — deferred flush(telemetry) 에서도 같은 필터 사용.
+        if crate::panic_filter::is_benign_location(&location) {
             return;
         }
 

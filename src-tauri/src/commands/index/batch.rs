@@ -326,8 +326,8 @@ async fn run_folder_index_job_batch(
     let ctx = extract_indexing_context(state).map_err(|e| e.to_string())?;
     let folder_path = Path::new(path);
     // UNC 보존: dunce 로 통일 (add_folder 와 동일 규칙).
-    let canonical_path = dunce::canonicalize(folder_path)
-        .map_err(|e| format!("canonicalize failed: {}", e))?;
+    let canonical_path =
+        dunce::canonicalize(folder_path).map_err(|e| format!("canonicalize failed: {}", e))?;
     let path_str = canonical_path.to_string_lossy().to_string();
 
     // watch folder 등록 + 인덱싱 상태 마킹

@@ -182,10 +182,7 @@ pub fn spawn_flush_pending_crash_logs() {
         };
 
         // 오늘자 크래시만 전송 (이전 날짜 로그는 조용히 .sent 처리 — 재전송 스팸 방지)
-        let today_name = format!(
-            "crash-{}.log",
-            chrono::Local::now().format("%Y-%m-%d")
-        );
+        let today_name = format!("crash-{}.log", chrono::Local::now().format("%Y-%m-%d"));
 
         for entry in entries.flatten() {
             let path = entry.path();
@@ -206,6 +203,14 @@ pub fn spawn_flush_pending_crash_logs() {
                 continue;
             };
             if content.trim().is_empty() {
+                continue;
+            }
+            // BENIGN 필터 — 이전 버전(tao 필터 추가 전 v2.5.5 이하)에서 이미 기록된 로그나
+            // panic hook 외 경로에서 기록된 로그가 모두 BENIGN 소스면 조용히 .sent 처리.
+            // 실시간 panic hook 과 동일한 필터를 적용해 재전송 스팸 차단.
+            if crate::panic_filter::is_all_benign(&content) {
+                let new_path = path.with_file_name(format!("{}.sent", name));
+                let _ = std::fs::rename(&path, &new_path);
                 continue;
             }
             // 최근 1MB만 (너무 크면 Telegram 4096자 제한에 걸림 — format_report 에서 잘림)
