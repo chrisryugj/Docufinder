@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.5.14] - 2026-04-24
+
+**암호 보호 파일 사전 스킵 + tao 크래시 재전송 스팸 차단**
+
+### 수정
+- **암호 걸린 파일 인덱싱 중 시스템 모달 팝업 차단** — HWP/HWPX/DOCX/XLSX/PPTX/PDF 암호 파일이 kordoc(Node.js 사이드카)을 거쳐 한컴/Office COM 에 도달하면, 해당 프로그램이 **사용자 포커스를 뺏는 "암호를 입력하세요" 다이얼로그**를 띄워 인덱싱이 멈추던 문제. 새 모듈 `parsers/password_detect.rs` 에서 파서 호출 **전** 에 사전 감지해 즉시 스킵하도록 변경.
+  - HWP5 (OLE CFB): FileHeader stream 의 properties 플래그 — bit 1 (암호) / bit 4 (DRM) / bit 8 (공인인증 보안) 검사.
+  - HWPX (ZIP + ODF): `META-INF/manifest.xml` 의 `encryption-data` 요소 존재 여부.
+  - DOCX/XLSX/PPTX (OOXML): 정상시 ZIP 이지만 암호화되면 OLE CFB 로 래핑됨 → 첫 8바이트 매직 검사. 레거시 `xls`/`ppt`/`doc` (원래 CFB) 는 기존 calamine 에러 기반 경로에 위임.
+  - PDF: tail 32KB 에서 `/Encrypt` 키 검색 (trailer 또는 xref stream).
+  - 감지된 파일은 `ParseError::PasswordProtected` 로 즉시 반환 → 기존 pipeline `Failure` 경로에서 메타데이터만 저장 (파일명 검색 가능).
+- **tao 크래시 재전송 스팸 차단** — v2.5.12 에서 `BENIGN_PANIC_SOURCES` 에 `tao` 를 추가했지만, 이전 버전에서 **이미 디스크에 쌓인 `crash-YYYY-MM-DD.log`** 가 앱 시작 시 `spawn_flush_pending_crash_logs` 로 필터 없이 그대로 전송되던 문제. 새 모듈 `panic_filter.rs` 로 BENIGN 상수를 실시간 panic hook 과 deferred flush 양쪽에서 **공유**하고, flush 경로에서도 파일 내용 전체가 BENIGN 패닉이면 조용히 `.sent` 마킹 후 전송 스킵.
+  - 매칭 패턴을 `"tao"` → `"tao-"` 로 더 엄격하게 변경 (false positive 방지). `wry-`, `muda-` 도 추가.
+
+### 내부
+- `parsers/mod.rs` `parse_file` 진입 시 cloud placeholder 다음 단계로 사전 암호 감지 추가.
+- `lib.rs` panic hook 의 `BENIGN_PANIC_SOURCES` 배열을 `panic_filter` 모듈로 이동 → `is_benign_location` / `is_all_benign` 두 유틸 제공.
+- `commands/telemetry.rs` deferred flush 전 `is_all_benign` 검사.
+- 테스트 10개 (panic_filter 6 + password_detect 4).
+
+---
+
 ## [2.5.13] - 2026-04-23
 
 **네트워크(UNC) 폴더 재인덱싱 / 배치 인덱싱 예방 패치** — [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)
