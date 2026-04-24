@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.5.15] - 2026-04-24
+
+**이미지 PDF 사전 감지 + 폴더 추가 에러 메시지 복구 + folder_service canonicalize 통일** — [이슈 #17](https://github.com/chrisryugj/Docufinder/issues/17), [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)
+
+### 수정
+- **인덱싱 도중 강제 종료(0xc0000409 STATUS_STACK_BUFFER_OVERRUN) 방어** — 스캔 PDF 다수 폴더(예: 학교 업무문서)에서 PDF 마다 kordoc(Node.js 사이드카) 자식 프로세스가 매번 spawn 되며, 800회 이상 누적 시 자식 프로세스/파이프/스레드 누수가 CRT 레벨 `__fastfail` 을 유발해 docufinder.exe 가 panic 흔적 없이 강제 종료되던 문제. v2.5.6 의 "조기 스킵" 분기는 같은 파일 *재시도* 만 막아 효과가 미미했음.
+  - 새 모듈 `parsers/pdf_sniff.rs` — PDF 첫 64KB 를 읽어 텍스트 오브젝트 부재 + 이미지 자원(`/DCTDecode`, `/JPXDecode`, `/CCITTFaxDecode`, `/JBIG2Decode`, `/Subtype /Image`) 휴리스틱으로 이미지 PDF 사전 감지. OCR 비활성 + 사전 감지 매치 시 **kordoc 호출 자체를 회피.**
+  - **Circuit breaker** — 같은 세션에서 연속 5회 이미지 PDF 판정 시 sniff 도 건너뛰고 즉시 스킵. 텍스트 PDF 가 정상 처리되면 카운터 리셋. 6000개 폴더 인덱싱 시 spawn 횟수가 ~5%로 줄어들어 누적 크래시 차단.
+- **"폴더 추가 실패: [object Object]" 에러 메시지 손실 (#19)** — 백엔드 `ApiError` 객체(`{code, message}`)를 프론트에서 `String(err)` 로 직렬화해 `[object Object]` 만 노출되던 버그. 16곳에 흩어진 동일 패턴을 모두 `getErrorMessage()` 유틸로 교체해 실제 에러 메시지(예: "잘못된 경로: Y:\... : ...") 가 표시되도록 수정. 사용자가 원인 진단 가능.
+- **`folder_service` canonicalize 누락 (#19)** — v2.5.13 의 UNC 통일 패치가 `folder_service::validate_and_canonicalize` 한 곳을 놓쳤음. Y: 같은 매핑드라이브가 `\\?\Y:\...` 로 변환되며 watcher 등록 / DB 경로 불일치를 일으킬 가능성. `dunce::canonicalize` 로 통일.
+
+### 내부
+- `parsers/mod.rs` 에 PDF sniff + circuit breaker 카운터(`SCANNED_PDF_STREAK`) 통합. 텍스트 PDF 정상 처리 시 카운터 리셋.
+- 프론트 에러 처리 8 파일 일괄 정비: `App.tsx`, `useIndexStatus`, `useSearch`, `useUpdater`, `useVectorIndexing`, `SettingsModal`, `DiagnosticsTab`, `SystemTab`.
+
+---
+
 ## [2.5.14] - 2026-04-24
 
 **암호 보호 파일 사전 스킵 + tao 크래시 재전송 스팸 차단**

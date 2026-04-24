@@ -4,14 +4,22 @@ pub mod image_ocr;
 pub mod kordoc;
 pub mod password_detect;
 pub mod pdf;
+pub mod pdf_sniff;
 pub mod pptx;
 pub mod txt;
 pub mod xlsx;
 
 use crate::ocr::OcrEngine;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
 use zip::ZipArchive;
+
+/// 연속 이미지 PDF 카운터 — 임계치 초과 시 같은 세션의 나머지 이미지 PDF 는
+/// kordoc 호출 없이 즉시 스킵 (kordoc child 누적으로 인한 #17 크래시 방어).
+/// 텍스트 PDF 가 정상 처리되면 0으로 리셋.
+static SCANNED_PDF_STREAK: AtomicUsize = AtomicUsize::new(0);
+const SCANNED_PDF_BREAKER_THRESHOLD: usize = 5;
 
 /// 기본 청크 크기 (문자 수)
 /// 600자 ≈ 한국어 기준 ~400-480 토큰 → KoSimCSE 512 토큰 제한 내 수용
@@ -91,14 +99,38 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
     // kordoc 지원 포맷: 먼저 kordoc 시도 → 실패 시 Rust 파서 fallback
     let kordoc_formats = ["hwp", "hwpx", "docx", "pdf"];
     if kordoc_formats.contains(&extension.as_str()) && kordoc::is_available() {
+        // PDF 사전 sniff — 이미지 PDF + OCR off 인 경우 kordoc spawn 자체를 회피.
+        // #17 크래시(0xc0000409) 의 강한 의심 원인: 스캔 PDF 다수 폴더에서 PDF 마다
+        // node.exe 자식 spawn 누적 → 자식 프로세스/파이프/스레드 누수 → CRT 레벨
+        // __fastfail. v2.5.6 의 사후 분기는 같은 파일 재시도만 막아 효과 미미했다.
+        if extension == "pdf" && ocr.is_none() {
+            let streak = SCANNED_PDF_STREAK.load(Ordering::Relaxed);
+            // Circuit breaker: 연속 임계치 초과 시 sniff 도 건너뛰고 즉시 스킵.
+            if streak >= SCANNED_PDF_BREAKER_THRESHOLD {
+                return Err(ParseError::ParseError(
+                    "이미지 기반 PDF (circuit breaker): kordoc 호출 회피".to_string(),
+                ));
+            }
+            if pdf_sniff::is_likely_scanned_pdf(path) {
+                SCANNED_PDF_STREAK.fetch_add(1, Ordering::Relaxed);
+                return Err(ParseError::ParseError(
+                    "이미지 기반 PDF (사전 감지): OCR 비활성 → 본문 추출 스킵".to_string(),
+                ));
+            }
+        }
+
         match kordoc::parse(path) {
-            Ok(doc) => return Ok(doc),
+            Ok(doc) => {
+                if extension == "pdf" {
+                    SCANNED_PDF_STREAK.store(0, Ordering::Relaxed);
+                }
+                return Ok(doc);
+            }
             Err(e) => {
-                // 이미지 기반 PDF + OCR 비활성: Rust pdf-extract 재시도해도 텍스트 없음.
-                // Downloads 등 스캔 PDF 다수 폴더에서 kordoc → pdf-extract 2중 호출로 인한
-                // 리소스 낭비를 방지. 메타데이터는 상위 파이프라인이 Failure 경로에서 저장.
+                // kordoc 사후 분기 (sniff 가 false negative 였을 때의 안전망).
                 if extension == "pdf" && ocr.is_none() && e.to_string().contains("이미지 기반 PDF")
                 {
+                    SCANNED_PDF_STREAK.fetch_add(1, Ordering::Relaxed);
                     return Err(ParseError::ParseError(
                         "이미지 기반 PDF: OCR 비활성 상태에서 본문 추출 스킵".to_string(),
                     ));

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { VectorIndexingStatus, VectorIndexingProgress } from "../types/index";
+import { getErrorMessage } from "../types/error";
 
 interface UseVectorIndexingReturn {
   /** 벡터 인덱싱 상태 */
@@ -65,7 +66,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
         prev ? { ...prev, is_running: false, current_file: null } : prev
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       setError(`벡터 인덱싱 취소 실패: ${msg}`);
     }
   }, []);
@@ -76,7 +77,7 @@ export function useVectorIndexing(): UseVectorIndexingReturn {
       await invokeWithTimeout("start_vector_indexing", undefined, IPC_TIMEOUT.SETTINGS);
       await refreshStatus();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       setError(`벡터 인덱싱 시작 실패: ${msg}`);
     }
   }, [refreshStatus]);

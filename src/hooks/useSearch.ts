@@ -16,6 +16,7 @@ import type {
 } from "../types/search";
 import { DEFAULT_FILTERS } from "../types/search";
 import { SEARCH_COMMANDS } from "../types/api";
+import { getErrorMessage } from "../types/error";
 import { textSimilarity } from "../utils/textSimilarity";
 
 /** 동일 파일 내 유사 청크 병합 임계값 (Jaccard bigram) */
@@ -380,7 +381,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         }
       } catch (err) {
         if (searchIdRef.current !== currentId) return;
-        const message = err instanceof Error ? err.message : String(err);
+        const message = getErrorMessage(err);
         logToBackend("error", "Search failed", message, "useSearch");
         setError(`검색 실패: ${message}`);
         startTransition(() => {
@@ -447,7 +448,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         });
       } catch (err) {
         if (searchIdRef.current !== currentId) return;
-        const message = err instanceof Error ? err.message : String(err);
+        const message = getErrorMessage(err);
         logToBackend("error", "Smart search failed", message, "useSearch");
         setError(`검색 실패: ${message}`);
         startTransition(() => {

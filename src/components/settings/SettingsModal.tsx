@@ -4,6 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import type { Settings } from "../../types/settings";
+import { getErrorMessage } from "../../types/error";
 import { GeneralTab, SearchTab, AiTab, SystemTab, DiagnosticsTab } from "./tabs";
 
 interface SettingsModalProps {
@@ -44,8 +45,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         originalDataRootRef.current = result.data_root;
         setSettings(result);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        setError(`설정을 불러올 수 없습니다: ${message}`);
+        setError(`설정을 불러올 수 없습니다: ${getErrorMessage(err)}`);
       } finally {
         setIsLoading(false);
       }
@@ -72,8 +72,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
 
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(`설정 저장에 실패했습니다: ${message}`);
+      setError(`설정 저장에 실패했습니다: ${getErrorMessage(err)}`);
     } finally {
       setIsSaving(false);
     }

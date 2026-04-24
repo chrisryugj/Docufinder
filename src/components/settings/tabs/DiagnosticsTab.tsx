@@ -4,6 +4,7 @@ import { Button } from "../../ui/Button";
 import { SettingsToggle } from "../SettingsToggle";
 import { useUpdater } from "../../../hooks/useUpdater";
 import { UpdateModal } from "../../updater/UpdateModal";
+import { getErrorMessage } from "../../../types/error";
 import type { TabProps } from "./types";
 
 interface DiagnosticsTabProps extends TabProps {
@@ -69,8 +70,7 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
               try {
                 await invokeWithTimeout("open_log_dir", undefined, IPC_TIMEOUT.FILE_ACTION);
               } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                setError?.(`로그 폴더 열기 실패: ${message}`);
+                setError?.(`로그 폴더 열기 실패: ${getErrorMessage(err)}`);
               }
             }}
           >

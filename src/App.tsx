@@ -14,6 +14,7 @@ import { useAppEvents } from "./hooks/useAppEvents";
 import { useWindowFocus } from "./hooks/useWindowFocus";
 import { useUpdater } from "./hooks/useUpdater";
 import { setupGlobalErrorHandlers } from "./utils/errorLogger";
+import { getErrorMessage } from "./types/error";
 
 // Components
 import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
@@ -343,8 +344,7 @@ function AppContent() {
       await Promise.all([idx.refreshStatus(), idx.refreshVectorStatus()]);
       ui.showToast("모든 인덱스 데이터가 초기화되었습니다", "success");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      ui.showToast(`초기화 실패: ${message}`, "error");
+      ui.showToast(`초기화 실패: ${getErrorMessage(err)}`, "error");
       throw err;
     }
   }, [idx, ui]);

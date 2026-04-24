@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getErrorMessage } from "../types/error";
 
 export type UpdatePhase =
   | "idle"
@@ -59,7 +60,7 @@ export function useUpdater(auto: boolean = true) {
       }));
       return null;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       setState((s) => ({ ...s, phase: "error", error: msg, lastCheckedAt: Date.now() }));
       return null;
     }
@@ -99,7 +100,7 @@ export function useUpdater(auto: boolean = true) {
       }
     } catch (err) {
       if (cancelledRef.current) return;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       setState((s) => ({ ...s, phase: "error", error: msg }));
     }
   }, []);

@@ -202,8 +202,7 @@ impl FolderService {
             return Err(AppError::PathNotFound(path.display().to_string()));
         }
 
-        let canonical = path
-            .canonicalize()
+        let canonical = dunce::canonicalize(path)
             .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
 
         let path_str = canonical.to_string_lossy().to_lowercase();

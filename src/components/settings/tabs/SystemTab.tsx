@@ -6,6 +6,7 @@ import { Dropdown } from "../../ui/Dropdown";
 import { Modal } from "../../ui/Modal";
 import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
+import { getErrorMessage } from "../../../types/error";
 import type { TabProps } from "./types";
 import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
 
@@ -42,8 +43,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
       await onClearData();
       onClose();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError?.(`초기화 실패: ${message}`);
+      setError?.(`초기화 실패: ${getErrorMessage(err)}`);
     } finally {
       setIsClearing(false);
     }
@@ -201,8 +201,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
                   await onAutoIndexAllDrives();
                   onClose();
                 } catch (err) {
-                  const message = err instanceof Error ? err.message : String(err);
-                  setError?.(`인덱싱 실패: ${message}`);
+                  setError?.(`인덱싱 실패: ${getErrorMessage(err)}`);
                 } finally {
                   setIsAutoIndexing(false);
                 }

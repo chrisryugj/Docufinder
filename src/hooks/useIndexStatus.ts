@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
+import { getErrorMessage } from "../types/error";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 
 /**
@@ -186,7 +187,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
             indexed_count: 0,
             failed_count: 0,
             vectors_count: 0,
-            message: err instanceof Error ? err.message : String(err),
+            message: getErrorMessage(err),
             errors: [],
           });
         }
@@ -196,7 +197,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       setIsIndexing(false);
       return results;
     } catch (err) {
-      setError(`폴더 추가 실패: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`폴더 추가 실패: ${getErrorMessage(err)}`);
       setIsIndexing(false);
       return null;
     }
@@ -227,7 +228,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
 
       return result;
     } catch (err) {
-      setError(`폴더 추가 실패: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`폴더 추가 실패: ${getErrorMessage(err)}`);
       setIsIndexing(false);
       return null;
     }
@@ -241,7 +242,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       // 즉시 반환됨 — optimistic UI 갱신
       await refreshStatus();
     } catch (err) {
-      setError(`폴더 제거 실패: ${err instanceof Error ? err.message : String(err)}`);
+      setError(`폴더 제거 실패: ${getErrorMessage(err)}`);
     }
   }, [refreshStatus]);
 
