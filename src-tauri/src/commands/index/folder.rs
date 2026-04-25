@@ -1,6 +1,28 @@
 //! Folder Commands - add, remove, reindex, resume, stats, favorites
 
 use super::*;
+use serde::Serialize;
+
+/// 폴더 추가 전 사전 분류 결과 — 프론트가 다이얼로그 분기에 사용.
+#[derive(Debug, Serialize)]
+pub struct FolderClassification {
+    pub kind: crate::utils::cloud_detect::LocationKind,
+    /// `Settings.skip_cloud_body_indexing` 토글 현재 값. 프론트가 안내 문구 분기에 사용.
+    pub skip_body_enabled: bool,
+}
+
+/// 폴더가 클라우드/네트워크 위치인지 사전 분류 (add_folder 호출 전 다이얼로그 안내용).
+///
+/// 경로 정규화 + 분류만 수행, 인덱싱 부작용 없음. 존재하지 않는 경로는 Local 로 응답.
+#[tauri::command]
+pub async fn classify_folder(path: String) -> ApiResult<FolderClassification> {
+    let folder_path = Path::new(&path);
+    let canonical = dunce::canonicalize(folder_path).unwrap_or_else(|_| folder_path.to_path_buf());
+    Ok(FolderClassification {
+        kind: crate::utils::cloud_detect::classify(&canonical),
+        skip_body_enabled: crate::utils::cloud_detect::is_skip_enabled(),
+    })
+}
 
 /// 감시 폴더 추가 및 인덱싱 (2단계: FTS → 벡터 백그라운드)
 #[tauri::command]

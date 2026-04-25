@@ -17,6 +17,47 @@ function isDriveRoot(path: string): boolean {
   return /^[A-Za-z]:\\?$/.test(normalized);
 }
 
+type LocationKind = "local" | "unc" | "network_drive" | "cloud_placeholder";
+interface FolderClassification {
+  kind: LocationKind;
+  skip_body_enabled: boolean;
+}
+
+/**
+ * 클라우드/네트워크 폴더 추가 시 사전 안내 다이얼로그.
+ * skip_body_enabled = true: 메타데이터만 인덱싱 안내 (계속/취소)
+ * skip_body_enabled = false: 본문 인덱싱 시 느려진다는 경고 (계속/취소)
+ * 로컬이면 다이얼로그 없이 통과.
+ */
+async function confirmCloudOrNetworkAdd(path: string): Promise<boolean> {
+  let info: FolderClassification;
+  try {
+    info = await invoke<FolderClassification>("classify_folder", { path });
+  } catch {
+    return true; // 분류 실패 시 차단하지 않음
+  }
+  if (info.kind === "local") return true;
+
+  const labelMap: Record<LocationKind, string> = {
+    local: "로컬",
+    unc: "네트워크(UNC) 공유 폴더",
+    network_drive: "매핑된 네트워크 드라이브",
+    cloud_placeholder: "클라우드 동기화 폴더",
+  };
+  const label = labelMap[info.kind];
+
+  const message = info.skip_body_enabled
+    ? `이 폴더는 ${label}로 감지되었습니다.\n\n현재 설정에 따라 **본문은 인덱싱하지 않고 파일명·크기·수정일만** 저장됩니다 (파일명 검색은 가능).\n\n본문까지 인덱싱하려면 [설정 → 시스템 → 클라우드/네트워크 폴더 본문 인덱싱 자동 스킵] 토글을 끄세요. (느려질 수 있음)\n\n계속하시겠습니까?`
+    : `이 폴더는 ${label}로 감지되었습니다.\n\n현재 본문 인덱싱이 켜져 있어 모든 파일을 네트워크/클라우드에서 다운로드합니다 — 매우 느려질 수 있습니다.\n\n계속하시겠습니까?`;
+
+  return await ask(message, {
+    title: `${label} 추가`,
+    kind: "warning",
+    okLabel: "계속",
+    cancelLabel: "취소",
+  });
+}
+
 interface SuggestedFolder {
   path: string;
   label: string;
@@ -178,6 +219,10 @@ export function useIndexStatus(): UseIndexStatusReturn {
       // 순차 처리 (DB 잠금 충돌 방지)
       const results: AddFolderResult[] = [];
       for (const path of paths) {
+        // 클라우드/네트워크 사전 안내 (Cancel 시 해당 폴더만 스킵)
+        if (!(await confirmCloudOrNetworkAdd(path))) {
+          continue;
+        }
         try {
           const result = await indexSingleFolder(path);
           results.push(result);
@@ -218,6 +263,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
         );
         if (!confirmed) return null;
       }
+
+      if (!(await confirmCloudOrNetworkAdd(path))) return null;
 
       setIsIndexing(true);
       setError(null);

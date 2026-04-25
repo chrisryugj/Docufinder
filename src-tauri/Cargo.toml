@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.5.15"
+version = "2.5.16"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -102,7 +102,8 @@ tempfile = "3"
 windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_System_SystemInformation"
+    "Win32_System_SystemInformation",
+    "Win32_Storage_FileSystem"
 ] }
 
 [features]

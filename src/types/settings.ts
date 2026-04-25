@@ -59,4 +59,10 @@ export interface Settings {
    * 인식된 수식은 `$...$` (inline) / `$$...$$` (display) 로 검색/미리보기에 반영.
    */
   formula_ocr_enabled: boolean;
+  /**
+   * 클라우드/네트워크 폴더(OneDrive·구글·NAVER Works·UNC·매핑 SMB 등)의 본문 인덱싱 자동 스킵.
+   * 기본 true: 메타데이터만 인덱싱(파일명 검색 가능), hydrate/다운로드 차단.
+   * false: 일반 로컬 폴더처럼 본문까지 인덱싱 (NAS 등 빠른 환경에서 사용자 선택).
+   */
+  skip_cloud_body_indexing: boolean;
 }

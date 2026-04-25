@@ -91,6 +91,16 @@ pub struct Settings {
     /// 첫 사용 시 Pix2Text MFD + MFR ONNX 모델(~155MB)이 HuggingFace 에서 자동 다운로드됨.
     #[serde(default)]
     pub formula_ocr_enabled: bool,
+
+    /// 클라우드/네트워크 폴더(OneDrive·구글·NAVER Works·UNC·매핑 SMB 등)의 본문 인덱싱 자동 스킵.
+    /// true(기본): 메타데이터만 인덱싱 → 파일명 검색은 가능, hydrate/네트워크 다운로드 차단.
+    /// false: 일반 로컬 폴더와 동일하게 본문까지 인덱싱 (NAS 등 빠른 환경에서 사용자 선택).
+    #[serde(default = "default_skip_cloud_body_indexing")]
+    pub skip_cloud_body_indexing: bool,
+}
+
+fn default_skip_cloud_body_indexing() -> bool {
+    true
 }
 
 fn default_group_versions() -> bool {
@@ -204,6 +214,7 @@ impl Default for Settings {
             auto_sync_interval_minutes: default_auto_sync_interval_minutes(),
             error_reporting_enabled: default_error_reporting_enabled(),
             formula_ocr_enabled: false,
+            skip_cloud_body_indexing: default_skip_cloud_body_indexing(),
         }
     }
 }
@@ -548,6 +559,9 @@ pub async fn update_settings(
 
     // 전역 formula OCR 토글 — kordoc 사이드카 호출 시 --formula-ocr 플래그 전파용
     crate::parsers::kordoc::set_formula_ocr_enabled(settings.formula_ocr_enabled);
+
+    // 클라우드/네트워크 본문 인덱싱 스킵 토글 동기화 (parse_file 진입에서 즉시 반영)
+    crate::utils::cloud_detect::set_skip_enabled(settings.skip_cloud_body_indexing);
 
     tracing::info!("Settings saved to {:?}", settings_path);
 

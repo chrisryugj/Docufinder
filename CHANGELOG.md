@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.5.16] - 2026-04-26
+
+**클라우드/네트워크 폴더 본문 인덱싱 자동 스킵 + 폴더 추가 시 사전 안내** — [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)
+
+### 추가
+- **클라우드/네트워크 폴더 본문 인덱싱 자동 스킵** (기본 ON) — Google Drive for Desktop · NAVER Works · WebDAV · 매핑 SMB 드라이브 등 placeholder 비트가 켜지지 않는 환경에서 인덱서가 모든 파일을 네트워크/클라우드에서 다운로드하던 문제. `cloud_detect::is_network_path()` 추가 — UNC + `GetDriveTypeW = DRIVE_REMOTE` 매핑드라이브 모두 감지.
+  - 켜진 상태: 본문 파싱 진입 직전 `ParseError::CloudPlaceholder` 로 분기 → **메타데이터만 인덱싱(파일명·크기·수정일)**, hydrate / 네트워크 다운로드 0회.
+  - 토글 위치: `설정 → 시스템 → 클라우드/네트워크 폴더 본문 인덱싱 자동 스킵`. 끄면 일반 로컬 폴더처럼 본문까지 인덱싱 (NAS 등 빠른 환경 한정 권장).
+- **폴더 추가 시 사전 안내 다이얼로그** — 새 커맨드 `classify_folder` 가 폴더의 LocationKind(`local` / `unc` / `network_drive` / `cloud_placeholder`) 를 분류해 프론트에 반환. 클라우드/네트워크면 추가 전 1회 경고 다이얼로그(설정 토글에 따라 안내 문구 분기) → 사용자가 명시적으로 계속 선택해야 진행.
+
+### 내부
+- 새 모듈 `utils/cloud_detect`: `is_cloud_placeholder` / `is_network_path` / `classify` / `set_skip_enabled` 노출.
+- `Settings.skip_cloud_body_indexing: bool` (기본 true) 추가. `update_settings` + `AppContainer::new` 에서 atomic flag 동기화.
+- `Cargo.toml`: `windows-sys` 의 `Win32_Storage_FileSystem` feature 추가 (`GetDriveTypeW` 사용).
+
+---
+
 ## [2.5.15] - 2026-04-24
 
 **이미지 PDF 사전 감지 + 폴더 추가 에러 메시지 복구 + folder_service canonicalize 통일** — [이슈 #17](https://github.com/chrisryugj/Docufinder/issues/17), [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)

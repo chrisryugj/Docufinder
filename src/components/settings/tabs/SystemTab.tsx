@@ -130,6 +130,14 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             실시간 감시가 놓친 변경분을 주기적으로 재정합 · 창 복귀 시에도 자동 실행
           </p>
         </div>
+        <div className="mt-3">
+          <SettingsToggle
+            label="클라우드/네트워크 폴더 본문 인덱싱 자동 스킵"
+            description="OneDrive·구글·NAVER Works·UNC·SMB 매핑드라이브의 본문은 인덱싱하지 않음 (파일명 검색은 가능). 끄면 일반 로컬처럼 본문도 인덱싱 — NAS 등 빠른 환경에서만 권장"
+            checked={settings.skip_cloud_body_indexing ?? true}
+            onChange={(v) => onChange("skip_cloud_body_indexing", v)}
+          />
+        </div>
       </div>
 
       {/* 데이터 관리 */}

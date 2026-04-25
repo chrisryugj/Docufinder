@@ -83,6 +83,17 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         return Err(ParseError::CloudPlaceholder(path.display().to_string()));
     }
 
+    // 글로벌 토글이 켜져 있고 경로가 네트워크 드라이브/UNC 면 본문 파싱을 사전 차단.
+    // NAVER Works · WebDAV · Drive for Desktop 가상드라이브 등은 placeholder 비트가 켜지지
+    // 않지만 매 파일 read 마다 네트워크 라운드트립 또는 클라우드 다운로드를 유발한다.
+    // 메타데이터만 인덱싱(파일명 검색은 동작) → 사용자가 의도적으로 본문이 필요하면
+    // 설정에서 "클라우드/네트워크 본문 인덱싱" 토글을 켜야 한다.
+    if crate::utils::cloud_detect::is_skip_enabled()
+        && crate::utils::cloud_detect::is_network_path(path)
+    {
+        return Err(ParseError::CloudPlaceholder(path.display().to_string()));
+    }
+
     // 암호 보호 파일 사전 감지 — kordoc(Node.js 사이드카) 호출 전에 차단해야
     // 내부에서 한컴/Office COM 이 시스템 모달 다이얼로그를 띄우는 사고를 막는다.
     // HWP/HWPX/DOCX/XLSX/PPTX/PDF 지원, 감지 실패 시 기존 파서 에러 기반 경로가 fallback.

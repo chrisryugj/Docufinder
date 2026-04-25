@@ -5,10 +5,9 @@
 //! 되었고, 폴더에 이미지 PDF가 수백 개면 자식 프로세스/파이프/스레드 누적으로
 //! Windows 0xc0000409 (`__fastfail` / GS-cookie) 크래시까지 이어졌다 (#17).
 //!
-//! 휴리스틱: 파일 첫 N KB 를 읽어 다음을 동시 검사
-//!   - 텍스트 오브젝트(`BT`) 또는 `/Font` 참조가 거의 없음
-//!   - 이미지 자원(`/XObject` + `/Subtype /Image` 또는 `/Filter /DCTDecode|/JPXDecode|/CCITTFaxDecode`)이 존재
-//! 두 조건이 모두 충족되면 "이미지 기반 PDF"로 판정.
+//! 휴리스틱: 파일 첫 N KB 를 읽어 텍스트 오브젝트(`BT` / `/Font`) 부재 + 이미지 자원
+//! (`/XObject` + `/Subtype /Image` 또는 `/Filter /DCTDecode|/JPXDecode|/CCITTFaxDecode`)
+//! 존재 시 "이미지 기반 PDF"로 판정.
 //!
 //! False positive (텍스트 PDF인데 이미지로 오판) 시 사용자는 키워드 검색만 못 하고
 //! 메타데이터 인덱싱은 정상이다 — 크래시 회피 가치가 더 크다.

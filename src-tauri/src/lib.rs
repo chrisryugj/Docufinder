@@ -883,6 +883,7 @@ pub fn run() {
             commands::search::save_search_query,
             commands::search::get_document_statistics,
             commands::index::add_folder,
+            commands::index::classify_folder,
             commands::index::remove_folder,
             commands::index::get_index_status,
             commands::index::get_folder_stats,
