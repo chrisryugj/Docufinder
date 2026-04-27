@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.5.17] - 2026-04-27
+
+**디버그 심볼 보존 빌드 — 이슈 #17 fastfail(7) 콜스택 추적용**
+
+### 변경
+- `Cargo.toml [profile.release]`: `strip = "debuginfo"` 한시 비활성화, `debug = "line-tables-only"` 추가. 사용자 제출 minidump 5건이 모두 `0xC0000409 / Param[0]=0x7 (FAST_FAIL_FATAL_APP_EXIT)` 시그널이지만 PDB 부재로 abort 콜스택을 풀어낼 수 없어, 다음 크래시에서 panic 발생 함수까지 식별 가능하도록 PDB 동봉. 다음 정식 릴리즈에서 다시 strip 복원 예정.
+- 기능 변경 없음 (인덱싱/검색/UI 동일).
+
+---
+
 ## [2.5.16] - 2026-04-26
 
 **클라우드/네트워크 폴더 본문 인덱싱 자동 스킵 + 폴더 추가 시 사전 안내** — [이슈 #19](https://github.com/chrisryugj/Docufinder/issues/19)

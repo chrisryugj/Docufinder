@@ -106,3 +106,19 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
+
+      # 디버그 심볼 (PDB) 업로드 — 사용자 크래시 덤프(.dmp) 의 콜스택 풀이용.
+      # Cargo.toml [profile.release] 의 strip / debug 설정에 따라 PDB 가 생성될 때만 업로드.
+      - name: Upload PDB to release (if present)
+        if: success()
+        shell: pwsh
+        run: |
+          $pdb = "src-tauri/target/release/docufinder.pdb"
+          if (Test-Path $pdb) {
+            gh release upload "${{ github.ref_name }}" $pdb --clobber
+            Write-Host "Uploaded $pdb to release ${{ github.ref_name }}"
+          } else {
+            Write-Host "No PDB found at $pdb (release profile likely has strip enabled), skipping"
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
