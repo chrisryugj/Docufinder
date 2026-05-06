@@ -7,6 +7,7 @@ import { SettingsToggle } from "../SettingsToggle";
 import { invokeWithTimeout } from "../../../utils/invokeWithTimeout";
 import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
+import { SYSTEM_FOLDERS_HINT } from "../../../utils/platform";
 
 interface FormulaModelInfo {
   name: string;
@@ -241,7 +242,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
         <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
           제외 디렉토리
           <span className="font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>
-            (줄바꿈 구분, 기본: Windows·Program Files·AppData 등)
+            (줄바꿈 구분, 기본: {SYSTEM_FOLDERS_HINT})
           </span>
         </label>
         <textarea

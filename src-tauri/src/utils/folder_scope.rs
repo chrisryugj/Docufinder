@@ -69,6 +69,7 @@ mod tests {
         assert!(path_in_scope("c:/docs/a/foo.txt", r"C:\DOCS\A"));
     }
 
+    #[cfg(windows)]
     #[test]
     fn unc_prefix_stripped() {
         assert!(path_in_scope(r"\\?\C:\docs\a\foo.txt", r"C:\docs\a"));

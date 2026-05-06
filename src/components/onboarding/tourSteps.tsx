@@ -1,4 +1,5 @@
 import type { TourStep } from "./OnboardingTour";
+import { isMac } from "../../utils/platform";
 
 /**
  * Docufinder 기능 투어 스텝 정의
@@ -54,7 +55,9 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
           추가된 폴더는 항상 최신 상태로 유지돼요 (파일 변경 자동 감지).
         </p>
         <p className="text-[12px] opacity-80">
-          드라이브 루트(C:\, D:\ 등)도 추가 가능 — 시스템 폴더는 자동 제외됩니다.
+          {isMac
+            ? "사용자 폴더(Documents, Downloads 등)나 외장 드라이브 추가 — 시스템 폴더는 자동 제외됩니다."
+            : "드라이브 루트(C:\\, D:\\ 등)도 추가 가능 — 시스템 폴더는 자동 제외됩니다."}
         </p>
       </div>
     ),

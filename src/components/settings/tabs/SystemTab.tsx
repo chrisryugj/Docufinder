@@ -9,6 +9,7 @@ import type { Settings } from "../../../types/settings";
 import { getErrorMessage } from "../../../types/error";
 import type { TabProps } from "./types";
 import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
+import { AUTOSTART_DESCRIPTION, SYSTEM_FOLDERS_HINT, DEFAULT_DATA_LOCATION, HAS_DRIVES } from "../../../utils/platform";
 
 interface SystemTabProps extends TabProps {
   onClose: () => void;
@@ -64,7 +65,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
       <div className="grid grid-cols-3 gap-x-4">
         <SettingsToggle
           label="자동 실행"
-          description="Windows 시작 시 자동 실행"
+          description={AUTOSTART_DESCRIPTION}
           checked={settings.auto_start ?? false}
           onChange={(v) => onChange("auto_start", v)}
         />
@@ -159,9 +160,9 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
               border: "1px solid var(--color-border)",
               color: settings.data_root ? "var(--color-text-primary)" : "var(--color-text-muted)",
             }}
-            title={settings.data_root || "기본 위치 (AppData)"}
+            title={settings.data_root || DEFAULT_DATA_LOCATION}
           >
-            {settings.data_root || "기본 위치 (AppData)"}
+            {settings.data_root || DEFAULT_DATA_LOCATION}
           </div>
           <Button
             variant="ghost"
@@ -187,7 +188,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
         </div>
       </div>
 
-      {onAutoIndexAllDrives && (
+      {onAutoIndexAllDrives && HAS_DRIVES && (
         <div className="flex items-center justify-between">
           <div>
             <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>전체 드라이브 인덱싱</label>
@@ -200,7 +201,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             disabled={isAutoIndexing}
             onClick={async () => {
               const confirmed = await ask(
-                "모든 드라이브를 스캔하여 문서를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+                `모든 드라이브를 스캔하여 문서를 인덱싱합니다.\n시스템 폴더(${SYSTEM_FOLDERS_HINT})는 자동 제외됩니다.\n\n계속하시겠습니까?`,
                 { title: "전체 드라이브 인덱싱", kind: "info", okLabel: "시작", cancelLabel: "취소" }
               );
               if (confirmed) {

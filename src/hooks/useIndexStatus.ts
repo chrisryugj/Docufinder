@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/index";
 import { getErrorMessage } from "../types/error";
 import { open, ask } from "@tauri-apps/plugin-dialog";
+import { SYSTEM_FOLDERS_HINT } from "../utils/platform";
 
 /**
  * 드라이브 루트 경로인지 확인 (Windows)
@@ -202,7 +203,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       const hasDriveRoot = paths.some(isDriveRoot);
       if (hasDriveRoot) {
         const confirmed = await ask(
-          "드라이브 전체를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+          `드라이브 전체를 인덱싱합니다.\n시스템 폴더(${SYSTEM_FOLDERS_HINT})는 자동 제외됩니다.\n\n계속하시겠습니까?`,
           {
             title: "드라이브 전체 인덱싱",
             kind: "warning",
@@ -253,7 +254,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     try {
       if (isDriveRoot(path)) {
         const confirmed = await ask(
-          "드라이브 전체를 인덱싱합니다.\n시스템 폴더(Windows, Program Files 등)는 자동 제외됩니다.\n\n계속하시겠습니까?",
+          `드라이브 전체를 인덱싱합니다.\n시스템 폴더(${SYSTEM_FOLDERS_HINT})는 자동 제외됩니다.\n\n계속하시겠습니까?`,
           {
             title: "드라이브 전체 인덱싱",
             kind: "warning",

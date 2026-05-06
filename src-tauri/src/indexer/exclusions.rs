@@ -88,6 +88,7 @@ mod tests {
     use super::is_excluded_dir;
     use std::path::Path;
 
+    #[cfg(windows)]
     #[test]
     fn matches_exact_directory_name_case_insensitively() {
         let excluded = vec!["appdata".to_string()];
@@ -115,6 +116,7 @@ mod tests {
         ));
     }
 
+    #[cfg(windows)]
     #[test]
     fn matches_root_level_dollar_directory() {
         let excluded = vec![];

@@ -55,7 +55,9 @@ src-tauri/wix/vc_redist.x64.exe
 
 # Bundled runtime (빌드 시 스크립트로 생성)
 src-tauri/resources/node.exe
+src-tauri/resources/node
 src-tauri/resources/kordoc/
+src-tauri/resources/onnxruntime/libonnxruntime.dylib
 
 # Promo video (Remotion)
 promo-video/node_modules/

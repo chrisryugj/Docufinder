@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
+import { SYSTEM_FOLDERS_HINT, HAS_DRIVES } from "../../utils/platform";
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -187,12 +188,16 @@ function StartSection() {
         ]}
       />
 
-      <SubTitle>전체 PC 인덱싱</SubTitle>
-      <Paragraph>
-        설정 → 시스템 탭에서 '전체 드라이브 인덱싱'을 실행하면
-        PC의 모든 드라이브를 한 번에 인덱싱할 수 있어요.
-        시스템 폴더(Windows, Program Files 등)는 자동으로 제외됩니다.
-      </Paragraph>
+      {HAS_DRIVES && (
+        <>
+          <SubTitle>전체 PC 인덱싱</SubTitle>
+          <Paragraph>
+            설정 → 시스템 탭에서 '전체 드라이브 인덱싱'을 실행하면
+            PC의 모든 드라이브를 한 번에 인덱싱할 수 있어요.
+            시스템 폴더({SYSTEM_FOLDERS_HINT})는 자동으로 제외됩니다.
+          </Paragraph>
+        </>
+      )}
 
       <InfoBox>
         폴더를 추가하면 파일 변경을 자동 감지해요. 새 파일이 추가되면 자동으로 검색 대상에 포함됩니다!

@@ -158,6 +158,7 @@ impl WatchedFolder {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     #[test]
     fn test_folder_creation() {
         let folder =
@@ -167,6 +168,7 @@ mod tests {
         assert!(!folder.is_favorite());
     }
 
+    #[cfg(windows)]
     #[test]
     fn test_blocked_paths() {
         // Windows 시스템 폴더
@@ -220,6 +222,7 @@ mod tests {
         assert!(!folder.is_favorite());
     }
 
+    #[cfg(windows)]
     #[test]
     fn test_contains_path() {
         let folder = WatchedFolder::new(PathBuf::from("C:\\Users\\Test\\Documents"), 0).unwrap();

@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.5.18] - 2026-05-06
+
+**macOS arm64 (Apple Silicon) 포팅** — Windows 전용이던 앱을 동일 코드베이스에서 macOS 14(Sonoma)+ Apple Silicon 으로 이식. Universal/Intel Mac 미지원, Notarization 없이 ad-hoc 서명만 적용 (Apple Developer ID 미보유 전제).
+
+### 추가
+- **macOS arm64 빌드** — `aarch64-apple-darwin` 타겟. dmg 산출물 + ad-hoc 서명. Mach-O thin arm64. 시스템 dylib 의존만 (외부 의존 0).
+- **`tauri.macos.conf.json`** — `bundle.targets: ["dmg"]`, `signingIdentity: "-"`, `createUpdaterArtifacts: false` (자동 업데이트 비활성). `minimumSystemVersion: 11.0`.
+- **[scripts/setup-macos-resources.sh](scripts/setup-macos-resources.sh)** — Node v20 darwin-arm64 + kordoc dist + ONNX Runtime 1.23.0 osx-arm64 dylib 을 `src-tauri/resources/` 에 자동 채움. `KORDOC_DIR` 환경변수로 kordoc 소스 경로 지정 가능.
+- **[src/utils/platform.ts](src/utils/platform.ts)** — UA 기반 OS 감지 helper. `FILE_MANAGER_NAME`(탐색기/Finder), `SYSTEM_FOLDERS_HINT`, `AUTOSTART_DESCRIPTION`, `HAS_DRIVES`, `DEFAULT_DATA_LOCATION` 등 사용자 노출 텍스트를 OS별 분기.
+- **CI macOS job** — `.github/workflows/ci.yml` 에 `check-backend-macos` (macos-14, clippy/test). `.github/workflows/publish.yml` 에 `publish-macos` job. tag push 시 windows + mac 빌드 병렬 → 동일 GitHub Release 에 dmg/MSI 동시 업로드. mac job 은 windows 결과 기다리지 않고 release 없으면 단독 생성.
+
+### 수정 (포팅 과정에서 발견된 버그)
+- **HWP5 password detection false positive** — `parsers/password_detect.rs` 의 `FLAG_CERT_ENC` (bit 8 = 0x100) 가 한컴오피스 일부 정상 문서에도 set 되어 있어 kordoc 호출 자체를 차단하던 문제. bit 8 검사 제거, 진짜 암호(bit 1) + DRM(bit 4) 만 본다.
+- **mac 앱 번들 경로 미고려** — `parsers/kordoc.rs` 의 `find_kordoc_cli()` / `which_node()` 가 `binary parent / resources/` 만 보던 코드를 mac 번들 구조 (`Contents/MacOS/<bin>` → `../Resources/resources/`) 까지 탐색하도록 분기 추가. 이게 없으면 mac 에서 `.hwp` 파싱 시 `is_available()` false 반환 → "Unsupported file type: hwp (kordoc 필요)" 폴백.
+- **설정 토글 자동 저장** — `SettingsModal.tsx` 의 `handleChange` 가 로컬 state 만 갱신하고 백엔드 저장은 "저장" 버튼 클릭 시에만 수행하던 문제. 토글만 켜고 앱 X 버튼으로 종료하면 `close_to_tray` 등이 백엔드에 반영 안 됨. 디바운스 300ms 자동 저장 추가.
+- **mac dock 클릭 시 윈도우 미복귀** — `lib.rs` 의 Tauri builder 에 `RunEvent::Reopen` 핸들러 추가. close_to_tray 로 hide 된 상태에서 dock 아이콘 클릭하면 윈도우 자동 복귀.
+- **macOS 시스템 폴더 차단 누락** — `constants::BLOCKED_PATH_PATTERNS` 에 `/system/library/`, `/private/var/`, `/usr/bin/`, `/.spotlight-v100/` 등 추가. 단 `~/Library/...` (사용자 데이터)는 차단되지 않도록 prefix 패턴만 사용.
+
+### 내부 분기
+- `disk_info.rs` — non-windows 는 `DiskType::Ssd` fallback. windows-only 함수/static 에 `cfg(windows)` 적용.
+- `model_downloader.rs` — `dylib_filename()` 헬퍼 (`onnxruntime.dll` / `libonnxruntime.dylib` / `libonnxruntime.so`). ONNX Runtime 다운로드 로직은 windows-only, mac/linux 는 번들 dylib 검증만.
+- `kordoc.rs` — `NODE_BIN` 상수 (`node.exe` / `node`).
+- `lib.rs` — `ORT_DYLIB_PATH` 가 `dylib_filename()` 사용.
+- `cargo test` — windows-path 가정 7개 테스트에 `#[cfg(windows)]` 게이트 (170 passed on mac).
+
+### 사용자 안내
+- **macOS 사용자** — README 의 "macOS (Apple Silicon) 설치" 섹션 참고. 첫 실행은 우클릭 → 열기, "손상된 앱" 표시 시 `xattr -dr com.apple.quarantine /Applications/Anything.app`.
+- **자동 업데이트 미지원** (mac 한정) — Notarization 없이 updater 가 불안정해 비활성. 새 버전은 Releases 페이지에서 수동 다운로드.
+
+---
+
 ## [2.5.17] - 2026-04-27
 
 **디버그 심볼 보존 빌드 — 이슈 #17 fastfail(7) 콜스택 추적용**

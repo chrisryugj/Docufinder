@@ -322,6 +322,7 @@ mod tests {
         assert_eq!(results.len(), 1);
     }
 
+    #[cfg(windows)]
     #[test]
     fn test_name_from_path() {
         let entry = create_test_entry(1, "test.docx");

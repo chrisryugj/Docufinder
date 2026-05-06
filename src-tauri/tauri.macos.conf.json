@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "targets": ["dmg"],
+    "resources": [
+      "resources/node",
+      "resources/kordoc/**/*",
+      "resources/paddleocr/det.onnx",
+      "resources/paddleocr/rec.onnx",
+      "resources/paddleocr/dict.txt",
+      "resources/onnxruntime/libonnxruntime.dylib",
+      "icons/tray-icon.png"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "-",
+      "entitlements": null,
+      "exceptionDomain": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": false
+    }
+  }
+}

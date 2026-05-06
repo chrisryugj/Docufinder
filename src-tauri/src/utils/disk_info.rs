@@ -4,11 +4,14 @@
 //! 드라이브 문자로 추정 (C:=SSD, D:=HDD 패턴).
 //! 결과는 드라이브별로 캐싱되어 PowerShell 재실행 방지.
 
+#[cfg(windows)]
 use std::collections::HashMap;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
+#[cfg(windows)]
 use std::process::Command;
+#[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
 /// 콘솔 창 숨김 플래그 (Windows)
@@ -17,6 +20,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// 디스크 유형
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)] // Hdd/Unknown 은 windows 만 사용
 pub enum DiskType {
     Ssd,
     Hdd,
@@ -31,10 +35,12 @@ impl DiskType {
 }
 
 /// 디스크 유형 캐시 (드라이브별 1회만 감지)
+#[cfg(windows)]
 static DISK_TYPE_CACHE: OnceLock<Mutex<HashMap<char, DiskType>>> = OnceLock::new();
 
 /// 경로에서 드라이브 문자 추출 (Windows)
 /// `\\?\C:\...`, `C:\...`, `c:\...` 모두 지원
+#[cfg(windows)]
 fn get_drive_letter(path: &Path) -> Option<char> {
     let s = path.to_str()?;
 
@@ -80,13 +86,9 @@ fn query_disk_type_wmi(drive_letter: char) -> Option<DiskType> {
     }
 }
 
-#[cfg(not(windows))]
-fn query_disk_type_wmi(_drive_letter: char) -> Option<DiskType> {
-    None
-}
-
 /// 드라이브 문자로 디스크 유형 추정 (fallback)
 /// 일반적 패턴: C: = SSD (OS), D: 이후 = HDD
+#[cfg(windows)]
 fn guess_disk_type_by_letter(drive_letter: char) -> DiskType {
     match drive_letter.to_ascii_uppercase() {
         'C' => DiskType::Ssd,
@@ -99,6 +101,12 @@ fn guess_disk_type_by_letter(drive_letter: char) -> DiskType {
 /// 1. 캐시에서 조회 (히트 시 즉시 반환)
 /// 2. 캐시 미스 시 fallback 즉시 반환 + 백그라운드 WMI 업데이트
 ///    → DB 연결 등 startup 경로에서 PowerShell hang 방지
+#[cfg(not(windows))]
+pub fn detect_disk_type(_path: &Path) -> DiskType {
+    DiskType::Ssd
+}
+
+#[cfg(windows)]
 pub fn detect_disk_type(path: &Path) -> DiskType {
     let drive_letter = match get_drive_letter(path) {
         Some(c) => c.to_ascii_uppercase(),
@@ -174,7 +182,7 @@ mod num_cpus {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 

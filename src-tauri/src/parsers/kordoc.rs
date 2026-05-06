@@ -17,6 +17,12 @@ const KORDOC_TIMEOUT_SECS: u64 = 60;
 /// 수식 OCR 활성화 시 타임아웃 (초) — 모델 로드 + 페이지별 MFD/MFR 추론으로 시간이 늘어남.
 const KORDOC_FORMULA_TIMEOUT_SECS: u64 = 600;
 
+/// 번들/시스템 node 실행 파일 이름 (Windows: node.exe / 그 외: node)
+#[cfg(target_os = "windows")]
+const NODE_BIN: &str = "node.exe";
+#[cfg(not(target_os = "windows"))]
+const NODE_BIN: &str = "node";
+
 /// kordoc 호출 옵션
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KordocOptions {
@@ -108,10 +114,24 @@ fn find_kordoc_cli() -> Option<PathBuf> {
 
     // 3. 프로덕션: 번들된 리소스 디렉토리
     //    tauri.conf.json의 `"resources/kordoc/**/*"` glob이
-    //    `$INSTALLDIR/resources/kordoc/...`로 배치됨
+    //    Windows: `$INSTALLDIR/resources/kordoc/...`
+    //    macOS:   `Contents/Resources/resources/kordoc/...` (앱 번들)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            // 주 경로: Tauri array-glob 번들
+            // macOS 앱 번들: Contents/MacOS/<binary> → ../Resources/resources/kordoc
+            #[cfg(target_os = "macos")]
+            {
+                let mac_prod = dir
+                    .join("..")
+                    .join("Resources")
+                    .join("resources")
+                    .join("kordoc")
+                    .join("cli.js");
+                if mac_prod.exists() {
+                    return Some(mac_prod);
+                }
+            }
+            // Windows / 평평한 배치 (Tauri array-glob)
             let prod = dir.join("resources").join("kordoc").join("cli.js");
             if prod.exists() {
                 return Some(prod);
@@ -235,17 +255,30 @@ pub fn which_node_public() -> Option<PathBuf> {
 
 // ─── 내부 헬퍼 ────────────────────────────────────────
 
-/// node 실행 파일 탐색 (번들 node.exe 우선 → 시스템 PATH)
+/// node 실행 파일 탐색 (번들 node 우선 → 시스템 PATH)
 fn which_node() -> Option<PathBuf> {
-    // 1. 번들된 node.exe (Tauri resources/ array-glob: $INSTALLDIR/resources/node.exe)
+    // 1. 번들된 node
+    //    Windows: $INSTALLDIR/resources/<NODE_BIN>
+    //    macOS:   Contents/Resources/resources/<NODE_BIN> (앱 번들)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let bundled = dir.join("resources").join("node.exe");
+            #[cfg(target_os = "macos")]
+            {
+                let mac_bundled = dir
+                    .join("..")
+                    .join("Resources")
+                    .join("resources")
+                    .join(NODE_BIN);
+                if mac_bundled.exists() {
+                    return Some(mac_bundled);
+                }
+            }
+            let bundled = dir.join("resources").join(NODE_BIN);
             if bundled.exists() {
                 return Some(bundled);
             }
             // 폴백: 평평한 배치 (구버전 호환)
-            let flat = dir.join("node.exe");
+            let flat = dir.join(NODE_BIN);
             if flat.exists() {
                 return Some(flat);
             }
@@ -253,7 +286,7 @@ fn which_node() -> Option<PathBuf> {
     }
 
     // 2. 시스템 PATH (개발 모드 전용)
-    // 프로덕션에서는 PATH hijacking(CWE-426) 방지를 위해 번들 node.exe만 허용.
+    // 프로덕션에서는 PATH hijacking(CWE-426) 방지를 위해 번들 node 만 허용.
     #[cfg(debug_assertions)]
     {
         which::which("node").ok()
@@ -261,8 +294,9 @@ fn which_node() -> Option<PathBuf> {
     #[cfg(not(debug_assertions))]
     {
         tracing::warn!(
-            "Bundled node.exe not found next to executable — \
-             HWP/HWPX parsing disabled. Reinstall the application."
+            "Bundled {} not found next to executable — \
+             HWP/HWPX parsing disabled. Reinstall the application.",
+            NODE_BIN
         );
         None
     }

@@ -122,3 +122,87 @@ jobs:
           }
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-macos:
+    name: Build & Release (macOS arm64)
+    permissions:
+      contents: write
+    runs-on: macos-14  # Apple Silicon runner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-arm64
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # kordoc 소스 체크아웃 (Windows job 과 동일한 SHA 고정)
+      # GitHub Actions 보안상 path 는 workspace 내부만 허용 → kordoc-src 사용
+      - name: Checkout kordoc
+        uses: actions/checkout@v4
+        with:
+          repository: chrisryugj/kordoc
+          path: kordoc-src
+          ref: 29c512757fc4e6281274b8471d6837e49303550c
+
+      - name: Build kordoc dist
+        working-directory: kordoc-src
+        run: |
+          npm ci
+          npm run build
+          test -f dist/cli.js || { echo "kordoc build output missing"; exit 1; }
+
+      - name: Bundle macOS resources (node + kordoc + ORT dylib)
+        env:
+          KORDOC_DIR: ${{ github.workspace }}/kordoc-src
+        run: bash scripts/setup-macos-resources.sh
+
+      - name: Tauri build (aarch64-apple-darwin, ad-hoc signed)
+        run: pnpm exec tauri build --target aarch64-apple-darwin
+
+      # tauri.macos.conf.json 의 signingIdentity:"-" 가 ad-hoc 서명을 적용하지만,
+      # 일부 Tauri 버전에선 누락될 수 있어 명시적 재서명으로 보강.
+      - name: Re-apply ad-hoc signature
+        run: |
+          APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Anything.app"
+          if [ -d "$APP" ]; then
+            codesign --force --deep --sign - "$APP"
+            codesign -dv "$APP" 2>&1 | head -5 || true
+          fi
+
+      - name: Upload dmg to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then
+            echo "no dmg artifact found"; exit 1
+          fi
+          TAG="${{ github.ref_name }}"
+          # Release 가 아직 없으면 (Windows job 보다 먼저 끝났거나 Windows job 실패한 경우)
+          # mac 단독 release 생성. 이미 있으면 추가 업로드만.
+          if ! gh release view "$TAG" --json id >/dev/null 2>&1; then
+            echo "Release $TAG 없음 → 새로 생성"
+            gh release create "$TAG" \
+              --title "Anything $TAG" \
+              --generate-notes \
+              "$DMG"
+          else
+            echo "Release $TAG 존재 → dmg 추가 업로드"
+            gh release upload "$TAG" "$DMG" --clobber
+          fi

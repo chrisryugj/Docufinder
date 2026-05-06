@@ -304,15 +304,15 @@ docs/MAC_PORT_PLAN.md를 Read 도구로 읽어줘.
 
 > Phase 완료 시 이 섹션의 체크박스를 갱신하고 커밋.
 
-- [ ] Phase 0: Mac 환경 셋업
-- [ ] Phase 1-1: 코드 분기 (disk_info / kordoc / lib.rs / model_downloader)
-- [ ] Phase 1-2: tauri.macos.conf.json 작성
-- [ ] Phase 1-3: setup-macos-resources.sh 작성 + 실행
-- [ ] Phase 1: pnpm tauri:dev 정상 실행
-- [ ] Phase 2: 기능 검증 (8항목)
-- [ ] Phase 3: dmg 빌드 + ad-hoc 서명
-- [ ] Phase 4: CI macOS job 추가
-- [ ] Phase 5: README 갱신
+- [x] Phase 0: Mac 환경 셋업 (Rust 1.95, pnpm 11, aarch64-apple-darwin 타겟)
+- [x] Phase 1-1: 코드 분기 (disk_info / kordoc / lib.rs / model_downloader)
+- [x] Phase 1-2: tauri.macos.conf.json 작성
+- [x] Phase 1-3: setup-macos-resources.sh 작성 + 실행
+- [x] Phase 1: pnpm tauri:dev:mac 정상 실행 — 윈도우 표시 + DB 초기화 + 시스템 트레이 OK
+- [ ] Phase 2: 기능 검증 (8항목) — 사용자 GUI 테스트 진행 중
+- [ ] Phase 3: dmg 빌드 + ad-hoc 서명 — 진행 중
+- [x] Phase 4: CI macOS job 추가 (publish.yml `publish-macos` job)
+- [x] Phase 5: README macOS 섹션 추가
 - [ ] Phase 6: 첫 macOS 릴리즈
 
 ---

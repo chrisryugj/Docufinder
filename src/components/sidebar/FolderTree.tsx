@@ -8,6 +8,7 @@ import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
 import { logToBackend } from "../../utils/errorLogger";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
+import { REVEAL_LABEL } from "../../utils/platform";
 
 interface FolderTreeProps {
   folders: string[];
@@ -305,7 +306,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
             >
               <FolderOpen className="w-4 h-4 clr-warning" />
-              탐색기에서 열기
+              {REVEAL_LABEL}
             </button>
             {onRemoveFolder && (
               <button
@@ -480,7 +481,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
           <FolderOpen className="w-4 h-4 clr-warning" />
-          탐색기에서 열기
+          {REVEAL_LABEL}
         </button>
         {/* 재인덱싱 */}
         <button

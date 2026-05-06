@@ -149,7 +149,8 @@ pub const DEFAULT_EXCLUDED_DIRS: &[&str] = &[
 
 /// 접근 차단 경로 패턴 (Path Traversal 방지)
 ///
-/// Windows 시스템 폴더 및 보호된 영역을 블랙리스트로 관리
+/// Windows + macOS 시스템 폴더 및 보호된 영역을 블랙리스트로 관리.
+/// `is_blocked_path` 가 to_lowercase() 후 contains 매칭하므로 모든 패턴은 lowercase.
 pub const BLOCKED_PATH_PATTERNS: &[&str] = &[
     // Windows 시스템 폴더
     "\\windows\\",
@@ -163,6 +164,21 @@ pub const BLOCKED_PATH_PATTERNS: &[&str] = &[
     "/program files/",
     "/program files (x86)/",
     "/programdata/",
+    // macOS 시스템 영역
+    // 주의: `~/Library/...` 도 contains "/library/" 에 매치되면 앱 데이터까지 막힘.
+    // 그래서 `/library/` 단독 매치는 막고, 시스템 root 의 `/Library/` 만 차단하기 위해
+    // path component 기반 체크(system_dirs) 에 추가하지 않고 prefix 형태로만 둔다.
+    "/system/library/",
+    "/system/applications/",
+    "/private/var/",
+    "/private/etc/",
+    "/usr/bin/",
+    "/usr/sbin/",
+    "/usr/lib/",
+    "/usr/local/bin/",
+    "/.trashes/",
+    "/.spotlight-v100/",
+    "/.fseventsd/",
 ];
 
 /// 통합 경로 안전성 검증

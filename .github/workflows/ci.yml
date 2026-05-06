@@ -93,3 +93,53 @@ jobs:
         run: |
           cargo install cargo-audit --quiet
           cargo audit
+
+  check-backend-macos:
+    name: Backend (Rust on macOS arm64)
+    needs: check-frontend
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-arm64
+
+      - name: Download frontend dist
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+
+      # macOS 빌드 검증용 placeholder 생성
+      # (release 빌드는 publish.yml 의 publish-macos job 에서 실제 리소스로 빌드)
+      - name: Create placeholders for macOS Tauri build
+        working-directory: src-tauri
+        run: |
+          mkdir -p models/kosimcse-roberta-multitask resources/onnxruntime resources/kordoc resources/paddleocr
+          touch models/kosimcse-roberta-multitask/.gitkeep
+          touch resources/node
+          chmod +x resources/node
+          touch resources/kordoc/.gitkeep
+          touch resources/onnxruntime/libonnxruntime.dylib
+          : > resources/paddleocr/det.onnx
+          : > resources/paddleocr/rec.onnx
+          : > resources/paddleocr/dict.txt
+          touch icons/tray-icon.png
+
+      - name: Cargo check (mac target)
+        working-directory: src-tauri
+        run: cargo check --target aarch64-apple-darwin --all-targets
+
+      - name: Cargo clippy (mac target)
+        working-directory: src-tauri
+        run: cargo clippy --target aarch64-apple-darwin --all-targets -- -D warnings
+
+      - name: Cargo test (mac target)
+        working-directory: src-tauri
+        run: cargo test --target aarch64-apple-darwin

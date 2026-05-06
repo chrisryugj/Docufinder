@@ -1,6 +1,6 @@
 {
   "name": "anything",
-  "version": "2.5.17",
+  "version": "2.5.18",
   "description": "로컬 문서 검색 앱 - Everything 대항마",
   "type": "module",
   "scripts": {
@@ -9,10 +9,13 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "set WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--no-proxy-server --disable-background-networking --disable-features=msSmartScreenProtection&& tauri dev",
+    "tauri:dev:mac": "tauri dev",
     "download-model": "powershell -File scripts/download-model.ps1",
     "download-vcredist": "powershell -File scripts/download-vcredist.ps1",
     "bundle-kordoc": "powershell -ExecutionPolicy Bypass -File scripts/bundle-kordoc.ps1",
-    "tauri:build": "pnpm run download-vcredist && pnpm run download-model && pnpm run bundle-kordoc && tauri build"
+    "setup-mac-resources": "bash scripts/setup-macos-resources.sh",
+    "tauri:build": "pnpm run download-vcredist && pnpm run download-model && pnpm run bundle-kordoc && tauri build",
+    "tauri:build:mac": "pnpm run setup-mac-resources && tauri build --target aarch64-apple-darwin"
   },
   "keywords": [
     "document",

@@ -517,7 +517,7 @@ pub fn run() {
             {
                 let dll_path = models_dir
                     .join("kosimcse-roberta-multitask")
-                    .join("onnxruntime.dll");
+                    .join(model_downloader::dylib_filename());
                 unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
                 tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
             }
@@ -941,7 +941,29 @@ pub fn run() {
             commands::formula::download_formula_models,
             indexer::periodic_sync::trigger_sync_if_stale,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
+        .map(|app| {
+            app.run(|app_handle, event| {
+                // macOS dock 아이콘 클릭(Reopen) 시 트레이로 숨겨진 윈도우 다시 표시.
+                // close_to_tray 로 hide() 된 상태에서 dock 클릭하면 자동 복귀.
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                    if !has_visible_windows {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                    }
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = (app_handle, event);
+                }
+            });
+            Ok::<(), tauri::Error>(())
+        })
+        .and_then(|r| r)
         .unwrap_or_else(|e| {
             eprintln!("Fatal: Tauri failed to start: {}", e);
             // 크래시 로그에도 기록 (append 모드: 이전 기록 보존)

@@ -90,6 +90,7 @@ pub fn should_skip_body_indexing(path: &Path) -> bool {
 pub enum LocationKind {
     Local,
     Unc,
+    #[allow(dead_code)] // windows 매핑 드라이브 전용
     NetworkDrive,
     CloudPlaceholder,
 }

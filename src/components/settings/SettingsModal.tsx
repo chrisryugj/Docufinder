@@ -78,15 +78,40 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     }
   };
 
+  // 토글/입력 즉시 저장 — "저장" 버튼 안 누르고 앱 종료해도 close_to_tray 같은
+  // 시스템 토글이 백엔드에 반영되도록 디바운스 자동 저장 (300ms).
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     // functional update: 같은 틱에 연속 호출돼도 stale 상태로 덮어쓰지 않게.
     // (e.g. 트레이 최소화 토글이 start_minimized 까지 동시 변경할 때 꺼지지 않던 버그)
-    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setSettings((prev) => {
+      const next = prev ? { ...prev, [key]: value } : prev;
+      if (next) {
+        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = setTimeout(() => {
+          invokeWithTimeout("update_settings", { settings: next }, IPC_TIMEOUT.SETTINGS)
+            .then(() => onSettingsSaved?.(next))
+            .catch((err) => {
+              // 자동 저장 실패는 조용히 — "저장" 버튼으로 명시 저장 시 다시 시도.
+              console.warn("autosave failed:", err);
+            });
+        }, 300);
+      }
+      return next;
+    });
 
     if (key === "theme" && onThemeChange) {
       onThemeChange(value as Settings["theme"]);
     }
   };
+
+  // 모달 unmount 시 디바운스 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
+  }, []);
 
 
   if (isLoading) {
