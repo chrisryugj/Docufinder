@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.5.20] - 2026-05-07
+
+**hotfix: macOS 자동 업데이트 fallback platforms 오류** — v2.5.18 mac 포팅 시 `tauri.macos.conf.json` 의 `plugins.updater.active: false` 가 frontend 의 자동 `check()` 호출을 막지 못하던 문제 해결.
+
+### 수정
+- **`useUpdater` macOS 가드** — `useUpdater` 훅 진입 시 `isMac` 분기. mac 에서는 자동 30초 후 체크 + 6시간 인터벌 모두 skip, 수동 `checkForUpdate()` 도 즉시 `up-to-date` phase 로 응답하고 plugin-updater 의 `check()` 호출 자체를 우회. v2.5.18~v2.5.19 mac 빌드 사용자에게 발생하던 `None of the fallback platforms ["darwin-aarch64-app", "darwin-aarch64"] were found in the response platforms object` 오류 차단. (원인: tauri-action 의 latest.json 은 `createUpdaterArtifacts: true` 인 windows job 산출물만 반영해 `windows-x86_64` 키만 들어가는데, plugin-updater 가 mac 에서 fallback platform 을 못 찾고 throw.)
+- **DiagnosticsTab 안내** — mac 에서는 "자동 업데이트 (macOS 미지원) — Apple Developer ID 미보유로 자동 업데이트 비활성. 신버전은 GitHub Releases 페이지에서 수동 다운로드" 표시 + "지금 확인" 버튼 숨김. windows 동작은 변경 없음.
+
+### 사용자 안내
+- **macOS 사용자** — v2.5.18 / v2.5.19 빌드 사용자는 Settings 모달에서 오류 phase 가 보일 수 있다. v2.5.20 설치 후 사라짐. 신버전 알림은 받지 못하므로 [Releases 페이지](https://github.com/chrisryugj/docufinder/releases) 즐겨찾기 권장.
+
 ## [2.5.19] - 2026-05-07
 
 **시스템 폴더 수동 인덱싱 허용 + WebView2 오프라인 인스톨러** — 일부 기업/제한 환경에서 보고된 WebView2 런타임 미설치 오류를 근본 차단하고, 시스템 보호 폴더(`/usr/bin`, `C:\Program Files` 등)를 사용자가 명시적으로 골라 인덱싱할 수 있도록 토글을 추가.

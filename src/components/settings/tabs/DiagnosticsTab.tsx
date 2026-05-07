@@ -5,6 +5,7 @@ import { SettingsToggle } from "../SettingsToggle";
 import { useUpdater } from "../../../hooks/useUpdater";
 import { UpdateModal } from "../../updater/UpdateModal";
 import { getErrorMessage } from "../../../types/error";
+import { isMac } from "../../../utils/platform";
 import type { TabProps } from "./types";
 
 interface DiagnosticsTabProps extends TabProps {
@@ -27,20 +28,26 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>업데이트</h3>
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>자동 업데이트 확인</label>
+            <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
+              {isMac ? "자동 업데이트 (macOS 미지원)" : "자동 업데이트 확인"}
+            </label>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              앱 시작 시 + 6시간마다 자동 체크 · 새 버전 발견 시 알림
+              {isMac
+                ? "Apple Developer ID 미보유로 자동 업데이트 비활성. 신버전은 github.com/chrisryugj/docufinder/releases 에서 수동 다운로드"
+                : "앱 시작 시 + 6시간마다 자동 체크 · 새 버전 발견 시 알림"}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCheckUpdate}
-            isLoading={updater.state.phase === "checking"}
-            disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
-          >
-            지금 확인
-          </Button>
+          {!isMac && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCheckUpdate}
+              isLoading={updater.state.phase === "checking"}
+              disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
+            >
+              지금 확인
+            </Button>
+          )}
         </div>
       </div>
 
