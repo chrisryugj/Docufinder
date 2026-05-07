@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.5.21] - 2026-05-07
+
+**hotfix: macOS 폴더 삭제 미반영 + HWP 파싱 전수 실패** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) M4 MacBook + 외장 드라이브(`/Volumes/JetDrive Lite 330/Work`) 환경에서 보고된 두 회귀를 모두 잡는다.
+
+### 수정
+- **폴더 삭제 후 재시작 시 부활** — `FolderService::remove_folder` 가 `vector.save()` / `delete_files_in_folder()` 중간 실패 시 `?` 로 함수 종료해 `watched_folders` DELETE 까지 도달 못 하던 문제. 토스트는 "제거되었습니다" 떴는데 재시작하면 폴더가 사이드바에 그대로 남아 있던 현상의 직접 원인. 순서를 재배치해 **`watched_folders` DELETE 를 가장 먼저** 실행하고, 벡터 청크 정리 + `delete_files_in_folder` 는 best-effort 로 강등. 이제 사용자가 보는 "제거됨" UX 와 DB 상태가 항상 일치한다.
+- **HWP 전수 인덱싱 실패 (12,166 / 37,160)** — ad-hoc 서명 + dmg 다운로드 조합에서 `.app` 내부 sub-binary (`Contents/Resources/resources/node`, `kordoc/node_modules/**/*.node`, `libonnxruntime.dylib`) 가 `com.apple.quarantine` xattr 를 상속받아 Gatekeeper 가 spawn 자체를 차단하던 경로. 사용자가 README 안내대로 `xattr -dr` 를 실행하지 않으면 발현. `lib.rs setup()` 에서 startup 1회 `/usr/bin/xattr -rd com.apple.quarantine <Resources/resources>` 로 자동 제거. 사용자 수동 작업 없이 kordoc 사이드카 정상 동작. HWP5 는 Rust 폴백이 없어 사이드카 미가용 시 전수 실패하지만 docx/pdf 는 Rust 파서로 처리되어 부분 인덱싱은 되던 비대칭이 이슈 진단을 어렵게 했다.
+- **kordoc 실패 진단성 향상** — `kordoc 실행 실패 (exit N)` → `kordoc 실행 실패 (exit N): <stderr 첫 줄 200자>` 로 사용자 가시 에러에 stderr 의미 라인 노출. 다음 회귀 발생 시 로그 파일 안 봐도 원인 파악 가능.
+
+### 내부 분기
+- **`kordoc-availability` 이벤트** — `lib.rs setup()` 에서 `parsers::kordoc::is_available()` 결과를 startup 1회 emit. 미가용이면 `tracing::error!` 로도 동시 기록. frontend 에서 listener 추가 시 인덱싱 시작 전에 사용자에게 명시적 안내 가능.
+
+### 사용자 안내
+- **macOS 기존 설치 사용자** — v2.5.21 dmg 설치 후 첫 실행에서 quarantine 자동 제거 → HWP 인덱싱 자동 활성. 이전 빌드에서 폴더가 부활하던 항목은 `재인덱싱` 트리거 또는 다시 `삭제` 한 번이면 정리.
+
 ## [2.5.20] - 2026-05-07
 
 **hotfix: macOS 자동 업데이트 fallback platforms 오류** — v2.5.18 mac 포팅 시 `tauri.macos.conf.json` 의 `plugins.updater.active: false` 가 frontend 의 자동 `check()` 호출을 막지 못하던 문제 해결.

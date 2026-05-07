@@ -54,10 +54,17 @@ impl FolderService {
     }
 
     /// 감시 폴더 제거
+    ///
+    /// 순서:
+    /// 1) 파일 감시 중지
+    /// 2) **`watched_folders` DELETE** — 사용자 UX 기준점. 사이드바에서 즉시 사라져야 한다.
+    /// 3) 벡터/파일 정리 — best-effort. 부분 실패해도 폴더 자체는 사라진 상태로 유지.
+    ///
+    /// 이전 구현은 vi.save() 또는 delete_files_in_folder() 실패 시 watched_folders DELETE 까지
+    /// 도달 못 해 "토스트는 제거됨, 재시작하면 부활" 현상이 발생했다 (이슈 #22).
     pub async fn remove_folder(&self, path: &str) -> AppResult<()> {
         let folder_path = Path::new(path);
 
-        // 1. 파일 감시 중지
         if let Some(wm) = self.watch_manager.as_ref() {
             if let Ok(mut wm) = wm.write() {
                 let _ = wm.unwatch(folder_path);
@@ -66,32 +73,42 @@ impl FolderService {
 
         let conn = self.get_connection()?;
 
-        // 2. 벡터 인덱스에서 삭제
+        db::remove_watched_folder(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
+        tracing::info!("watched_folders 삭제 완료: {}", path);
+
         if let Some(vi) = self.vector_index.as_ref() {
-            let file_chunk_ids = db::get_file_and_chunk_ids_in_folder(&conn, path)
-                .map_err(|e| AppError::Internal(e.to_string()))?;
-
-            let mut removed = 0;
-            for (_file_id, chunk_ids) in file_chunk_ids {
-                for chunk_id in chunk_ids {
-                    if vi.remove(chunk_id).is_ok() {
-                        removed += 1;
+            match db::get_file_and_chunk_ids_in_folder(&conn, path) {
+                Ok(file_chunk_ids) => {
+                    let mut removed = 0;
+                    for (_file_id, chunk_ids) in file_chunk_ids {
+                        for chunk_id in chunk_ids {
+                            if vi.remove(chunk_id).is_ok() {
+                                removed += 1;
+                            }
+                        }
                     }
+                    tracing::info!("벡터 청크 {}개 제거 (폴더 {})", removed, path);
                 }
+                Err(e) => tracing::warn!(
+                    "폴더 제거 중 벡터 청크 조회 실패(best-effort, 폴더는 이미 제거됨): {}",
+                    e
+                ),
             }
-            tracing::info!("Removed {} vectors for folder: {}", removed, path);
-
-            vi.save()
-                .map_err(|e| AppError::Internal(format!("Vector index save failed: {}", e)))?;
+            if let Err(e) = vi.save() {
+                tracing::warn!(
+                    "폴더 제거 중 벡터 인덱스 저장 실패(best-effort, 폴더는 이미 제거됨): {}",
+                    e
+                );
+            }
         }
 
-        // 3. DB에서 파일들 삭제
-        let deleted = db::delete_files_in_folder(&conn, path)
-            .map_err(|e| AppError::Internal(e.to_string()))?;
-        tracing::info!("Deleted {} files from folder: {}", deleted, path);
-
-        // 4. 감시 폴더 삭제
-        db::remove_watched_folder(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
+        match db::delete_files_in_folder(&conn, path) {
+            Ok(deleted) => tracing::info!("파일 행 {}개 삭제 (폴더 {})", deleted, path),
+            Err(e) => tracing::warn!(
+                "폴더 제거 중 파일 삭제 실패(best-effort, 폴더는 이미 제거됨): {}",
+                e
+            ),
+        }
 
         Ok(())
     }

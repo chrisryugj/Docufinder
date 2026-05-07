@@ -454,9 +454,21 @@ fn call_kordoc_sync(
                 "kordoc: 이미지 기반 PDF (exit {status})"
             )));
         }
-        return Err(ParseError::ParseError(format!(
-            "kordoc 실행 실패 (exit {status})"
-        )));
+        // stderr 의 의미 있는 첫 줄을 사용자 가시 에러에 노출.
+        // HWP5 전수 실패 같은 환경 문제(이슈 #22) 진단 시 로그 파일 안 봐도 원인 파악 가능.
+        let snippet = stderr
+            .lines()
+            .map(str::trim)
+            .find(|s| !s.is_empty())
+            .unwrap_or("")
+            .chars()
+            .take(200)
+            .collect::<String>();
+        return Err(ParseError::ParseError(if snippet.is_empty() {
+            format!("kordoc 실행 실패 (exit {status})")
+        } else {
+            format!("kordoc 실행 실패 (exit {status}): {snippet}")
+        }));
     }
 
     // kordoc 출력 크기 제한 (100MB — OOM 방지)

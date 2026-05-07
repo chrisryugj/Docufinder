@@ -495,6 +495,38 @@ pub fn run() {
             // 이미 같은 해시면 skip, 다르면 덮어쓰기. 실패해도 다운로드 fallback 으로 자연 진행.
             // 회사망/방화벽 등으로 huggingface·github 차단된 환경에서도 첫 실행 즉시 OCR/시맨틱 가능.
             if let Ok(resource_dir) = app.path().resource_dir() {
+                // macOS: ad-hoc 서명 + dmg 다운로드 시 .app 내부 sub-binary(node, *.node, dylib)에
+                // `com.apple.quarantine` xattr 가 상속되어 spawn 시 Gatekeeper 가 차단 → kordoc CLI
+                // 가 실행 안 됨 → HWP5 파싱 전수 실패(이슈 #22). 사용자가 직접 `xattr -dr` 하기 전엔
+                // 발현되므로 startup 1회로 자동 제거한다. xattr 실행 자체는 quarantine 영향 안 받음.
+                #[cfg(target_os = "macos")]
+                {
+                    let sidecar_root = resource_dir.join("resources");
+                    if sidecar_root.exists() {
+                        match std::process::Command::new("/usr/bin/xattr")
+                            .args(["-rd", "com.apple.quarantine"])
+                            .arg(&sidecar_root)
+                            .output()
+                        {
+                            Ok(out) if out.status.success() => {
+                                tracing::info!(
+                                    "macOS 사이드카 quarantine 제거: {}",
+                                    sidecar_root.display()
+                                );
+                            }
+                            Ok(out) => {
+                                let stderr = String::from_utf8_lossy(&out.stderr);
+                                tracing::warn!(
+                                    "xattr 종료코드 {}: {}",
+                                    out.status,
+                                    stderr.trim()
+                                );
+                            }
+                            Err(e) => tracing::warn!("xattr 실행 실패: {}", e),
+                        }
+                    }
+                }
+
                 model_downloader::seed_bundled_models(&resource_dir, &models_dir);
             }
 
@@ -576,6 +608,21 @@ pub fn run() {
             // 이전 세션에서 남긴 미전송 crash log 를 Telegram 으로 지연 전송
             // (네이티브 크래시/OOM kill 등 panic hook 이 실행되지 못한 경우 대비)
             commands::telemetry::spawn_flush_pending_crash_logs();
+
+            // kordoc 사이드카 가용성 진단 — HWP5 는 Rust fallback 이 없어 kordoc 미가용 시 전수 실패한다.
+            // 미가용이면 frontend 에 즉시 알려 인덱싱 시작 전에 사용자가 인지할 수 있게 한다 (이슈 #22).
+            {
+                let kordoc_ok = parsers::kordoc::is_available();
+                if kordoc_ok {
+                    tracing::info!("kordoc 사이드카 가용 — hwp/hwpx/docx/pdf 변환 활성");
+                } else {
+                    tracing::error!(
+                        "kordoc 사이드카 미가용 — HWP 파일 인덱싱 불가. \
+                         번들 node / kordoc CLI 가 .app 내부에 누락되었거나 실행 권한이 없습니다."
+                    );
+                }
+                let _ = app.handle().emit("kordoc-availability", kordoc_ok);
+            }
 
             // Check semantic search availability
             if container.is_semantic_available() {
