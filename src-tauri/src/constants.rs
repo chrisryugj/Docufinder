@@ -1,5 +1,19 @@
 //! 앱 전역 상수 정의
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// 시스템 보호 폴더 추가 허용 토글 — `Settings.allow_system_folders` 미러.
+/// 기본 false. `update_settings` 가 `set_allow_system_folders` 로 동기화한다.
+static ALLOW_SYSTEM_FOLDERS: AtomicBool = AtomicBool::new(false);
+
+pub fn set_allow_system_folders(v: bool) {
+    ALLOW_SYSTEM_FOLDERS.store(v, Ordering::Relaxed);
+}
+
+pub fn is_allow_system_folders() -> bool {
+    ALLOW_SYSTEM_FOLDERS.load(Ordering::Relaxed)
+}
+
 /// 지원하는 파일 확장자 목록
 /// 참고: "hwp"는 파서 미지원 (파싱 실패 시 변환 대상으로 수집됨, pipeline.rs 참조)
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
@@ -188,9 +202,17 @@ pub const BLOCKED_PATH_PATTERNS: &[&str] = &[
 pub fn is_blocked_path(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy().to_lowercase();
 
-    // 1. BLOCKED_PATH_PATTERNS 체크 (부분 경로 매치)
+    // 1. BLOCKED_PATH_PATTERNS 체크
     for pattern in BLOCKED_PATH_PATTERNS {
-        if path_str.contains(&pattern.to_lowercase()) {
+        let pat = pattern.to_lowercase();
+        // 1-a. 하위 경로 매치 — 패턴은 양쪽 sep 포함 ("/usr/bin/") 이라 "/usr/bin/foo" 등 잡힘
+        if path_str.contains(&pat) {
+            return true;
+        }
+        // 1-b. 패턴 자체 경로 매치 — 사용자가 "/usr/bin" 같은 root 경로 자체를 선택한 경우
+        // canonicalize 결과는 trailing sep 없는 형태("/usr/bin")라 contains 매치 실패 → 별도 처리.
+        let trimmed = pat.trim_end_matches(['/', '\\']);
+        if !trimmed.is_empty() && path_str == trimmed {
             return true;
         }
     }
@@ -200,12 +222,16 @@ pub fn is_blocked_path(path: &std::path::Path) -> bool {
         if let std::path::Component::Normal(name) = component {
             let name_lower = name.to_string_lossy().to_lowercase();
             // 시스템 폴더만 체크 (node_modules 등 개발 폴더는 인덱싱 제외 전용)
+            // Windows 경로는 드라이브 레터 prefix 때문에 BLOCKED_PATH_PATTERNS 의 1-b 자체-매치
+            // 가 안 걸리므로 "program files" 류는 component 매치로만 잡힌다.
             let system_dirs = [
                 "windows",
                 "$recycle.bin",
                 "system volume information",
                 "recovery",
                 "programdata",
+                "program files",
+                "program files (x86)",
             ];
             if system_dirs.contains(&name_lower.as_str()) {
                 return true;
@@ -241,8 +267,84 @@ pub fn is_drive_root(path: &std::path::Path) -> bool {
 /// 드라이브 루트(`C:\`, `D:\`)는 이 앱의 Everything 스타일 검색 설계상 허용한다.
 /// 단 호출부에서 `is_drive_root`로 감지해 벡터 자동 시작 스킵 + 경고를 띄워야 한다.
 pub fn validate_watch_path(path: &std::path::Path) -> Result<(), &'static str> {
-    if is_blocked_path(path) {
-        return Err("시스템 보호 폴더는 감시할 수 없습니다.");
+    if is_blocked_path(path) && !is_allow_system_folders() {
+        return Err("시스템 보호 폴더는 감시할 수 없습니다. 설정 → 시스템 → '시스템 폴더 추가 허용' 토글을 켜면 추가할 수 있습니다.");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn blocks_macos_system_root_paths_themselves() {
+        // BLOCKED_PATH_PATTERNS 항목 자체 경로가 차단되어야 함 (canonicalize 후 trailing sep 없음)
+        assert!(is_blocked_path(Path::new("/usr/bin")));
+        assert!(is_blocked_path(Path::new("/usr/sbin")));
+        assert!(is_blocked_path(Path::new("/usr/lib")));
+        assert!(is_blocked_path(Path::new("/usr/local/bin")));
+        assert!(is_blocked_path(Path::new("/private/var")));
+        assert!(is_blocked_path(Path::new("/private/etc")));
+        assert!(is_blocked_path(Path::new("/System/Library")));
+        assert!(is_blocked_path(Path::new("/System/Applications")));
+    }
+
+    #[test]
+    fn blocks_macos_system_subpaths() {
+        assert!(is_blocked_path(Path::new("/usr/bin/python3")));
+        assert!(is_blocked_path(Path::new("/private/var/log")));
+    }
+
+    // Windows 전용 — `Path::components()` 가 OS 별로 다르게 파싱하므로 (Unix 에서는
+    // `\` 가 구분자가 아니라 단일 component 로 보임) Windows 빌드에서만 실행한다.
+    #[cfg(windows)]
+    #[test]
+    fn blocks_windows_program_files_root() {
+        assert!(is_blocked_path(Path::new(r"C:\Program Files")));
+        assert!(is_blocked_path(Path::new(r"C:\Program Files (x86)")));
+        assert!(is_blocked_path(Path::new(r"D:\Program Files\App")));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn blocks_windows_system_paths() {
+        assert!(is_blocked_path(Path::new(r"C:\Windows")));
+        assert!(is_blocked_path(Path::new(r"C:\Windows\System32")));
+        assert!(is_blocked_path(Path::new(r"C:\ProgramData")));
+    }
+
+    #[test]
+    fn allows_user_paths() {
+        assert!(!is_blocked_path(Path::new("/Users/foo/Documents")));
+        assert!(!is_blocked_path(Path::new("/home/foo/work")));
+        #[cfg(windows)]
+        {
+            assert!(!is_blocked_path(Path::new(r"C:\Users\foo\Documents")));
+            assert!(!is_blocked_path(Path::new(r"D:\Projects")));
+        }
+    }
+
+    #[test]
+    fn allows_user_library_directory() {
+        // ~/Library 는 차단되면 안 됨 — 앱 데이터 경로
+        // BLOCKED_PATH_PATTERNS 에 단독 "/library/" 없음. trim 매치도 path_str == "library" 비교라 false.
+        assert!(!is_blocked_path(Path::new(
+            "/Users/foo/Library/Preferences"
+        )));
+    }
+
+    #[test]
+    fn validate_watch_path_respects_toggle() {
+        let p = Path::new("/usr/bin");
+        // toggle OFF (기본)
+        set_allow_system_folders(false);
+        assert!(validate_watch_path(p).is_err());
+        // toggle ON
+        set_allow_system_folders(true);
+        assert!(validate_watch_path(p).is_ok());
+        // 정리 — 다른 테스트 영향 방지
+        set_allow_system_folders(false);
+    }
 }

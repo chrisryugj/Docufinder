@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.5.18"
+version = "2.5.19"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"

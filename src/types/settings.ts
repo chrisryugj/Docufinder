@@ -65,4 +65,11 @@ export interface Settings {
    * false: 일반 로컬 폴더처럼 본문까지 인덱싱 (NAS 등 빠른 환경에서 사용자 선택).
    */
   skip_cloud_body_indexing: boolean;
+  /**
+   * 시스템 보호 폴더(C:\Windows, /System, /usr/bin 등) 수동 추가 허용.
+   * 기본 false: validate_watch_path가 차단.
+   * true: 사용자가 폴더 다이얼로그에서 직접 골라 추가 가능. 추가 시 강한 경고 다이얼로그.
+   * 시스템 폴더는 자동 벡터(시맨틱) 인덱싱 스킵 — 필요 시 설정에서 수동 시작.
+   */
+  allow_system_folders: boolean;
 }

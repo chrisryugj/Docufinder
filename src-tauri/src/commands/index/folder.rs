@@ -9,6 +9,12 @@ pub struct FolderClassification {
     pub kind: crate::utils::cloud_detect::LocationKind,
     /// `Settings.skip_cloud_body_indexing` 토글 현재 값. 프론트가 안내 문구 분기에 사용.
     pub skip_body_enabled: bool,
+    /// 시스템 보호 폴더(C:\Windows, /System, /usr/bin 등) 여부.
+    /// true면 프론트가 강한 경고 다이얼로그를 띄움.
+    pub is_system: bool,
+    /// `Settings.allow_system_folders` 토글 현재 값.
+    /// false면 프론트는 안내 후 add_folder 호출 자체를 막음.
+    pub allow_system_enabled: bool,
 }
 
 /// 폴더가 클라우드/네트워크 위치인지 사전 분류 (add_folder 호출 전 다이얼로그 안내용).
@@ -21,6 +27,8 @@ pub async fn classify_folder(path: String) -> ApiResult<FolderClassification> {
     Ok(FolderClassification {
         kind: crate::utils::cloud_detect::classify(&canonical),
         skip_body_enabled: crate::utils::cloud_detect::is_skip_enabled(),
+        is_system: crate::constants::is_blocked_path(&canonical),
+        allow_system_enabled: crate::constants::is_allow_system_folders(),
     })
 }
 
@@ -162,6 +170,9 @@ pub async fn add_folder(
     // 드라이브 전체 인덱싱은 Everything 스타일 검색의 정상 기능이지만,
     // 수백만 파일 대상 벡터 임베딩은 메모리/시간 소모가 커 사용자 수동 선택으로 미룬다.
     let is_drive_root = crate::constants::is_drive_root(&canonical_path);
+    // 시스템 폴더(C:\Windows, /System 등): allow 토글이 켜져 여기까지 왔다는 뜻.
+    // 바이너리/시스템 파일이 대부분이라 벡터는 의미가 적고 비용만 크다 → 드라이브 루트와 동일 처리.
+    let is_system_folder = crate::constants::is_blocked_path(&canonical_path);
     if is_drive_root {
         tracing::warn!(
             "Drive root detected: auto vector indexing disabled for {}",
@@ -175,6 +186,19 @@ pub async fn add_folder(
                 "message": "드라이브 전체 인덱싱이 완료되었습니다. 시맨틱(벡터) 검색은 대용량 드라이브에서 자동 시작되지 않습니다. 필요 시 설정에서 수동으로 시작하세요."
             }),
         );
+    } else if is_system_folder {
+        tracing::warn!(
+            "System folder detected: auto vector indexing disabled for {}",
+            path
+        );
+        let _ = app_handle.emit(
+            "indexing-warning",
+            &serde_json::json!({
+                "type": "system_folder",
+                "folder_path": path,
+                "message": "시스템 보호 폴더 인덱싱이 완료되었습니다. 시맨틱(벡터) 검색은 시스템 폴더에서 자동 시작되지 않습니다. 필요 시 설정에서 수동으로 시작하세요."
+            }),
+        );
     }
 
     let auto_vector_started = maybe_start_auto_vector(
@@ -182,7 +206,7 @@ pub async fn add_folder(
         app_handle,
         was_cancelled,
         result.indexed_count,
-        is_drive_root,
+        is_drive_root || is_system_folder,
         Some(&state),
     );
     if !auto_vector_started {

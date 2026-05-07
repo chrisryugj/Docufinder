@@ -22,21 +22,43 @@ type LocationKind = "local" | "unc" | "network_drive" | "cloud_placeholder";
 interface FolderClassification {
   kind: LocationKind;
   skip_body_enabled: boolean;
+  is_system: boolean;
+  allow_system_enabled: boolean;
 }
 
 /**
- * 클라우드/네트워크 폴더 추가 시 사전 안내 다이얼로그.
- * skip_body_enabled = true: 메타데이터만 인덱싱 안내 (계속/취소)
- * skip_body_enabled = false: 본문 인덱싱 시 느려진다는 경고 (계속/취소)
- * 로컬이면 다이얼로그 없이 통과.
+ * 폴더 추가 사전 분류 + 안내 다이얼로그.
+ *
+ * 우선순위:
+ *  1. 시스템 폴더 + 토글 OFF → 안내 후 차단 (false 반환)
+ *  2. 시스템 폴더 + 토글 ON → 강한 경고 (계속/취소)
+ *  3. 클라우드/네트워크 → 본문 스킵 토글에 따른 안내 (계속/취소)
+ *  4. 로컬 → 통과
  */
-async function confirmCloudOrNetworkAdd(path: string): Promise<boolean> {
+async function confirmFolderAdd(path: string): Promise<boolean> {
   let info: FolderClassification;
   try {
     info = await invoke<FolderClassification>("classify_folder", { path });
   } catch {
-    return true; // 분류 실패 시 차단하지 않음
+    return true; // 분류 실패 시 차단하지 않음 (백엔드 validate_watch_path 가 최종 게이트)
   }
+
+  // 1·2. 시스템 폴더 분기
+  if (info.is_system) {
+    if (!info.allow_system_enabled) {
+      await ask(
+        `이 폴더는 시스템 보호 폴더입니다.\n\n시스템 폴더(C:\\Windows · Program Files · /System · /usr/bin 등)는 기본 차단됩니다.\n\n수동으로 인덱싱하려면 [설정 → 시스템 → 시스템 폴더 추가 허용] 토글을 켜고 다시 시도하세요.`,
+        { title: "시스템 폴더 차단됨", kind: "info", okLabel: "확인", cancelLabel: "닫기" },
+      );
+      return false;
+    }
+    return await ask(
+      `⚠️ 이 폴더는 시스템 보호 폴더입니다.\n\n수십만 개의 시스템/바이너리 파일이 인덱싱돼 다음 영향이 있을 수 있습니다:\n• 디스크/메모리 사용량 급증\n• 파일명 검색 결과 노이즈 증가\n• 인덱싱 시간 매우 길어짐\n\n시맨틱(벡터) 검색은 자동 시작되지 않습니다.\n\n계속하시겠습니까?`,
+      { title: "시스템 폴더 추가", kind: "warning", okLabel: "계속", cancelLabel: "취소" },
+    );
+  }
+
+  // 3·4. 클라우드/네트워크 분기 (기존 로직)
   if (info.kind === "local") return true;
 
   const labelMap: Record<LocationKind, string> = {
@@ -220,8 +242,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
       // 순차 처리 (DB 잠금 충돌 방지)
       const results: AddFolderResult[] = [];
       for (const path of paths) {
-        // 클라우드/네트워크 사전 안내 (Cancel 시 해당 폴더만 스킵)
-        if (!(await confirmCloudOrNetworkAdd(path))) {
+        // 시스템/클라우드/네트워크 사전 안내 (Cancel 시 해당 폴더만 스킵)
+        if (!(await confirmFolderAdd(path))) {
           continue;
         }
         try {
@@ -265,7 +287,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
         if (!confirmed) return null;
       }
 
-      if (!(await confirmCloudOrNetworkAdd(path))) return null;
+      if (!(await confirmFolderAdd(path))) return null;
 
       setIsIndexing(true);
       setError(null);

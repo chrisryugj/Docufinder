@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.5.19] - 2026-05-07
+
+**시스템 폴더 수동 인덱싱 허용 + WebView2 오프라인 인스톨러** — 일부 기업/제한 환경에서 보고된 WebView2 런타임 미설치 오류를 근본 차단하고, 시스템 보호 폴더(`/usr/bin`, `C:\Program Files` 등)를 사용자가 명시적으로 골라 인덱싱할 수 있도록 토글을 추가.
+
+### 추가
+- **시스템 폴더 추가 허용 토글** — `Settings.allow_system_folders` (기본 OFF). 설정 → 시스템 탭에 토글 노출. ON 으로 켜면 기존에 `validate_watch_path` 에서 차단되던 `C:\Windows`, `C:\Program Files`, `/System/Library`, `/usr/bin`, `/private/var` 등 시스템 보호 폴더를 폴더 다이얼로그로 직접 추가 가능. 추가 시 강한 경고 다이얼로그(디스크/메모리 부담, 노이즈 증가, 인덱싱 시간 길어짐) 후 진행.
+- **시스템 폴더 자동 벡터 스킵** — 드라이브 루트 처리와 동일하게, 시스템 폴더 인덱싱 후 시맨틱(벡터) 인덱싱 자동 시작 안 함. 시스템 폴더 대부분이 바이너리/시스템 파일이라 임베딩 비용 대비 효용이 낮은 점을 반영. 필요 시 설정에서 수동 시작 가능. `indexing-warning` 이벤트 (`type: "system_folder"`) emit.
+- **`FolderClassification` 확장** — `classify_folder` 응답에 `is_system: bool`, `allow_system_enabled: bool` 추가. 프론트가 시스템 폴더 + 토글 OFF 케이스에서 백엔드 호출 전에 안내만 띄우고 차단할 수 있게.
+- **테스트** — `constants::is_blocked_path` / `validate_watch_path` 동작 검증 (macOS root 경로 자체·하위, Windows Program Files/Windows/ProgramData, 사용자 경로 통과, ~/Library 통과, 토글 ON/OFF). Windows 전용 케이스는 `#[cfg(windows)]` 게이트.
+
+### 수정
+- **WebView2 런타임 미설치 오류** — `tauri.conf.json` 의 `webviewInstallMode` 를 `embedBootstrapper` → `offlineInstaller` 로 변경. 기존에는 1.8MB 부트스트래퍼 stub 만 인스톨러에 포함되고 실제 WebView2 런타임은 설치 시점에 인터넷에서 다운로드하던 구조라, 회사 프록시·방화벽·오프라인 환경에서 설치 실패 → 앱 시작 시 "Microsoft Edge WebView2 Runtime not installed" 다이얼로그가 발생했다. 이제 전체 WebView2 런타임이 NSIS 인스톨러에 내장(+~130MB) 되어 인터넷 없이 설치 가능. README 의 "WebView2 별도 설치 불필요" 문구가 비로소 사실과 일치.
+- **`is_blocked_path` 패턴 매칭 결함** — `BLOCKED_PATH_PATTERNS` 가 `/usr/bin/` 처럼 양쪽 sep 포함 형태라 `dunce::canonicalize` 가 반환하는 trailing sep 없는 경로(`/usr/bin`) 와 `contains` 매칭 실패. 패턴 자체-경로 정확 일치 분기 추가. 또한 component 체크에 `program files`, `program files (x86)` 추가하여 드라이브 레터 prefix 때문에 기존 패턴이 안 잡던 `C:\Program Files` 자체-경로도 차단.
+- **`FolderService::validate_and_canonicalize` 일관성** — `BLOCKED_PATH_PATTERNS.contains` 직접 매치 → `crate::constants::validate_watch_path` 호출로 통일. `allow_system_folders` 토글이 모든 진입점(`add_folder`, `reindex_folder`, `resume_indexing`, `start_indexing_batch`, FolderService 자체) 에서 동일하게 적용되도록 보장.
+
+### 내부 분기
+- **글로벌 atomic 토글** — `constants::ALLOW_SYSTEM_FOLDERS: AtomicBool` 으로 `Settings.allow_system_folders` 미러. `update_settings` 에서 `set_allow_system_folders` 동기화, `AppContainer::new` 에서 부팅 시 초기화. `cloud_detect::SKIP_ENABLED` 와 동일 패턴.
+- **다이얼로그 통합** — `useIndexStatus` 의 `confirmCloudOrNetworkAdd` → `confirmFolderAdd` 로 이름 변경. 시스템 / 클라우드 / 네트워크 / 로컬 4 케이스를 한 함수에서 우선순위 순으로 처리 (시스템 차단 → 시스템 경고 → 클라우드/네트워크 안내 → 통과).
+
+### 사용자 안내
+- **NSIS 인스톨러 크기 증가** — v2.5.18 까지 약 90MB 였던 인스톨러가 약 220MB 로 증가. 다운로드 시간이 길어지지만 설치 시 인터넷이 필요 없어 회사망/오프라인 환경에서 안정적.
+- **시스템 폴더 인덱싱은 비권장 기본값** — 일반 사용자는 토글을 끈 상태로 유지 권장. 시스템 폴더는 파일 수가 많고(수십만~수백만) 바이너리/시스템 파일이 대부분이라 검색 노이즈와 디스크 사용량을 크게 늘린다.
+
 ## [2.5.18] - 2026-05-06
 
 **macOS arm64 (Apple Silicon) 포팅** — Windows 전용이던 앱을 동일 코드베이스에서 macOS 14(Sonoma)+ Apple Silicon 으로 이식. Universal/Intel Mac 미지원, Notarization 없이 ad-hoc 서명만 적용 (Apple Developer ID 미보유 전제).

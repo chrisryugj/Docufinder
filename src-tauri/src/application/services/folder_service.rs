@@ -4,7 +4,6 @@
 
 use crate::application::dto::indexing::{FolderStats, WatchedFolderInfo};
 use crate::application::errors::{AppError, AppResult};
-use crate::constants::BLOCKED_PATH_PATTERNS;
 use crate::db;
 use crate::indexer::manager::WatchManager;
 use crate::search::vector::VectorIndex;
@@ -205,13 +204,10 @@ impl FolderService {
         let canonical = dunce::canonicalize(path)
             .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
 
-        let path_str = canonical.to_string_lossy().to_lowercase();
-        if BLOCKED_PATH_PATTERNS.iter().any(|b| path_str.contains(b)) {
-            return Err(AppError::AccessDenied(format!(
-                "'{}' is a protected system folder",
-                canonical.display()
-            )));
-        }
+        // `validate_watch_path`는 `allow_system_folders` 토글을 반영해 진입점 전체에서
+        // 일관된 차단/허용 동작을 보장한다.
+        crate::constants::validate_watch_path(&canonical)
+            .map_err(|msg| AppError::AccessDenied(msg.to_string()))?;
 
         Ok(canonical)
     }

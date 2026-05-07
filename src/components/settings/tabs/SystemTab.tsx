@@ -139,6 +139,14 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             onChange={(v) => onChange("skip_cloud_body_indexing", v)}
           />
         </div>
+        <div className="mt-3">
+          <SettingsToggle
+            label="시스템 폴더 추가 허용"
+            description="C:\Windows · Program Files · /System · /usr/bin 등 시스템 보호 폴더를 수동으로 인덱싱 대상에 추가할 수 있게 함. 폴더 추가 시 강한 경고 표시. 시스템 폴더는 시맨틱(벡터) 인덱싱 자동 시작 안 함"
+            checked={settings.allow_system_folders ?? false}
+            onChange={(v) => onChange("allow_system_folders", v)}
+          />
+        </div>
       </div>
 
       {/* 데이터 관리 */}

@@ -97,6 +97,13 @@ pub struct Settings {
     /// false: 일반 로컬 폴더와 동일하게 본문까지 인덱싱 (NAS 등 빠른 환경에서 사용자 선택).
     #[serde(default = "default_skip_cloud_body_indexing")]
     pub skip_cloud_body_indexing: bool,
+
+    /// 시스템 보호 폴더(C:\Windows, /System, /usr/bin 등) 수동 추가 허용.
+    /// false(기본): `validate_watch_path`가 차단 — 일반 사용자 보호.
+    /// true: 사용자가 폴더 다이얼로그에서 시스템 폴더를 직접 골라 인덱싱 가능. 강한 경고 후 진행.
+    /// 시스템 폴더는 파일 수가 많고 본문이 의미 없는(바이너리) 경우가 많아, 활성화돼도 자동 벡터 인덱싱은 스킵.
+    #[serde(default)]
+    pub allow_system_folders: bool,
 }
 
 fn default_skip_cloud_body_indexing() -> bool {
@@ -215,6 +222,7 @@ impl Default for Settings {
             error_reporting_enabled: default_error_reporting_enabled(),
             formula_ocr_enabled: false,
             skip_cloud_body_indexing: default_skip_cloud_body_indexing(),
+            allow_system_folders: false,
         }
     }
 }
@@ -562,6 +570,8 @@ pub async fn update_settings(
 
     // 클라우드/네트워크 본문 인덱싱 스킵 토글 동기화 (parse_file 진입에서 즉시 반영)
     crate::utils::cloud_detect::set_skip_enabled(settings.skip_cloud_body_indexing);
+    // 시스템 폴더 추가 허용 토글 동기화 (validate_watch_path 즉시 반영)
+    crate::constants::set_allow_system_folders(settings.allow_system_folders);
 
     tracing::info!("Settings saved to {:?}", settings_path);
 
