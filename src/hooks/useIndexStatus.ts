@@ -304,15 +304,22 @@ export function useIndexStatus(): UseIndexStatusReturn {
     }
   }, [refreshStatus, indexSingleFolder]);
 
-  // 폴더 제거 (즉시 반환, 백그라운드 삭제 — folder-removed 이벤트로 완료 알림)
+  // 폴더 제거. 백엔드는 watched_folders DELETE 까지 동기 처리 후 응답하고
+  // 무거운 벡터/파일 cleanup 은 백그라운드 → folder-removed 이벤트로 알림.
+  // 사이드바 즉시 갱신 보장을 위해 optimistic 으로 status 에서도 우선 제거한다.
   const removeFolder = useCallback(async (path: string): Promise<void> => {
+    setError(null);
+    setStatus((s) =>
+      s ? { ...s, watched_folders: s.watched_folders.filter((p) => p !== path) } : s,
+    );
     try {
-      setError(null);
       await invokeWithTimeout("remove_folder", { path }, IPC_TIMEOUT.SETTINGS);
-      // 즉시 반환됨 — optimistic UI 갱신
+      // 백엔드 진실값으로 정합 확인 (이미 동기로 watched_folders 삭제됨)
       await refreshStatus();
     } catch (err) {
+      // 실패: optimistic 변경 원상복구
       setError(`폴더 제거 실패: ${getErrorMessage(err)}`);
+      await refreshStatus();
     }
   }, [refreshStatus]);
 

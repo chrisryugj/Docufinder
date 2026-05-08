@@ -953,6 +953,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::file::open_file,
             commands::file::open_url,
+            commands::file::check_github_release,
             commands::file::open_folder,
             commands::file::log_frontend_error,
             commands::file::get_log_dir,

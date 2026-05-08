@@ -454,16 +454,20 @@ fn call_kordoc_sync(
                 "kordoc: 이미지 기반 PDF (exit {status})"
             )));
         }
-        // stderr 의 의미 있는 첫 줄을 사용자 가시 에러에 노출.
-        // HWP5 전수 실패 같은 환경 문제(이슈 #22) 진단 시 로그 파일 안 봐도 원인 파악 가능.
-        let snippet = stderr
+        // stderr 의 모든 비어있지 않은 라인을 합쳐서 사용자 가시 에러에 노출.
+        // 이전 구현은 첫 줄("FAIL" 같은 헤더)만 잡아서 진짜 진단 메시지가 묻혔다 (이슈 #22):
+        //   stderr line 1: "FAIL"
+        //   stderr line 2: "  → 지원하지 않는 파일 형식입니다."
+        // 마지막 라인 부근에 가장 구체적인 에러가 나오는 경향이 있어 모두 보존한다.
+        let snippet: String = stderr
             .lines()
             .map(str::trim)
-            .find(|s| !s.is_empty())
-            .unwrap_or("")
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" | ")
             .chars()
-            .take(200)
-            .collect::<String>();
+            .take(300)
+            .collect();
         return Err(ParseError::ParseError(if snippet.is_empty() {
             format!("kordoc 실행 실패 (exit {status})")
         } else {

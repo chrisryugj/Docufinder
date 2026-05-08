@@ -22,7 +22,17 @@ const CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 
 /// HWP5 FileHeader stream의 signature 프리픽스.
 /// CFB 내부 어디엔가 저장되므로 파일 앞부분을 byte-search 한다.
-const HWP5_SIGNATURE: &[u8] = b"HWP Document File";
+///
+/// 17바이트 짧은 매칭("HWP Document File") 은 한국어 본문/메타 데이터에 우연히 등장해
+/// false positive 를 일으켰다 — 사용자 환경에서 같은 .HWP 파일을 다른 폴더로 옮겨도
+/// 동일하게 "Password protected" 로 차단되는 사례 보고(이슈 #22). 한컴이 실제 fileheader
+/// 에 박는 마커는 "HWP Document File V5.00" 이며, signature 길이를 늘려 매칭을 엄격히 한다.
+const HWP5_SIGNATURE: &[u8] = b"HWP Document File V5";
+
+/// HWP5 FileHeader stream 위치의 합리적 상한. CFB 컨테이너 구조상 FileHeader 는
+/// 보통 첫 sector ~ 수 KB 내에 배치되며 64KB 를 넘는 경우는 사실상 없다. 그 이후
+/// 위치의 매치는 본문 데이터의 우연 매치로 간주한다.
+const HWP5_HEADER_MAX_OFFSET: usize = 64 * 1024;
 
 /// HWP5 암호 감지를 위해 읽을 최대 바이트. CFB 헤더 + FAT + FileHeader stream은
 /// 통상 파일 앞 64KB 이내에 위치. 안전 마진으로 1MB.
@@ -95,10 +105,15 @@ fn hwp5_is_encrypted(path: &Path) -> std::io::Result<bool> {
     let n = file.read(&mut buf)?;
     buf.truncate(n);
 
-    // "HWP Document File" signature 찾기
+    // "HWP Document File V5" signature 찾기 — 너무 뒤쪽 매치는 본문 우연 매치로 간주해 무시.
+    // 보수 정책: 의심스러우면 false (= 암호 아님 → 정상 파서로 위임). false negative 는
+    // kordoc 내부 fallback 이 처리하지만, false positive 는 정상 파일을 차단해 인덱싱 실패로 직결됨.
     let Some(pos) = find_subsequence(&buf, HWP5_SIGNATURE) else {
         return Ok(false);
     };
+    if pos > HWP5_HEADER_MAX_OFFSET {
+        return Ok(false);
+    }
 
     // signature 시작 + 32 (padding 포함) 이후 4byte = properties
     let prop_offset = pos + 32;
@@ -111,6 +126,13 @@ fn hwp5_is_encrypted(path: &Path) -> std::io::Result<bool> {
         buf[prop_offset + 2],
         buf[prop_offset + 3],
     ]);
+
+    // Sanity check — HWP5 spec 의 properties 는 하위 9비트만 정의되어 있다 (현행 spec 1.3 기준).
+    // 상위 비트가 set 이면 매칭 위치가 진짜 FileHeader 가 아닐 가능성이 높으므로 차단.
+    // (정상 파일에서도 reserved 비트가 비어있는 게 한컴오피스가 출력하는 표준 동작이다.)
+    if properties & 0xFFFF_FE00 != 0 {
+        return Ok(false);
+    }
 
     // bit 1 (암호) | bit 4 (DRM 보안)
     // 주의: bit 8 (0x100) 는 일부 정상 문서(예: 한컴오피스에서 저장한 공공기관 문서)에도

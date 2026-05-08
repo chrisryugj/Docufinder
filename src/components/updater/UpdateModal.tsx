@@ -9,6 +9,9 @@ interface UpdateModalProps {
   onInstall: () => void;
   onRestart: () => void;
   onCancel?: () => void;
+  /** macOS 전용 — 새 버전 발견 시 "다운로드 페이지 열기" 버튼을 활성화하고
+   *  플랫폼 자동 설치(plugin-updater) 대신 release 페이지를 시스템 브라우저로 연다. */
+  onOpenReleasePage?: () => void;
 }
 
 function formatBytes(n: number): string {
@@ -23,9 +26,11 @@ function formatBytes(n: number): string {
   return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart, onCancel }: UpdateModalProps) {
-  const { phase, version, notes, downloadedBytes, totalBytes, error } = state;
+export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart, onCancel, onOpenReleasePage }: UpdateModalProps) {
+  const { phase, version, notes, downloadedBytes, totalBytes, error, releaseUrl } = state;
   const progress = totalBytes > 0 ? Math.min(100, (downloadedBytes / totalBytes) * 100) : 0;
+  // mac 분기: releaseUrl 있으면 자동 설치 대신 브라우저로 release 페이지를 연다.
+  const useReleasePageFlow = Boolean(releaseUrl) && Boolean(onOpenReleasePage);
 
   const title =
     phase === "available"
@@ -53,7 +58,19 @@ export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart, onCa
           {phase === "available" && (
             <>
               <Button variant="ghost" size="sm" onClick={onClose}>나중에</Button>
-              <Button size="sm" onClick={onInstall}>지금 설치</Button>
+              {useReleasePageFlow ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    onOpenReleasePage?.();
+                    onClose();
+                  }}
+                >
+                  다운로드 페이지 열기
+                </Button>
+              ) : (
+                <Button size="sm" onClick={onInstall}>지금 설치</Button>
+              )}
             </>
           )}
           {phase === "ready-to-restart" && (
@@ -102,7 +119,9 @@ export function UpdateModal({ isOpen, onClose, state, onInstall, onRestart, onCa
             </div>
           )}
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            다운로드 후 앱이 자동 재시작됩니다. 인덱스/설정은 보존됩니다.
+            {useReleasePageFlow
+              ? "macOS 는 자동 설치를 지원하지 않습니다. 다운로드 페이지에서 새 dmg 파일을 받아 설치해 주세요."
+              : "다운로드 후 앱이 자동 재시작됩니다. 인덱스/설정은 보존됩니다."}
           </p>
         </div>
       )}

@@ -233,7 +233,11 @@ pub async fn add_folder(
     })
 }
 
-/// 감시 폴더 제거 (비동기 — 즉시 응답 후 백그라운드 삭제)
+/// 감시 폴더 제거.
+///
+/// 사이드바가 즉시 갱신되도록 `watched_folders` DELETE 만 동기로 처리하고,
+/// 무거운 벡터/파일 cleanup 은 백그라운드로 분리한다 (이슈 #22 사용자 피드백 — 토스트는
+/// 떴는데 사이드바엔 폴더가 잠깐 잔존하는 race 제거).
 #[tauri::command]
 pub async fn remove_folder(
     path: String,
@@ -255,15 +259,22 @@ pub async fn remove_folder(
         )
     };
 
-    // 즉시 응답 — 무거운 삭제는 백그라운드
+    // 1단계: watched_folders DELETE — 동기. 이 함수 반환 시점에 사이드바 목록이 정확.
+    service
+        .remove_watched_folder_only(&path)
+        .await
+        .map_err(ApiError::from)?;
+
+    // 2단계: 벡터/파일 행 cleanup 은 시간이 걸리므로 백그라운드. 결과는 folder-removed 이벤트로.
     let path_clone = path.clone();
     tauri::async_runtime::spawn(async move {
-        match service.remove_folder(&path_clone).await {
+        let cleanup = service.cleanup_folder_data(&path_clone).await;
+        // FilenameCache 갱신은 cleanup 성공 여부와 무관하게 시도 (DB 상태 기준)
+        if let Ok(conn) = crate::db::get_connection(&db_path) {
+            let _ = filename_cache.load_from_db(&conn);
+        }
+        match cleanup {
             Ok(()) => {
-                // FilenameCache 갱신
-                if let Ok(conn) = crate::db::get_connection(&db_path) {
-                    let _ = filename_cache.load_from_db(&conn);
-                }
                 let _ = app_handle.emit(
                     "folder-removed",
                     serde_json::json!({
@@ -271,10 +282,10 @@ pub async fn remove_folder(
                         "success": true,
                     }),
                 );
-                tracing::info!("Folder removed successfully: {}", path_clone);
+                tracing::info!("Folder cleanup completed: {}", path_clone);
             }
             Err(e) => {
-                tracing::error!("Folder removal failed: {}: {}", path_clone, e);
+                tracing::error!("Folder cleanup failed: {}: {}", path_clone, e);
                 let _ = app_handle.emit(
                     "folder-removed",
                     serde_json::json!({

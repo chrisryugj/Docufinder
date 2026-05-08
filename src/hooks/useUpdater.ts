@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { getErrorMessage } from "../types/error";
 import { isMac } from "../utils/platform";
 
@@ -22,10 +24,40 @@ export interface UpdateState {
   totalBytes: number;
   error?: string;
   lastCheckedAt?: number;
+  /** macOS 전용 — 새 버전 발견 시 GitHub release 페이지 URL.
+   *  set 되어 있으면 모달이 "다운로드 페이지 열기" 버튼을 노출. */
+  releaseUrl?: string;
+}
+
+interface GithubReleaseInfo {
+  tag_name: string;
+  html_url: string;
+  name?: string | null;
+  body?: string | null;
 }
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const STARTUP_DELAY_MS = 30 * 1000;
+const GITHUB_REPO = "chrisryugj/Docufinder";
+
+/** "v2.5.21" / "2.5.21" 등에서 숫자 튜플만 뽑아 비교. semver 라이브러리 도입 회피. */
+function isNewerVersion(latest: string, current: string): boolean {
+  const parse = (s: string) =>
+    s
+      .replace(/^v/i, "")
+      .split(/[.\-+]/)
+      .map((p) => parseInt(p, 10))
+      .filter((n) => !Number.isNaN(n));
+  const a = parse(latest);
+  const b = parse(current);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
 
 export function useUpdater(auto: boolean = true) {
   const [state, setState] = useState<UpdateState>({
@@ -38,17 +70,50 @@ export function useUpdater(auto: boolean = true) {
   // plugin-updater 의 downloadAndInstall 은 AbortController 지원 X 이므로,
   // 진행 이벤트 콜백에서 이 플래그를 읽어 UI state 를 idle 로 되돌리고 이후 이벤트 무시.
   const cancelledRef = useRef(false);
+  // openReleasePage 가 stale closure 없이 최신 releaseUrl 을 읽도록 ref 미러.
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const checkForUpdate = useCallback(async (): Promise<Update | null> => {
-    // macOS는 ad-hoc 서명(Apple Developer ID 미보유)으로 자동 업데이트 미지원.
-    // tauri-action 의 latest.json 에는 windows-x86_64 항목만 들어가서, plugin-updater 가
-    // `darwin-aarch64-app`/`darwin-aarch64` fallback platform 을 못 찾고 오류를 던진다.
-    // → mac 에서는 check 호출 자체를 우회하고 "최신" 으로 표시. 신버전은 GitHub Releases 수동 다운로드.
+    // macOS는 ad-hoc 서명(Apple Developer ID 미보유)으로 plugin-updater 자동 설치는 미지원.
+    // 대신 GitHub Releases API 로 최신 태그를 직접 조회 → 새 버전이면 사용자에게 release
+    // 페이지 안내(이슈 #22 — 사용자 제안 반영). plugin-updater.check() 는 windows-x86_64 만
+    // 등록된 latest.json 에서 darwin platform 을 못 찾고 throw 하므로 호출하지 않는다.
+    setState((s) => ({ ...s, phase: "checking", error: undefined, releaseUrl: undefined }));
+
     if (isMac) {
-      setState((s) => ({ ...s, phase: "up-to-date", lastCheckedAt: Date.now() }));
+      try {
+        const [info, current] = await Promise.all([
+          invoke<GithubReleaseInfo>("check_github_release", { repo: GITHUB_REPO }),
+          getVersion(),
+        ]);
+        if (isNewerVersion(info.tag_name, current)) {
+          setState((s) => ({
+            ...s,
+            phase: "available",
+            version: info.tag_name.replace(/^v/i, ""),
+            notes: info.body ?? undefined,
+            releaseUrl: info.html_url,
+            lastCheckedAt: Date.now(),
+          }));
+        } else {
+          setState((s) => ({
+            ...s,
+            phase: "up-to-date",
+            lastCheckedAt: Date.now(),
+          }));
+        }
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          phase: "error",
+          error: getErrorMessage(err),
+          lastCheckedAt: Date.now(),
+        }));
+      }
       return null;
     }
-    setState((s) => ({ ...s, phase: "checking", error: undefined }));
+
     try {
       const u = await check();
       if (u) {
@@ -72,6 +137,17 @@ export function useUpdater(auto: boolean = true) {
       const msg = getErrorMessage(err);
       setState((s) => ({ ...s, phase: "error", error: msg, lastCheckedAt: Date.now() }));
       return null;
+    }
+  }, []);
+
+  /** macOS 전용 — 새 버전 발견 시 GitHub release 페이지를 시스템 브라우저에서 연다. */
+  const openReleasePage = useCallback(async () => {
+    const url = stateRef.current.releaseUrl;
+    if (!url) return;
+    try {
+      await invoke("open_url", { url });
+    } catch (err) {
+      setState((s) => ({ ...s, phase: "error", error: getErrorMessage(err) }));
     }
   }, []);
 
@@ -132,9 +208,10 @@ export function useUpdater(auto: boolean = true) {
   }, []);
 
   useEffect(() => {
-    // mac 은 자동 업데이트 미지원 (위 checkForUpdate 가드 참조). 타이머 자체를 안 건다.
-    if (!auto || isMac) return;
+    if (!auto) return;
 
+    // mac 도 자동 체크 — plugin-updater 대신 GitHub Releases API 로 새 버전을 확인하고
+    // 발견 시 모달이 release 페이지 다운로드 안내 UI 를 띄운다 (이슈 #22 사용자 제안).
     const startTimer = setTimeout(() => {
       void checkForUpdate();
     }, STARTUP_DELAY_MS);
@@ -149,5 +226,5 @@ export function useUpdater(auto: boolean = true) {
     };
   }, [auto, checkForUpdate]);
 
-  return { state, checkForUpdate, downloadAndInstall, restart, dismiss, cancel };
+  return { state, checkForUpdate, downloadAndInstall, restart, dismiss, cancel, openReleasePage };
 }

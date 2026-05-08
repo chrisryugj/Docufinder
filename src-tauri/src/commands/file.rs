@@ -265,6 +265,65 @@ pub async fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+/// GitHub Releases API 를 호출해 최신 릴리즈 정보를 반환.
+///
+/// macOS는 ad-hoc 서명/Notarization 미적용으로 plugin-updater 의 자동 업데이트가
+/// 동작하지 않는다. 대신 사용자가 "지금 확인" 을 누르면 이 함수로 GitHub 의 최신
+/// 태그를 직접 조회하고, 새 버전이면 release 페이지를 브라우저에서 열어준다 (이슈 #22).
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct GithubReleaseInfo {
+    /// "v2.5.21" 형태의 릴리즈 태그.
+    pub tag_name: String,
+    /// release 페이지 URL — 브라우저에서 열어 사용자 다운로드 유도용.
+    pub html_url: String,
+    /// 릴리즈 제목 (옵션).
+    #[serde(default)]
+    pub name: Option<String>,
+    /// 릴리즈 노트 (옵션).
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+#[tauri::command]
+pub async fn check_github_release(repo: String) -> Result<GithubReleaseInfo, String> {
+    // 입력 검증 — repo 는 "owner/name" 형태. 영숫자 + - _ . / 만 허용.
+    if repo.is_empty()
+        || repo.len() > 100
+        || !repo
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+        || repo.matches('/').count() != 1
+    {
+        return Err("잘못된 repo 식별자".to_string());
+    }
+
+    let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
+    let config = ureq::Agent::config_builder()
+        .timeout_connect(Some(std::time::Duration::from_secs(5)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(10)))
+        .build();
+    let agent = ureq::Agent::new_with_config(config);
+
+    let mut response = agent
+        .get(&url)
+        // GitHub API 는 User-Agent 가 없으면 403. 식별자에 버전 포함.
+        .header("User-Agent", "Docufinder-Updater")
+        .header("Accept", "application/vnd.github+json")
+        .call()
+        .map_err(|e| match e {
+            ureq::Error::StatusCode(404) => "릴리즈 정보를 찾을 수 없습니다.".to_string(),
+            ureq::Error::StatusCode(s) => format!("GitHub API 오류 (HTTP {})", s),
+            _ => "GitHub API 연결 실패 (네트워크 확인)".to_string(),
+        })?;
+
+    let info: GithubReleaseInfo = response
+        .body_mut()
+        .read_json()
+        .map_err(|e| format!("GitHub API 응답 파싱 실패: {}", e))?;
+
+    Ok(info)
+}
+
 /// 프론트엔드 에러를 Rust 로그 파일에 기록
 /// 로그 인젝션 방지: 입력 길이 제한 + 개행 문자 이스케이프
 #[tauri::command]

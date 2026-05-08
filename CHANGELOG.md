@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.5.22] - 2026-05-08
+
+**hotfix: HWP 파싱 회귀 + 폴더 삭제 race + macOS 업데이트 안내** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) v2.5.21 추가 보고분.
+
+### 수정
+- **HWP `Password protected` false-positive** — `parsers/password_detect.rs::hwp5_is_encrypted` 의 17바이트 짧은 signature(`"HWP Document File"`) byte-search 가 한국어 본문/메타 데이터에 우연히 매치되어 정상 .HWP 파일을 사전 차단하던 결함. 사용자가 같은 파일을 다른 폴더(`/Volumes/...` → 데스크톱 `TEST/`)로 옮겨도 동일하게 발생. fix 3종: ① signature 를 `"HWP Document File V5"` (20 byte) 로 강화, ② 매치 위치를 파일 앞 64KB 이내로 제한 (CFB 컨테이너 구조상 FileHeader 가 그 안에만 있음), ③ properties DWORD 의 reserved 상위 23비트가 0인지 sanity check (본문 우연 매치는 random 비트 패턴이라 거의 항상 실패). 보수 정책 — 의심스러우면 false (kordoc 가 실제 파일 검증).
+- **kordoc 진단성 강화** — 사용자 mac 환경의 stderr 가 `FAIL\n  → 지원하지 않는 파일 형식입니다.` 두 줄로 출력되는데 v2.5.21 의 노출 로직이 첫 비어있지 않은 줄(`FAIL`)만 잡아 정작 의미 있는 메시지가 묻혀 있었다. 모든 비어있지 않은 라인을 ` | ` 로 합쳐서 사용자 가시 에러에 노출 (300자 제한). 다음 회귀 발생 시 사용자가 실제 kordoc 에러 메시지를 곧장 공유 가능.
+- **폴더 삭제 사이드바 잔존 (race)** — v2.5.21 에서 `service.remove_folder()` 전체를 `tauri::async_runtime::spawn` 으로 백그라운드 처리하면서 `watched_folders` DELETE 도 같이 비동기로 갔다. 그 결과 frontend 의 invoke 즉시 반환 직후 `refreshStatus()` 가 호출되는 시점에 DB 가 아직 안 지워져 사이드바에 폴더가 잠깐 잔존하는 race. fix: command 안에서 **`watched_folders` DELETE 만 동기로 먼저** 실행하고, 무거운 벡터/파일 cleanup 만 spawn 으로 분리. service 측에 `remove_watched_folder_only` / `cleanup_folder_data` 두 단계로 분해. 추가로 frontend `useIndexStatus.removeFolder` 에 optimistic UI 갱신 (즉시 status 에서 폴더 제거, 실패 시 refreshStatus 로 원상복구).
+
+### 추가 (사용자 제안 채택)
+- **macOS 수동 업데이트 흐름** — v2.5.20 에서 mac 의 "지금 확인" 을 숨겼는데, 사용자가 "GitHub 에 새 버전 있는지 확인해서 release 페이지를 브라우저로 열어주는 방식이면 좋겠다" 고 제안 (이슈 #22). 채택 — `commands::file::check_github_release` (ureq + GitHub API) 추가, `useUpdater` 의 mac 분기에서 호출 → tag_name 비교 → 새 버전이면 phase: `available` + releaseUrl set. UpdateModal 이 releaseUrl 있으면 "지금 설치" 대신 "다운로드 페이지 열기" 버튼 노출, 클릭 시 `open_url` 로 시스템 브라우저에서 release 페이지 오픈. 자동 시작 30초 + 6시간 인터벌 체크도 mac 에서 활성 (windows 와 동일).
+
+### 사용자 안내
+- **HWP 인덱싱 재시도** — 외장 드라이브 / 데스크톱 TEST 폴더의 같은 .HWP 파일이 v2.5.21 에서 `Password protected` 로 차단되었다면 v2.5.22 에서 자동 통과. 폴더 우클릭 → "재인덱싱" 또는 단순히 새로 추가만 하면 인덱스 갱신.
+- **kordoc 자체가 .HWP 를 unsupported 라고 거부하는 케이스** — fix 후에도 동일 메시지가 남으면 macOS 환경에서 kordoc 사이드카가 해당 HWP 변종(예: HWP3 구버전 / 손상 파일 / native module 누락) 을 처리하지 못하는 경우다. 새 진단 메시지(`kordoc 실행 실패 (exit N): FAIL | 지원하지 않는 파일 형식입니다.`)가 그대로 보이면 issue 에 한 줄 공유 부탁.
+
 ## [2.5.21] - 2026-05-07
 
 **hotfix: macOS 폴더 삭제 미반영 + HWP 파싱 전수 실패** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) M4 MacBook + 외장 드라이브(`/Volumes/JetDrive Lite 330/Work`) 환경에서 보고된 두 회귀를 모두 잡는다.

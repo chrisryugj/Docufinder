@@ -783,6 +783,7 @@ function AppContent() {
         onInstall={updater.downloadAndInstall}
         onRestart={updater.restart}
         onCancel={updater.cancel}
+        onOpenReleasePage={updater.openReleasePage}
       />
 
       {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능 */}

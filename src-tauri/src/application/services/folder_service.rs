@@ -53,16 +53,12 @@ impl FolderService {
         Ok(path_str)
     }
 
-    /// 감시 폴더 제거
+    /// `watched_folders` 테이블에서 즉시 폴더를 제거 (UI 즉시 반영용).
     ///
-    /// 순서:
-    /// 1) 파일 감시 중지
-    /// 2) **`watched_folders` DELETE** — 사용자 UX 기준점. 사이드바에서 즉시 사라져야 한다.
-    /// 3) 벡터/파일 정리 — best-effort. 부분 실패해도 폴더 자체는 사라진 상태로 유지.
-    ///
-    /// 이전 구현은 vi.save() 또는 delete_files_in_folder() 실패 시 watched_folders DELETE 까지
-    /// 도달 못 해 "토스트는 제거됨, 재시작하면 부활" 현상이 발생했다 (이슈 #22).
-    pub async fn remove_folder(&self, path: &str) -> AppResult<()> {
+    /// remove_folder 의 1단계만 분리. 사용자가 컨텍스트 메뉴 "폴더 제거" 를 누르는 순간
+    /// 사이드바에서 즉시 사라져야 한다는 요구(이슈 #22 사용자 피드백)에 맞추기 위해,
+    /// 무거운 cleanup 은 호출자 측에서 비동기로 돌리고 이 함수는 빠른 SQL DELETE + 감시 중지만 수행.
+    pub async fn remove_watched_folder_only(&self, path: &str) -> AppResult<()> {
         let folder_path = Path::new(path);
 
         if let Some(wm) = self.watch_manager.as_ref() {
@@ -72,9 +68,17 @@ impl FolderService {
         }
 
         let conn = self.get_connection()?;
-
         db::remove_watched_folder(&conn, path).map_err(|e| AppError::Internal(e.to_string()))?;
         tracing::info!("watched_folders 삭제 완료: {}", path);
+        Ok(())
+    }
+
+    /// 폴더 데이터 cleanup (벡터 + 파일행) — best-effort.
+    ///
+    /// `watched_folders` 는 이 함수 호출 전에 이미 삭제된 상태여야 한다.
+    /// 부분 실패해도 폴더 자체가 사라진 상태는 유지되므로 사용자 UX 에는 영향 없음.
+    pub async fn cleanup_folder_data(&self, path: &str) -> AppResult<()> {
+        let conn = self.get_connection()?;
 
         if let Some(vi) = self.vector_index.as_ref() {
             match db::get_file_and_chunk_ids_in_folder(&conn, path) {
@@ -111,6 +115,15 @@ impl FolderService {
         }
 
         Ok(())
+    }
+
+    /// 감시 폴더 제거 (구 API — 동기 호출자 호환용 래퍼).
+    ///
+    /// 새 코드는 `remove_watched_folder_only` + `cleanup_folder_data` 분리 호출을 사용해
+    /// 사이드바 갱신을 즉시 반영하는 것을 권장.
+    pub async fn remove_folder(&self, path: &str) -> AppResult<()> {
+        self.remove_watched_folder_only(path).await?;
+        self.cleanup_folder_data(path).await
     }
 
     /// 감시 폴더 목록 조회

@@ -29,25 +29,23 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
         <div className="flex items-center justify-between">
           <div>
             <label className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
-              {isMac ? "자동 업데이트 (macOS 미지원)" : "자동 업데이트 확인"}
+              {isMac ? "업데이트 확인 (수동 설치)" : "자동 업데이트 확인"}
             </label>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
               {isMac
-                ? "Apple Developer ID 미보유로 자동 업데이트 비활성. 신버전은 github.com/chrisryugj/docufinder/releases 에서 수동 다운로드"
+                ? "GitHub 에서 새 버전을 확인하고 다운로드 페이지를 안내합니다 (자동 설치는 macOS Notarization 미적용으로 비활성)"
                 : "앱 시작 시 + 6시간마다 자동 체크 · 새 버전 발견 시 알림"}
             </p>
           </div>
-          {!isMac && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleCheckUpdate}
-              isLoading={updater.state.phase === "checking"}
-              disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
-            >
-              지금 확인
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCheckUpdate}
+            isLoading={updater.state.phase === "checking"}
+            disabled={updater.state.phase === "checking" || updater.state.phase === "downloading" || updater.state.phase === "installing"}
+          >
+            지금 확인
+          </Button>
         </div>
       </div>
 
@@ -96,6 +94,7 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
         onInstall={updater.downloadAndInstall}
         onRestart={updater.restart}
         onCancel={updater.cancel}
+        onOpenReleasePage={updater.openReleasePage}
       />
     </div>
   );
