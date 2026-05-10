@@ -71,8 +71,10 @@ cat > "$KORDOC_DEST/package.json" <<'EOF'
 EOF
 
 echo "  installing kordoc runtime deps (npm, prod-only)…"
+# kordoc dependencies — keep in sync with kordoc package.json `dependencies`
+# (markdown-it added in kordoc v2.7.0 for Print Renderer; missing it crashes cli.js at startup)
 (cd "$KORDOC_DEST" && npm install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error \
-    "@xmldom/xmldom" "commander" "jszip" "zod" "cfb" "pdfjs-dist@4" \
+    "@xmldom/xmldom" "commander" "jszip" "zod" "cfb" "markdown-it@^14" "pdfjs-dist@4" \
     "@hyzyla/pdfium@^2" "onnxruntime-node@^1.24" "sharp@^0.34" "@huggingface/transformers@^4")
 
 # trim 불필요 파일

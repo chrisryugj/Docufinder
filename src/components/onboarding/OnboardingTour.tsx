@@ -33,6 +33,19 @@ interface Rect {
 
 const FALLBACK_RECT: Rect = { top: -9999, left: -9999, width: 0, height: 0 };
 
+// 투어를 띄울 수 있는 최소 viewport 크기 — 이보다 작으면 selector 측정/툴팁 배치가
+// 화면 밖으로 나가 backdrop만 깔리고 사용자가 ESC를 모르면 영구 stuck (이슈 #22).
+const TOUR_MIN_VIEWPORT_WIDTH = 640;
+const TOUR_MIN_VIEWPORT_HEIGHT = 480;
+
+function isViewportTooSmallForTour(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.innerWidth < TOUR_MIN_VIEWPORT_WIDTH ||
+    window.innerHeight < TOUR_MIN_VIEWPORT_HEIGHT
+  );
+}
+
 function rectsEqual(a: Rect, b: Rect) {
   return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
 }
@@ -57,7 +70,7 @@ export function OnboardingTour({
     setMounted(true);
   }, []);
 
-  // 첫 방문 자동 시작
+  // 첫 방문 자동 시작 — 작은 창에서는 skip
   useEffect(() => {
     if (!mounted || !autoStart) return;
     try {
@@ -65,7 +78,10 @@ export function OnboardingTour({
     } catch {
       /* ignore */
     }
+    if (isViewportTooSmallForTour()) return;
     const t = setTimeout(() => {
+      // 1.2s 후에도 다시 한 번 viewport 크기 검사
+      if (isViewportTooSmallForTour()) return;
       finishedRef.current = false;
       setIndex(0);
       setOpen(true);
@@ -172,6 +188,17 @@ export function OnboardingTour({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, finish, goNext, goPrev]);
 
+  // 진행 중에 viewport가 너무 작아지면 자동 종료
+  // (selector 측정이 깨지거나 툴팁이 화면 밖으로 나가서 stuck 되는 것을 방지)
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => {
+      if (isViewportTooSmallForTour()) finish(false);
+    };
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => window.removeEventListener("resize", onResize);
+  }, [open, finish]);
+
   // 툴팁 크기 측정
   useEffect(() => {
     if (!open || !tipRef.current) return;
@@ -257,9 +284,10 @@ export function OnboardingTour({
   if (!mounted || !open || !current) return null;
 
   // 단일 div + box-shadow 스포트라이트 (GPU 가벼움)
+  // backdrop click → finish — 작은 창에서 툴팁이 화면 밖으로 나가도 닫을 수 있도록 (이슈 #22)
   const overlays = hasTarget ? (
     <>
-      <div className="fixed inset-0" onClick={(e) => e.stopPropagation()} />
+      <div className="fixed inset-0" onClick={() => finish(false)} />
       <div
         className="fixed pointer-events-none rounded-md transition-all duration-200 ease-out"
         style={{
@@ -273,7 +301,11 @@ export function OnboardingTour({
       />
     </>
   ) : (
-    <div className="fixed inset-0" style={{ backgroundColor: "rgba(15,23,42,0.7)" }} />
+    <div
+      className="fixed inset-0"
+      style={{ backgroundColor: "rgba(15,23,42,0.7)" }}
+      onClick={() => finish(false)}
+    />
   );
 
   const isLast = index === steps.length - 1;

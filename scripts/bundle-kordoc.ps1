@@ -72,8 +72,10 @@ Write-Host "  -> kordoc dist copied"
 # 이들이 번들에 포함되지 않으면 `--formula-ocr` 플래그가 tryImport 단계에서 실패.
 # 모델(~155MB)은 런타임 HuggingFace 다운로드이므로 여기서는 SDK 바이너리만 포함.
 Push-Location $kordocOut
+# kordoc dependencies — keep in sync with kordoc package.json `dependencies`
+# (markdown-it added in kordoc v2.7.0 for Print Renderer; missing it crashes cli.js at startup)
 $deps = @(
-    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "pdfjs-dist@4",
+    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "markdown-it@^14", "pdfjs-dist@4",
     "@hyzyla/pdfium@^2", "onnxruntime-node@^1.24", "sharp@^0.34", "@huggingface/transformers@^4"
 )
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"

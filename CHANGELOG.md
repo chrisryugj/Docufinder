@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.24] - 2026-05-10
+
+**hotfix: kordoc 사이드카 markdown-it 누락 + 작은 창 OnboardingTour 영구 stuck** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) v2.5.23 회귀 두 건 모두 해결.
+
+### 수정
+- **kordoc 사이드카 `markdown-it` 패키지 누락** — v2.5.23 에서 kordoc 을 v2.7.0 → v2.7.1 로 올리면서 신규 dependency `markdown-it@^14` (Print Renderer 용, `dist/index.js` 진입 시 정적 import) 가 같이 들어왔는데 Docufinder 의 두 번들 스크립트 (`scripts/setup-macos-resources.sh`, `scripts/bundle-kordoc.ps1`) 의 deps 배열에 추가되지 않아 macOS / Windows 양쪽 빌드 모두 cli.js 첫 호출에서 `Cannot find package 'markdown-it' imported from .../kordoc/chunk-N6UWJX63.js` (`ERR_MODULE_NOT_FOUND`) 로 즉사. v2.5.23 사용자 환경에서 HWP/HWPX/PDF 본문 추출이 전수 실패해 인덱싱 성공률이 7% (1,126 / 31,613) 로 추락. fix: 두 스크립트 deps 배열에 `markdown-it@^14` 추가, 추후 회귀 방지를 위해 "kordoc package.json 의 dependencies 와 동기화 필수" 주석 명시. 사용자 환경에서 자동 폴더 우클릭 → "재인덱싱" 으로 복구.
+- **작은 창에서 OnboardingTour overlay 영구 stuck** — v2.5.22 에서 사용자가 보고한 "창 크기가 작으면 UI가 어두워지고 닫을 방법이 없는" 현상의 직접 원인을 [`OnboardingTour.tsx:262`](src-tauri/../src/components/onboarding/OnboardingTour.tsx#L262) 에서 추적. 작은 창 (특히 사용자 보고 환경 500×291) 에서 `[data-tour="search-bar"]` / `[data-tour="sidebar-folders"]` 등 selector 가 collapse 모드 등으로 viewport 밖으로 나가면 `hasTarget = false` 폴백이 활성되어 `<div className="fixed inset-0" style={{ backgroundColor: "rgba(15,23,42,0.7)" }} />` 가 화면 전체를 덮는다. 그런데 (1) 이 backdrop 의 `onClick` 가 `e.stopPropagation()` 만 하고 닫지 않고, (2) 툴팁 카드는 viewport 가 작아 화면 밖에 위치 계산되어 보이지 않아 사용자가 ESC 단축키를 모르면 영구히 닫을 수 없었다. fix 3종: ① 자동 시작 가드 — viewport 가 `640×480` 미만이면 1.2s 자동 시작 자체를 skip, ② 진행 중 resize 로 작아지면 자동 finish, ③ backdrop click → `finish(false)` (스포트라이트 / 폴백 두 분기 모두). 이로써 어떤 viewport 크기에서도 사용자가 클릭만으로 투어를 닫을 수 있다.
+
+### 사용자 안내
+- **v2.5.23 에서 인덱싱 결과가 1,126 / 31,613 같이 비정상 낮은 사용자** — v2.5.24 dmg/msi 설치 후 자동으로 정상 동작. 폴더 우클릭 → "재인덱싱" 또는 단순히 새로 추가만 하면 v2.5.22 수준 (16,346 / 37,160) 이상으로 회복. 후보 파일 수가 v2.5.22 대비 줄어든 부분 (37,160 → 31,613) 은 v2.5.23 의 Rust 코드 변경이 0 (publish.yml + version bump 만) 이라 외장 디스크 파일 변동 또는 스캔 타이밍 차이로 추정 — 재인덱싱 후 자연 회복 여부 확인 필요. v2.5.23 신규 도입한 HWP3 파서의 사용자 환경 잔여 실패 여부도 markdown-it 복구 후 재판단.
+- **macOS 작은 창에서 화면이 어두워져 못 닫던 사용자** — v2.5.24 부터 자동 발생 안 함 (640×480 미만 자동 시작 skip). 이미 stuck 된 사용자는 backdrop 아무 곳이나 클릭하면 닫힌다. 헤더 도움말 → "기능 투어 다시 보기" 로 큰 창에서 다시 열람 가능.
+
 ## [2.5.23] - 2026-05-09
 
 **HWP 3.0 (구버전) 파일 본문 인덱싱 지원** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) 사용자 환경의 2003년 판결문 등 1996~2002년 한컴이 만든 구버전 `.HWP` 가 v2.5.22 까지 `kordoc 실행 실패: 지원하지 않는 파일 형식` 으로 차단되던 문제 해결.
