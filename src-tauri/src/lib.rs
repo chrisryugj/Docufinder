@@ -1,4 +1,5 @@
 mod application; // 클린 아키텍처: Application Layer
+pub mod breadcrumb; // 현재 처리 중 파일/단계 추적 (panic hook 에서 읽음)
 mod commands;
 mod constants;
 mod db;
@@ -367,16 +368,28 @@ pub fn run() {
             "Unknown panic".to_string()
         };
 
+        // 처리 중이던 파일/단계 (있으면 메시지 끝에 덧붙임 — 향후 디버깅에 결정적)
+        let breadcrumb_line = crate::breadcrumb::snapshot()
+            .as_ref()
+            .map(crate::breadcrumb::format_for_log);
+
         eprintln!("╔══════════════════════════════════════════════════════════╗");
         eprintln!("║                    CRITICAL ERROR                        ║");
         eprintln!("╚══════════════════════════════════════════════════════════╝");
         eprintln!("Location: {}", location);
         eprintln!("Message: {}", message);
+        if let Some(bc) = &breadcrumb_line {
+            eprintln!("{}", bc);
+        }
         eprintln!("Please contact the development team to report this issue.");
 
         // Telegram 자동 전송 (빌드 시 토큰 주입됐을 때만; 사용자 설정 체크는 생략 —
         // panic 은 치명적이므로 best-effort 로 알림).
-        crate::commands::telemetry::report_panic_sync(&location, &message);
+        let telegram_msg = match &breadcrumb_line {
+            Some(bc) => format!("{message} | {bc}"),
+            None => message.clone(),
+        };
+        crate::commands::telemetry::report_panic_sync(&location, &telegram_msg);
 
         // 긴급 로그 flush — 날짜 기반 로테이션 (최대 3개 파일 유지)
         if let Some(data_dir) = dirs::data_dir() {
@@ -408,12 +421,21 @@ pub fn run() {
                 }
             }
 
-            let entry = format!(
-                "[{}] PANIC at {}: {}\n",
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                location,
-                message
-            );
+            let entry = match &breadcrumb_line {
+                Some(bc) => format!(
+                    "[{}] PANIC at {}: {}\n  {}\n",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    location,
+                    message,
+                    bc
+                ),
+                None => format!(
+                    "[{}] PANIC at {}: {}\n",
+                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                    location,
+                    message
+                ),
+            };
             use std::io::Write;
             if let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)

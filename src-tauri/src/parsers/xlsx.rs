@@ -1,5 +1,6 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use calamine::{open_workbook_auto, Data, Reader};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 /// 최대 XLSX 파일 크기 (100MB)
@@ -14,6 +15,8 @@ const MAX_TOTAL_CHARS: usize = 5_000_000;
 /// XLSX/XLS 파일 파싱
 /// calamine 크레이트 사용, 시트/행 정보 포함
 pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
+    let _bc = crate::breadcrumb::Guard::new(path, "parse_xlsx");
+
     // 파일 크기 제한 (압축 폭탄 방어)
     if let Ok(metadata) = std::fs::metadata(path) {
         if metadata.len() > MAX_FILE_SIZE {
@@ -25,19 +28,43 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         }
     }
 
-    let mut workbook = open_workbook_auto(path).map_err(|e| {
-        let msg = e.to_string().to_lowercase();
-        if msg.contains("password") || msg.contains("encrypt") || msg.contains("cfb") {
-            ParseError::PasswordProtected("암호로 보호된 엑셀 파일입니다".to_string())
-        } else {
-            ParseError::ParseError(e.to_string())
+    // open_workbook_auto 자체도 calamine 내부에서 panic 가능 (CFB sector chain 비정상 등).
+    // catch_unwind 로 격리해 한 파일 panic 이 thread 전체를 죽이지 않도록 한다.
+    let open_result = catch_unwind(AssertUnwindSafe(|| open_workbook_auto(path)));
+    let mut workbook = match open_result {
+        Ok(Ok(wb)) => wb,
+        Ok(Err(e)) => {
+            let msg = e.to_string().to_lowercase();
+            if msg.contains("password") || msg.contains("encrypt") || msg.contains("cfb") {
+                return Err(ParseError::PasswordProtected(
+                    "암호로 보호된 엑셀 파일입니다".to_string(),
+                ));
+            }
+            return Err(ParseError::ParseError(e.to_string()));
         }
-    })?;
+        Err(_) => {
+            tracing::warn!(
+                "XLSX open panicked (calamine internal, file likely malformed): {}",
+                path.display()
+            );
+            return Err(ParseError::ParseError(
+                "엑셀 파일 구조가 비정상입니다 (open 단계 패닉)".to_string(),
+            ));
+        }
+    };
+
+    let sheet_names = workbook.sheet_names().to_vec();
+    tracing::info!(
+        "XLSX parsing: {} ({} sheet(s))",
+        path.display(),
+        sheet_names.len()
+    );
 
     let mut all_text = String::new();
     let mut chunks = Vec::new();
-    let sheet_names = workbook.sheet_names().to_vec();
     let mut global_offset = 0;
+    let mut sheets_panicked: usize = 0;
+    let mut sheets_extracted: usize = 0;
 
     for sheet_name in sheet_names {
         // 전체 문서 문자 수 제한: 시트 간 누적 체크
@@ -50,27 +77,66 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             break;
         }
 
-        if let Ok(range) = workbook.worksheet_range(&sheet_name) {
-            let (sheet_text, sheet_chunks) =
-                extract_text_with_location(&range, &sheet_name, global_offset);
+        // 시트별 격리: worksheet_range + extract_text_with_location 을 catch_unwind 로 감싼다.
+        // 한 시트가 panic 해도 다른 시트는 진행.
+        // NEIS Report Designer 가 출력한 구형 BIFF8 같은 비표준 포맷에서 calamine 0.26 이
+        // sector / range 빌드 단계에서 panic 한 사례가 보고되어 추가.
+        let sheet_result = catch_unwind(AssertUnwindSafe(|| {
+            let range = workbook.worksheet_range(&sheet_name).ok()?;
+            Some(extract_text_with_location(
+                &range,
+                &sheet_name,
+                global_offset,
+            ))
+        }));
 
-            if !sheet_text.is_empty() {
-                if !all_text.is_empty() {
-                    all_text.push_str("\n\n");
-                    global_offset += 2;
-                }
-                // 시트 이름 추가
-                let header = format!("[{}]\n", sheet_name);
-                all_text.push_str(&header);
-                global_offset += header.len();
-
-                all_text.push_str(&sheet_text);
-                global_offset += sheet_text.len();
-
-                chunks.extend(sheet_chunks);
+        let (sheet_text, sheet_chunks) = match sheet_result {
+            Ok(Some(extracted)) => extracted,
+            Ok(None) => {
+                tracing::warn!(
+                    "XLSX sheet '{}' skipped (worksheet_range error): {}",
+                    sheet_name,
+                    path.display()
+                );
+                continue;
             }
+            Err(_) => {
+                sheets_panicked += 1;
+                tracing::warn!(
+                    "XLSX sheet '{}' panicked (skipped): {}",
+                    sheet_name,
+                    path.display()
+                );
+                continue;
+            }
+        };
+
+        if !sheet_text.is_empty() {
+            sheets_extracted += 1;
+            if !all_text.is_empty() {
+                all_text.push_str("\n\n");
+                global_offset += 2;
+            }
+            // 시트 이름 추가
+            let header = format!("[{}]\n", sheet_name);
+            all_text.push_str(&header);
+            global_offset += header.len();
+
+            all_text.push_str(&sheet_text);
+            global_offset += sheet_text.len();
+
+            chunks.extend(sheet_chunks);
         }
     }
+
+    tracing::info!(
+        "XLSX done: {} (sheets: {} extracted, {} panicked, {} chunks, {} chars)",
+        path.display(),
+        sheets_extracted,
+        sheets_panicked,
+        chunks.len(),
+        all_text.len()
+    );
 
     if all_text.is_empty() {
         tracing::warn!("XLSX file has no text content: {:?}", path);

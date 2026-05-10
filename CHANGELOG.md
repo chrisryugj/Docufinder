@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.5.25] - 2026-05-10
+
+**hotfix: NEIS Report Designer 가 만든 구형 BIFF8 .xls 인덱싱 중 강제종료 다중 방어 + 진단 인프라** — 사용자 보고 (`근무상황부` 양식의 NEIS export .xls 파일이 폴더에 있으면 인덱싱 도중 앱 강제종료) 에 대응. 로컬 격리 검증으로는 calamine 0.26 + lindera 2.0 단독으로 panic 미재현 — 강제종료의 정확한 단계가 불명확해 (1) **사후 진단 가능성** 을 즉시 확보하고 (2) **의심 단계 모두에 정교한 catch_unwind 격리** 를 박는 두 갈래로 처리.
+
+### 추가
+- **Crash breadcrumb 시스템** ([`src-tauri/src/breadcrumb.rs`](src-tauri/src/breadcrumb.rs)) — RAII Guard 기반 글로벌 atomic 으로 "현재 처리 중 파일 + 단계" 를 1건 보관. `parse_file` / `parse_xlsx` / `fts_save_document` 진입에 자동 set, scope 종료 시 자동 clear. lib.rs panic hook 이 snapshot 을 읽어 `crash-{date}.log` + Telegram telemetry 에 함께 기록 — 향후 native crash (stack overflow / abort) 발생 시 어떤 파일·어떤 stage 였는지 즉시 확인 가능.
+- **Legacy `.xls` 사전 암호 감지** ([`password_detect.rs`](src-tauri/src/parsers/password_detect.rs)) — 기존엔 `_ => false` 로 빠져 통과. BIFF8 BOF (`09 08 .. .. 06 00`) 직후 FILEPASS record (`2F 00`) + protection type (XOR=0x00 / RC4=0x01) 인접 패턴 byte-search 휴리스틱 추가. NEIS Report Designer 정상 파일 fixture 기반 false-positive 회귀 테스트 동봉. calamine 이 암호 BIFF 에서 panic 한 사례를 호출 전에 차단.
+
+### 수정
+- **`xlsx::parse` 시트 단위 격리** ([`xlsx.rs`](src-tauri/src/parsers/xlsx.rs)) — calamine `open_workbook_auto` 호출 + 시트별 `worksheet_range` + `extract_text_with_location` 을 각각 `catch_unwind` 로 감싸 한 시트 panic 이 파일 전체 인덱싱을 죽이지 않도록. 시트 추출 / 패닉 카운트를 INFO 로깅해 사용자 환경에서 이상 시트 위치 추적 가능.
+- **인덱싱 파이프라인 후속 단계 catch_unwind 누락 보강** ([`indexer/pipeline.rs`](src-tauri/src/indexer/pipeline.rs)) — 기존엔 producer 의 `parse_file` 만 catch_unwind. consumer 의 `save_document_to_db_fts_only_no_tx` 호출 + 내부 `tok.tokenize(chunk.content)` 호출 (lindera) 양쪽이 panic 미보호였다. (a) 청크 단위 lindera tokenize 를 catch_unwind 로 감싸 panic 시 형태소 토큰 없이 진행 (검색 재현율 약간 손실 ↔ 강제종료 회피), (b) save_document 호출 전체를 catch_unwind 로 감싸 panic 발생 시 활성 트랜잭션 ROLLBACK + 새 BEGIN 으로 재시작해 인덱싱 루프 자체는 살아남고, 메타데이터만이라도 best-effort 로 저장하도록 변경. patched 파일이 BENIGN_PANIC_SOURCES (calamine / lindera / ort / usearch) 에서 panic 해도 폴더 인덱싱 전체가 중단되지 않는다.
+
+### 사용자 안내
+- **NEIS export 엑셀 (근무상황부, 출장보고서, 외출/조퇴신청서 등) 이 인덱싱을 중단시켰던 사용자** — v2.5.25 자동 업데이트 후 폴더 우클릭 → "재인덱싱" 으로 복구. 만약 동일 폴더에서 강제종료가 또 발생하면 `%AppData%\com.anything.app\crash-2026-05-DD.log` 파일에 `BREADCRUMB stage=… path=…` 줄이 새로 찍히므로 그 줄을 보고하면 정확한 trigger 파일·단계를 한 번에 식별 가능.
+
 ## [2.5.24] - 2026-05-10
 
 **hotfix: kordoc 사이드카 markdown-it 누락 + 작은 창 OnboardingTour 영구 stuck** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) v2.5.23 회귀 두 건 모두 해결.

@@ -45,10 +45,14 @@ const PDF_TAIL_SCAN: u64 = 32 * 1024;
 /// HWPX/ODF manifest 경로. 모든 OOXML 변종은 META-INF 아래 manifest.xml 사용.
 const ODF_MANIFEST_NAME: &str = "META-INF/manifest.xml";
 
+/// BIFF8 (Excel 97-2003 .xls) 스캔 한도. Workbook stream 의 BOF + FILEPASS record 는
+/// 보통 첫 sector (~ 4KB) 안에 있다. 1MB 면 충분한 안전 마진.
+const BIFF_SCAN_LIMIT: usize = 1024 * 1024;
+
 /// 파일 확장자로 분기하여 암호 보호 여부 사전 감지.
 ///
-/// - 지원 확장자: `hwp`, `hwpx`, `docx`, `xlsx`, `pptx`, `pdf`
-/// - 그 외 확장자 (xls/ppt/doc 레거시 포함) → `false` 리턴 후 파서 내부 감지에 위임
+/// - 지원 확장자: `hwp`, `hwpx`, `docx`, `xlsx`, `pptx`, `pdf`, `xls`
+/// - 그 외 확장자 (ppt/doc 레거시 포함) → `false` 리턴 후 파서 내부 감지에 위임
 /// - 감지 중 IO 에러 등은 조용히 `false` 리턴 (보수적: 암호 아님으로 가정 → 기존 파서가 에러 처리)
 pub fn is_password_protected(path: &Path) -> bool {
     let ext = path
@@ -61,8 +65,11 @@ pub fn is_password_protected(path: &Path) -> bool {
         "hwp" => hwp5_is_encrypted(path).unwrap_or(false),
         "hwpx" => hwpx_is_encrypted(path).unwrap_or(false),
         // OOXML: 정상일 때 ZIP(PK\x03\x04), 암호화되면 OLE2 CFB로 래핑됨.
-        // 레거시 xls/ppt/doc는 원래 CFB라 이 휴리스틱으로 구분 불가 → 기존 파서 에러 기반 감지 유지.
         "docx" | "xlsx" | "pptx" => has_cfb_magic(path).unwrap_or(false),
+        // 레거시 BIFF8 (.xls): 정상도 CFB 라 has_cfb_magic 으로는 구분 불가.
+        // BIFF Workbook stream 의 FILEPASS record (0x002F) 를 byte-search 로 사전 감지.
+        // calamine 이 암호 BIFF 를 panic 하는 사례를 차단하는 것이 1차 목표.
+        "xls" => xls_biff_is_encrypted(path).unwrap_or(false),
         "pdf" => pdf_is_encrypted(path).unwrap_or(false),
         _ => false,
     }
@@ -172,6 +179,71 @@ fn hwpx_is_encrypted(path: &Path) -> std::io::Result<bool> {
     Ok(content.contains("encryption-data") || content.contains(":encryption "))
 }
 
+/// 레거시 BIFF8 (.xls) 의 암호화 여부 휴리스틱 감지.
+///
+/// BIFF8 spec:
+/// - Workbook stream 시작은 BOF record: `09 08 ?? ?? 06 00 ?? ??` (type=0x0809, BIFF8)
+/// - 암호 보호 시 BOF 직후에 FILEPASS record (type=0x002F) 가 등장:
+///   `2F 00 [size:u16] [data]`
+/// - data 첫 2바이트가 protection type (0x0000=XOR, 0x0001=RC4 / RC4-CryptoAPI)
+///
+/// CFB 컨테이너를 정식으로 파싱하지 않고 파일 앞부분을 byte-search 한다.
+/// 이유: false negative 는 calamine 이 처리하지만 false positive 는 정상 파일을 차단해
+/// 인덱싱 실패로 직결되므로 보수적으로 BOF 와 FILEPASS 가 인접한 패턴만 허용.
+///
+/// 검사 규칙:
+/// 1. CFB magic 확인 (아니면 false — .xls 가 BIFF5 미만이거나 손상)
+/// 2. 파일 앞 1MB 안에서 BIFF8 BOF record 시그니처 (`09 08 .. .. 06 00`) 검색
+/// 3. BOF record 끝(=offset + 4 + size) 직후가 FILEPASS record (`2F 00`) 인지 확인
+fn xls_biff_is_encrypted(path: &Path) -> std::io::Result<bool> {
+    let mut file = File::open(path)?;
+
+    // CFB magic 확인 (빠른 reject)
+    let mut magic = [0u8; 8];
+    if file.read_exact(&mut magic).is_err() || magic != CFB_MAGIC {
+        return Ok(false);
+    }
+
+    file.seek(SeekFrom::Start(0))?;
+    let file_size = file.metadata()?.len() as usize;
+    let read_len = file_size.min(BIFF_SCAN_LIMIT);
+    let mut buf = vec![0u8; read_len];
+    let n = file.read(&mut buf)?;
+    buf.truncate(n);
+
+    // BIFF8 BOF record signature: type=0x0809, size 가변 (보통 16 bytes), version field 0x0600.
+    // 패턴: 09 08 [size_lo size_hi] 06 00
+    // 우연 매치 줄이려고 BOF 끝 직후 FILEPASS(2F 00) 인접까지 함께 본다.
+    let mut i = 0usize;
+    while i + 8 < buf.len() {
+        // 0x0809 record type + version 0x0600 marker
+        if buf[i] == 0x09 && buf[i + 1] == 0x08 && buf[i + 4] == 0x06 && buf[i + 5] == 0x00 {
+            let size = u16::from_le_bytes([buf[i + 2], buf[i + 3]]) as usize;
+            let after_bof = i + 4 + size;
+            // 다음 record 가 FILEPASS (0x002F) 인지 확인
+            if after_bof + 4 <= buf.len()
+                && buf[after_bof] == 0x2F
+                && buf[after_bof + 1] == 0x00
+            {
+                // 추가 sanity: FILEPASS data 의 첫 2byte 가 0x0000(XOR) 또는 0x0001(RC4)
+                let data_off = after_bof + 4;
+                if data_off + 2 <= buf.len() {
+                    let prot = u16::from_le_bytes([buf[data_off], buf[data_off + 1]]);
+                    if prot == 0x0000 || prot == 0x0001 {
+                        return Ok(true);
+                    }
+                }
+            }
+            // BOF 한 번 발견하면 충분 (Workbook stream 시작은 1 회).
+            // 다른 sub-stream 의 BOF 까지 따라가면 false positive 가 늘어난다.
+            break;
+        }
+        i += 1;
+    }
+
+    Ok(false)
+}
+
 /// PDF trailer 사전의 /Encrypt 키 존재 확인.
 ///
 /// PDF trailer는 파일 끝의 `trailer << ... /Encrypt N G R ... >>` 또는
@@ -224,6 +296,31 @@ mod tests {
         assert_eq!(find_subsequence(b"hello", b"xyz"), None);
         assert_eq!(find_subsequence(b"", b"abc"), None);
         assert_eq!(find_subsequence(b"abc", b""), None);
+    }
+
+    /// 정상 .xls 파일에 대해 false positive 가 나지 않아야 한다 — 가장 중요한 회귀 보호.
+    /// 빌드 환경에 fixture 가 없으면 skip (개발자 PC 에 다운로드 폴더가 있을 때만 실행).
+    #[test]
+    fn neis_report_designer_xls_is_not_flagged_as_password_protected() {
+        let p = Path::new(r"C:\Users\Chris\Downloads\오류목록\황00(연가).xls");
+        if !p.exists() {
+            eprintln!("skip: NEIS fixture not found at {}", p.display());
+            return;
+        }
+        assert!(
+            !is_password_protected(p),
+            "NEIS Report Designer 출력 BIFF8 정상 파일이 false positive 로 차단됨 — \
+             xls_biff_is_encrypted 휴리스틱이 너무 공격적임"
+        );
+    }
+
+    #[test]
+    fn xls_without_cfb_magic_returns_false() {
+        // .xls 확장자지만 CFB 가 아닌 파일 — 빠른 reject 경로
+        let tmp = std::env::temp_dir().join("not_cfb_test.xls");
+        std::fs::write(&tmp, b"PK\x03\x04not really xlsx").unwrap();
+        assert!(!is_password_protected(&tmp));
+        let _ = std::fs::remove_file(&tmp);
     }
 
     #[test]

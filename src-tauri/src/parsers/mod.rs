@@ -76,6 +76,11 @@ pub struct DocumentChunk {
 ///
 /// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
+    // breadcrumb: 어떤 파일이 처리 중인지 글로벌 추적 (panic / native crash 진단용).
+    // RAII Guard 라 정상/패닉 양쪽 모두에서 자동 clear. 각 파서 내부에서 더 좁은 stage 로
+    // 덮어쓸 수 있다 (예: parse_xlsx, parse_hwpx).
+    let _bc = crate::breadcrumb::Guard::new(path, "parse_file");
+
     // 클라우드 placeholder 차단 — fs::read 류 호출이 Windows CldAPI 를 통해
     // 원본을 자동 다운로드(hydrate)해 인덱싱 사이드이펙트로 수백 GB 를 끌어오는 사고를 막는다.
     // 메타데이터(이름·크기·수정일)는 placeholder 에도 캐시되어 있어 호출자가 별도로 인덱싱 가능.

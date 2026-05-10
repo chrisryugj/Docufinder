@@ -419,13 +419,26 @@ fn index_folder_fts_impl(
                                 .unwrap_or("unknown");
                             send_progress("indexing", total, processed, Some(file_name), false); // throttled
 
-                            match save_document_to_db_fts_only_no_tx(
-                                conn,
-                                &path,
-                                document,
-                                FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
-                            ) {
-                                Ok(_) => {
+                            // breadcrumb: panic 또는 native crash 발생 시 어떤 파일이 트리거였는지 추적.
+                            // RAII Guard 라 정상/패닉 양쪽 경로 모두에서 자동 clear.
+                            let _bc =
+                                crate::breadcrumb::Guard::new(&path, "fts_save_document");
+
+                            // save_document_to_db_fts_only_no_tx 내부의 lindera tokenize /
+                            // db::insert_chunk 등이 panic 하면 active 트랜잭션이 dangling 상태로
+                            // 남아 다음 BEGIN 이 실패한다. catch_unwind 로 감싸 panic 시
+                            // 트랜잭션을 ROLLBACK + 재시작해 인덱싱 루프 자체는 살린다.
+                            let save_result = catch_unwind(AssertUnwindSafe(|| {
+                                save_document_to_db_fts_only_no_tx(
+                                    conn,
+                                    &path,
+                                    document,
+                                    FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+                                )
+                            }));
+
+                            match save_result {
+                                Ok(Ok(_)) => {
                                     indexed += 1;
                                     // OCR 이미지 파일 카운트
                                     let ext = path
@@ -437,7 +450,7 @@ fn index_folder_fts_impl(
                                         ocr_image_count += 1;
                                     }
                                 }
-                                Err(e) => {
+                                Ok(Err(e)) => {
                                     failed += 1;
                                     if errors.len() < MAX_INDEXING_ERRORS {
                                         errors.push(format!(
@@ -447,6 +460,38 @@ fn index_folder_fts_impl(
                                         ));
                                     } else {
                                         suppressed_errors += 1;
+                                    }
+                                }
+                                Err(_) => {
+                                    // 인덱싱 단계 panic — 활성 트랜잭션 강제 정리.
+                                    // ROLLBACK 후 새 BEGIN 으로 다음 파일들 처리 지속.
+                                    tracing::error!(
+                                        "[FTS] save_document panicked on {} — rolling back batch",
+                                        clean_path_display(&path)
+                                    );
+                                    let _ = conn.execute_batch("ROLLBACK");
+                                    if conn.is_autocommit() {
+                                        let _ = conn.execute_batch("BEGIN");
+                                    }
+                                    batch_count = 0;
+                                    failed += 1;
+                                    if errors.len() < MAX_INDEXING_ERRORS {
+                                        errors.push(format!(
+                                            "{}\t{}",
+                                            clean_path_display(&path),
+                                            "인덱싱 단계 패닉 (파일 본문은 스킵, 메타데이터만 저장)"
+                                        ));
+                                    } else {
+                                        suppressed_errors += 1;
+                                    }
+                                    // 메타데이터 fallback 은 별도 conn 호출이 필요 — 트랜잭션
+                                    // 재시작 후 best-effort.
+                                    if let Err(e) = save_file_metadata_only(conn, &path) {
+                                        tracing::warn!(
+                                            "Failed to save metadata after panic for {:?}: {}",
+                                            path,
+                                            e
+                                        );
                                     }
                                 }
                             }
@@ -591,12 +636,22 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     let chunks_count = document.chunks.len();
+    let mut tokenize_panics: usize = 0;
 
     for (idx, chunk) in document.chunks.into_iter().enumerate() {
-        // 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 저장
-        let extra_tokens = tokenizer.map(|tok| {
-            let morphemes = tok.tokenize(&chunk.content);
-            morphemes.join(" ")
+        // 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 저장.
+        // lindera 가 특정 입력에서 panic 하는 사례 (BENIGN_PANIC_SOURCES 에 등재)에 대비해
+        // 청크 단위로 catch_unwind. panic 시 형태소 토큰 없이 진행 — 검색 재현율은 살짝
+        // 낮아지지만 인덱싱 자체는 성공 (강제종료 회피가 우선).
+        let extra_tokens = tokenizer.and_then(|tok| {
+            let content = &chunk.content;
+            match catch_unwind(AssertUnwindSafe(|| tok.tokenize(content))) {
+                Ok(morphemes) => Some(morphemes.join(" ")),
+                Err(_) => {
+                    tokenize_panics += 1;
+                    None
+                }
+            }
         });
 
         db::insert_chunk(
@@ -612,6 +667,15 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
             extra_tokens.as_deref(),
         )
         .map_err(|e| IndexError::DbError(e.to_string()))?;
+    }
+
+    if tokenize_panics > 0 {
+        tracing::warn!(
+            "[FTS] Tokenizer panicked on {}/{} chunks of {} (indexed without morphemes)",
+            tokenize_panics,
+            chunks_count,
+            path_str
+        );
     }
 
     tracing::debug!("[FTS] Indexed: {} ({} chunks)", path_str, chunks_count);
