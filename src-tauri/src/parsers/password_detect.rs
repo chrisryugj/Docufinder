@@ -221,10 +221,7 @@ fn xls_biff_is_encrypted(path: &Path) -> std::io::Result<bool> {
             let size = u16::from_le_bytes([buf[i + 2], buf[i + 3]]) as usize;
             let after_bof = i + 4 + size;
             // 다음 record 가 FILEPASS (0x002F) 인지 확인
-            if after_bof + 4 <= buf.len()
-                && buf[after_bof] == 0x2F
-                && buf[after_bof + 1] == 0x00
-            {
+            if after_bof + 4 <= buf.len() && buf[after_bof] == 0x2F && buf[after_bof + 1] == 0x00 {
                 // 추가 sanity: FILEPASS data 의 첫 2byte 가 0x0000(XOR) 또는 0x0001(RC4)
                 let data_off = after_bof + 4;
                 if data_off + 2 <= buf.len() {

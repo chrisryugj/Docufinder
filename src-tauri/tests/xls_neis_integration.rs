@@ -53,11 +53,7 @@ fn neis_xls_parse_no_panic_no_password_false_positive() {
         );
 
         // 4) 청크 분할 정상.
-        assert!(
-            !doc.chunks.is_empty(),
-            "청크 0 개: {}",
-            path.display()
-        );
+        assert!(!doc.chunks.is_empty(), "청크 0 개: {}", path.display());
         for chunk in &doc.chunks {
             assert!(
                 chunk.end_offset >= chunk.start_offset,

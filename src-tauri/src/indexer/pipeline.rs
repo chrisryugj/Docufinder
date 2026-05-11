@@ -421,8 +421,7 @@ fn index_folder_fts_impl(
 
                             // breadcrumb: panic 또는 native crash 발생 시 어떤 파일이 트리거였는지 추적.
                             // RAII Guard 라 정상/패닉 양쪽 경로 모두에서 자동 clear.
-                            let _bc =
-                                crate::breadcrumb::Guard::new(&path, "fts_save_document");
+                            let _bc = crate::breadcrumb::Guard::new(&path, "fts_save_document");
 
                             // save_document_to_db_fts_only_no_tx 내부의 lindera tokenize /
                             // db::insert_chunk 등이 panic 하면 active 트랜잭션이 dangling 상태로
