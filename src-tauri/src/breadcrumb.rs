@@ -88,9 +88,17 @@ pub fn format_for_log(bc: &Breadcrumb) -> String {
 mod tests {
     use super::*;
     use std::path::Path;
+    use std::sync::Mutex;
+
+    /// 모든 테스트가 글로벌 `CURRENT` static 을 공유하므로 병렬 실행 시
+    /// 서로의 `set` / `clear` 가 간섭한다 (Windows CI 에서 race 재현).
+    /// 모든 테스트가 진입 시 이 Mutex 를 잡아 직렬 실행을 강제.
+    /// poisoning 은 다른 테스트가 panic 한 경우라도 다음 테스트 진행을 막지 않도록 흡수.
+    static TEST_SERIAL: Mutex<()> = Mutex::new(());
 
     #[test]
     fn set_clear_roundtrip() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         clear();
         assert!(snapshot().is_none());
         set(Path::new("/tmp/foo.xls"), "parse_xlsx");
@@ -103,6 +111,7 @@ mod tests {
 
     #[test]
     fn guard_clears_on_drop() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         clear();
         {
             let _g = Guard::new(Path::new("/tmp/bar.xlsx"), "tokenize_chunk");
@@ -113,6 +122,7 @@ mod tests {
 
     #[test]
     fn guard_clears_on_panic_unwind() {
+        let _serial = TEST_SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         clear();
         let _ = std::panic::catch_unwind(|| {
             let _g = Guard::new(Path::new("/tmp/baz.docx"), "embed");
