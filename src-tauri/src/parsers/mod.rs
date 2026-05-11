@@ -112,8 +112,12 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
         .unwrap_or("")
         .to_lowercase();
 
-    // kordoc 지원 포맷: 먼저 kordoc 시도 → 실패 시 Rust 파서 fallback
+    // kordoc 지원 포맷: 먼저 kordoc 시도 → 실패 시 Rust 파서 fallback.
+    // 실패한 kordoc 에러는 보존했다가 .hwp 처럼 Rust 파서가 없는 포맷에서 그대로 반환한다.
+    // (이전엔 .hwp 가 fallback 진입 시 generic "Unsupported file type: hwp (kordoc 필요)" 로
+    // 덮어써서 사용자가 진짜 원인을 알 수 없었다 — 이슈 #22 의 "kordoc 필요" false 메시지)
     let kordoc_formats = ["hwp", "hwpx", "docx", "pdf"];
+    let mut kordoc_err: Option<ParseError> = None;
     if kordoc_formats.contains(&extension.as_str()) && kordoc::is_available() {
         // PDF 사전 sniff — 이미지 PDF + OCR off 인 경우 kordoc spawn 자체를 회피.
         // #17 크래시(0xc0000409) 의 강한 의심 원인: 스캔 PDF 다수 폴더에서 PDF 마다
@@ -152,16 +156,24 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
                     ));
                 }
                 tracing::warn!("kordoc fallback → Rust 파서: {} ({})", path.display(), e);
+                kordoc_err = Some(e);
             }
         }
     }
 
     match extension.as_str() {
         "txt" | "md" => txt::parse(path),
-        // HWP5 바이너리: kordoc 전용 (Rust 파서 없음, 위에서 이미 시도했으면 여기서 에러)
-        "hwp" => Err(ParseError::UnsupportedFileType(
-            "hwp (kordoc 필요)".to_string(),
-        )),
+        // HWP5 바이너리: kordoc 전용 (Rust 파서 없음). kordoc 실제 에러를 그대로 반환해
+        // 사용자가 "kordoc 필요"라는 잘못된 안내 대신 진짜 원인 (구버전 HWP3, 비표준 변종 등)을
+        // 볼 수 있도록 한다 — 이슈 #22 진단 가시성 개선.
+        "hwp" => Err(kordoc_err.unwrap_or_else(|| {
+            if kordoc::is_available() {
+                // kordoc 가 사용 가능한데도 에러가 None 이면 위 분기를 안 탔다는 뜻 — 이론상 도달 X.
+                ParseError::ParseError("HWP 파싱 경로 비정상 진입".to_string())
+            } else {
+                ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())
+            }
+        })),
         "hwpx" => parse_with_timeout(path, 30, "HWPX", hwpx::parse),
         "docx" => parse_with_timeout(path, 30, "DOCX", docx::parse),
         "pptx" => parse_with_timeout(path, 30, "PPTX", pptx::parse),

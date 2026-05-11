@@ -249,7 +249,21 @@ fn xls_biff_is_encrypted(path: &Path) -> std::io::Result<bool> {
 /// PDF trailer는 파일 끝의 `trailer << ... /Encrypt N G R ... >>` 또는
 /// cross-reference stream의 /Encrypt 엔트리에 등장. %%EOF 앞 수 KB 내에 있으므로
 /// 파일 tail 32KB 만 스캔. 대용량 PDF도 빠르게 판정.
+///
+/// **false positive 방지**: 단순 `/Encrypt` substring 매치는
+/// `/EncryptMetadata` (단순 boolean 메타플래그, 본문 암호 아님), 본문 stream 내 우연
+/// 매치, 폰트/리소스 dict 의 키 이름 등을 모두 잡아 정상 PDF 를 차단했다 (이슈 #22).
+/// 진짜 trailer Encrypt 키는 항상 indirect reference 또는 direct dict 형식이므로,
+/// `/Encrypt` 다음 토큰이 `<숫자> <숫자> R` 또는 `<<` 인 경우만 양성으로 본다.
 fn pdf_is_encrypted(path: &Path) -> std::io::Result<bool> {
+    use std::sync::OnceLock;
+    static ENCRYPT_RE: OnceLock<regex::bytes::Regex> = OnceLock::new();
+    let re = ENCRYPT_RE.get_or_init(|| {
+        // /Encrypt 뒤에 단어 경계가 와야 EncryptMetadata 같은 다른 키를 차단.
+        // 그 후 whitespace + (indirect ref `N N R` | direct dict `<<`).
+        regex::bytes::Regex::new(r"/Encrypt[\s\r\n]+(?:\d+\s+\d+\s+R|<<)").expect("valid regex")
+    });
+
     let mut file = File::open(path)?;
     let file_size = file.metadata()?.len();
     if file_size < 8 {
@@ -261,7 +275,7 @@ fn pdf_is_encrypted(path: &Path) -> std::io::Result<bool> {
     let mut buf = Vec::with_capacity(tail_size as usize);
     file.take(tail_size).read_to_end(&mut buf)?;
 
-    Ok(find_subsequence(&buf, b"/Encrypt").is_some())
+    Ok(re.is_match(&buf))
 }
 
 /// haystack 에서 needle 의 첫 등장 위치 반환. 없으면 None.
@@ -320,6 +334,50 @@ mod tests {
         let tmp = std::env::temp_dir().join("not_cfb_test.xls");
         std::fs::write(&tmp, b"PK\x03\x04not really xlsx").unwrap();
         assert!(!is_password_protected(&tmp));
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// PDF: `/EncryptMetadata` 같은 다른 키 / 본문 우연 매치는 false 여야 한다.
+    /// 정상 PDF 의 trailer 에 EncryptMetadata 키만 있는 경우 (실제 OOXML PDF 에서 흔함)
+    /// 이전 substring 검사는 이를 암호로 오판해 차단했다 (이슈 #22).
+    #[test]
+    fn pdf_encrypt_metadata_not_flagged() {
+        let tmp = std::env::temp_dir().join("encrypt_metadata_test.pdf");
+        // 최소한의 PDF tail — trailer 안에 /EncryptMetadata 만 존재 (진짜 /Encrypt 키 없음)
+        let body = b"%PDF-1.4\n1 0 obj<<>>endobj\nxref\n0 1\n0000000000 65535 f\ntrailer\n<< /Size 1 /EncryptMetadata false /Root 1 0 R >>\nstartxref\n9\n%%EOF\n";
+        std::fs::write(&tmp, body).unwrap();
+        assert!(
+            !is_password_protected(&tmp),
+            "PDF /EncryptMetadata 메타플래그가 암호로 오판됨 — false positive"
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// PDF: 본문 stream 안에 우연히 "/Encrypt" 문자열이 있는 케이스 — false 여야 한다.
+    /// 폰트 dict 의 /Encoding, content stream 의 텍스트 등에서 발생 가능.
+    #[test]
+    fn pdf_encrypt_substring_in_body_not_flagged() {
+        let tmp = std::env::temp_dir().join("encrypt_substring_test.pdf");
+        // /Encrypt 가 trailer dict 의 indirect ref 형식이 아닌 위치에 substring 으로만 등장
+        let body = b"%PDF-1.4\nstream\n... /Encrypt is a fake string here ...\nendstream\ntrailer\n<< /Size 1 /Root 1 0 R >>\nstartxref\n9\n%%EOF\n";
+        std::fs::write(&tmp, body).unwrap();
+        assert!(
+            !is_password_protected(&tmp),
+            "PDF 본문 내 /Encrypt substring 이 암호로 오판됨 — false positive"
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// PDF: 진짜 암호 PDF 의 trailer 형식 (`/Encrypt N N R`) 은 true 여야 한다.
+    #[test]
+    fn pdf_real_encrypt_indirect_ref_is_flagged() {
+        let tmp = std::env::temp_dir().join("encrypt_real_test.pdf");
+        let body = b"%PDF-1.4\n1 0 obj<<>>endobj\nxref\n0 1\n0000000000 65535 f\ntrailer\n<< /Size 1 /Encrypt 5 0 R /Root 1 0 R >>\nstartxref\n9\n%%EOF\n";
+        std::fs::write(&tmp, body).unwrap();
+        assert!(
+            is_password_protected(&tmp),
+            "진짜 암호 PDF (/Encrypt N N R) 가 감지되지 않음 — false negative"
+        );
         let _ = std::fs::remove_file(&tmp);
     }
 

@@ -301,9 +301,11 @@ export function OnboardingTour({
       />
     </>
   ) : (
+    // 폴백 backdrop — 0.7 → 0.35 로 옅게. 스크린 리더/시각 인지가 낮은 사용자가 backdrop 을
+    // 인식하지 못해도 화면 가시성이 크게 떨어지지 않도록 하는 안전장치 (이슈 #22).
     <div
       className="fixed inset-0"
-      style={{ backgroundColor: "rgba(15,23,42,0.7)" }}
+      style={{ backgroundColor: "rgba(15,23,42,0.35)" }}
       onClick={() => finish(false)}
     />
   );

@@ -59,13 +59,11 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <>
-      {/* Mobile backdrop */}
-      {isOpen && (
-        <div
-          className="absolute inset-0 z-30 lg:hidden bg-black/30 transition-opacity"
-          onClick={onToggle}
-        />
-      )}
+      {/* 데스크톱 앱이라 mobile backdrop 불필요 — Sidebar 는 App.tsx 의 paddingLeft 로
+         항상 메인 컨텐츠를 밀어내는 push 모드. 이전엔 `lg:hidden bg-black/30` overlay 가
+         viewport ≥1024px 에서만 숨도록 설계돼 있었으나, macOS WebKit 환경의 일부 viewport
+         계산(타이틀바·신호등 영역 + Retina DPR)에서 tailwind `lg` breakpoint 적용이 어긋나
+         1024px 근처 창 크기에서 메인 화면 전체가 30% 어둡게 깔리는 회귀 발생 (이슈 #22). */}
 
       {/* Sidebar */}
       <aside

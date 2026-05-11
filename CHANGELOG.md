@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.5.26] - 2026-05-11
+
+**hotfix: PDF Password 사전 차단 false-positive + HWP fallback 진단 가시성 + macOS 1024px 근처 viewport 화면 dim 회귀** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) v2.5.25 추가 보고분.
+
+### 수정
+- **PDF `/Encrypt` 사전 차단 false-positive** — `password_detect.rs::pdf_is_encrypted` 가 파일 tail 32KB 에서 `/Encrypt` 단순 substring 만 검색해 (1) `/EncryptMetadata` (단순 boolean 메타플래그, 본문 암호 아님) 가 들어 있는 정상 PDF, (2) 본문 stream / 폰트 dict / content stream 안에 우연히 `/Encrypt` 문자열이 등장한 정상 PDF 까지 모두 `Password protected` 로 차단했다 (사용자 환경의 `Work/...pdf` 파일 차단 사례). fix: 진짜 trailer Encrypt 키는 항상 indirect reference (`/Encrypt N N R`) 또는 direct dict (`/Encrypt <<`) 형식이라는 PDF spec 을 이용해 정규식 `/Encrypt[\s\r\n]+(?:\d+\s+\d+\s+R|<<)` 으로 엄격화. `/EncryptMetadata` 차단 / 본문 우연 매치 차단 / 진짜 암호 PDF 감지 3종 회귀 보호 테스트 동봉.
+- **HWP fallback 시 "Unsupported file type: hwp (kordoc 필요)" 잘못된 메시지** — kordoc 가 호출됐지만 실패한 케이스에서도 사용자 로그에 `Unsupported file type: hwp (kordoc 필요)` 가 노출되어 사용자가 "kordoc 가 없어서 처리 못 한다" 고 오해. 실제 원인 (HWP3 구버전, 비표준 변종, 한컴 특정 버전의 binary stream 어긋남 등) 이 가려져 후속 진단 불가능. fix: `parsers/mod.rs::parse_file` 에서 kordoc 의 실제 에러를 `kordoc_err` 변수에 보존했다가 `.hwp` 분기에서 그대로 반환. 이제 사용자 로그에 `Parse error: kordoc 실행 실패 (exit ...): FAIL | → 지원하지 않는 파일 형식입니다.` 처럼 진짜 원인이 노출돼 다음 진단 사이클이 정확해진다.
+- **macOS 1024px 근처 viewport 에서 메인 화면 30% dim 회귀** — `Sidebar.tsx` 의 mobile backdrop (`<div className="absolute inset-0 z-30 lg:hidden bg-black/30">`) 가 사용자 보고 환경 (1032×740 캡처) 에서 활성화되어 검색 결과 영역 + 사이드바 영역 전체가 30% 어둡게 깔리던 회귀. `lg:hidden` 가 ≥1024px 에서 숨도록 설계됐으나, macOS WebKit 의 viewport 계산 (타이틀바·신호등 영역 + Retina DPR + Tauri 창 chrome 차감) 이 tailwind `lg` breakpoint 적용과 어긋나 1024px 근처에서 backdrop 이 화면을 덮음. 데스크톱 앱이라 사이드바는 항상 `App.tsx` 의 `paddingLeft: var(--sidebar-width)` 로 메인 컨텐츠를 밀어내는 push 모드 — mobile backdrop 자체가 불필요하므로 div 제거.
+- **OnboardingTour 폴백 backdrop 약화 (안전장치)** — `hasTarget=false` 분기의 `rgba(15,23,42,0.7)` (70% 어두움) 을 `rgba(15,23,42,0.35)` (35%) 로 낮춤. v2.5.24 의 fix (작은 창 자동 시작 가드 + resize 시 자동 finish + backdrop click 닫기) 로 stuck 자체는 차단됐지만, 혹시 모를 잔여 케이스에서 사용자가 backdrop 을 인지하지 못해도 화면 가시성이 크게 떨어지지 않도록 추가 안전장치.
+
+### 사용자 안내
+- **이슈 #22 보고 사용자** — v2.5.26 dmg 설치 후 (1) 차단되던 PDF 들이 다시 인덱싱 시도되는지, (2) HWP 실패 시 로그 메시지가 `Parse error: kordoc 실행 실패 ...` 형식의 구체적 진단으로 바뀌었는지, (3) UI 가 어둡게 변하던 현상이 사라졌는지 세 가지 확인 부탁. v2.5.25 → v2.5.26 인덱싱 결과 비교 지표는 19,549 / 37,160 (v2.5.25) 대비 PDF false-positive 분만큼 추가 회복 예상.
+
 ## [2.5.25] - 2026-05-10
 
 **hotfix: NEIS Report Designer 가 만든 구형 BIFF8 .xls 인덱싱 중 강제종료 다중 방어 + 진단 인프라** — 사용자 보고 (`근무상황부` 양식의 NEIS export .xls 파일이 폴더에 있으면 인덱싱 도중 앱 강제종료) 에 대응. 로컬 격리 검증으로는 calamine 0.26 + lindera 2.0 단독으로 panic 미재현 — 강제종료의 정확한 단계가 불명확해 (1) **사후 진단 가능성** 을 즉시 확보하고 (2) **의심 단계 모두에 정교한 catch_unwind 격리** 를 박는 두 갈래로 처리.
