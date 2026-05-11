@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.5.27] - 2026-05-11
+
+**WebView2 Fixed Runtime 번들 — Windows 10 LTSC 1809 / 회사 내부망 / GPO 차단 환경 호환** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) LTSC 1809 보고자 추가 보고분.
+
+### 수정
+- **`webviewInstallMode` `offlineInstaller` → `fixedRuntime` 전환** ([`tauri.conf.json`](src-tauri/tauri.conf.json)) — v2.5.19 부터 NSIS 인스톨러에 WebView2 Bootstrapper offline installer 를 같이 번들했지만, 이 모드는 시스템 설치까지만 보장하고 우리 앱 (Tauri 의 WebView2Loader.dll) 이 실행 시점에 registry detection 으로 Runtime 위치를 찾을 수 있어야 동작한다. Windows 10 LTSC 1809 + 회사 내부망 환경에서 (1) 사용자 권한 설치만 가능 (HKCU 만 등록 → HKLM 검색하는 loader 가 못 찾음), (2) GPO 가 `HKLM\SOFTWARE\Microsoft\EdgeUpdate` 차단, (3) Edge Legacy 만 기본 포함된 LTSC 의 system-wide WebView2 부재 등의 사유로 detection 이 실패해 앱이 시작 안 되는 사례 보고. fixedRuntime 모드는 WebView2 binary 자체 (~150MB) 를 앱 폴더에 번들해 시스템 설치 / 권한 / GPO 와 완전 무관하게 동작.
+- **CI 빌드 자동화** ([`scripts/setup-webview2-runtime.ps1`](scripts/setup-webview2-runtime.ps1)) — Microsoft 가 fixed runtime stable URL 을 제공하지 않으므로 standalone evergreen installer 를 admin 권한 (windows-latest CI runner = admin) 으로 silent install 한 뒤 결과 폴더 (`%ProgramFiles(x86)%\Microsoft\EdgeWebView\Application\<version>\`) 를 Tauri fixedRuntime 형식 (`<path>/EBWebView/<arch>/...`) 으로 재구성. publish.yml Windows job 의 vcredist 다운로드 step 옆에 추가.
+
+### 사용자 안내
+- **Windows 인스톨러 크기 증가** — `Anything_2.5.27_x64-setup.exe` 가 v2.5.26 의 ~80MB 에서 ~230MB 로 증가 (WebView2 Runtime ~150MB 동봉). dmg (macOS) 는 영향 없음.
+- **WebView2 Runtime 보안 패치** — 시스템 Edge Update 자동 갱신 대신 Anything 자체 자동 업데이트로 갱신. 매 Anything 릴리스 시 최신 WebView2 Runtime 같이 번들.
+- **LTSC 1809 보고자** — v2.5.27 이전엔 1단계 registry 확인 + 관리자 권한 standalone installer 재설치 시도 (이슈 #22 코멘트 참조). v2.5.27 dmg/msi 게시 후엔 시스템 설치 여부와 무관하게 동작.
+
 ## [2.5.26] - 2026-05-11
 
 **hotfix: PDF Password 사전 차단 false-positive + HWP fallback 진단 가시성 + macOS 1024px 근처 viewport 화면 dim 회귀** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) v2.5.25 추가 보고분.
