@@ -69,6 +69,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path resources/kordoc
           New-Item -ItemType File -Force -Path resources/kordoc/.gitkeep
           New-Item -ItemType File -Force -Path icons/tray-icon.png -ErrorAction SilentlyContinue
+          # WebView2 fixedRuntime path 존재 검증 통과용 (release 빌드는 publish.yml 의
+          # setup-webview2-runtime.ps1 가 실제 binary 로 채움)
+          New-Item -ItemType Directory -Force -Path webview2-runtime/EBWebView/x64
+          New-Item -ItemType File -Force -Path webview2-runtime/EBWebView/x64/.gitkeep
 
       - name: Cargo fmt
         working-directory: src-tauri
