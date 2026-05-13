@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.6.2] - 2026-05-13
+
+**WebView2 Standalone Installer 동봉 — 회사 PC / 사내망 / WebView2 미설치 환경 대응**
+
+### 변경
+- **Microsoft Edge WebView2 Runtime Standalone Installer 를 Release Asset 으로 자동 첨부** ([`.github/workflows/publish.yml`](.github/workflows/publish.yml)) — v2.6.1 깐 후에도 일부 사용자가 WebView2 런타임 오류를 보는 케이스 ([이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24)) 대응. Tauri NSIS template 은 `installMode: currentUser` 라 일반 사용자 권한으로 돌고, WebView2 가 처음부터 없는 PC 에서는 user 권한 WebView2 설치가 일부 시스템 컴포넌트 등록 단계에서 부분 실패 → wry detection 실패 → "런타임 오류" 가 가능. publish.yml 에 Microsoft 공식 stable URL ([`linkid=2099617`](https://go.microsoft.com/fwlink/?linkid=2099617)) 에서 `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` 를 다운받아 release 에 함께 업로드하는 step 추가. 사용자가 별도로 받아 관리자 권한으로 미리 설치하면 machine-wide(HKLM) 에 정상 등록되어 Anything 도 정상 시작.
+
+### 사용자 안내
+- **v2.6.1 깐 후에도 WebView2 오류 보는 분** — release 페이지에서 `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` 다운로드 → **우클릭 → 관리자 권한으로 실행** 후 Anything 재시작.
+- **회사 내부망 / LTSC 1809 사용자 ([이슈 #23](https://github.com/chrisryugj/Docufinder/issues/23))** — 인터넷 가능 PC 에서 위 파일 다운로드 → USB 로 사내망 PC 옮긴 후 관리자 권한 실행 → Anything 정상 시작.
+
 ## [2.6.1] - 2026-05-13
 
 **hotfix: v2.6.0 Provider 전환 UX 결함 — Gemini 모델 ID 가 OpenAI 호환 모드에 그대로 남음**

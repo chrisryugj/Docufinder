@@ -123,6 +123,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Microsoft Edge WebView2 Runtime Standalone Installer 동봉.
+      # 일반 사용자는 NSIS installer 가 알아서 WebView2 를 깔지만,
+      # WebView2 가 없는 환경에서 installMode:currentUser 권한으로 설치 시 일부
+      # 시스템 등록 단계가 부분 실패하여 wry 가 detect 못 하는 경로가 있음
+      # (회사 PC / LTSC 1809 / GPO 차단 환경 등). 이 경우 사용자가 별도로
+      # 다운받아 관리자 권한으로 선설치할 수 있도록 release 에 함께 첨부.
+      # Microsoft 공식 stable URL (linkid=2099617) → unmodified 재배포 허용.
+      - name: Download & upload WebView2 Standalone Installer
+        if: success()
+        shell: pwsh
+        run: |
+          $url = "https://go.microsoft.com/fwlink/?linkid=2099617"
+          $out = "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          $size = (Get-Item $out).Length
+          Write-Host "Downloaded WebView2 standalone installer: $size bytes"
+          gh release upload "${{ github.ref_name }}" $out --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-macos:
     name: Build & Release (macOS arm64)
     permissions:
