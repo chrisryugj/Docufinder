@@ -504,6 +504,18 @@ fn validate_settings(settings: &Settings) -> ApiResult<()> {
             "ai_max_tokens는 1~8192 범위여야 합니다".into(),
         ));
     }
+    // Provider / 모델 ID 정합성 — OpenAI 호환 모드에 Gemini 모델 ID 가 들어가면
+    // 사내 LLM 서버가 404 "model not found" 를 던지는 사고 방지. 프론트가 이미
+    // provider 전환 시 자동 swap 하지만 수동 편집 / 마이그레이션 케이스 방어용.
+    if matches!(settings.ai_provider, AiProvider::OpenAi)
+        && settings.ai_model.starts_with("gemini-")
+    {
+        return Err(ApiError::Validation(
+            "OpenAI 호환 provider 에 Gemini 모델 ID 가 설정돼 있습니다. \
+             사내 LLM 서버의 실제 모델 ID (예: qwen3.6-35b-a3b) 로 바꿔주세요."
+                .into(),
+        ));
+    }
     if settings.min_confidence > 100 {
         return Err(ApiError::Validation(
             "min_confidence는 0~100 범위여야 합니다".into(),

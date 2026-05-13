@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.6.1] - 2026-05-13
+
+**hotfix: v2.6.0 Provider 전환 UX 결함 — Gemini 모델 ID 가 OpenAI 호환 모드에 그대로 남음**
+
+### 수정
+- **Provider 전환 시 모델 ID 자동 swap** ([`AiTab.tsx`](src/components/settings/tabs/AiTab.tsx)) — v2.6.0 에서 Provider 드롭다운만 OpenAI 로 바꾸고 모델 ID(`gemini-3.1-flash-lite-preview`) 는 그대로 두면 사내 LLM 서버에 `model: "gemini-3.1-flash-lite-preview"` 로 요청 가서 **404 "model not found"** 가 나는 사고. `handleProviderChange` 헬퍼로 Gemini → OpenAI 전환 시 모델이 `gemini-*` 면 자동으로 빈 값으로 (사용자 직접 입력 유도), OpenAI → Gemini 전환 시 모델이 `gemini-*` 가 아니면 기본 Gemini 모델로 복귀.
+- **OpenAI 모드 + Gemini 모델 ID 인라인 경고** — 마이그레이션 / 수동 편집 등으로 mismatch 상태가 되면 모델 input 테두리 빨간색 + "Gemini 모델 ID 가 입력돼 있어요. 404 가 납니다. 서버 실제 모델 ID 로 바꿔주세요" 인라인 메시지.
+- **백엔드 validation 안전망** ([`commands/settings.rs::validate_settings`](src-tauri/src/commands/settings.rs)) — frontend 우회/수동 settings.json 편집 케이스 방어. `AiProvider::OpenAi` + 모델 ID 가 `gemini-` 로 시작 → 저장 거부 + 한국어 사유 반환.
+
 ## [2.6.0] - 2026-05-13
 
 **이슈 #24 — WebView2 회귀 핫픽스 + 커스텀 LLM (사내·오프라인) + 매핑 드라이브 hang 차단 + 증분 인덱싱 메뉴 노출**

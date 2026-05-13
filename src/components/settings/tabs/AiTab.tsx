@@ -5,11 +5,36 @@ import { SettingsToggle } from "../SettingsToggle";
 import type { TabProps } from "./types";
 import { AI_MODEL_OPTIONS, AI_PROVIDER_OPTIONS } from "./types";
 
+/** Gemini 공식 모델 ID 는 모두 `gemini-` 로 시작 — provider mismatch 감지용. */
+const GEMINI_MODEL_PREFIX = "gemini-";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
+
 export function AiTab({ settings, onChange }: TabProps) {
   const [showApiKey, setShowApiKey] = useState(false);
 
   const provider = settings.ai_provider ?? "gemini";
   const isOpenAi = provider === "open_ai";
+  const modelMismatch =
+    isOpenAi && settings.ai_model.startsWith(GEMINI_MODEL_PREFIX);
+
+  /**
+   * Provider 전환 시 모델 ID 자동 swap.
+   *
+   * Gemini → OpenAi: 기존 모델이 `gemini-*` 면 빈 값 (사용자가 사내 LLM 모델 ID 입력해야 함).
+   * OpenAi → Gemini: 기존 모델이 `gemini-*` 아니면 기본 Gemini 모델로 복귀.
+   *
+   * 사용자가 provider 만 바꾸고 모델 ID 를 그대로 두면 `gemini-3.1-flash-lite-preview`
+   * 가 사내 qwen 서버로 그대로 가서 404 "model not found" 가 나는 사고 방지.
+   */
+  const handleProviderChange = (newProvider: "gemini" | "open_ai") => {
+    onChange("ai_provider", newProvider);
+    const current = settings.ai_model ?? "";
+    if (newProvider === "open_ai" && current.startsWith(GEMINI_MODEL_PREFIX)) {
+      onChange("ai_model", "");
+    } else if (newProvider === "gemini" && !current.startsWith(GEMINI_MODEL_PREFIX)) {
+      onChange("ai_model", DEFAULT_GEMINI_MODEL);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -32,7 +57,7 @@ export function AiTab({ settings, onChange }: TabProps) {
             <Dropdown
               options={AI_PROVIDER_OPTIONS}
               value={provider}
-              onChange={(value) => onChange("ai_provider", value as "gemini" | "open_ai")}
+              onChange={(value) => handleProviderChange(value as "gemini" | "open_ai")}
               placeholder="provider 선택"
             />
             <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
@@ -138,18 +163,26 @@ export function AiTab({ settings, onChange }: TabProps) {
               AI 모델
             </label>
             {isOpenAi ? (
-              <input
-                type="text"
-                value={settings.ai_model}
-                onChange={(e) => onChange("ai_model", e.target.value)}
-                placeholder="예: qwen3-35b-a3b, llama-3.3-70b-instruct, gpt-4o-mini"
-                className="w-full px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
-                style={{
-                  backgroundColor: "var(--color-bg-tertiary)",
-                  borderColor: "var(--color-border)",
-                  color: "var(--color-text-primary)",
-                }}
-              />
+              <>
+                <input
+                  type="text"
+                  value={settings.ai_model}
+                  onChange={(e) => onChange("ai_model", e.target.value)}
+                  placeholder="예: qwen3-35b-a3b, llama-3.3-70b-instruct, gpt-4o-mini"
+                  className="w-full px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1"
+                  style={{
+                    backgroundColor: "var(--color-bg-tertiary)",
+                    borderColor: modelMismatch ? "#dc2626" : "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+                {modelMismatch && (
+                  <p className="text-[11px] mt-1 leading-snug" style={{ color: "#dc2626" }}>
+                    Gemini 모델 ID 가 입력돼 있어요. 사내 LLM 서버에 이대로 보내면 <code>404 model not found</code> 가 납니다.
+                    서버에 실제로 떠 있는 모델 ID 로 바꿔주세요 (예: <code>qwen3.6-35b-a3b</code>).
+                  </p>
+                )}
+              </>
             ) : (
               <Dropdown
                 options={AI_MODEL_OPTIONS}
