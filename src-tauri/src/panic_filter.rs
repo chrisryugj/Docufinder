@@ -23,6 +23,11 @@ pub const BENIGN_PANIC_SOURCES: &[&str] = &[
     "tao-",    // Windows event loop 내부 상태 전이 패닉 (앱 종료 시점)
     "wry-",    // WebView2 바인딩 panic
     "muda-",   // 트레이/메뉴 바인딩 panic
+    // 이미지 디코더 panic — OCR 진입 시 image::open() 의 transitive crate.
+    // tiff tiled planar raw 등 변종에서 assertion 실패. pipeline.rs::catch_unwind 가
+    // 잡아서 인덱싱은 살아남지만 telemetry 노이즈 차단용.
+    "tiff-",
+    "image-",
 ];
 
 /// panic location 문자열(`file:line`)이 BENIGN 소스에 해당하는지 판정.
@@ -69,6 +74,13 @@ mod tests {
     #[test]
     fn ort_panic_is_benign() {
         let loc = r"C:\Users\user\.cargo\registry\src\ort-2.0.0-rc.11\src\session\mod.rs:123";
+        assert!(is_benign_location(loc));
+    }
+
+    #[test]
+    fn tiff_panic_is_benign() {
+        // 사용자 보고: tiff tiled planar raw 디코딩 assertion 실패 (이슈 댓글 v2.5.26)
+        let loc = r"C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tiff-0.11.3\src\decoder\image.rs:919";
         assert!(is_benign_location(loc));
     }
 

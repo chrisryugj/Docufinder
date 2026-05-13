@@ -12,6 +12,9 @@
 - **커스텀 LLM API (OpenAI Chat Completions 호환) 지원** ([`llm/openai.rs`](src-tauri/src/llm/openai.rs)) — 회사 오프라인 내부망 사용자가 사내 LLM (qwen3-35b-a3b 등) 을 사용할 수 있도록 OpenAI 호환 endpoint 추가 ([이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24)). 설정 → AI 에서 **LLM Provider** 드롭다운으로 "Gemini" / "OpenAI 호환" 전환. OpenAI 모드 선택 시 **Base URL** 입력란 노출 (예: `http://192.168.1.50:8000`, `http://localhost:11434`, `https://api.together.xyz`) — `/v1/chat/completions` 가 자동으로 붙음. vLLM · Ollama · LiteLLM · Together · Groq · LM Studio · llama.cpp server 등 OpenAI 호환 백엔드 모두 사용 가능. 비스트리밍 + SSE 스트리밍 + 정확한 401/403/404/429 한국어 에러 메시지.
 - **컨텍스트 메뉴 "이어서 인덱싱"** ([`components/sidebar/FolderTree.tsx`](src/components/sidebar/FolderTree.tsx)) — 사용자 보고 "재인덱싱은 무조건 처음부터 다시" 에 대응. 폴더가 `cancelled` 또는 `indexing` 상태 (취소되거나 중단된 폴더) 일 때만 컨텍스트 메뉴에 "이어서 인덱싱" 항목을 추가로 노출. 이 항목은 `resume_indexing` 커맨드 (`fts_indexed_at` 가 있는 파일은 스킵하는 incremental 모드) 를 호출 — 멈춘 지점부터 이어서 인덱싱 가능. 기존 "재인덱싱" 메뉴는 전체 wipe 후 처음부터 (의도된 동작) 그대로 유지.
 
+### 수정 — Telemetry 노이즈 차단
+- **TIFF / image crate panic BENIGN 등재** ([`panic_filter.rs`](src-tauri/src/panic_filter.rs)) — 사용자 보고 `tiff-0.11.3/decoder/image.rs:919` assertion 실패 (tiff tiled planar raw 변종, Pillow 테스트 fixture 등). 이미 [pipeline.rs:350](src-tauri/src/indexer/pipeline.rs#L350) 의 `catch_unwind` 가 잡아서 인덱싱 자체는 살아남지만 `lib.rs` panic hook 은 항상 실행돼 `crash-{date}.log` + Telegram telemetry 에 기록 → 노이즈 보고. BENIGN_PANIC_SOURCES 에 `tiff-`, `image-` 추가해 차단.
+
 ### 사용자 안내
 - **v2.5.27 사용자** — v2.6.0 자동 업데이트 (또는 dmg/msi 재설치) 로 WebView2 시작 오류 즉시 해결.
 - **사내 LLM 사용자 (이슈 #24 보고자)** — 설정 → AI → "AI 기능 활성화" → Provider "OpenAI 호환" 선택 → Base URL · API 키 · 모델 ID 입력. qwen3.6-35b-a3b 처럼 사용자 서버 모델 ID 그대로 입력.
