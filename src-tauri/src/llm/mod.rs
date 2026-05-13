@@ -1,8 +1,9 @@
 //! LLM 클라이언트 모듈 — RAG + AI 요약용
 //!
-//! Gemini API 기반. trait 추상화로 추후 다른 프로바이더 확장 가능.
+//! Gemini + OpenAI 호환 (사내/오프라인 LLM) 두 provider 지원.
 
 pub mod gemini;
+pub mod openai;
 
 use std::sync::atomic::AtomicBool;
 

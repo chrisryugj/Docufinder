@@ -4,6 +4,7 @@ import type { SearchMode } from "./search";
 export type ViewDensity = "normal" | "compact";
 export type VectorIndexingMode = "manual" | "auto";
 export type IndexingIntensity = "fast" | "balanced" | "background";
+export type AiProvider = "gemini" | "open_ai";
 
 export interface Settings {
   search_mode: SearchMode;
@@ -38,7 +39,15 @@ export interface Settings {
   exclude_dirs?: string[];
   /** AI 기능 활성화 */
   ai_enabled: boolean;
-  /** Gemini API 키 */
+  /** LLM provider — Gemini(기본) / OpenAI 호환 endpoint */
+  ai_provider: AiProvider;
+  /**
+   * OpenAI 호환 endpoint base URL — `ai_provider === "open_ai"` 일 때만 사용.
+   * 예: `http://192.168.1.50:8000` (vLLM), `http://localhost:11434` (Ollama),
+   *     `https://api.together.xyz`. `/v1/chat/completions` 가 호출됨.
+   */
+  ai_base_url?: string;
+  /** API 키 (provider 공통) */
   ai_api_key?: string;
   /** AI 모델 ID */
   ai_model: string;

@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.6.0] - 2026-05-13
+
+**이슈 #24 — WebView2 회귀 핫픽스 + 커스텀 LLM (사내·오프라인) + 매핑 드라이브 hang 차단 + 증분 인덱싱 메뉴 노출**
+
+### 수정 — Critical
+- **WebView2 fixedRuntime → offlineInstaller 롤백** ([`tauri.conf.json`](src-tauri/tauri.conf.json)) — v2.5.27 의 fixedRuntime 번들이 일반 Windows 환경(Win11 25H2 등)에서 회귀해 모든 사용자가 "WebView2 런타임 오류" 로 앱이 시작 안 되던 문제 ([이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24)). CI 로그상 webview2 binary(721MB) 가 정상 추출됐지만 NSIS installer 크기(374MB) 가 v2.5.26(382MB) 와 거의 동일 → EBWebView 가 installer 에 누락됐거나 wry 가 detect 못한 것으로 추정. `installMode: "currentUser"` + `fixedRuntime` 의 Tauri NSIS template 호환성 이슈로 보임. 안정성 우선으로 v2.5.19 ~ v2.5.26 까지 검증된 offlineInstaller 로 복귀. **LTSC 1809 / 회사 내부망 사용자는 별도 가이드로 standalone installer 수동 설치 안내 예정.** Installer 크기 v2.5.27 374MB → v2.6.0 약 230MB 로 회복.
+- **매핑 네트워크 드라이브 추가 시 "조용한 무응답" 차단** ([`commands/index/mod.rs`](src-tauri/src/commands/index/mod.rs)) — 매핑 SMB / UNC 드라이브를 폴더 추가하면 "계속" 누른 뒤 UI 가 침묵하던 사용자 보고. 원인: `add_folder` 의 `scan_metadata_only` 가 spawn_blocking 안에서 walkdir traversal 중 SMB 인증 만료 / 서버 무응답 / 매핑 끊김으로 무한 hang → IPC response 없음 → 사용자 입장에서 "조용". fix: `add_folder` / `reindex_folder` / `resume_indexing` 진입 직후 `probe_network_path` (5초 timeout `read_dir` ping) 으로 응답성 사전 검증. 실패 시 "네트워크 폴더 응답 없음 (5초 timeout)" 명시 에러 토스트.
+
+### 추가 — 기능 요청
+- **커스텀 LLM API (OpenAI Chat Completions 호환) 지원** ([`llm/openai.rs`](src-tauri/src/llm/openai.rs)) — 회사 오프라인 내부망 사용자가 사내 LLM (qwen3-35b-a3b 등) 을 사용할 수 있도록 OpenAI 호환 endpoint 추가 ([이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24)). 설정 → AI 에서 **LLM Provider** 드롭다운으로 "Gemini" / "OpenAI 호환" 전환. OpenAI 모드 선택 시 **Base URL** 입력란 노출 (예: `http://192.168.1.50:8000`, `http://localhost:11434`, `https://api.together.xyz`) — `/v1/chat/completions` 가 자동으로 붙음. vLLM · Ollama · LiteLLM · Together · Groq · LM Studio · llama.cpp server 등 OpenAI 호환 백엔드 모두 사용 가능. 비스트리밍 + SSE 스트리밍 + 정확한 401/403/404/429 한국어 에러 메시지.
+- **컨텍스트 메뉴 "이어서 인덱싱"** ([`components/sidebar/FolderTree.tsx`](src/components/sidebar/FolderTree.tsx)) — 사용자 보고 "재인덱싱은 무조건 처음부터 다시" 에 대응. 폴더가 `cancelled` 또는 `indexing` 상태 (취소되거나 중단된 폴더) 일 때만 컨텍스트 메뉴에 "이어서 인덱싱" 항목을 추가로 노출. 이 항목은 `resume_indexing` 커맨드 (`fts_indexed_at` 가 있는 파일은 스킵하는 incremental 모드) 를 호출 — 멈춘 지점부터 이어서 인덱싱 가능. 기존 "재인덱싱" 메뉴는 전체 wipe 후 처음부터 (의도된 동작) 그대로 유지.
+
+### 사용자 안내
+- **v2.5.27 사용자** — v2.6.0 자동 업데이트 (또는 dmg/msi 재설치) 로 WebView2 시작 오류 즉시 해결.
+- **사내 LLM 사용자 (이슈 #24 보고자)** — 설정 → AI → "AI 기능 활성화" → Provider "OpenAI 호환" 선택 → Base URL · API 키 · 모델 ID 입력. qwen3.6-35b-a3b 처럼 사용자 서버 모델 ID 그대로 입력.
+- **재인덱싱 중간 취소 사용자** — 폴더 우클릭 → "이어서 인덱싱" 으로 멈춘 지점부터 이어가기.
+- **매핑 네트워크 드라이브 사용자** — 매핑이 끊긴 / 응답 없는 드라이브 추가 시도 시 즉시 토스트 알림. 드라이브 매핑 복구 후 재시도.
+
 ## [2.5.27] - 2026-05-11
 
 **WebView2 Fixed Runtime 번들 — Windows 10 LTSC 1809 / 회사 내부망 / GPO 차단 환경 호환** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) LTSC 1809 보고자 추가 보고분.

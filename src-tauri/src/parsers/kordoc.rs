@@ -164,8 +164,24 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
 
     let json = call_kordoc_sync(&cli_path, path, opts)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
-        warn!("kordoc JSON 파싱 실패: {e}");
-        ParseError::ParseError("kordoc 응답 파싱 실패".to_string())
+        let tail = json
+            .char_indices()
+            .rev()
+            .nth(79)
+            .map(|(idx, _)| &json[idx..])
+            .unwrap_or(&json);
+        warn!(
+            "kordoc JSON 파싱 실패 ({}B): {} | tail={:?}",
+            json.len(),
+            e,
+            tail
+        );
+        ParseError::ParseError(format!(
+            "kordoc 응답 파싱 실패 ({}B, {}): tail={:?}",
+            json.len(),
+            e,
+            tail
+        ))
     })?;
 
     if !resp.success {
@@ -223,8 +239,24 @@ pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<Str
 
     let json = call_kordoc_sync(&cli_path, path, opts)?;
     let resp: KordocResponse = serde_json::from_str(&json).map_err(|e| {
-        warn!("kordoc JSON 파싱 실패: {e}");
-        ParseError::ParseError("kordoc 응답 파싱 실패".to_string())
+        let tail = json
+            .char_indices()
+            .rev()
+            .nth(79)
+            .map(|(idx, _)| &json[idx..])
+            .unwrap_or(&json);
+        warn!(
+            "kordoc JSON 파싱 실패 ({}B): {} | tail={:?}",
+            json.len(),
+            e,
+            tail
+        );
+        ParseError::ParseError(format!(
+            "kordoc 응답 파싱 실패 ({}B, {}): tail={:?}",
+            json.len(),
+            e,
+            tail
+        ))
     })?;
 
     if !resp.success {

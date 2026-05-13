@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive } from "lucide-react";
+import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
@@ -162,7 +162,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   };
 
-  // 재인덱싱 실행
+  // 재인덱싱 실행 (전체 wipe → 재인덱싱)
   const handleReindex = async () => {
     const path = contextMenu.folderPath;
     closeContextMenu();
@@ -172,6 +172,21 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       onFoldersChange?.();
     } catch (err) {
       logToBackend("error", "Failed to reindex folder", String(err), "FolderTree");
+    }
+  };
+
+  // 이어서 인덱싱 (resume — fts_indexed_at 있는 파일은 스킵)
+  const handleResume = async () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
+    onReindexStart?.();
+    try {
+      // 자동 resume 트리거가 다시 발동하지 않도록 ref 에 미리 추가
+      resumedRef.current.add(path);
+      await invoke("resume_indexing", { path });
+      onFoldersChange?.();
+    } catch (err) {
+      logToBackend("error", "Failed to resume indexing", String(err), "FolderTree");
     }
   };
 
@@ -483,11 +498,25 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           <FolderOpen className="w-4 h-4 clr-warning" />
           {REVEAL_LABEL}
         </button>
-        {/* 재인덱싱 */}
+        {/* 이어서 인덱싱 — 취소/중단된 폴더에만 표시 */}
+        {(folderInfo[contextMenu.folderPath]?.indexing_status === "cancelled"
+          || folderInfo[contextMenu.folderPath]?.indexing_status === "indexing") && (
+          <button
+            role="menuitem"
+            onClick={handleResume}
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+            title="이미 인덱싱된 파일은 건너뛰고 멈춘 지점부터 이어서 인덱싱"
+          >
+            <Play className="w-4 h-4 clr-success" />
+            이어서 인덱싱
+          </button>
+        )}
+        {/* 재인덱싱 (전체 wipe → 처음부터) */}
         <button
           role="menuitem"
           onClick={handleReindex}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          title="전체 wipe 후 처음부터 재인덱싱 (중단된 상태에서 이어가려면 '이어서 인덱싱' 사용)"
         >
           <RefreshCw className="w-4 h-4 clr-info" />
           재인덱싱

@@ -73,15 +73,6 @@ jobs:
         run: |
           & scripts/download-vcredist.ps1
 
-      # WebView2 Fixed Runtime 번들 — 회사 내부망 / LTSC 1809 / GPO 차단 환경에서
-      # WebView2 Runtime detection 실패로 앱이 시작 안 되는 문제 (이슈 #22) 해결.
-      # Standalone evergreen installer 를 admin 권한 (CI runner = admin) 으로 silent
-      # install 후 결과 폴더를 Tauri fixedRuntime 형식으로 재구성. ~150MB 추가.
-      - name: Setup WebView2 Fixed Runtime
-        shell: pwsh
-        run: |
-          & scripts/setup-webview2-runtime.ps1
-
       # 자동 업데이트:
       #   - TAURI_SIGNING_PRIVATE_KEY: ed25519 개인키 (`pnpm tauri signer generate -w`로 생성한 ~/.tauri/docufinder.key 내용)
       #   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD: 키 생성 시 비밀번호 (없으면 생략 가능)

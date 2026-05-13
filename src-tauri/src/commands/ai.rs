@@ -8,9 +8,11 @@ use crate::application::dto::search::{AiAnalysis, MatchType, SearchResult, Token
 use crate::application::services::search_service::helpers::{
     collapse_by_lineage, smart_apply_exclude_filter, smart_apply_file_type_filter,
 };
+use crate::commands::settings::AiProvider;
 use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::llm::gemini::GeminiClient;
+use crate::llm::openai::OpenAiCompatibleClient;
 use crate::llm::{
     summary_prompt_for_type, GenerateConfig, LlmProvider, FILE_QA_SYSTEM_PROMPT, MAX_CONTEXT_CHARS,
     QA_SYSTEM_PROMPT,
@@ -115,8 +117,11 @@ struct AiErrorEvent {
     error: String,
 }
 
-/// Settings에서 GeminiClient 생성
-fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
+/// Settings 의 `ai_provider` 에 따라 적절한 LLM 클라이언트를 동적 디스패치 trait object 로 반환.
+///
+/// - `Gemini`: 기본. `ai_api_key` + `ai_model` 만 사용.
+/// - `OpenAi`: `ai_base_url` 추가 필요. vLLM·Ollama·LiteLLM·사내 LLM 등 OpenAI 호환 endpoint.
+fn build_llm_client(container: &AppContainer) -> ApiResult<Box<dyn LlmProvider>> {
     let settings = container.get_settings();
     if !settings.ai_enabled {
         return Err(ApiError::AiError(
@@ -125,13 +130,33 @@ fn build_llm_client(container: &AppContainer) -> ApiResult<GeminiClient> {
     }
     let api_key = settings
         .ai_api_key
+        .clone()
         .filter(|k| !k.is_empty())
         .ok_or_else(|| {
             ApiError::AiError(
                 "API 키가 설정되지 않았습니다. 설정 > AI에서 입력해주세요.".to_string(),
             )
         })?;
-    Ok(GeminiClient::new(api_key, settings.ai_model))
+    match settings.ai_provider {
+        AiProvider::Gemini => Ok(Box::new(GeminiClient::new(api_key, settings.ai_model))),
+        AiProvider::OpenAi => {
+            let base_url = settings
+                .ai_base_url
+                .clone()
+                .filter(|u| !u.trim().is_empty())
+                .ok_or_else(|| {
+                    ApiError::AiError(
+                        "OpenAI 호환 base URL 이 설정되지 않았습니다. 설정 > AI 에서 입력해주세요."
+                            .to_string(),
+                    )
+                })?;
+            Ok(Box::new(OpenAiCompatibleClient::new(
+                base_url,
+                api_key,
+                settings.ai_model,
+            )))
+        }
+    }
 }
 
 /// retrieved 청크의 ±radius 이웃을 DB에서 추가 로드하여 병합.

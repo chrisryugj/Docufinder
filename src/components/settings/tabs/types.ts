@@ -78,6 +78,11 @@ export const AI_MODEL_OPTIONS = [
   { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (고품질)" },
 ];
 
+export const AI_PROVIDER_OPTIONS = [
+  { value: "gemini", label: "Gemini (Google 공식)" },
+  { value: "open_ai", label: "OpenAI 호환 (사내·오프라인 LLM)" },
+];
+
 export const UI_ZOOM_OPTIONS = [
   { value: "0.85", label: "85%" },
   { value: "0.9", label: "90%" },

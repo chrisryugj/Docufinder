@@ -187,6 +187,40 @@ pub(super) fn create_vector_progress_callback(
     })
 }
 
+/// 매핑 드라이브/UNC 경로의 응답성을 5초 timeout 으로 사전 검증.
+///
+/// SMB 매핑이 끊긴 / 서버가 응답 안 하는 / 자격증명 만료 상태에서 후속 walkdir 가
+/// 무한 hang 하는 사고를 차단 (이슈 #24 사용자 보고 — 매핑 드라이브 추가 시
+/// "알림 누른 뒤 조용한대"). 로컬 경로면 ping 생략 후 Ok.
+pub(super) async fn probe_network_path(path: &Path) -> ApiResult<()> {
+    if !crate::utils::cloud_detect::is_network_path(path) {
+        return Ok(());
+    }
+    let probe = path.to_path_buf();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || std::fs::read_dir(&probe).map(|_| ())),
+    )
+    .await;
+    match result {
+        Err(_) => Err(ApiError::InvalidPath(format!(
+            "네트워크 폴더 응답 없음 ({}): 5초 내에 응답이 없습니다. 드라이브 매핑이 끊겼거나 서버가 응답하지 않을 수 있습니다.",
+            path.display()
+        ))),
+        Ok(Err(join_err)) => Err(ApiError::InvalidPath(format!(
+            "네트워크 폴더 검사 실패 ({}): {}",
+            path.display(),
+            join_err
+        ))),
+        Ok(Ok(Err(io_err))) => Err(ApiError::InvalidPath(format!(
+            "네트워크 폴더 접근 실패 ({}): {}",
+            path.display(),
+            io_err
+        ))),
+        Ok(Ok(Ok(()))) => Ok(()),
+    }
+}
+
 pub(super) fn stop_file_watching(
     state: &State<'_, RwLock<AppContainer>>,
     path: &Path,

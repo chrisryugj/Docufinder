@@ -60,10 +60,19 @@ pub struct Settings {
     /// AI 기능 활성화
     #[serde(default)]
     pub ai_enabled: bool,
-    /// Gemini API 키
+    /// LLM provider — Gemini (Google 공식) / OpenAI 호환 (사내·오프라인 LLM)
+    #[serde(default)]
+    pub ai_provider: AiProvider,
+    /// OpenAI 호환 endpoint base URL. `ai_provider = OpenAi` 일 때만 사용.
+    /// 예: `http://192.168.1.50:8000` (vLLM), `http://localhost:11434` (Ollama),
+    ///     `https://api.together.xyz` 등. `/v1/chat/completions` 가 호출됨.
+    #[serde(default)]
+    pub ai_base_url: Option<String>,
+    /// API 키 (provider 공통)
     #[serde(default)]
     pub ai_api_key: Option<String>,
-    /// AI 모델 ID (기본: gemini-3.1-flash-lite-preview)
+    /// AI 모델 ID — provider 별 (Gemini: gemini-3.1-flash-lite-preview,
+    /// OpenAI 호환: qwen3-35b 등 사용자 입력)
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
     /// AI 응답 온도 (0.0-2.0)
@@ -146,6 +155,19 @@ fn default_error_reporting_enabled() -> bool {
     true
 }
 
+/// LLM provider 선택.
+///
+/// `Gemini` (기본): Google 공식 Generative Language API.
+/// `OpenAi`: OpenAI Chat Completions 호환 endpoint (vLLM·Ollama·LiteLLM·사내 LLM 등).
+///         `ai_base_url` 필수.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AiProvider {
+    #[default]
+    Gemini,
+    OpenAi,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum VectorIndexingMode {
@@ -212,6 +234,8 @@ impl Default for Settings {
             data_root: None,
             exclude_dirs: Vec::new(),
             ai_enabled: false,
+            ai_provider: AiProvider::default(),
+            ai_base_url: None,
             ai_api_key: None,
             ai_model: default_ai_model(),
             ai_temperature: default_ai_temperature(),

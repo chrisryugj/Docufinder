@@ -57,6 +57,9 @@ pub async fn add_folder(
     crate::constants::validate_watch_path(&canonical_path)
         .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
 
+    // 매핑 드라이브/UNC 응답성 사전 검증 — hang 차단 (이슈 #24)
+    probe_network_path(&canonical_path).await?;
+
     let path = canonical_path.to_string_lossy().to_string();
 
     let ctx = extract_indexing_context(&state)?;
@@ -325,6 +328,9 @@ pub async fn reindex_folder(
     crate::constants::validate_watch_path(&canonical_path)
         .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
 
+    // 매핑 드라이브/UNC 응답성 사전 검증 — hang 차단 (이슈 #24)
+    probe_network_path(&canonical_path).await?;
+
     let ctx = extract_indexing_context(&state)?;
 
     // 인덱싱 상태를 'indexing'으로 설정
@@ -426,6 +432,9 @@ pub async fn resume_indexing(
     // 시스템 폴더 / 드라이브 루트 차단 (DB에 남은 오래된 경로 방어)
     crate::constants::validate_watch_path(&canonical_path)
         .map_err(|msg| ApiError::AccessDenied(msg.to_string()))?;
+
+    // 매핑 드라이브/UNC 응답성 사전 검증 — hang 차단 (이슈 #24)
+    probe_network_path(&canonical_path).await?;
 
     let ctx = extract_indexing_context(&state)?;
 
