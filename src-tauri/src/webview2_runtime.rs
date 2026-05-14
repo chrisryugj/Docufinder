@@ -86,12 +86,15 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
 
     let (tx, rx) = mpsc::channel::<Result<ICoreWebView2Environment, String>>();
 
+    // hr 의 정확한 타입은 webview2-com macros 가 생성하므로 (HRESULT / Result<()>
+        //  / windows-core 버전에 따라 변동) 의존 없이 env 만 보고 판단한다.
+    // 실패 시엔 hr 를 Debug 로 남겨 진단.
     let handler =
         CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(move |hr, env| {
-            let result = match (hr.ok(), env) {
-                (Ok(()), Some(env)) => Ok(env),
-                (Err(e), _) => Err(format!("WebView2 environment creation failed: {e}")),
-                (Ok(()), None) => Err("WebView2 environment callback returned None".to_string()),
+            let result = if let Some(env) = env {
+                Ok(env)
+            } else {
+                Err(format!("WebView2 environment creation failed (hr={hr:?})"))
             };
             let _ = tx.send(result);
             Ok(())
