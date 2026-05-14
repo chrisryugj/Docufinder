@@ -86,8 +86,8 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
 
     let (tx, rx) = mpsc::channel::<Result<ICoreWebView2Environment, String>>();
 
-    let handler = CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(
-        move |hr, env| {
+    let handler =
+        CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(move |hr, env| {
             let result = match (hr.ok(), env) {
                 (Ok(()), Some(env)) => Ok(env),
                 (Err(e), _) => Err(format!("WebView2 environment creation failed: {e}")),
@@ -95,8 +95,7 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
             };
             let _ = tx.send(result);
             Ok(())
-        },
-    ));
+        }));
 
     unsafe {
         CreateCoreWebView2EnvironmentWithOptions(
@@ -114,10 +113,7 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
 /// Non-blocking Win32 message pump + bounded `recv_timeout` 조합. callback 이
 /// `PostMessage` 로 도착하므로 매 iteration 마다 `PeekMessageW` 로 메시지를 비우고
 /// 짧게 (50ms) 채널을 polling.
-fn pump_until_recv<T>(
-    rx: &mpsc::Receiver<T>,
-    timeout: Duration,
-) -> Result<T, String> {
+fn pump_until_recv<T>(rx: &mpsc::Receiver<T>, timeout: Duration) -> Result<T, String> {
     let deadline = Instant::now() + timeout;
 
     loop {
@@ -137,9 +133,7 @@ fn pump_until_recv<T>(
         match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(value) => return Ok(value),
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return Err(
-                    "WebView2 environment channel disconnected before completion".into(),
-                );
+                return Err("WebView2 environment channel disconnected before completion".into());
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if Instant::now() >= deadline {

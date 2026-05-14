@@ -132,14 +132,23 @@ jobs:
           : > resources/paddleocr/dict.txt
           touch icons/tray-icon.png
 
+      # [v2.6.4] macos-14 runner 에서 PATH 우선 `cargo` 가 rustup-init wrapper 로
+      # 잡혀 `cargo check ...` 호출이 `error: unexpected argument 'check' found` 로 fail
+      # 하는 회귀 (v2.6.3 commit 부터 관측). publish.yml 의 mac job 은 pnpm exec
+      # tauri build 라 cargo 를 child 로 호출해 영향 없음. dtolnay/rust-toolchain 이
+      # 설치하는 `$HOME/.cargo/bin/cargo` 를 명시적으로 사용해 회피.
       - name: Cargo check (mac target)
         working-directory: src-tauri
-        run: cargo check --target aarch64-apple-darwin --all-targets
+        run: |
+          echo "PATH=$PATH"
+          which cargo || true
+          ls -la "$HOME/.cargo/bin/cargo" || true
+          "$HOME/.cargo/bin/cargo" check --target aarch64-apple-darwin --all-targets
 
       - name: Cargo clippy (mac target)
         working-directory: src-tauri
-        run: cargo clippy --target aarch64-apple-darwin --all-targets -- -D warnings
+        run: $HOME/.cargo/bin/cargo clippy --target aarch64-apple-darwin --all-targets -- -D warnings
 
       - name: Cargo test (mac target)
         working-directory: src-tauri
-        run: cargo test --target aarch64-apple-darwin
+        run: $HOME/.cargo/bin/cargo test --target aarch64-apple-darwin
