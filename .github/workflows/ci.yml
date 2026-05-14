@@ -132,23 +132,31 @@ jobs:
           : > resources/paddleocr/dict.txt
           touch icons/tray-icon.png
 
-      # [v2.6.4] macos-14 runner 에서 PATH 우선 `cargo` 가 rustup-init wrapper 로
-      # 잡혀 `cargo check ...` 호출이 `error: unexpected argument 'check' found` 로 fail
-      # 하는 회귀 (v2.6.3 commit 부터 관측). publish.yml 의 mac job 은 pnpm exec
-      # tauri build 라 cargo 를 child 로 호출해 영향 없음. dtolnay/rust-toolchain 이
-      # 설치하는 `$HOME/.cargo/bin/cargo` 를 명시적으로 사용해 회피.
+      # [v2.6.4] macos-14 runner 의 `~/.cargo/bin/cargo` 가 `rustup` 으로 symlink 되어
+      # 있는데 그 `rustup` binary 의 multi-call detection 이 깨져 cargo argv 호출이
+      # `rustup-init: unexpected argument 'check'` 로 fail (v2.6.3 commit 부터 관측).
+      # publish.yml 의 mac job 은 pnpm exec tauri build 가 cargo 를 child 로 spawn 하면서
+      # toolchain bin 을 직접 쓰는 모양인지 영향 없음.
+      # 우회: rustup proxy 가 아니라 toolchain 디렉토리 안의 진짜 cargo binary 를 직접
+      # 호출. dtolnay/rust-toolchain@stable + targets:aarch64-apple-darwin → 정확히
+      # `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo` 에 설치됨.
       - name: Cargo check (mac target)
         working-directory: src-tauri
+        env:
+          RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
         run: |
-          echo "PATH=$PATH"
-          which cargo || true
-          ls -la "$HOME/.cargo/bin/cargo" || true
-          "$HOME/.cargo/bin/cargo" check --target aarch64-apple-darwin --all-targets
+          ls -la "$RUSTUP_CARGO" || (ls -la "$HOME/.rustup/toolchains/" ; exit 1)
+          "$RUSTUP_CARGO" --version
+          "$RUSTUP_CARGO" check --target aarch64-apple-darwin --all-targets
 
       - name: Cargo clippy (mac target)
         working-directory: src-tauri
-        run: $HOME/.cargo/bin/cargo clippy --target aarch64-apple-darwin --all-targets -- -D warnings
+        env:
+          RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
+        run: $RUSTUP_CARGO clippy --target aarch64-apple-darwin --all-targets -- -D warnings
 
       - name: Cargo test (mac target)
         working-directory: src-tauri
-        run: $HOME/.cargo/bin/cargo test --target aarch64-apple-darwin
+        env:
+          RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
+        run: $RUSTUP_CARGO test --target aarch64-apple-darwin
