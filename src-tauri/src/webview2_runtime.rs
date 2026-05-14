@@ -34,7 +34,9 @@ const CREATE_ENV_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// `msedgewebview2.exe` 가 들어있는 EBWebView 폴더를 exe 디렉토리 기준으로 검색한다.
 ///
-/// 지원 레이아웃:
+/// 지원 레이아웃 (우선순위 순):
+/// - `<exe_dir>/resources/EBWebView/msedgewebview2.exe`     ← LTSC installer 기본 위치
+///   (Tauri `bundle.resources` 는 `src-tauri/resources/EBWebView/**/*` → `<install_dir>/resources/EBWebView/...`)
 /// - `<exe_dir>/EBWebView/msedgewebview2.exe`               ← 평면 풀기
 /// - `<exe_dir>/<any>/EBWebView/msedgewebview2.exe`         ← Microsoft Fixed Version
 ///   Runtime zip 의 표준 레이아웃 (`Microsoft.WebView2.FixedVersionRuntime.{ver}.x64/EBWebView/`)
@@ -43,11 +45,19 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
 
     let mut candidates: Vec<PathBuf> = Vec::with_capacity(8);
+    // 우선순위 1: LTSC installer 가 풀어두는 위치 — 명시적 확인으로 빠른 hit.
+    candidates.push(exe_dir.join("resources").join("EBWebView"));
+    // 우선순위 2: 사용자가 zip 을 풀어 평면으로 둔 경우.
     candidates.push(exe_dir.join("EBWebView"));
-
+    // 우선순위 3: 사용자가 zip 을 풀어 sub dir 그대로 둔 경우 (한 단계만 검색).
     if let Ok(entries) = std::fs::read_dir(exe_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let name = entry.file_name();
+                // resources 는 이미 우선순위 1 에서 검사됨 → 중복 skip
+                if name == "resources" {
+                    continue;
+                }
                 candidates.push(entry.path().join("EBWebView"));
             }
         }

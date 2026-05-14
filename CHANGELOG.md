@@ -1,22 +1,38 @@
 # Changelog
 
-## [2.6.3] - 2026-05-14
+## [2.6.4] - 2026-05-14
 
-**근본 핫픽스: Fixed Version Runtime + 코드 측 environment inject — LTSC 1809 + admin 권한 없는 환경까지 회복**
+**LTSC 1809 / admin 없는 환경 정공 해결 — 전용 installer 한 번 실행이면 끝 (이슈 #24)**
 
 ### 배경
-- v2.6.2 에서 standalone WebView2 installer 를 release asset 으로 동봉했지만, [이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24) 의 JS190-prog 님 회사 PC (Windows 10 LTSC 1809, **admin 권한 없음** + 회사 GPO 로 HKLM 차단) 에서 standalone installer 를 admin 자격증명으로 깔아도 본인 계정에서 WebView2 detection 이 실패하는 잔존 케이스가 보고됨. 에러 다이얼로그 "You may have it installed on another user account, but it is not available for this one." — Microsoft WebView2 SDK 가 표시하는 표준 메시지로, **다른 사용자 계정 HKCU 에만 등록됐고 본인 계정 / HKLM 양쪽 다 비어 있는 상태**.
-- 원인: wry 0.54.1 의 `CreateCoreWebView2EnvironmentWithOptions` 호출 시 첫 인자 (`browserExecutableFolder`) 가 항상 `null` 이라 fixed runtime 경로를 wry 측에서 인식할 방법이 없었음 (env 변수 / Tauri config 둘 다 무시). v2.5.27 의 NSIS `fixedRuntime` 모드가 회귀했던 것도 동일 근원.
+- v2.6.0 (offlineInstaller 롤백) ~ v2.6.2 (standalone installer 동봉) 까지 [이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24) JS190-prog 님 회사 PC (Windows 10 LTSC 1809, **admin 권한 없음** + 회사 GPO 로 HKLM 등록 차단) 에서 WebView2 detection 실패가 계속됨. 에러 다이얼로그 "You may have it installed on another user account..." — WebView2 SDK 가 다른 사용자 HKCU 만 발견하고 본인 / HKLM 둘 다 비어 있을 때 표시하는 표준 메시지.
+- 근본 원인: wry 0.54.1 가 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder=...)` 의 첫 인자에 항상 `null` 을 넘김 → fixed runtime 경로를 인식할 표준 메커니즘 없음. v2.5.27 NSIS `fixedRuntime` 회귀도 같은 근원 (Tauri NSIS template 의 fixedRuntime handling 이 EBWebView 폴더 bundle 에 실패).
 
-### 변경
-- **`WebviewWindowBuilder::with_environment` 로 ICoreWebView2Environment 명시 inject** ([`src-tauri/src/webview2_runtime.rs`](src-tauri/src/webview2_runtime.rs), [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)) — 앱 시작 시 `<exe_dir>/EBWebView/msedgewebview2.exe` 또는 `<exe_dir>/<any_subdir>/EBWebView/msedgewebview2.exe` 가 발견되면 `webview2-com` 으로 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder = <발견 경로>)` 를 호출해 `ICoreWebView2Environment` 를 직접 생성하고, Tauri 2.10 의 `WebviewWindowBuilder::with_environment(env)` (Windows 한정 API) 로 wry 에 inject. `wait_with_pump` 가 Win32 message loop 를 돌리면서 비동기 결과를 동기적으로 회수하므로 setup() 내부에서 안전하게 호출. EBWebView 폴더가 없으면 환경 inject 없이 default build → 기존 동작 (registry detection) 유지 — **회귀 위험 zero**.
-- **main window `create: false`** ([`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)) — Tauri 가 main window 를 자동 build 하지 않도록 설정. `setup()` 안에서 `WebviewWindowBuilder::from_config` 로 config 의 size / title 옵션을 그대로 들고와 직접 build 하면서 environment 만 추가 inject. 다른 window 옵션 변화 없음.
-- **WebView2 Fixed Version Runtime (EBWebView) zip 자동 release 첨부** ([`.github/workflows/publish.yml`](.github/workflows/publish.yml)) — Windows runner 의 사전 설치된 `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<version>\EBWebView` 를 통째로 `webview2-fixed-runtime-<version>-x64.zip` 으로 압축해 release 에 자동 업로드 (~170MB). 매 릴리스마다 최신 WebView2 Runtime 함께 배포.
+### 변경 — 코드 측 (wry 한계 우회)
+- **`WebviewWindowBuilder::with_environment` 로 `ICoreWebView2Environment` 명시 inject** ([`src-tauri/src/webview2_runtime.rs`](src-tauri/src/webview2_runtime.rs), [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)) — 앱 시작 시 `<exe_dir>/EBWebView/msedgewebview2.exe` 또는 `<exe_dir>/<any_subdir>/EBWebView/msedgewebview2.exe` 가 발견되면 `webview2-com 0.38` 으로 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder = <발견 경로>)` 호출 → 직접 생성한 `ICoreWebView2Environment` 를 Tauri 2.10 의 `with_environment(env)` (cfg(windows)) 로 wry 에 inject. 자체 `PeekMessageW` 펌프 + 5초 timeout 으로 setup() hang 회귀 차단. EBWebView 없으면 inject 자체 안 함 → 정상 환경엔 영향 zero.
+- **main window `label:"main"`, `create:false`** ([`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)) — Tauri 자동 build 막고 `setup()` 안에서 `WebviewWindowBuilder::from_config` 로 conf 의 size/title 그대로 가져와 environment 만 추가 inject.
 
-### 사용자 안내
-- **LTSC 1809 + admin 없는 사용자 (이슈 #24 JS190-prog 님)** — release 페이지에서 `webview2-fixed-runtime-*.zip` 다운로드 → 압축 해제 후 폴더 안의 `EBWebView` 디렉토리를 Anything 설치 폴더 (보통 `%LocalAppData%\Programs\Anything\`) 의 최상단에 그대로 복사. admin 권한 / registry 등록 불필요. Anything 재시작 시 자동 detect.
-- **기존 정상 환경** — 영향 없음. 본인 계정 또는 HKLM 에 WebView2 가 정상 등록된 PC 는 v2.6.3 도 동일하게 system runtime 사용 (EBWebView 폴더 없으면 inject 자체 안 함).
-- **registry 미등록 상태 확인** — `regedit` 에서 `HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` 또는 `HKCU\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` 키 존재 여부 확인.
+### 변경 — 별도 LTSC installer build (사용자 측 정공)
+- **`tauri.windows-ltsc.conf.json` 신규** — base conf 의 resources 위에 `resources/EBWebView/**/*` 추가, `createUpdaterArtifacts:false`. NSIS bundle.resources 의 일반 파일 경로는 기존 kordoc/vcredist 가 안정 처리하므로 v2.5.27 회귀와 무관.
+- **`scripts/setup-webview2-runtime.ps1` 신규** — CI runner 의 사전 설치된 Edge (`C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<ver>\EBWebView`) 를 `src-tauri/resources/EBWebView/` 로 복사. tauri build 시점에 NSIS 가 일반 resources 처리 경로로 묶어줌.
+- **`.github/workflows/publish.yml` LTSC variant build step 추가** — 기본 installer (~382MB, system WebView2 사용) 빌드 후, EBWebView 준비 + `pnpm exec tauri build --config src-tauri/tauri.windows-ltsc.conf.json` 으로 두 번째 installer (~550MB, EBWebView 포함) 빌드 → `Anything_<ver>_x64-ltsc-setup.exe` 로 rename → 동일 release 에 추가 업로드.
+
+### 사용자 안내 — 어느 installer 받으면 되나요?
+
+이번 릴리스부터 Windows installer 가 두 종류입니다. 본인 환경에 맞는 걸 받으세요. 둘 다 같은 앱이고 동일하게 동작합니다.
+
+| 내 PC 상황 | 받을 파일 |
+|------------|-----------|
+| 집 / 개인 PC, Windows 10 (21H2+) / Windows 11 | `Anything_2.6.4_x64-setup.exe` (~382 MB) |
+| 회사 PC 인데 관리자 권한 없거나, Windows 10 LTSC 1809 같은 구버전, 또는 v2.6.3 까지 설치 후 WebView2 오류로 앱이 안 열렸던 분 | `Anything_2.6.4_x64-ltsc-setup.exe` (~550 MB) |
+
+**헷갈리면 그냥 LTSC 버전 받으세요.** 일반 버전은 Windows 가 갖고 있는 WebView2 런타임을 빌려 쓰는 가벼운 buildset 입니다. LTSC 버전은 WebView2 런타임을 같이 가지고 와서, Windows 가 WebView2 를 못 찾는 환경에서도 그냥 동작합니다. 그래서 크기만 더 큽니다.
+
+**오프라인 회사 PC 에 설치하려는 분 (이슈 #24 JS190-prog 님)**
+1. 인터넷 가능한 PC 에서 `Anything_2.6.4_x64-ltsc-setup.exe` 다운로드
+2. USB 등으로 회사 PC 로 옮기기
+3. 더블클릭 실행 — 끝. WebView2 별도 설치, zip 풀기, 관리자 권한, registry 편집 같은 거 전혀 필요 없습니다.
+4. 기존 v2.6.x 깐 상태면 그 위에 그대로 덮어 설치 OK. 인덱싱 / 폴더 설정은 보존됩니다.
 
 ## [2.6.2] - 2026-05-13
 
