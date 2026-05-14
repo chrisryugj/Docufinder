@@ -144,6 +144,54 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # [v2.6.3] WebView2 Fixed Version Runtime (EBWebView 폴더) 를 zip 으로 동봉.
+      # admin 권한이 없어 standalone installer 를 시스템 전체로 못 깔거나
+      # GPO 차단으로 HKLM 등록이 안 되는 환경(LTSC 1809 + non-admin 사용자, 이슈 #24)
+      # 에서 사용자가 zip 만 풀어서 `<Anything 설치 폴더>` 에 `EBWebView` 디렉토리를
+      # 두면 lib.rs::webview2_runtime 가 detect 해 with_environment 로 wry 에 inject.
+      # registry / installer scope 무관하게 동작.
+      #
+      # runner 에는 Microsoft Edge 가 사전 설치되어 있어
+      # `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<ver>\EBWebView` 가 존재.
+      # 만일 없으면 직전 step 에서 받은 standalone installer 를 silent 설치해 폴더 확보.
+      - name: Bundle WebView2 Fixed Version Runtime (EBWebView) as release asset
+        if: success()
+        shell: pwsh
+        run: |
+          $base = "C:\Program Files (x86)\Microsoft\EdgeWebView\Application"
+          if (-not (Test-Path $base)) {
+            Write-Host "EdgeWebView not pre-installed — installing from standalone exe"
+            Start-Process -FilePath ".\MicrosoftEdgeWebView2RuntimeInstallerX64.exe" `
+              -ArgumentList "/silent","/install" -Wait
+          }
+          $versionDir = Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $versionDir) {
+            Write-Error "No EdgeWebView version directory found under $base"
+            exit 1
+          }
+          $version = $versionDir.Name
+          $ebwebview = Join-Path $versionDir.FullName "EBWebView"
+          if (-not (Test-Path $ebwebview)) {
+            Write-Error "EBWebView subdir missing in $($versionDir.FullName)"
+            exit 1
+          }
+
+          $stage = Join-Path $env:RUNNER_TEMP "webview2-fixed-stage"
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -Path $ebwebview -Destination $stage -Recurse -Force
+
+          $zipName = "webview2-fixed-runtime-$version-x64.zip"
+          if (Test-Path $zipName) { Remove-Item $zipName -Force }
+          Compress-Archive -Path (Join-Path $stage "EBWebView") -DestinationPath $zipName -Force
+          $size = (Get-Item $zipName).Length
+          Write-Host "Created $zipName ($size bytes) — WebView2 Runtime $version"
+
+          gh release upload "${{ github.ref_name }}" $zipName --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-macos:
     name: Build & Release (macOS arm64)
     permissions:

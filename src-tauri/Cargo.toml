@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.6.2"
+version = "2.6.3"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -104,6 +104,15 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem"
+] }
+# Fixed-version WebView2 Runtime 지원 (이슈 #24): registry 미등록 환경에서도
+# EBWebView 폴더만 있으면 ICoreWebView2Environment 를 직접 만들어 wry 에 inject.
+# 버전은 wry 0.54.1 가 transitively 끌어오는 것과 동일 (Cargo.lock 의 webview2-com 0.38.2)
+# 을 맞춰 single-version 유지.
+webview2-com = "0.38"
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 [features]

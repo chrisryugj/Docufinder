@@ -17,6 +17,11 @@ mod search;
 mod tokenizer; // 한국어 형태소 분석 (Phase 5)
 mod utils; // 유틸리티 (idle_detector, disk_info)
 
+// Windows: fixed-version WebView2 Runtime detection + environment injection
+// (이슈 #24 LTSC 1809 + admin 없음 + GPO 차단 환경 대응)
+#[cfg(target_os = "windows")]
+mod webview2_runtime;
+
 pub use application::container::AppContainer;
 pub use error::{ApiError, ApiResult};
 
@@ -505,6 +510,60 @@ pub fn run() {
                     return Err(format!("Failed to get app data dir: {}", e).into());
                 }
             };
+
+            // [v2.6.3] main window 직접 build.
+            // conf.json 의 main window 는 `create:false` 라 Tauri 가 자동 생성하지 않는다.
+            // Windows 에서 `<exe_dir>/EBWebView` 또는 `<exe_dir>/*/EBWebView` 가 발견되면
+            // 그 경로로 `ICoreWebView2Environment` 를 만들어 `with_environment` 로 주입한다.
+            // registry 에 WebView2 가 등록 안 된 환경(LTSC 1809 / GPO 차단 / 다른 사용자 계정에만
+            // 설치된 케이스 — 이슈 #24)에서도 EBWebView 폴더만 풀어두면 동작.
+            {
+                let main_config = app
+                    .config()
+                    .app
+                    .windows
+                    .iter()
+                    .find(|w| w.label == "main")
+                    .cloned()
+                    .ok_or_else(|| {
+                        "main window config missing in tauri.conf.json".to_string()
+                    })?;
+
+                #[allow(unused_mut)]
+                let mut builder = tauri::WebviewWindowBuilder::from_config(
+                    app.handle(),
+                    &main_config,
+                )
+                .map_err(|e| format!("WebviewWindowBuilder::from_config failed: {e}"))?;
+
+                #[cfg(target_os = "windows")]
+                {
+                    if let Some(runtime_dir) =
+                        crate::webview2_runtime::detect_fixed_runtime_dir()
+                    {
+                        match crate::webview2_runtime::create_environment(&runtime_dir) {
+                            Ok(env) => {
+                                tracing::info!(
+                                    "WebView2 fixed runtime detected at {} — environment injected",
+                                    runtime_dir.display()
+                                );
+                                builder = builder.with_environment(env);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "WebView2 fixed runtime present at {} but environment creation failed: {} — falling back to system runtime",
+                                    runtime_dir.display(),
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+
+                builder
+                    .build()
+                    .map_err(|e| format!("main window build failed: {e}"))?;
+            }
 
             // Create models directory
             let models_dir = app_data_dir.join("models");
