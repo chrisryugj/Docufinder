@@ -1,17 +1,14 @@
-# [v2.6.4] CI runner 의 사전 설치된 Microsoft Edge 의 EBWebView 폴더를
-# src-tauri/resources/EBWebView/ 로 복사한다.
+# [v2.6.4] CI runner 의 사전 설치된 Microsoft Edge 의 WebView2 runtime 폴더를
+# src-tauri/resources/webview2-runtime/ 로 복사한다.
 #
-# 용도: tauri.windows-ltsc.conf.json (override config) 로 LTSC 1809 / admin
-# 권한 없는 환경 전용 installer 빌드 시 EBWebView 를 NSIS resources 에 포함.
-# 사용자가 zip 풀거나 standalone installer 권한 부여 같은 수동 단계 없이
-# installer 한 번이면 끝.
+# 핵심: WebView2 runtime 의 본체 (msedgewebview2.exe + msedge.dll + EBWebView.dll +
+# locales 등) 는 `Application/<version>/` 폴더에 직접 있고, sub folder `EBWebView/`
+# 는 거의 비어있음 (extension/cache 용). 따라서 `<version>` 폴더 전체를 복사한다.
 #
-# 왜 webviewInstallMode:fixedRuntime 안 쓰는가:
-# v2.5.27 에서 fixedRuntime 모드를 시도했지만 Tauri 의 NSIS template 이 그 모드
-# 처리 시 EBWebView 폴더를 installer 에 누락시키는 회귀 발생 (이슈 #24 v2.5.27).
-# bundle.resources 일반 파일 경로는 기존 kordoc / vcredist 가 안정적으로 처리
-# 되므로 회귀 위험 없음. webview2_runtime.rs 가 `<exe_dir>/*/EBWebView` 를 detect
-# 해 우리가 직접 만든 ICoreWebView2Environment 를 wry 에 inject.
+# 그 결과는 `<install_dir>/resources/webview2-runtime/<files...>` 로 풀리고,
+# Microsoft 의 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder=...)`
+# API 는 msedgewebview2.exe 가 직접 들어있는 폴더 path 를 요구하므로 우리
+# webview2_runtime.rs 가 `<install_dir>/resources/webview2-runtime/` 를 그대로 사용.
 
 $ErrorActionPreference = "Stop"
 
@@ -30,24 +27,30 @@ if (-not $versionDir) {
     exit 1
 }
 
-$srcEBWebView = Join-Path $versionDir.FullName "EBWebView"
-if (-not (Test-Path $srcEBWebView)) {
-    Write-Error "EBWebView subdirectory missing in $($versionDir.FullName)"
+$srcExe = Join-Path $versionDir.FullName "msedgewebview2.exe"
+if (-not (Test-Path $srcExe)) {
+    Write-Error "msedgewebview2.exe missing in $($versionDir.FullName)"
     exit 1
 }
 
-$dstEBWebView = "src-tauri/resources/EBWebView"
-if (Test-Path $dstEBWebView) {
-    Remove-Item -Recurse -Force $dstEBWebView
+$dstDir = "src-tauri/resources/webview2-runtime"
+if (Test-Path $dstDir) {
+    Remove-Item -Recurse -Force $dstDir
 }
-New-Item -ItemType Directory -Force -Path $dstEBWebView | Out-Null
+New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
 
 Write-Host "Copying WebView2 Runtime $($versionDir.Name)"
-Write-Host "  src: $srcEBWebView"
-Write-Host "  dst: $dstEBWebView"
-Copy-Item -Path "$srcEBWebView/*" -Destination $dstEBWebView -Recurse -Force
+Write-Host "  src: $($versionDir.FullName)"
+Write-Host "  dst: $dstDir"
+Copy-Item -Path "$($versionDir.FullName)/*" -Destination $dstDir -Recurse -Force
 
-$files = (Get-ChildItem $dstEBWebView -Recurse -File | Measure-Object).Count
-$bytes = (Get-ChildItem $dstEBWebView -Recurse -File | Measure-Object -Property Length -Sum).Sum
+$dstExe = Join-Path $dstDir "msedgewebview2.exe"
+if (-not (Test-Path $dstExe)) {
+    Write-Error "msedgewebview2.exe missing after copy at $dstExe"
+    exit 1
+}
+
+$files = (Get-ChildItem $dstDir -Recurse -File | Measure-Object).Count
+$bytes = (Get-ChildItem $dstDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
 $mb = [math]::Round($bytes / 1MB, 1)
-Write-Host "EBWebView staged for LTSC build: $files files, $mb MB"
+Write-Host "WebView2 runtime staged for LTSC build: $files files, $mb MB"

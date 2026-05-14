@@ -9,7 +9,7 @@
       "resources/paddleocr/rec.onnx",
       "resources/paddleocr/dict.txt",
       "resources/onnxruntime/onnxruntime.dll",
-      "resources/EBWebView/**/*",
+      "resources/webview2-runtime/**/*",
       "icons/tray-icon.png"
     ]
   }

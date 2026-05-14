@@ -32,33 +32,33 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// 충분. 초과 시 inject 포기하고 fallback (system registry detection) 진행.
 const CREATE_ENV_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// `msedgewebview2.exe` 가 들어있는 EBWebView 폴더를 exe 디렉토리 기준으로 검색한다.
+/// `msedgewebview2.exe` 가 직접 들어있는 폴더를 exe 디렉토리 기준으로 검색한다.
+/// (Microsoft 의 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder=...)`
+/// API 는 msedgewebview2.exe 의 직접 부모 폴더를 요구함.)
 ///
 /// 지원 레이아웃 (우선순위 순):
-/// - `<exe_dir>/resources/EBWebView/msedgewebview2.exe`     ← LTSC installer 기본 위치
-///   (Tauri `bundle.resources` 는 `src-tauri/resources/EBWebView/**/*` → `<install_dir>/resources/EBWebView/...`)
-/// - `<exe_dir>/EBWebView/msedgewebview2.exe`               ← 평면 풀기
-/// - `<exe_dir>/<any>/EBWebView/msedgewebview2.exe`         ← Microsoft Fixed Version
-///   Runtime zip 의 표준 레이아웃 (`Microsoft.WebView2.FixedVersionRuntime.{ver}.x64/EBWebView/`)
+/// - `<exe_dir>/resources/webview2-runtime/msedgewebview2.exe`  ← LTSC installer 가 풀어두는 위치
+/// - `<exe_dir>/msedgewebview2.exe`                              ← 사용자가 같은 폴더에 둠
+/// - `<exe_dir>/<any>/msedgewebview2.exe`                        ← 사용자가 zip 풀어둔 sub dir
+///   (`Microsoft.WebView2.FixedVersionRuntime.{ver}.x64/` 같은 root 폴더 등)
 pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
 
     let mut candidates: Vec<PathBuf> = Vec::with_capacity(8);
-    // 우선순위 1: LTSC installer 가 풀어두는 위치 — 명시적 확인으로 빠른 hit.
-    candidates.push(exe_dir.join("resources").join("EBWebView"));
-    // 우선순위 2: 사용자가 zip 을 풀어 평면으로 둔 경우.
-    candidates.push(exe_dir.join("EBWebView"));
-    // 우선순위 3: 사용자가 zip 을 풀어 sub dir 그대로 둔 경우 (한 단계만 검색).
+    // 우선순위 1: LTSC installer 가 풀어두는 표준 위치.
+    candidates.push(exe_dir.join("resources").join("webview2-runtime"));
+    // 우선순위 2: exe 와 같은 폴더에 직접.
+    candidates.push(exe_dir.to_path_buf());
+    // 우선순위 3: sub dir 한 단계 안 (resources 는 우선순위 1 에서 명시 확인됐으므로 skip).
     if let Ok(entries) = std::fs::read_dir(exe_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let name = entry.file_name();
-                // resources 는 이미 우선순위 1 에서 검사됨 → 중복 skip
                 if name == "resources" {
                     continue;
                 }
-                candidates.push(entry.path().join("EBWebView"));
+                candidates.push(entry.path());
             }
         }
     }
