@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.6.5] - 2026-05-14
+
+**LTSC 1809 / VDI 환경 핫픽스 — LTSC installer 를 v2.5.27 검증된 fixedRuntime 방식으로 회귀**
+
+### 배경
+- v2.6.4 의 LTSC installer (`with_environment` 코드 inject + `bundle.resources` 일반 파일) 가 [이슈 #24](https://github.com/chrisryugj/Docufinder/issues/24) JS190-prog 님의 Windows 10 LTSC 1809 + 물리적 망분리 VDI 환경에서 동작하지 않음 — 576MB 정상 LTSC installer 받아 설치해도 WebView2 오류 지속.
+- 결정적 단서: JS190-prog 님 환경에서 **v2.5.27 (Tauri `webviewInstallMode: fixedRuntime` 모드) 은 정상 동작했었음**. v2.6.0 에서 fixedRuntime 을 롤백한 이유는 일반 Win11 환경 회귀였는데, 우리는 이번에 **별도 LTSC variant build** 라 일반 build 와 분리됨 → v2.5.27 의 검증된 메커니즘을 LTSC 한정으로 안전하게 복원 가능.
+
+### 변경
+- **`tauri.windows-ltsc.conf.json`**: `bundle.resources` 의 `webview2-runtime/**/*` 제거. 대신 `webviewInstallMode: { type: "fixedRuntime", path: "webview2-runtime/" }` 사용 (v2.5.27 와 동일).
+- **`scripts/setup-webview2-runtime.ps1`**: 풀기 위치를 `src-tauri/webview2-runtime/EBWebView/x64/` 로 변경 — Microsoft Fixed Version Runtime SDK 표준 구조 (v2.5.27 와 동일).
+- **`src-tauri/src/lib.rs`**: LTSC build 시 (`DOCUFINDER_LTSC_BUILD` env 가드) `with_environment` inject 코드를 비활성화. v2.5.27 코드 상태와 정확히 동일하게 만들어 검증된 메커니즘에만 의존 — 두 메커니즘 (`fixedRuntime` + `with_environment`) 동시 적용 시 environment 충돌 가능성 차단.
+- **`.github/workflows/publish.yml`**: LTSC build step 에 `DOCUFINDER_LTSC_BUILD: "1"` env 추가.
+
+일반 (non-LTSC) build 는 v2.6.4 그대로 — `with_environment` inject 코드 정상 활성 + 정상 환경에서 동작.
+
+### 사용자 안내
+- **JS190-prog 님 / LTSC 1809 / VDI 환경** — release 페이지에서 **`Anything_2.6.5_x64-ltsc-setup.exe`** 다시 다운로드 후 설치. v2.5.27 가 동작했던 방식 그대로라 같은 환경에서 정상 시작 예상.
+- **일반 Win10/11 사용자** — 기존 그대로 `Anything_2.6.5_x64-setup.exe` 사용. v2.6.4 와 동일.
+
 ## [2.6.4] - 2026-05-14
 
 **LTSC 1809 / admin 없는 환경 정공 해결 — 전용 installer 한 번 실행이면 끝 (이슈 #24)**

@@ -171,6 +171,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # LTSC build 는 Tauri 의 fixedRuntime 메커니즘에만 의존 — lib.rs 의
+          # with_environment inject 는 비활성화 (v2.5.27 코드 상태 복원).
+          DOCUFINDER_LTSC_BUILD: "1"
 
       - name: Rename + upload LTSC installer to release
         if: success()

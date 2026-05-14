@@ -2,15 +2,11 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "createUpdaterArtifacts": false,
-    "resources": [
-      "resources/node.exe",
-      "resources/kordoc/**/*",
-      "resources/paddleocr/det.onnx",
-      "resources/paddleocr/rec.onnx",
-      "resources/paddleocr/dict.txt",
-      "resources/onnxruntime/onnxruntime.dll",
-      "resources/webview2-runtime/**/*",
-      "icons/tray-icon.png"
-    ]
+    "windows": {
+      "webviewInstallMode": {
+        "type": "fixedRuntime",
+        "path": "webview2-runtime/"
+      }
+    }
   }
 }
