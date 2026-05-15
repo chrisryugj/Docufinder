@@ -536,42 +536,41 @@ pub fn run() {
                 )
                 .map_err(|e| format!("WebviewWindowBuilder::from_config failed: {e}"))?;
 
-                // LTSC variant build 는 Tauri 의 `webviewInstallMode: fixedRuntime`
-                // 메커니즘으로 wry/WebView2Loader 가 EBWebView/x64 를 자동 인식한다
-                // (v2.5.27 에서 LTSC 1809 VDI 환경 동작 검증된 path). 우리가 추가로
-                // with_environment 를 inject 하면 두 environment 충돌 가능성이 있어
-                // LTSC build 에선 inject 자체를 비활성화한다.
+                // Windows: fixed-runtime 폴더가 감지되면 직접 environment 만들어
+                // with_environment 로 wry 에 명시 inject. v2.6.5 LTSC 가 fail 한
+                // 원인 분석 결과 (이슈 #24) Tauri 의 `webviewInstallMode:fixedRuntime`
+                // 모드는 NSIS bundle 만 해주고 wry 에 path 를 전달하는 런타임 코드는
+                // 없음 (`tauri-bundler` nsis template: fixedRuntime → 빈 분기,
+                // `tauri-runtime-wry`: webview_attributes.environment 가 Some 일 때만
+                // wry 의 with_environment 호출). 따라서 LTSC build 도 이 inject
+                // 메커니즘을 통해야 동작 — DOCUFINDER_LTSC_BUILD 가드 제거.
                 //
-                // 일반 build 는 기존 path (사용자가 EBWebView 폴더를 직접 풀어둔 경우 등)
-                // 의 fallback 으로 detect → with_environment inject 그대로 유지.
+                // LTSC installer 의 풀린 위치 `<exe_dir>/webview2-runtime/EBWebView/x64/`
+                // 는 detect_fixed_runtime_dir 의 우선순위 1 후보로 등록되어 있다.
                 #[cfg(target_os = "windows")]
                 {
-                    const IS_LTSC_BUILD: bool =
-                        option_env!("DOCUFINDER_LTSC_BUILD").is_some();
-                    if !IS_LTSC_BUILD {
-                        if let Some(runtime_dir) =
-                            crate::webview2_runtime::detect_fixed_runtime_dir()
-                        {
-                            match crate::webview2_runtime::create_environment(&runtime_dir) {
-                                Ok(env) => {
-                                    tracing::info!(
-                                        "WebView2 fixed runtime detected at {} — environment injected",
-                                        runtime_dir.display()
-                                    );
-                                    builder = builder.with_environment(env);
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "WebView2 fixed runtime present at {} but environment creation failed: {} — falling back to system runtime",
-                                        runtime_dir.display(),
-                                        e
-                                    );
-                                }
+                    if let Some(runtime_dir) =
+                        crate::webview2_runtime::detect_fixed_runtime_dir()
+                    {
+                        match crate::webview2_runtime::create_environment(&runtime_dir) {
+                            Ok(env) => {
+                                tracing::info!(
+                                    "WebView2 fixed runtime detected at {} — environment injected",
+                                    runtime_dir.display()
+                                );
+                                builder = builder.with_environment(env);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "WebView2 fixed runtime present at {} but environment creation failed: {} — falling back to system runtime",
+                                    runtime_dir.display(),
+                                    e
+                                );
                             }
                         }
                     } else {
                         tracing::info!(
-                            "LTSC build — relying on Tauri fixedRuntime; skipping with_environment inject"
+                            "no fixed-runtime detected near exe — relying on system WebView2 (registry detection)"
                         );
                     }
                 }
