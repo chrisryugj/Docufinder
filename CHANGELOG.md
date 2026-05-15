@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.6.6] - 2026-05-16
+
+**LTSC 환경 핫픽스 — Tauri fixedRuntime 모드가 wry 에 path 전달 안 한다는 사실 확인 후 with_environment inject 활성화 (이슈 #24)**
+
+### 배경
+- v2.6.5 LTSC installer 가 JS190-prog 님 환경 (Win10 LTSC 1809 VDI + 집 PC Win11 25H2 모두) 에서 동일 실행 오류 — "Could not find the WebView2 Runtime... installed on another user account".
+- 로그 분석: `LTSC build — relying on Tauri fixedRuntime; skipping with_environment inject` 출력 직후 webview2 environment 생성 panic. 즉 Tauri 의 `fixedRuntime` 모드만으론 wry 가 폴더를 인식 못함.
+- Tauri 2.10.2 source 직접 확인 결과:
+  - `tauri-bundler` NSIS template: `downloadBootstrapper`/`embedBootstrapper`/`offlineInstaller` 만 분기 처리, **`fixedRuntime` → 빈 분기 (아무 코드 없음)**. NSIS 가 폴더 bundle 만 해주는 부수 효과만 있고 런타임 효과 없음.
+  - `tauri-runtime-wry::lib.rs`: webview build 시 `webview_attributes.environment.is_some()` 일 때만 wry 의 `with_environment` 호출 — fixedRuntime path 를 자동으로 wry 에 전달하는 코드 자체가 없음.
+- 즉 wry 가 fixed-runtime 폴더를 사용하려면 **앱 코드가 직접 `ICoreWebView2Environment` 만들고 `WebviewWindowBuilder::with_environment` 로 inject** 해야 함. v2.5.27 가 같은 환경에서 동작했었다는 보고는 그 시점 사용자분 PC 의 system-installed WebView2 가 registry 에 우연히 등록되어 있어 detection 성공한 것으로 추정.
+
+### 변경
+- **`src-tauri/src/webview2_runtime.rs::detect_fixed_runtime_dir`** — 검색 후보에 LTSC installer 의 실제 풀리는 경로 `<exe_dir>/webview2-runtime/EBWebView/x64/` 추가 (JS190-prog 로그상 확인된 경로). 그 외 사용자 zip 풀기 케이스도 `EBWebView/x64`, `EBWebView`, sub-dir 안의 `EBWebView/x64` 모두 검색.
+- **`src-tauri/src/lib.rs setup()`** — `DOCUFINDER_LTSC_BUILD` env 가드 제거. LTSC build 도 `with_environment` inject 활성화. detect 가 fixed-runtime 폴더 찾으면 `CreateCoreWebView2EnvironmentWithOptions(path, ...)` 으로 environment 명시 생성 → wry 에 inject → registry detection 완전 우회.
+- **`.github/workflows/publish.yml`** — LTSC build step 의 `DOCUFINDER_LTSC_BUILD` env 제거 (가드 자체가 사라졌으므로 무용).
+
+`tauri.windows-ltsc.conf.json` 의 `webviewInstallMode:fixedRuntime` 는 그대로 — NSIS 가 `webview2-runtime/` 폴더를 installer 에 bundle 하는 부수 효과를 위해 필요.
+
+### 흐름 (LTSC build 기준)
+1. NSIS installer 가 `<install_dir>/webview2-runtime/EBWebView/x64/` 에 WebView2 runtime 폴더 풀어둠 (fixedRuntime config 의 NSIS bundle)
+2. 앱 실행 시 `webview2_runtime::detect_fixed_runtime_dir` 가 그 경로 매치
+3. `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder=<발견 경로>, ...)` → `ICoreWebView2Environment` 직접 생성
+4. `WebviewWindowBuilder::with_environment(env)` 로 inject
+5. Tauri 가 `webview_attributes.environment` 발견 → wry 의 `with_environment` 호출
+6. wry 가 우리 environment 사용 → registry / installer scope / GPO 와 완전 무관하게 동작
+
+### 사용자 안내
+- **JS190-prog 님 / 회사 PC LTSC 1809 VDI + 집 PC Win11 25H2** — `Anything_2.6.6_x64-ltsc-setup.exe` 다시 다운로드 후 설치. v2.6.5 그대로 두고 그 위에 덮어 설치 OK.
+- **일반 Win10/11 사용자** — `Anything_2.6.6_x64-setup.exe` 사용. v2.6.5 와 동일 (영향 없음).
+
 ## [2.6.5] - 2026-05-14
 
 **LTSC 1809 / VDI 환경 핫픽스 — LTSC installer 를 v2.5.27 검증된 fixedRuntime 방식으로 회귀**

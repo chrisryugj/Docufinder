@@ -37,28 +37,44 @@ const CREATE_ENV_TIMEOUT: Duration = Duration::from_secs(5);
 /// API 는 msedgewebview2.exe 의 직접 부모 폴더를 요구함.)
 ///
 /// 지원 레이아웃 (우선순위 순):
-/// - `<exe_dir>/resources/webview2-runtime/msedgewebview2.exe`  ← LTSC installer 가 풀어두는 위치
-/// - `<exe_dir>/msedgewebview2.exe`                              ← 사용자가 같은 폴더에 둠
-/// - `<exe_dir>/<any>/msedgewebview2.exe`                        ← 사용자가 zip 풀어둔 sub dir
-///   (`Microsoft.WebView2.FixedVersionRuntime.{ver}.x64/` 같은 root 폴더 등)
+/// - `<exe_dir>/webview2-runtime/EBWebView/x64/msedgewebview2.exe`
+///   ← LTSC installer 가 풀어두는 표준 구조 (Tauri `webviewInstallMode:fixedRuntime` +
+///   `path:webview2-runtime/` + Microsoft Fixed Version Runtime SDK 의 `EBWebView/<arch>/`)
+/// - `<exe_dir>/EBWebView/x64/msedgewebview2.exe`        ← 사용자가 EBWebView 폴더만 풀어둠
+/// - `<exe_dir>/EBWebView/msedgewebview2.exe`            ← arch sub dir 없는 평면 zip
+/// - `<exe_dir>/msedgewebview2.exe`                       ← 사용자가 같은 폴더에 직접
+/// - `<exe_dir>/<any>/msedgewebview2.exe`                 ← sub dir 한 단계 안
+/// - `<exe_dir>/<any>/EBWebView/x64/msedgewebview2.exe`   ← Microsoft Fixed Version Runtime cab
+///   unzip 의 root 폴더 (예: `Microsoft.WebView2.FixedVersionRuntime.<ver>.x64/`) 그대로 둔 경우
 pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let exe_dir = exe.parent()?;
 
-    let mut candidates: Vec<PathBuf> = Vec::with_capacity(8);
-    // 우선순위 1: LTSC installer 가 풀어두는 표준 위치.
-    candidates.push(exe_dir.join("resources").join("webview2-runtime"));
-    // 우선순위 2: exe 와 같은 폴더에 직접.
+    let mut candidates: Vec<PathBuf> = Vec::with_capacity(16);
+    // 우선순위 1: LTSC installer 가 풀어두는 정식 위치
+    // (이슈 #24 JS190-prog 로그 상 `webview2-runtime/EBWebView/x64/` 로 풀림 확인).
+    candidates.push(
+        exe_dir
+            .join("webview2-runtime")
+            .join("EBWebView")
+            .join("x64"),
+    );
+    // 우선순위 2: EBWebView 폴더만 평면으로 풀어둠.
+    candidates.push(exe_dir.join("EBWebView").join("x64"));
+    candidates.push(exe_dir.join("EBWebView"));
+    // 우선순위 3: exe 와 같은 폴더에 직접.
     candidates.push(exe_dir.to_path_buf());
-    // 우선순위 3: sub dir 한 단계 안 (resources 는 우선순위 1 에서 명시 확인됐으므로 skip).
+    // 우선순위 4: sub dir 한 단계 안 + 그 안의 `EBWebView/x64/` 도 함께.
     if let Ok(entries) = std::fs::read_dir(exe_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                let name = entry.file_name();
-                if name == "resources" {
+                let p = entry.path();
+                // webview2-runtime 은 우선순위 1 에서 명시 확인됐으므로 skip.
+                if p.file_name().is_some_and(|n| n == "webview2-runtime") {
                     continue;
                 }
-                candidates.push(entry.path());
+                candidates.push(p.join("EBWebView").join("x64"));
+                candidates.push(p);
             }
         }
     }
