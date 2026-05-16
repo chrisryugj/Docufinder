@@ -1,5 +1,47 @@
 # Changelog
 
+## [2.6.7] - 2026-05-17
+
+**macOS 핫픽스 — OCR 활성화 시 SIGKILL 강제종료 해결 (entitlements 추가)**
+
+### 배경
+- macOS 사용자분이 OCR 옵션 켜고 인덱싱 시작하면 앱이 강제종료되고, 재설치해도 동일 증상 → `~/Library/Application Support`, `~/Library/Caches` 등 잔존 파일 수동 삭제 후에야 복구된다는 상세한 리포트 + 임시 우회법까지 보내주심 (감사합니다).
+- 원인: PaddleOCR 구동을 위해 `ort` 크레이트가 번들된 `libonnxruntime.dylib` 를 `dlopen` 하는 시점에 macOS **Library Validation** 이 서명 불일치(ad-hoc 서명 + 외부 dylib 로드) 를 보안 위협으로 판단하여 `SIGKILL` 송출.
+- 코드 확인: `src-tauri/tauri.macos.conf.json` 에 `signingIdentity: "-"` + `entitlements: null` 상태였음. ORT 가 동적 로드 방식(`ort = { default-features = false }`) 으로 `resources/onnxruntime/libonnxruntime.dylib` 번들 사용 → entitlements 부재 시 dyld 단계에서 차단.
+
+### 변경
+- **`src-tauri/entitlements.plist` 신규** — 다음 3개 권한 부여:
+  - `com.apple.security.cs.disable-library-validation` (외부 dylib 로드 허용 — 핵심)
+  - `com.apple.security.cs.allow-unsigned-executable-memory` (ONNX 런타임 JIT 영역 허용)
+  - `com.apple.security.cs.allow-dyld-environment-variables` (dyld 환경변수 허용 — ONNX 일부 경로 탐색용)
+- **`src-tauri/tauri.macos.conf.json`** — `entitlements: "entitlements.plist"` 로 연결.
+- **`.github/workflows/publish.yml`** — macOS 빌드의 ad-hoc 재서명 단계를 inside-out signing 으로 강화:
+  1. 번들된 외부 `.dylib` 들 (`libonnxruntime.dylib` 등) 먼저 `codesign --options runtime` 으로 개별 서명
+  2. 메인 실행 바이너리(`Contents/MacOS/docufinder`) 에 `--entitlements entitlements.plist --options runtime` 적용
+  3. `.app` 번들 전체 `--deep --entitlements ... --options runtime` 재서명
+  4. 검증 로그(`codesign -dv --entitlements -`) 출력
+
+이전 단계는 단순 `codesign --force --deep --sign -` 만 호출하여 Tauri 빌드 시 적용된 entitlements 가 덮어쓰기 되며 사라지는 문제가 있었음.
+
+### 사용자 안내
+- **v2.6.6 이하 macOS 사용자분** — 동일 증상 겪고 계시면 v2.6.7 dmg 재설치. 재설치 전 잔존 파일 삭제 권장:
+  ```bash
+  rm -rf ~/Library/Application\ Support/com.anything.app
+  rm -rf ~/Library/Caches/com.anything.app
+  rm -rf ~/Library/Logs/com.anything.app
+  rm -f  ~/Library/Preferences/com.anything.app.plist
+  ```
+  (실제 bundle id 가 다를 수 있으니 위 경로에서 `com.anything.app` 부분 확인 후 삭제)
+- 임시 우회가 필요하면 설치된 앱에 직접 entitlements 주입도 가능 (사용자분이 보내주신 방법):
+  ```bash
+  sudo codesign --force --options runtime \
+    --entitlements src-tauri/entitlements.plist --sign - \
+    /Applications/Anything.app/Contents/MacOS/docufinder
+  sudo codesign --force --options runtime \
+    --entitlements src-tauri/entitlements.plist --sign - \
+    /Applications/Anything.app
+  ```
+
 ## [2.6.6] - 2026-05-16
 
 **LTSC 환경 핫픽스 — Tauri fixedRuntime 모드가 wry 에 path 전달 안 한다는 사실 확인 후 with_environment inject 활성화 (이슈 #24)**
