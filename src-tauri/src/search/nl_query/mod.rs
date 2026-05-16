@@ -799,6 +799,5 @@ impl NlQueryParser {
     }
 }
 
-
 #[cfg(test)]
 mod tests;
