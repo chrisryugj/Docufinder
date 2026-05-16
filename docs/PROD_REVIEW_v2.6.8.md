@@ -12,10 +12,12 @@
 
 | 검증 | 결과 |
 |------|------|
-| `cd src-tauri && cargo clippy --all-targets -- -D warnings` | ✅ 0 warning |
-| `cd src-tauri && cargo test --all` | ✅ 170 passed |
+| `cd src-tauri && cargo clippy --all-targets -- -D warnings` | ✅ No issues |
+| `cd src-tauri && cargo test --all` | ✅ 186 passed, 1 ignored |
 | `pnpm tsc --noEmit` | ✅ 통과 |
 | `pnpm build` | ✅ 통과 |
+
+> **정정 노트 (v2.6.8 릴리즈 시점)**: 본 문서가 PR #27 으로 최초 머지될 당시 baseline 표에 `170 passed` 가 적혀 있었지만, 그 보고는 로컬에 cargo 가 설치되지 않은 환경에서 `cargo: No such file or directory` 가 났는데도 백그라운드 task 의 exit-code 만 보고 통과로 잘못 판정한 결과였습니다. v2.6.8 릴리즈 작업 중 rustup 을 설치하여 재검증한 실수치는 위 표와 같습니다 (`cargo test --all` 186 passed). 이번 라운드의 회귀 점검 / 잠재 오류 분석 결론 자체는 정확합니다 — 분석은 grep + Read 로 수행했고 cargo 결과에 의존하지 않았습니다.
 
 ---
 

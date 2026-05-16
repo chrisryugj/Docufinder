@@ -1,29 +1,32 @@
 # Changelog
 
-## [Unreleased]
+## [2.6.8] - 2026-05-17
 
-**prod-review v2.6.8 — 회귀 점검 + 잠재 오류 스캔 (코드 변경 0, 문서화)**
+**prod-review v2.6.8 — 회귀 점검 + FolderTree UX 보강 + nl_query 모듈 분할**
 
-### 검증
-- 정적 baseline 4종 통과: `cargo clippy --all-targets -- -D warnings` ✅ / `cargo test --all` (170 passed) ✅ / `pnpm tsc --noEmit` ✅ / `pnpm build` ✅
-- **CHANGELOG v2.5.0 ~ v2.6.7 의 22 개 핵심 fix 회귀 점검 → 회귀 0 건.** `.claude/plans/prod-review-regression.md` 에 표 기록. v2.6.0 의 webviewInstallMode 변경(`fixedRuntime` → `offlineInstaller`)과 v2.6.4+ 의 LTSC variant 한정 `fixedRuntime` 복원은 의도적 진화 (회귀 아님).
-- **잠재 오류 grep 스캔 → 122 건 발견, 121 건 안전 판정, 1 건 [사람결정].** `.claude/plans/prod-review-findings.md` 에 분류표 기록.
+### 정정 (PR #27 머지본 보고서 보강)
+- v2.6.8 prod review 의 baseline 표가 PR #27 머지 시점에 "170 passed" 로 적혀 있었으나, 그 보고는 로컬에 cargo 가 설치되지 않은 환경에서 `cargo: No such file or directory` 가 났는데도 백그라운드 task exit-code 만 보고 통과로 잘못 판정한 결과였음. rustup 설치 후 재검증한 실수치는 `cargo test --all` **186 passed, 1 ignored**. clippy 는 동일하게 No issues. 회귀 점검 / 잠재 오류 분석 결론 자체는 grep + Read 기반이라 영향 없음. `docs/PROD_REVIEW_v2.6.8.md` 에 정정 노트 반영.
 
-### 발견 / 분류
+### 추가 / UX
+- **`src/components/sidebar/FolderTree.tsx` 컨텍스트 메뉴 `폴더 열기` 실패 시 toast 알림** — 기존 두 위치 (드라이브 메뉴 line 319 / 폴더 메뉴 line 493) 모두 `try { ... } catch {}` 또는 `logToBackend` 만으로 사용자 피드백이 없었음. `useUIContext().showToast` 로 `폴더 열기 실패: <path>` error toast 추가. prod review findings 의 [사람결정] 1 건 해소.
 
-| 카테고리 | 매치 | 판정 |
-|---------|------|------|
-| Rust `unwrap()` 95 + `expect(` 11 + `panic!()` 1 | 107 | 전부 안전 (test / `Lazy<Regex>` / chrono 정적 인자 / match guard / Stdio::piped invariant) |
-| Rust async-in-blocking-IO | 10 | 전부 의도적 (watchdog 스레드 / `spawn_blocking` 내 호출 / 짧은 throttle) |
-| Rust SQL `format!()` 빌드 (`commands/preview.rs:578`) | 1 | 안전 — placeholders 는 `?` join 이고 값은 parameter binding |
-| TS empty `catch {}` | 5 | 4 안전 (localStorage quota / private mode), 1 [사람결정] (`FolderTree.tsx:319` 컨텍스트 메뉴 실패 toast 누락 — UX 개선 후보) |
-| 파일 1,200 줄 초과 | 1 (`nl_query.rs` 1,875줄) | [사람결정] 별도 PR — 회귀 위험 + 충분한 테스트 추가 후 분할 권장 |
+### 리팩토링
+- **`src/search/nl_query.rs` (1,875줄) → `src/search/nl_query/` 디렉토리 분할** — CLAUDE.md 의 `> 1,200 줄 필수 분리` 기준 위반 해소. 외부 API (`NlQueryParser::parse`, `parse_with_tokenizer`, `ParsedQuery`, `DateFilter`) 시그니처 무변경:
+  - `nl_query/mod.rs` (804줄): production 코드 — struct / enum / `impl NlQueryParser`
+  - `nl_query/tests.rs` (1,071줄): `#[cfg(test)] mod tests;` 로 분리된 테스트 블록
+- 분할 후 `cargo clippy --all-targets -- -D warnings` No issues + `cargo test --all` 186 passed, 1 ignored. helper 함수 (`remove_intent` / `extract_negation` / `extract_date` / `extract_file_type` 등) 의 추가 submod 분리는 별도 PR 로 미룸 (회귀 위험 대비 가치 낮음).
 
-### 후속 권장 (별도 PR)
+### 정적 검증 (rustup 설치 후 실측)
 
-- `src/components/sidebar/FolderTree.tsx:319` `open_folder` 실패 시 toast 알림 — UX 미세 개선
-- `src/search/nl_query.rs` 모듈 분할 (1,875 → ~500 단위) — CLAUDE.md 의 `> 1,200 줄 필수 분리` 기준. parse 외부 API 유지하며 `date_filter` / `negation` / `intent` / `file_type` 등을 별도 submod 로 분리. cargo test 회귀 검증 필수.
-- `src/db/mod.rs` (1,163줄), `src/lib.rs` (1,141줄), `src/commands/ai.rs` (1,054줄), `src/indexer/pipeline.rs` (1,005줄) — `500-800 분리 검토` 임계값 초과. 필수는 아니지만 후속 분할 후보.
+| 검증 | 결과 |
+|------|------|
+| `cd src-tauri && cargo clippy --all-targets -- -D warnings` | ✅ No issues |
+| `cd src-tauri && cargo test --all` | ✅ 186 passed, 1 ignored |
+| `pnpm tsc --noEmit` | ✅ 통과 |
+| `pnpm build` | ✅ 통과 |
+
+### 사용자 안내
+- **macOS / Windows 사용자** — 자동 업데이트 또는 v2.6.8 dmg / msi 재설치. 동작 변경 없음 (UX 미세 개선 + 내부 리팩토링).
 
 ## [2.6.7] - 2026-05-17
 
