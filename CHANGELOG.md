@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+**prod-review v2.6.8 — 회귀 점검 + 잠재 오류 스캔 (코드 변경 0, 문서화)**
+
+### 검증
+- 정적 baseline 4종 통과: `cargo clippy --all-targets -- -D warnings` ✅ / `cargo test --all` (170 passed) ✅ / `pnpm tsc --noEmit` ✅ / `pnpm build` ✅
+- **CHANGELOG v2.5.0 ~ v2.6.7 의 22 개 핵심 fix 회귀 점검 → 회귀 0 건.** `.claude/plans/prod-review-regression.md` 에 표 기록. v2.6.0 의 webviewInstallMode 변경(`fixedRuntime` → `offlineInstaller`)과 v2.6.4+ 의 LTSC variant 한정 `fixedRuntime` 복원은 의도적 진화 (회귀 아님).
+- **잠재 오류 grep 스캔 → 122 건 발견, 121 건 안전 판정, 1 건 [사람결정].** `.claude/plans/prod-review-findings.md` 에 분류표 기록.
+
+### 발견 / 분류
+
+| 카테고리 | 매치 | 판정 |
+|---------|------|------|
+| Rust `unwrap()` 95 + `expect(` 11 + `panic!()` 1 | 107 | 전부 안전 (test / `Lazy<Regex>` / chrono 정적 인자 / match guard / Stdio::piped invariant) |
+| Rust async-in-blocking-IO | 10 | 전부 의도적 (watchdog 스레드 / `spawn_blocking` 내 호출 / 짧은 throttle) |
+| Rust SQL `format!()` 빌드 (`commands/preview.rs:578`) | 1 | 안전 — placeholders 는 `?` join 이고 값은 parameter binding |
+| TS empty `catch {}` | 5 | 4 안전 (localStorage quota / private mode), 1 [사람결정] (`FolderTree.tsx:319` 컨텍스트 메뉴 실패 toast 누락 — UX 개선 후보) |
+| 파일 1,200 줄 초과 | 1 (`nl_query.rs` 1,875줄) | [사람결정] 별도 PR — 회귀 위험 + 충분한 테스트 추가 후 분할 권장 |
+
+### 후속 권장 (별도 PR)
+
+- `src/components/sidebar/FolderTree.tsx:319` `open_folder` 실패 시 toast 알림 — UX 미세 개선
+- `src/search/nl_query.rs` 모듈 분할 (1,875 → ~500 단위) — CLAUDE.md 의 `> 1,200 줄 필수 분리` 기준. parse 외부 API 유지하며 `date_filter` / `negation` / `intent` / `file_type` 등을 별도 submod 로 분리. cargo test 회귀 검증 필수.
+- `src/db/mod.rs` (1,163줄), `src/lib.rs` (1,141줄), `src/commands/ai.rs` (1,054줄), `src/indexer/pipeline.rs` (1,005줄) — `500-800 분리 검토` 임계값 초과. 필수는 아니지만 후속 분할 후보.
+
 ## [2.6.7] - 2026-05-17
 
 **macOS 핫픽스 — OCR 활성화 시 SIGKILL 강제종료 해결 (entitlements 추가)**
