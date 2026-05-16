@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.6.9] - 2026-05-17
+
+**대용량 인덱싱 사용자 지원 — FilenameCache 상한 100만 → 300만 상향**
+
+### 배경
+- v2.6.6 ~ v2.6.8 사용자 메일 (v2.6.7 entitlements 핫픽스를 받게 해주신 분과 동일 분) 끝에 추가 요청 — "100만 개 이상의 대용량 파일을 인덱싱하고자 할 때, Rust 백엔드의 `filename_cache` 상수로 인해 일부 파일명이 누락되는 현상이 예상됩니다. `src-tauri/src/constants.rs` 등 캐시 상수로 지정된 최대 파일 한도 값을 200만 ~ 300만 수준으로 상향 조절해주시거나, 사용자가 설정에서 가용 상한선을 변경할 수 있도록 지원해주실 수 있는지 검토 부탁드립니다."
+- 코드 확인: `src-tauri/src/search/filename_cache.rs` 의 `MAX_CACHE_ENTRIES: usize = 1_000_000` 상수. 초과 시 `load_from_db` 가 `entries.truncate(MAX_CACHE_ENTRIES)` 로 잘라서 인메모리 검색에서 누락 발생.
+
+### 변경
+- **`src-tauri/src/search/filename_cache.rs`** — `MAX_CACHE_ENTRIES` 1_000_000 → **3_000_000** 상향.
+  - 메모리 모델: `Vec` + `HashMap` 기반이라 실제로 보유한 엔트리 수만큼만 메모리 차지 (`Vec::with_capacity` 미사용). 일반 사용자 (< 100만 파일) 에게는 메모리 영향 없음.
+  - 100만 ~ 300만 보유 사용자만 인메모리 캐시로 흡수되어 검색 누락 해소. 상한 도달 시 기존 `is_truncated()` 경로로 DB fallback 유지.
+  - 사용자 설정 가능 옵션은 보류 — Settings 스키마 + DB 마이그레이션 + UI 변경 필요. 단순 상수 상향이 일반 사용자 영향 없이 요청 케이스를 커버하므로 우선 단순 변경.
+
+### 검토 후 보류
+- **ONNX Runtime 정적 링크**: 사용자분이 두 가지 제안(① entitlements 자동 동봉 ② 정적 링크) 중 "하나"를 요청. ①은 v2.6.7 에서 이미 반영 완료 (entitlements.plist + inside-out 재서명). ②는 `ort` 의 `load-dynamic` feature 를 제거하고 빌드 시 `libonnxruntime` 사전 정적 링크가 필요해 macOS 외 모든 OS 의 빌드 워크플로우를 재구성해야 함. entitlements 로 충분히 차단 해소되었기에 위험 대비 이득이 낮아 보류.
+
+### 사용자 안내
+- **일반 사용자** — 자동 업데이트 또는 v2.6.9 dmg / msi 재설치. 동작 변경 없음.
+- **100만 파일 이상 인덱싱 사용자** — v2.6.9 설치 후 폴더 재인덱싱 (또는 앱 재시작 시 자동 `load_from_db` 재실행). UI 알림 영역의 "FilenameCache truncated" 경고가 사라지면 정상 흡수.
+
 ## [2.6.8] - 2026-05-17
 
 **prod-review v2.6.8 — 회귀 점검 + FolderTree UX 보강 + nl_query 모듈 분할**
