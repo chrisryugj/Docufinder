@@ -9,6 +9,7 @@ import { cleanPath } from "../../utils/cleanPath";
 import { logToBackend } from "../../utils/errorLogger";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
 import { REVEAL_LABEL } from "../../utils/platform";
+import { useUIContext } from "../../contexts/UIContext";
 
 interface FolderTreeProps {
   folders: string[];
@@ -30,6 +31,7 @@ interface ContextMenuState {
  * 인덱싱된 폴더 목록 표시
  */
 export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart, isIndexing, isAutoIndexing }: FolderTreeProps) {
+  const { showToast } = useUIContext();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
   );
@@ -316,7 +318,16 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             style={{ top: contextMenu.y, left: contextMenu.x, backgroundColor: "var(--color-bg-secondary)", border: "1px solid var(--color-border)" }}
           >
             <button
-              onClick={async () => { const path = contextMenu.folderPath; closeContextMenu(); try { await invoke("open_folder", { path }); } catch {} }}
+              onClick={async () => {
+                const path = contextMenu.folderPath;
+                closeContextMenu();
+                try {
+                  await invoke("open_folder", { path });
+                } catch (err) {
+                  logToBackend("error", "Failed to open folder", String(err), "FolderTree");
+                  showToast(`폴더 열기 실패: ${path}`, "error");
+                }
+              }}
               role="menuitem"
               className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
             >
@@ -490,7 +501,12 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           onClick={async () => {
             const path = contextMenu.folderPath;
             closeContextMenu();
-            try { await invoke("open_folder", { path }); } catch (err) { logToBackend("error", "Failed to open folder", String(err), "FolderTree"); }
+            try {
+              await invoke("open_folder", { path });
+            } catch (err) {
+              logToBackend("error", "Failed to open folder", String(err), "FolderTree");
+              showToast(`폴더 열기 실패: ${path}`, "error");
+            }
           }}
           role="menuitem"
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
