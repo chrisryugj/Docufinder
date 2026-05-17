@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Reusable workflow — publish.yml 의 release pipeline 이 tag push 시 호출.
+  # tag 빌드 전에 main 의 검증이 미실행/실패한 코드가 release 되지 않도록 gate.
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

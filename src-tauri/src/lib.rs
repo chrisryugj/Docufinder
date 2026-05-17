@@ -703,7 +703,8 @@ pub fn run() {
 
             // 이전 세션에서 남긴 미전송 crash log 를 Telegram 으로 지연 전송
             // (네이티브 크래시/OOM kill 등 panic hook 이 실행되지 못한 경우 대비)
-            commands::telemetry::spawn_flush_pending_crash_logs();
+            // 사용자 설정 백엔드 게이트는 함수 내부에서 처리한다.
+            commands::telemetry::spawn_flush_pending_crash_logs(container.app_data_dir.clone());
 
             // kordoc 사이드카 가용성 진단 — HWP5 는 Rust fallback 이 없어 kordoc 미가용 시 전수 실패한다.
             // 미가용이면 frontend 에 즉시 알려 인덱싱 시작 전에 사용자가 인지할 수 있게 한다 (이슈 #22).

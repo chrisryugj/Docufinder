@@ -64,7 +64,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
         setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
         setResultsPerPage(settings.results_per_page ?? 50);
-        setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
+        setErrorReportingEnabled(settings.error_reporting_enabled ?? false);
 
         applyHighlightColors(settings);
       } catch {

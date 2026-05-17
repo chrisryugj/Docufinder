@@ -25,10 +25,11 @@ function reportRemote(
   message: string,
   context: Record<string, string>,
 ) {
-  // 설정 캐시 확인 — window 에 붙여두고 SettingsContext 에서 매번 갱신
+  // 설정 캐시 확인 — window 에 붙여두고 SettingsContext 에서 매번 갱신.
+  // 미초기화(undefined) 상태에서도 전송하지 않도록 명시적 true 만 통과시킨다.
   const enabled = (window as unknown as { __errorReportingEnabled?: boolean })
     .__errorReportingEnabled;
-  if (enabled === false) return;
+  if (enabled !== true) return;
   invoke("report_error", {
     payload: { source, title, message, context },
   }).catch(() => {});

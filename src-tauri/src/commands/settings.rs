@@ -152,7 +152,9 @@ fn default_ai_max_tokens() -> u32 {
 }
 
 fn default_error_reporting_enabled() -> bool {
-    true
+    // 프라이버시 기본값: opt-out → opt-in 전환 (prod review 2026-05-17).
+    // 사용자가 설정에서 명시적으로 켜기 전까지 외부 전송 없음.
+    false
 }
 
 /// LLM provider 선택.
@@ -339,7 +341,12 @@ fn restrict_file_to_owner(path: &Path) {
     };
 
     let grant = format!(r#"{}:F"#, username);
-    let result = Command::new("icacls")
+    // System32 풀패스 사용으로 PATH hijack 방지.
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
+    let icacls = std::path::PathBuf::from(system_root)
+        .join("System32")
+        .join("icacls.exe");
+    let result = Command::new(icacls)
         .arg(path)
         .args(["/inheritance:r", "/grant:r", &grant])
         .creation_flags(CREATE_NO_WINDOW)
