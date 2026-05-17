@@ -12,7 +12,13 @@
 //! 토큰 노출 리스크:
 //!   - 바이너리에서 strings 로 추출 가능. 악용 시 BotFather 로 revoke + 새 토큰으로 재빌드.
 
+use std::path::PathBuf;
+use std::sync::RwLock;
+
 use serde::{Deserialize, Serialize};
+use tauri::State;
+
+use crate::AppContainer;
 
 const TELEGRAM_BOT_TOKEN: &str = match option_env!("TELEGRAM_BOT_TOKEN") {
     Some(t) => t,
@@ -73,10 +79,21 @@ fn send_to_telegram(text: &str) -> Result<(), String> {
     }
 }
 
-/// 프론트엔드 호출: error_reporting_enabled 체크는 프론트에서 해야 함.
-/// Rust panic hook 에서도 직접 호출 가능 (sync).
+/// 프론트엔드 호출: 백엔드에서도 사용자 설정을 재확인한다.
+/// 렌더러가 오염되어도 동의 없는 전송이 발생하지 않도록 IPC 진입점에서 게이트.
 #[tauri::command]
-pub async fn report_error(payload: ErrorReport) -> Result<(), String> {
+pub async fn report_error(
+    state: State<'_, RwLock<AppContainer>>,
+    payload: ErrorReport,
+) -> Result<(), String> {
+    let enabled = state
+        .read()
+        .map_err(|e| format!("settings read failed: {e}"))?
+        .get_settings()
+        .error_reporting_enabled;
+    if !enabled {
+        return Ok(());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let msg = format_report(&payload);
         send_to_telegram(&msg)
@@ -168,15 +185,40 @@ pub fn report_panic_sync(location: &str, message: &str) {
 ///   3. 성공 시 ".sent" suffix 로 rename (중복 전송 방지)
 ///
 /// 백그라운드 스레드에서 실행 (앱 시작 지연 방지).
-pub fn spawn_flush_pending_crash_logs() {
+///
+/// 사용자 설정 `error_reporting_enabled` 가 false 면 전송하지 않고 ".sent" 로 마킹만 한다
+/// (이전 세션에서 켜뒀다가 끈 경우 잔존 로그가 재전송되지 않도록).
+pub fn spawn_flush_pending_crash_logs(app_data_dir: PathBuf) {
     if TELEGRAM_BOT_TOKEN.is_empty() || TELEGRAM_CHAT_ID.is_empty() {
         return;
     }
-    std::thread::spawn(|| {
+    std::thread::spawn(move || {
         let Some(data_dir) = dirs::data_dir() else {
             return;
         };
         let crash_dir = data_dir.join("com.anything.app");
+        let Ok(entries) = std::fs::read_dir(&crash_dir) else {
+            return;
+        };
+
+        // 사용자 설정 백엔드 게이트 — false 면 모든 미전송 파일을 .sent 로 마킹만 하고 종료.
+        // (사용자가 토글을 끄기 전에 쌓인 잔존 로그가 다음 시작 때 재전송되는 것 차단)
+        let enabled =
+            crate::commands::settings::get_settings_sync(&app_data_dir).error_reporting_enabled;
+        if !enabled {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
+                if name.starts_with("crash-") && !name.ends_with(".sent") {
+                    let new_path = path.with_file_name(format!("{}.sent", name));
+                    let _ = std::fs::rename(&path, &new_path);
+                }
+            }
+            return;
+        }
+        // 게이트 통과 — 정상 플러시 루프 진행
         let Ok(entries) = std::fs::read_dir(&crash_dir) else {
             return;
         };
