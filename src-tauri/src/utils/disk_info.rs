@@ -69,7 +69,14 @@ fn query_disk_type_wmi(drive_letter: char) -> Option<DiskType> {
     );
 
     let encoded = super::encode_powershell_command(&script);
-    let output = Command::new("powershell")
+    // PATH hijack 방지 — Windows PowerShell 5.x 풀패스 사용.
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
+    let powershell = std::path::PathBuf::from(system_root)
+        .join("System32")
+        .join("WindowsPowerShell")
+        .join("v1.0")
+        .join("powershell.exe");
+    let output = Command::new(powershell)
         .args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded])
         .creation_flags(CREATE_NO_WINDOW)
         .output()

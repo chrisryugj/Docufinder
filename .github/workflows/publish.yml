@@ -10,8 +10,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Release gate — tag push 시 CI(tsc/cargo fmt/check/clippy/test) 를 먼저 통과시킨다.
+  # ci.yml 을 workflow_call reuse 하므로 검증 본문은 한 곳에서 관리.
+  validate:
+    name: CI gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish-tauri:
     name: Build & Release (Windows)
+    needs: validate
     permissions:
       contents: write
     runs-on: windows-latest
@@ -193,6 +202,7 @@ jobs:
 
   publish-macos:
     name: Build & Release (macOS arm64)
+    needs: validate
     permissions:
       contents: write
     runs-on: macos-14  # Apple Silicon runner

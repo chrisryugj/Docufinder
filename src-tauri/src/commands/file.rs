@@ -6,11 +6,19 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::AppContainer;
 
+/// Windows 시스템 실행파일 절대경로 — PATH hijack 방지.
+/// `SystemRoot` 환경변수(기본 `C:\Windows`) 하위 System32 의 풀패스를 반환.
+#[cfg(target_os = "windows")]
+fn windows_system32(exe: &str) -> std::path::PathBuf {
+    let root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
+    std::path::PathBuf::from(root).join("System32").join(exe)
+}
+
 /// 플랫폼별 기본 앱으로 경로 열기 (공통 헬퍼)
 fn open_with_default(path_str: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        Command::new("explorer")
+        Command::new(windows_system32("explorer.exe"))
             .arg(path_str)
             .spawn()
             .map_err(|e| format!("열기 실패: {}", e))?;
@@ -145,9 +153,14 @@ pub async fn open_file(
                 }
             }
 
-            // 2) PATH 환경변수에서 검색 (비표준 설치 위치 대응)
+            // 2) PATH 환경변수에서 검색 (비표준 설치 위치 대응).
+            // where.exe 자체는 System32 풀패스 사용 (PATH hijack 방지).
+            // 결과(SumatraPDF.exe 위치)는 사용자 PATH 의존 — 정상 사용 케이스.
             if sumatra_exe.is_none() {
-                if let Ok(output) = Command::new("where").arg("SumatraPDF.exe").output() {
+                if let Ok(output) = Command::new(windows_system32("where.exe"))
+                    .arg("SumatraPDF.exe")
+                    .output()
+                {
                     if output.status.success() {
                         if let Some(path) = String::from_utf8_lossy(&output.stdout).lines().next() {
                             let path = path.trim();
@@ -239,8 +252,9 @@ pub async fn open_url(url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         // cmd /C start는 URL 내 &를 명령 구분자로 해석할 수 있으므로
-        // rundll32로 직접 URL 프로토콜 핸들러 호출 (cmd 인젝션 방지)
-        Command::new("rundll32")
+        // rundll32로 직접 URL 프로토콜 핸들러 호출 (cmd 인젝션 방지).
+        // System32 풀패스 사용으로 PATH hijack 방지.
+        Command::new(windows_system32("rundll32.exe"))
             .args(["url.dll,FileProtocolHandler", &url])
             .spawn()
             .map_err(|e| format!("URL 열기 실패: {}", e))?;
