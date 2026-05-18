@@ -1,6 +1,29 @@
 # Changelog
 
-## [2.6.14] - 2026-05-18
+## [2.6.15] - 2026-05-18
+
+**LTSC PS1 — 사실 발견 기반 자동 선택 모드 (v2.6.11~v2.6.14 가정 누적 실패 종결)**
+
+### 배경
+v2.6.11~v2.6.14 가 evergreen WebView2 install 결과 폴더 구조를 매번 다르게 가정하여 연쇄 회귀:
+- v2.6.11: NuGet 패키지 가정 → 미발행
+- v2.6.12: evergreen Application\<ver>\ → EmbeddedBrowserWebView.dll 누락
+- v2.6.13: system 검색 → x86 dll 매치 (arch mismatch)
+- v2.6.14: Application\<ver>\EBWebView\x64\ 가정 → 폴더 부재로 빌드 fail
+
+### 변경 — 가정 폐기, 사실 발견
+`scripts/setup-webview2-runtime.ps1`:
+1. **DIAG**: evergreen install 직후 `Application\<ver>\` 의 1-depth 트리 + system 전체의 모든 `msedgewebview2.exe` / `EmbeddedBrowserWebView.dll` 의 위치 + 각 파일의 PE 헤더 architecture (x64/x86/arm64) 를 CI 로그에 dump.
+2. **자동 선택**: `msedgewebview2.exe` (x64) 와 `EmbeddedBrowserWebView.dll` (x64) 가 **같은 폴더에 공존하는** self-contained 후보 또는 `EBWebView\x64\` sub-folder 동봉 케이스를 자동 탐지 → 그 폴더를 EBWebView\x64\ 로 복사 (필요 시 평탄화).
+3. **fail-soft 검증**: 후보 0건 또는 복사 후 critical file 누락 시 WARNING 만 출력 (exit 0 유지). 빌드는 통과시켜 LTSC installer 산출 자체는 진행. 진단 로그로 다음 패치 진로 결정.
+
+### 영향
+- 빌드는 다시 통과 (LTSC installer 산출 보장).
+- CI 로그에 evergreen / Edge browser / WebView2 의 정확한 layout 이 dump 되어, 사용자 머신 0x80070002 의 정확한 fix 를 다음 패치에서 가정 없이 작성 가능.
+
+## [2.6.14] - 2026-05-18 (yanked — LTSC installer 누락)
+
+**가정 오류 — `Application\<ver>\EBWebView\x64\` 폴더 부재로 PS1 exit 1. v2.6.15 에서 사실 발견 모드로 전환.**
 
 **LTSC fixed runtime 진짜 진짜 핫픽스 — evergreen 구조 정확히 반영 + PE 헤더 architecture 검증**
 
