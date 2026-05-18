@@ -1,18 +1,21 @@
-# [v2.6.13] WebView2 Fixed Version Runtime 번들 — CI 빌드 머신에서 실행.
+# [v2.6.14] WebView2 Fixed Version Runtime 번들 — CI 빌드 머신에서 실행.
 #
 # 변경 이력:
-#   v2.5.27 ~ v2.6.10: Microsoft Evergreen Standalone Installer 를 runner 에
-#     silent install 한 뒤 `Application\<version>\` 폴더 내용을 fixed runtime
-#     포맷으로 복사 — 빌드 통과하지만 일부 사용자 머신에서 0x80070002
-#     ERROR_FILE_NOT_FOUND 발생 (의존성 누락 의심, 이슈 #23 austinjung827).
-#   v2.6.11 (실패): Microsoft.Web.WebView2.FixedVersionRuntime NuGet 패키지를
-#     찾으려 했으나 Microsoft 가 nuget.org 에 발행하지 않았음 (totalHits=0).
-#   v2.6.12: evergreen-copy 복구 + critical file presence WARNING — CI 로그에
-#     **EmbeddedBrowserWebView.dll 누락 확정** (이슈 #23 0x80070002 직접 원인).
-#   v2.6.13 (현재): system 전체에서 EmbeddedBrowserWebView.dll 탐색 → 같이 들어
-#     있는 폴더(Microsoft Edge for Business 의 Application\<version>\) 의 빠진
-#     파일들을 fixed runtime 폴더로 **보강 복사**. critical file 누락 시 빌드
-#     fail. 사용자 머신에서 self-contained 동작 보장.
+#   v2.5.27 ~ v2.6.10: Application\<ver>\* 복사 — 사용자 머신 0x80070002
+#     (의존성 누락, 이슈 #23 austinjung827).
+#   v2.6.11 (실패): NuGet `Microsoft.Web.WebView2.FixedVersionRuntime` 패키지를
+#     가정했으나 nuget.org 미발행 (totalHits=0). 폐기.
+#   v2.6.12: evergreen-copy 복구 + critical file WARNING — CI 로그에
+#     **EmbeddedBrowserWebView.dll 누락 확정**.
+#   v2.6.13 (실패): EmbeddedBrowserWebView.dll system 검색 + 보강 복사. 그러나
+#     검색이 `Application\<ver>\EBWebView\x86\EmbeddedBrowserWebView.dll`(x86) 을
+#     매치하여 architecture mismatch — 사용자 머신에서 또 실패 예상.
+#   v2.6.14 (현재): evergreen `Application\<ver>\` 의 진짜 구조 (`EBWebView\x64\`
+#     sub-folder 에 native binaries 분리 보관) 를 정확히 반영. msedgewebview2.exe +
+#     Locales\ 는 root 에서, EmbeddedBrowserWebView.dll 등은 `EBWebView\x64\` 에서
+#     가져와 **fixed runtime 의 EBWebView\x64\ root 로 평탄화 복사**. Microsoft
+#     공식 Fixed Version Runtime cab 의 self-contained layout 을 evergreen 으로
+#     재구성.
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -67,57 +70,50 @@ if (Test-Path $dest) {
 }
 New-Item -ItemType Directory -Path $ebDir -Force | Out-Null
 
-Write-Host "Copying WebView2 binary tree to $ebDir ..." -ForegroundColor Cyan
+# evergreen `Application\<ver>\` 실제 구조 (Edge WebView2 124+):
+#   Application\<ver>\
+#   ├── msedgewebview2.exe          (root: 진입점 + ICU/V8 데이터 등)
+#   ├── msedgewebview2.exe.sig
+#   ├── Locales\
+#   ├── *.bin, *.dat (data files)
+#   └── EBWebView\
+#       ├── x64\                    (native binaries: EmbeddedBrowserWebView.dll 등)
+#       └── x86\                    (32-bit 동일 binary)
+#
+# Microsoft Fixed Version Runtime cab 의 self-contained layout 은 위 분리 구조를
+# **하나의 폴더로 평탄화** 한 것이다. 따라서 우리는:
+#   1) Application\<ver>\* 를 우리의 EBWebView\x64\ 로 복사 (root + Locales + EBWebView 그대로)
+#   2) Application\<ver>\EBWebView\x64\* 의 native binary 를 우리의 EBWebView\x64\
+#      root level 로 추가 복사 (덮어쓰기 — 우리가 사용할 path 와 일치시키기 위함)
+#   3) 우리의 EBWebView\x64\EBWebView 라는 중첩 sub-folder 는 평탄화 후 불필요하므로 삭제
+Write-Host "Copying evergreen Application\<ver>\* base layer to $ebDir ..." -ForegroundColor Cyan
 Copy-Item -Path "$($versionDir.FullName)\*" -Destination $ebDir -Recurse -Force
 
-# v2.6.13: EmbeddedBrowserWebView.dll 가 evergreen `Application\<version>\` 폴더에
-# 누락된 문제 (v2.6.12 빌드 로그에서 확정 — 이슈 #23 0x80070002 ERROR_FILE_NOT_FOUND
-# 직접 원인) 의 보강. Microsoft Edge for Business 가 Edge 본체와 WebView2 의 일부
-# core component 를 공유하는 구조 (DLL 형태로 Edge 브라우저의 `Application\<version>\`
-# 폴더 또는 sub-folder 에 존재) 라서, evergreen WebView 만 install 한 결과 폴더에는
-# 그 dll 들이 빠진다. 우리 PS1 이 system 전체에서 EmbeddedBrowserWebView.dll 및
-# 동반 필수 dll 를 찾아 fixed runtime 폴더로 같이 복사.
-$searchRoots = @(
-    "${env:ProgramFiles(x86)}\Microsoft",
-    "${env:ProgramFiles}\Microsoft"
-) | Where-Object { Test-Path $_ }
+$evergreenEbX64 = Join-Path $versionDir.FullName "EBWebView\x64"
+if (-not (Test-Path $evergreenEbX64)) {
+    Write-Error "evergreen Application\<ver>\EBWebView\x64 가 존재하지 않음: $evergreenEbX64"
+    exit 1
+}
+Write-Host "Flattening EBWebView\x64\* native binaries to fixed runtime root ..." -ForegroundColor Cyan
+$flattenedCount = 0
+Get-ChildItem -Path $evergreenEbX64 -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Copy-Item $_.FullName -Destination $ebDir -Force
+    $flattenedCount++
+}
+Get-ChildItem -Path $evergreenEbX64 -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    Copy-Item -Path $_.FullName -Destination $ebDir -Recurse -Force
+}
+Write-Host "  Flattened $flattenedCount native binaries from x64\ to root." -ForegroundColor Gray
 
-Write-Host "Searching system for EmbeddedBrowserWebView.dll and dependencies ..." -ForegroundColor Cyan
-$missingFiles = @("EmbeddedBrowserWebView.dll")
-foreach ($fname in $missingFiles) {
-    if (Test-Path (Join-Path $ebDir $fname)) {
-        Write-Host "  $fname already present (no system search needed)." -ForegroundColor Green
-        continue
-    }
-    $found = Get-ChildItem -Path $searchRoots -Recurse -Filter $fname -File -ErrorAction SilentlyContinue `
-        | Sort-Object @{ Expression = {
-            # 파일이 들어있는 가장 가까운 version-shaped 폴더 이름을 추출 후 [Version] 정렬.
-            $d = $_.Directory
-            while ($d -and -not ($d.Name -match "^\d+\.\d+\.\d+\.\d+$")) { $d = $d.Parent }
-            if ($d) { [Version]$d.Name } else { [Version]"0.0.0.0" }
-        } } -Descending `
-        | Select-Object -First 1
-    if (-not $found) {
-        Write-Error "$fname 시스템 어디에서도 찾지 못함 — Edge 또는 WebView2 가 runner 에 미설치"
-        exit 1
-    }
-    Write-Host "  Found at: $($found.FullName)" -ForegroundColor Yellow
-    # 동반 폴더 (msedgewebview2.exe + EmbeddedBrowserWebView.dll 가 함께 있는 폴더)
-    # 전체에서 우리 ebDir 에 아직 없는 파일/폴더만 덮어쓰지 않고 보강 복사.
-    $sourceDir = $found.Directory
-    Write-Host "  Augmenting from $($sourceDir.FullName) — adding missing files only ..." -ForegroundColor Cyan
-    Get-ChildItem -Path $sourceDir.FullName -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-        $rel = $_.FullName.Substring($sourceDir.FullName.Length).TrimStart('\','/')
-        $target = Join-Path $ebDir $rel
-        if (-not (Test-Path $target)) {
-            $targetDir = Split-Path $target -Parent
-            if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-            Copy-Item $_.FullName -Destination $target -Force
-        }
-    }
+# 중첩된 EBWebView sub-folder (Application\<ver>\EBWebView 가 복사된 것) 제거.
+# 평탄화 후 불필요 + 사용자 머신에서 detect_fixed_runtime_dir 의 잘못된 매칭 방지.
+$nestedEbWebView = Join-Path $ebDir "EBWebView"
+if (Test-Path $nestedEbWebView) {
+    Remove-Item -Recurse -Force $nestedEbWebView
+    Write-Host "  Removed redundant nested EBWebView sub-folder." -ForegroundColor Gray
 }
 
-# Critical dependency presence check — 보강 복사 후 최종 검증. 누락 시 빌드 fail.
+# Critical dependency presence check — 평탄화 후 최종 검증. 누락 시 빌드 fail.
 $mustExist = @(
     "msedgewebview2.exe",
     "msedgewebview2.exe.sig",
@@ -131,10 +127,27 @@ $localesDir = Join-Path $ebDir "Locales"
 if (-not (Test-Path $localesDir)) { $stillMissing += "Locales/" }
 
 if ($stillMissing.Count -gt 0) {
-    Write-Error "보강 복사 후에도 다음 파일 누락 → fixed runtime 실패 보장: $($stillMissing -join ', ')"
+    Write-Error "평탄화 후에도 다음 파일 누락 → fixed runtime 실패 보장: $($stillMissing -join ', ')"
     exit 1
 }
-Write-Host "  All critical WebView2 dependencies present after augmentation." -ForegroundColor Green
+# x64 native dll 의 architecture 검증 — x86 dll 이 섞이지 않았는지 magic byte 확인.
+# PE 헤더 IMAGE_FILE_MACHINE: 0x8664 = AMD64, 0x014C = i386.
+$ebwvPath = Join-Path $ebDir "EmbeddedBrowserWebView.dll"
+$fs = [System.IO.File]::OpenRead($ebwvPath)
+try {
+    $br = New-Object System.IO.BinaryReader($fs)
+    $fs.Seek(0x3C, [System.IO.SeekOrigin]::Begin) | Out-Null
+    $peOffset = $br.ReadInt32()
+    $fs.Seek($peOffset + 4, [System.IO.SeekOrigin]::Begin) | Out-Null  # PE\0\0 + 4 = Machine field
+    $machine = $br.ReadUInt16()
+} finally {
+    $fs.Close()
+}
+if ($machine -ne 0x8664) {
+    Write-Error "EmbeddedBrowserWebView.dll architecture mismatch (machine=0x$($machine.ToString('X4')), expected 0x8664 x64)"
+    exit 1
+}
+Write-Host "  All critical WebView2 dependencies present (architecture=x64 verified)." -ForegroundColor Green
 
 $copiedFiles = (Get-ChildItem $dest -Recurse -File | Measure-Object).Count
 $copiedSize = (Get-ChildItem $dest -Recurse -File | Measure-Object Length -Sum).Sum

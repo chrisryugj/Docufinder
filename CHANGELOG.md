@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.6.14] - 2026-05-18
+
+**LTSC fixed runtime 진짜 진짜 핫픽스 — evergreen 구조 정확히 반영 + PE 헤더 architecture 검증**
+
+### 배경 (v2.6.13 실패)
+v2.6.13 PS1 의 system 탐색이 `Application\<ver>\EBWebView\x86\EmbeddedBrowserWebView.dll` (**x86**) 을 first match 로 잡아 x86 dll 을 x64 빌드의 fixed runtime 에 끼워 넣음. 빌드는 통과했지만 사용자 머신에서 architecture mismatch 로 또 실패 예상.
+
+### evergreen 실제 구조 (조사 후 확정)
+```
+C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<ver>\
+├── msedgewebview2.exe                (진입점)
+├── msedgewebview2.exe.sig
+├── Locales\
+├── *.bin, *.dat (V8/ICU 데이터)
+└── EBWebView\
+    ├── x64\                          ← native binaries (EmbeddedBrowserWebView.dll 등)
+    └── x86\                          ← 32-bit
+```
+
+Microsoft Fixed Version Runtime cab 의 self-contained layout 은 위 분리 구조를 **하나의 폴더로 평탄화**.
+
+### 변경 (`scripts/setup-webview2-runtime.ps1`)
+1. **첫 복사**: `Application\<ver>\*` → 우리의 `EBWebView\x64\` (base layer — entry point + data + Locales).
+2. **평탄화 복사**: `Application\<ver>\EBWebView\x64\*` 의 native binary 를 우리 `EBWebView\x64\` root 로 추가 복사 (덮어쓰기). 이로써 `msedgewebview2.exe` 가 자신과 같은 폴더에서 `EmbeddedBrowserWebView.dll` 등을 찾을 수 있게 됨.
+3. **중첩 폴더 제거**: 첫 복사로 생긴 `EBWebView\x64\EBWebView\` sub-folder (이미 평탄화로 root 에 옮겨졌으므로 불필요) 삭제.
+4. **PE 헤더 architecture 검증**: `EmbeddedBrowserWebView.dll` 의 IMAGE_FILE_MACHINE 필드를 직접 읽어 `0x8664` (AMD64/x64) 가 아니면 빌드 fail. x86 dll 혼입을 binary 수준에서 차단 — v2.6.13 회귀 재발 방지.
+
+### 사용자 안내
+- **이슈 #23 austinjung827** — v2.6.14 LTSC installer (`Anything_2.6.14_x64-ltsc-setup.exe`) 로 재설치. 자체완결 fixed runtime 으로 system WebView2/Edge 부재 환경에서도 단독 동작해야 함.
+- 본 핫픽스로 안 되면 진단 정보 (`C:\Anything\webview2-runtime\EBWebView\x64\EmbeddedBrowserWebView.dll` 의 file size, `docufinder.YYYY-MM-DD.log` 의 새 에러 메시지) 회신 부탁.
+
 ## [2.6.13] - 2026-05-18
 
 **LTSC installer 진짜 핫픽스 — 이슈 #23 0x80070002 직접 원인 (EmbeddedBrowserWebView.dll 누락) 해결**
