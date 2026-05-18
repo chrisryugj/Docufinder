@@ -1,5 +1,35 @@
 # Changelog
 
+## [2.6.13] - 2026-05-18
+
+**LTSC installer 진짜 핫픽스 — 이슈 #23 0x80070002 직접 원인 (EmbeddedBrowserWebView.dll 누락) 해결**
+
+### 배경 — v2.6.12 진단 로그가 결정타를 찍음
+v2.6.12 의 `WebView2 Fixed Version Runtime` 의존성 누락 알람 (warning) 이 CI 빌드 로그에 명시적으로 보고됨:
+```
+WARNING: evergreen Application\<version>\ 폴더에 다음 파일/폴더 누락:
+WARNING:   - EmbeddedBrowserWebView.dll
+WARNING: 이슈 #23 의 0x80070002 ERROR_FILE_NOT_FOUND 원인일 가능성
+```
+
+즉 Microsoft Evergreen Standalone Installer 의 결과 폴더 (`C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<version>\`) 에는 `EmbeddedBrowserWebView.dll` 이 **들어있지 않음**. 이 dll 은 Microsoft Edge for Business 가 WebView2 와 공유하는 core component 로, Edge 브라우저의 `Application\<version>\` 폴더에 별도 존재. evergreen WebView 만 install 한 결과는 self-contained 가 아니며, `msedgewebview2.exe` 실행 시 이 dll 을 dynamic loader 가 못 찾아 0x80070002 ERROR_FILE_NOT_FOUND 로 환경 생성 실패.
+
+이슈 #23 austinjung827 의 사용자 머신은 회사 GPO/보안 정책으로 Edge 브라우저가 미설치된 상태였고, fixed runtime 동봉본도 EmbeddedBrowserWebView.dll 누락이라 양쪽 모두 실패. 외부망 가상PC 에는 Edge 가 깔려있어 system runtime fallback 이 동작했지만, v2.6.x LTSC installer 의 fixed runtime 경로 자체가 줄곧 비기능 상태였음.
+
+### 변경
+- **`scripts/setup-webview2-runtime.ps1`** 추가 단계:
+  1. evergreen `Application\<version>\` 복사 후, `EmbeddedBrowserWebView.dll` 이 누락된 경우 system 전체 (`%ProgramFiles(x86)%\Microsoft`, `%ProgramFiles%\Microsoft`) 에서 recursive 탐색.
+  2. 가장 최신 버전 폴더의 `EmbeddedBrowserWebView.dll` 위치를 확정 후, **같이 들어있는 폴더 전체에서 빠진 파일/폴더를 보강 복사** (덮어쓰기 없음 — evergreen 결과는 그대로 두고 누락분만 추가). 이로써 Microsoft Edge for Business 의 self-contained Application 트리가 fixed runtime 으로 통합됨.
+  3. 보강 후 critical file presence check 강화 — `msedgewebview2.exe`, `msedgewebview2.exe.sig`, `EmbeddedBrowserWebView.dll`, `Locales\` 중 하나라도 여전히 누락이면 **빌드 fail**. 회귀 시 사용자 머신이 아닌 CI 단계에서 즉시 발견.
+
+### 영향
+- **LTSC installer (`Anything_2.6.13_x64-ltsc-setup.exe`)** — system WebView2 Runtime / Edge 브라우저 모두 부재한 환경 (이슈 #23 austinjung827 사내망 LTSC 1809) 에서도 fixed runtime 만으로 단독 동작 가능. 0x80070002 ERROR_FILE_NOT_FOUND 가 사라져야 함.
+- **일반 installer / macOS dmg** — 변동 없음.
+
+### 사용자 안내
+- **이슈 #23 austinjung827** — v2.6.13 LTSC installer (`Anything_2.6.13_x64-ltsc-setup.exe`) 로 재설치 후 본체 실행. 동봉된 standalone WebView2 Runtime 별도 설치 불필요 (이미 사내망에서 막혀있었던 단계).
+- **v2.6.10 이하 LTSC installer 사용자** — 자동 업데이트 또는 v2.6.13 LTSC installer 덮어쓰기. `C:\Anything\webview2-runtime\` 폴더의 기존 fixed runtime 은 installer 가 갱신.
+
 ## [2.6.12] - 2026-05-18
 
 **LTSC 빌드 회귀 핫픽스 — v2.6.11 NuGet 가설 폐기, evergreen-copy 복구 + 의존성 알람 추가**
