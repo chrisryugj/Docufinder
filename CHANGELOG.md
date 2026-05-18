@@ -1,41 +1,28 @@
 # Changelog
 
-## [2.6.11] - 2026-05-18
+## [2.6.12] - 2026-05-18
 
-**LTSC installer 핫픽스 — WebView2 fixed runtime 의 evergreen-기반 회귀 (이슈 #23) 근본 해결**
+**LTSC 빌드 회귀 핫픽스 — v2.6.11 NuGet 가설 폐기, evergreen-copy 복구 + 의존성 알람 추가**
 
 ### 배경
-- 이슈 #23 (austinjung827) 의 로그 첨부 분석 결과, v2.5.27 ~ v2.6.10 LTSC installer 의 fixed runtime 이 **사용자 머신에서 한 번도 작동한 적이 없음** 을 확인:
-  ```
-  WARN docufinder_lib: WebView2 fixed runtime present at C:\Anything\webview2-runtime\EBWebView\x64
-  but environment creation failed:
-  CreateCoreWebView2EnvironmentWithOptions HRESULT: 0x80070002 (ERROR_FILE_NOT_FOUND)
-  — falling back to system runtime
-  ERROR tauri_runtime_wry: Could not find the webview runtime
-  ```
-- 외부망(가상PC) 에서는 `system runtime fallback` 이 동작해 정상으로 보였지만, v2.6.9 를 외부망에도 덮어씌우자 동일 에러가 재현되며 fixed runtime 자체가 줄곧 비기능 상태였음이 노출됨.
-
-### 근본 원인 — v2.5.27 부터 잠재된 빌드 회귀
-- `scripts/setup-webview2-runtime.ps1` 는 Microsoft **Evergreen Standalone Installer** 를 GH Actions runner 에 silent install 한 뒤, 결과 폴더 `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\<version>\` 의 내용을 fixed runtime 포맷으로 복사하는 방식이었음.
-- 그러나 Evergreen runtime 은 **self-contained 가 아님**. msedgewebview2.exe 가 필요로 하는 일부 의존성을 시스템 폴더(System32, WinSxS) 에 분산 설치하는 구조라, 복사된 폴더만으로는 self-contained 동작을 보장 못 함. 빌드 머신에는 시스템에 깔린 파일이 가려줘서 통과했고, 일반 사용자 머신에서는 누락이 노출되어 환경 생성이 실패했음.
+- v2.6.11 에서 `Microsoft.Web.WebView2.FixedVersionRuntime.<ver>.x64` NuGet 패키지로 LTSC fixed runtime 을 전환하려 했으나, **Microsoft 가 해당 패키지를 nuget.org 에 발행하지 않음** (검색 API totalHits=0) 을 확인. PS1 스크립트가 `Querying NuGet for latest ...` 단계에서 패키지 미발견으로 즉시 fail → LTSC installer 빌드 단계 자체가 안 돌고 release 에 LTSC 자산 누락. 일반 installer / macOS dmg / standalone WebView2 installer 는 v2.6.11 release 에 정상 첨부됨.
+- 이슈 #23 의 사용자 머신 0x80070002 ERROR_FILE_NOT_FOUND 의 진짜 원인 진단은 아직 사용자 회신 (파일 개수 / `msedgewebview2.exe.sig` 존재 여부 등) 대기 중.
 
 ### 변경
-- **`scripts/setup-webview2-runtime.ps1` 전면 재작성** — evergreen installer 호출 단계 제거. Microsoft 공식 NuGet 패키지 `Microsoft.Web.WebView2.FixedVersionRuntime.<version>.x64` 사용:
-  1. NuGet search API 로 최신 안정 버전 자동 조회 (azuresearch-usnc.nuget.org).
-  2. nupkg(zip) 다운로드 후 압축 해제.
-  3. 패키지 내 `msedgewebview2.exe` 위치를 recursive 탐색해 EBWebView 트리 루트 확정 (NuGet 내부 layout 버전별 변동 대비).
-  4. Tauri `webviewInstallMode:fixedRuntime` 표준 구조 `webview2-runtime\EBWebView\x64\` 로 평탄화 복사.
-  5. **Critical dependency presence check** 추가 — `msedgewebview2.exe`, `msedgewebview2.exe.sig`, `EmbeddedBrowserWebView.dll`, `Locales\` 4개 중 하나라도 누락 시 빌드 실패. 회귀 시 사용자 머신이 아닌 CI 단계에서 즉시 발견.
-- NuGet 의 FixedVersionRuntime 패키지는 **self-contained** — 모든 의존 DLL, sig 파일, locale 데이터를 단일 폴더에 평면 동봉. 시스템 의존성 0.
+- **`scripts/setup-webview2-runtime.ps1`** — v2.6.10 evergreen-installer-then-copy 방식으로 복구. LTSC installer 빌드 자체는 다시 정상 산출.
+- **Critical dependency presence check 추가** — evergreen `Application\<version>\` 복사 후 `msedgewebview2.exe`, `msedgewebview2.exe.sig`, `EmbeddedBrowserWebView.dll`, `Locales\` 4개 중 누락 항목이 있으면 워크플로우 로그에 `WARNING` 으로 명시. (빌드 자체는 계속 진행 — 의존성 누락이 실제로 evergreen 결과의 시스템 분산 때문인지 식별 위한 알람.) 향후 누락이 확인되면 Microsoft Fixed Version Runtime cab mirror 도입으로 전환.
+- **버전 bump 2.6.11 → 2.6.12** — release tag 충돌 방지 + LTSC installer 가 포함된 정상 release 생성.
 
 ### 영향
-- **LTSC installer (`Anything_2.6.11_x64-ltsc-setup.exe`)** — system WebView2 Runtime 부재 환경 (LTSC 1809 / VDI / GPO 차단 / 보안망 격리) 에서 단독 동작.
-- **일반 installer (`Anything_2.6.11_x64-setup.exe`)** — 변동 없음. 일반 사용자는 동작 동일.
-- **macOS dmg** — v2.6.10 핫픽스 유지. 변동 없음.
+- **LTSC installer (`Anything_2.6.12_x64-ltsc-setup.exe`)** — v2.6.10 과 동일한 evergreen-copy 방식이므로 이슈 #23 사용자의 0x80070002 증상 자체는 **해결되지 않을 가능성**. 다만 의존성 누락 알람 도입으로 빌드 단계 진단 정보 확보.
+- **일반 installer / macOS dmg** — v2.6.11 과 동일 동작 (변동 없음).
 
-### 사용자 안내
-- **이슈 #23 케이스 (회사 내부망 LTSC / WebView2 system runtime 부재)** — v2.6.11 LTSC installer 재설치. 별도 standalone WebView2 Runtime 설치 불필요.
-- **v2.6.10 이하 LTSC installer 사용 중** — 자동 업데이트 또는 v2.6.11 LTSC installer 로 덮어쓰기 권장. 기존 `C:\Anything\webview2-runtime\` 의 evergreen-copied fixed runtime 은 installer 가 덮어씀.
+### 진행 중
+- 이슈 #23 austinjung827 의 사용자 머신 검증 정보 회신 대기 → 회신 받으면 Microsoft Fixed Version Runtime cab 의 GH release mirror 방식으로 전환 검토 (별도 PR).
+
+## [2.6.11] - 2026-05-18 (yanked — LTSC installer 누락)
+
+**LTSC installer 빌드 실패. NuGet `Microsoft.Web.WebView2.FixedVersionRuntime` 패키지를 가정했으나 nuget.org 에 미발행. v2.6.12 에서 evergreen-copy 복구.**
 
 ## [2.6.10] - 2026-05-18
 
