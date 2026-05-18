@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.6.10] - 2026-05-18
+
+**macOS 핫픽스 — v2.6.7 entitlements 가 실효 없었던 근본 원인 수정 (Hardened Runtime 제거)**
+
+### 배경
+- v2.6.7 에서 `entitlements.plist` 의 `disable-library-validation` + inside-out 재서명으로 OCR 활성화 시 발생하는 `SIGKILL (Code Signature Invalid)` 해결을 시도했으나, v2.6.9 macOS arm64 (Apple M4 Pro / macOS 26.4.1) 환경의 사용자 크래시 리포트에서 **동일 증상이 재현됨**. 콜스택 분석:
+  ```
+  dyld::dlopen
+  → ort::setup_api
+  → OcrEngine::new
+  → docufinder_lib::resume_watchers (line 34)
+  → tauri::app::setup
+  ```
+- 트리거 경로: `lib.rs::setup` 의 `resume_watchers(&container)` 동기 호출 → `get_watch_manager()` OnceCell 첫 init → `if ocr_enabled { get_ocr_engine() }` → `OcrEngine::new` → `ort::setup_api` → `libonnxruntime.dylib` dlopen → **Library Validation 실패 → SIGKILL**.
+- 종료 사유: `Namespace CODESIGNING, Code 2, Invalid Page`.
+
+### 근본 원인 (v2.6.7 진단 실패 이유)
+- v2.6.7 의 `.github/workflows/publish.yml` 재서명 step 이 `codesign --options runtime --entitlements entitlements.plist --sign -` 로 **Hardened Runtime 을 활성화**했음. 의도는 entitlements 로 Library Validation 을 풀자는 것이었으나, macOS 의 보안 모델은:
+  - `disable-library-validation` entitlement 는 **Apple Developer ID 서명** 환경에서만 신뢰됨.
+  - **ad-hoc 서명 (`signingIdentity: "-"`)** 은 OS 가 서명자의 진위를 검증할 수 없어 entitlements 의 신뢰성 자체를 보장하지 못해 **권한 부여가 무시**됨.
+  - 결과: Hardened Runtime 만 켜지고 entitlements 는 무력화 → ad-hoc + Hardened Runtime + 외부 dylib dlopen 조합은 가장 엄격한 거부 경로가 됨.
+
+### 변경
+- **`.github/workflows/publish.yml`** — macOS 재서명 step 에서 `--options runtime` 및 `--entitlements` 인자 전부 제거. ad-hoc 서명만 적용 (`codesign --force --sign -`). Hardened Runtime 이 꺼지면 Library Validation 강제가 사라져 외부 dylib `dlopen` 이 허용된다.
+- **`src-tauri/tauri.macos.conf.json`** — `entitlements: "entitlements.plist"` 키 제거. ad-hoc 빌드 단계에서도 entitlements 가 따라붙지 않게 정리.
+- **`src-tauri/entitlements.plist`** 파일 삭제. 향후 Apple Developer ID 도입 시 재작성.
+
+### 향후 (검토 후 보류)
+- **OCR 초기화 lazy 화**: `get_watch_manager()` OnceCell init 시점에 OCR Arc 를 받지 말고 첫 OCR 작업 시점까지 미루는 리팩토링. 본 핫픽스로 SIGKILL 자체는 사라지므로 cold-start 속도 개선 외 추가 이득이 작아 v2.7.x 로 보류.
+- **ort static linking**: `ort = { features = ["load-dynamic"] }` 를 `["download-binaries"]` 로 전환해 dlopen 자체 제거. ort 2.0 RC11 의 macOS arm64 정적 링크 호환성이 검증되지 않아 위험 대비 이득 낮아 보류.
+
+### 사용자 안내
+- **v2.6.7 ~ v2.6.9 macOS 사용자 (OCR 활성화 시 즉시 크래시 / 강제 종료)** — v2.6.10 dmg 재설치 또는 자동 업데이트. 잔존 캐시는 다음 명령으로 정리 권장:
+  ```bash
+  sudo xattr -cr /Applications/Anything.app
+  rm -rf ~/Library/Application\ Support/com.anything.app
+  rm -rf ~/Library/Caches/com.anything.app
+  ```
+- **Windows / 일반 사용자** — 동작 변경 없음.
+
 ## [2.6.9] - 2026-05-17
 
 **대용량 인덱싱 사용자 지원 — FilenameCache 상한 100만 → 300만 상향**

@@ -254,29 +254,30 @@ jobs:
       - name: Tauri build (aarch64-apple-darwin, ad-hoc signed)
         run: pnpm exec tauri build --target aarch64-apple-darwin
 
-      # tauri.macos.conf.json 의 signingIdentity:"-" 가 ad-hoc 서명을 적용하지만,
-      # 일부 Tauri 버전에선 entitlements 가 누락될 수 있어 명시적 재서명으로 보강.
-      # ORT(onnxruntime) dylib 동적 로드 시 macOS Library Validation 이 SIGKILL 보내는
-      # 이슈 해결 — entitlements.plist 의 disable-library-validation 권한이 핵심.
-      # inside-out signing: 번들 dylib → 메인 바이너리 → .app 번들 순서.
-      - name: Re-apply ad-hoc signature with entitlements
+      # v2.6.10: --options runtime (Hardened Runtime) 제거.
+      # 배경:
+      #   v2.6.7 에서 entitlements.plist + Hardened Runtime 으로 OCR(onnxruntime) dlopen
+      #   SIGKILL 을 풀려 했으나, ad-hoc 서명(signingIdentity:"-") 환경에서는 OS 가
+      #   entitlements 의 신뢰성을 검증하지 못해 disable-library-validation 권한이
+      #   사실상 무시된다. 결과적으로 Hardened Runtime 만 켜지고 entitlements 는
+      #   안 먹어 Library Validation 이 외부 dylib 페이지를 invalid 로 판단,
+      #   SIGKILL(Code Signature Invalid / Namespace CODESIGNING, Code 2, Invalid Page).
+      # 해결: Hardened Runtime 자체를 끄면 Library Validation 강제가 없어진다.
+      # ad-hoc + no hardened runtime → dlopen 정상.
+      # inside-out 서명 순서는 그대로 (resources/dylib → 메인 바이너리 → .app 번들).
+      - name: Re-apply ad-hoc signature (no hardened runtime)
         run: |
           APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Anything.app"
-          ENTITLEMENTS="src-tauri/entitlements.plist"
           if [ -d "$APP" ]; then
             # 1) 번들된 외부 dylib (libonnxruntime.dylib 등) 먼저 서명
             find "$APP/Contents/Resources" -name "*.dylib" -print0 2>/dev/null \
-              | xargs -0 -I{} codesign --force --options runtime --sign - "{}"
-            # 2) 메인 실행 바이너리에 entitlements + hardened runtime 적용
-            codesign --force --options runtime \
-              --entitlements "$ENTITLEMENTS" \
-              --sign - "$APP/Contents/MacOS/docufinder" || true
-            # 3) .app 번들 전체 deep 재서명 (entitlements 유지)
-            codesign --force --deep --options runtime \
-              --entitlements "$ENTITLEMENTS" \
-              --sign - "$APP"
+              | xargs -0 -I{} codesign --force --sign - "{}"
+            # 2) 메인 실행 바이너리 ad-hoc 재서명 (hardened runtime 미적용)
+            codesign --force --sign - "$APP/Contents/MacOS/docufinder" || true
+            # 3) .app 번들 전체 deep 재서명
+            codesign --force --deep --sign - "$APP"
             # 검증 로그
-            codesign -dv --entitlements - "$APP" 2>&1 | head -20 || true
+            codesign -dv "$APP" 2>&1 | head -20 || true
           fi
 
       - name: Upload dmg to release
