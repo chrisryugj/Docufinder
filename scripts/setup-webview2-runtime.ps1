@@ -1,18 +1,18 @@
-# [v2.6.12] WebView2 Fixed Version Runtime 번들 — CI 빌드 머신에서 실행.
+# [v2.6.13] WebView2 Fixed Version Runtime 번들 — CI 빌드 머신에서 실행.
 #
 # 변경 이력:
 #   v2.5.27 ~ v2.6.10: Microsoft Evergreen Standalone Installer 를 runner 에
 #     silent install 한 뒤 `Application\<version>\` 폴더 내용을 fixed runtime
-#     포맷으로 복사 — 빌드 통과하지만 일부 사용자 머신에서 0x80070002 ERROR_FILE_NOT_FOUND
-#     발생 (의존성 누락 의심, 이슈 #23 austinjung827).
+#     포맷으로 복사 — 빌드 통과하지만 일부 사용자 머신에서 0x80070002
+#     ERROR_FILE_NOT_FOUND 발생 (의존성 누락 의심, 이슈 #23 austinjung827).
 #   v2.6.11 (실패): Microsoft.Web.WebView2.FixedVersionRuntime NuGet 패키지를
 #     찾으려 했으나 Microsoft 가 nuget.org 에 발행하지 않았음 (totalHits=0).
-#     이번 단계는 폐기.
-#   v2.6.12 (현재): evergreen-copy 방식 복구. 단, **critical dependency presence
-#     check** 를 추가하여 evergreen 결과에 필수 파일이 누락되면 CI 단계에서 즉시
-#     실패시킨다. 사용자 머신에서 누락이 나는 케이스를 식별하는 안전망.
-#     장기적으로는 Microsoft Fixed Version Runtime cab 을 GH release 에 mirror
-#     하는 방향 검토 필요 (별도 작업).
+#   v2.6.12: evergreen-copy 복구 + critical file presence WARNING — CI 로그에
+#     **EmbeddedBrowserWebView.dll 누락 확정** (이슈 #23 0x80070002 직접 원인).
+#   v2.6.13 (현재): system 전체에서 EmbeddedBrowserWebView.dll 탐색 → 같이 들어
+#     있는 폴더(Microsoft Edge for Business 의 Application\<version>\) 의 빠진
+#     파일들을 fixed runtime 폴더로 **보강 복사**. critical file 누락 시 빌드
+#     fail. 사용자 머신에서 self-contained 동작 보장.
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -70,32 +70,71 @@ New-Item -ItemType Directory -Path $ebDir -Force | Out-Null
 Write-Host "Copying WebView2 binary tree to $ebDir ..." -ForegroundColor Cyan
 Copy-Item -Path "$($versionDir.FullName)\*" -Destination $ebDir -Recurse -Force
 
-# Critical dependency presence check. 이슈 #23 사용자 머신에서 0x80070002
-# (ERROR_FILE_NOT_FOUND) 가 떨어진 것이 의존성 누락 때문인지 식별하기 위해
-# evergreen `Application\<version>\` 폴더에 있어야 마땅한 핵심 파일들을 검증한다.
-# runner 머신과 사용자 머신의 차이를 좁히는 회귀 알람.
+# v2.6.13: EmbeddedBrowserWebView.dll 가 evergreen `Application\<version>\` 폴더에
+# 누락된 문제 (v2.6.12 빌드 로그에서 확정 — 이슈 #23 0x80070002 ERROR_FILE_NOT_FOUND
+# 직접 원인) 의 보강. Microsoft Edge for Business 가 Edge 본체와 WebView2 의 일부
+# core component 를 공유하는 구조 (DLL 형태로 Edge 브라우저의 `Application\<version>\`
+# 폴더 또는 sub-folder 에 존재) 라서, evergreen WebView 만 install 한 결과 폴더에는
+# 그 dll 들이 빠진다. 우리 PS1 이 system 전체에서 EmbeddedBrowserWebView.dll 및
+# 동반 필수 dll 를 찾아 fixed runtime 폴더로 같이 복사.
+$searchRoots = @(
+    "${env:ProgramFiles(x86)}\Microsoft",
+    "${env:ProgramFiles}\Microsoft"
+) | Where-Object { Test-Path $_ }
+
+Write-Host "Searching system for EmbeddedBrowserWebView.dll and dependencies ..." -ForegroundColor Cyan
+$missingFiles = @("EmbeddedBrowserWebView.dll")
+foreach ($fname in $missingFiles) {
+    if (Test-Path (Join-Path $ebDir $fname)) {
+        Write-Host "  $fname already present (no system search needed)." -ForegroundColor Green
+        continue
+    }
+    $found = Get-ChildItem -Path $searchRoots -Recurse -Filter $fname -File -ErrorAction SilentlyContinue `
+        | Sort-Object @{ Expression = {
+            # 파일이 들어있는 가장 가까운 version-shaped 폴더 이름을 추출 후 [Version] 정렬.
+            $d = $_.Directory
+            while ($d -and -not ($d.Name -match "^\d+\.\d+\.\d+\.\d+$")) { $d = $d.Parent }
+            if ($d) { [Version]$d.Name } else { [Version]"0.0.0.0" }
+        } } -Descending `
+        | Select-Object -First 1
+    if (-not $found) {
+        Write-Error "$fname 시스템 어디에서도 찾지 못함 — Edge 또는 WebView2 가 runner 에 미설치"
+        exit 1
+    }
+    Write-Host "  Found at: $($found.FullName)" -ForegroundColor Yellow
+    # 동반 폴더 (msedgewebview2.exe + EmbeddedBrowserWebView.dll 가 함께 있는 폴더)
+    # 전체에서 우리 ebDir 에 아직 없는 파일/폴더만 덮어쓰지 않고 보강 복사.
+    $sourceDir = $found.Directory
+    Write-Host "  Augmenting from $($sourceDir.FullName) — adding missing files only ..." -ForegroundColor Cyan
+    Get-ChildItem -Path $sourceDir.FullName -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $rel = $_.FullName.Substring($sourceDir.FullName.Length).TrimStart('\','/')
+        $target = Join-Path $ebDir $rel
+        if (-not (Test-Path $target)) {
+            $targetDir = Split-Path $target -Parent
+            if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+            Copy-Item $_.FullName -Destination $target -Force
+        }
+    }
+}
+
+# Critical dependency presence check — 보강 복사 후 최종 검증. 누락 시 빌드 fail.
 $mustExist = @(
     "msedgewebview2.exe",
     "msedgewebview2.exe.sig",
     "EmbeddedBrowserWebView.dll"
 )
-$missing = @()
+$stillMissing = @()
 foreach ($f in $mustExist) {
-    $p = Join-Path $ebDir $f
-    if (-not (Test-Path $p)) { $missing += $f }
+    if (-not (Test-Path (Join-Path $ebDir $f))) { $stillMissing += $f }
 }
 $localesDir = Join-Path $ebDir "Locales"
-if (-not (Test-Path $localesDir)) { $missing += "Locales/" }
+if (-not (Test-Path $localesDir)) { $stillMissing += "Locales/" }
 
-if ($missing.Count -gt 0) {
-    Write-Warning "evergreen Application\<version>\ 폴더에 다음 파일/폴더 누락:"
-    foreach ($m in $missing) { Write-Warning "  - $m" }
-    Write-Warning "이슈 #23 의 0x80070002 ERROR_FILE_NOT_FOUND 원인일 가능성 — Microsoft Fixed Version Runtime cab 사용 검토 필요."
-    # 빌드는 계속 진행 (LTSC installer 자체 생성은 가능). 다만 누락 사실이 로그에 남아
-    # 사후 진단 가능.
-} else {
-    Write-Host "  All critical WebView2 dependencies present." -ForegroundColor Green
+if ($stillMissing.Count -gt 0) {
+    Write-Error "보강 복사 후에도 다음 파일 누락 → fixed runtime 실패 보장: $($stillMissing -join ', ')"
+    exit 1
 }
+Write-Host "  All critical WebView2 dependencies present after augmentation." -ForegroundColor Green
 
 $copiedFiles = (Get-ChildItem $dest -Recurse -File | Measure-Object).Count
 $copiedSize = (Get-ChildItem $dest -Recurse -File | Measure-Object Length -Sum).Sum
