@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.6.16] - 2026-05-19
+
+**LTSC 핫픽스 — WebView2 environment 생성 전 COM apartment 초기화 (이슈 #23 austinjung827 v2.6.15 후속)**
+
+### 배경
+v2.6.15 LTSC installer 로 evergreen 의 x86 회귀는 해소 (msedgewebview2.exe x64, 4.46MB 정상 확인 — 이슈 #23 댓글). 그러나 본체 실행 시 새로운 에러로 진전:
+```
+WebView2 environment creation failed (hr=Err(Error {
+    code: HRESULT(0x800401F0),
+    message: "CoInitialize가 호출되지 않았습니다."
+}))
+```
+프로세스는 떠 있지만 UI 가 안 뜨는 상태 (작업관리자 상 docufinder.exe 활성).
+
+### 원인
+`src-tauri/src/webview2_runtime.rs::create_environment` 가 `CreateCoreWebView2EnvironmentWithOptions` (COM 기반 API) 를 **CoInitialize/CoInitializeEx 없이** 호출. Tauri `setup()` 시점의 main thread 는 winit/tao event loop 가 시작되기 전이라 COM apartment 가 자동 초기화돼 있지 않다.
+
+GH Actions runner 에서는 다른 모듈(가령 사전 설치된 Edge/.NET tooling 의 init 잔재) 이 COM 을 미리 초기화해 둔 thread 가 등장해서 빌드 검증 단계에서는 가려졌고, 일반 사용자 환경 (특히 LTSC 1809) 에서 노출됨.
+
+### 변경
+- **`src-tauri/src/webview2_runtime.rs::create_environment`** — 함수 진입부에 `CoInitializeEx(None, COINIT_APARTMENTTHREADED)` 호출 추가. `S_FALSE` (이미 같은 mode 로 초기화) / `RPC_E_CHANGED_MODE` (다른 apartment 로 이미 초기화) 는 둘 다 무시 — COM 자체가 활성 상태면 후속 API 호출 가능.
+- **`src-tauri/Cargo.toml`** — `windows` crate features 에 `Win32_System_Com` 추가.
+
+### 사용자 안내
+- **이슈 #23 austinjung827** — [v2.6.16 LTSC installer](https://github.com/chrisryugj/Docufinder/releases/download/v2.6.16/Anything_2.6.16_x64-ltsc-setup.exe) 재설치 후 본체 실행. UI 가 정상 표시돼야 정상.
+
 ## [2.6.15] - 2026-05-18
 
 **LTSC PS1 — 사실 발견 기반 자동 선택 모드 (v2.6.11~v2.6.14 가정 누적 실패 종결)**

@@ -24,6 +24,7 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
     CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2Environment,
 };
 use windows::core::PCWSTR;
+use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, WM_QUIT,
 };
@@ -94,6 +95,20 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
 /// setup() 콜백은 Tauri 가 main thread 에서 호출하며, 우리가 직접 펌프를 돌리므로
 /// winit/tao event loop 시작 여부와 무관하게 동작.
 pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment, String> {
+    // v2.6.16: WebView2 environment 생성 API 는 COM 기반이라 호출 thread 가
+    // CoInitializeEx 로 STA apartment 초기화돼 있어야 한다. Tauri setup() 시점의
+    // main thread 는 winit/tao event loop 가 아직 시작되지 않아 COM 미초기화 상태일
+    // 수 있고, 그 경우 `CO_E_NOTINITIALIZED (0x800401F0)` 가 떨어진다 (이슈 #23
+    // austinjung827 v2.6.15 로그에서 확정). GH Actions runner 는 OS/사전 환경이
+    // 다른 모듈에서 이미 COM 을 초기화해둔 상태라 우리 호출이 가려졌었다.
+    //
+    // S_FALSE (이미 같은 mode 로 초기화됨) / RPC_E_CHANGED_MODE (다른 apartment 로
+    // 이미 초기화됨) 는 둘 다 무시 — COM 자체는 활성 상태이므로 후속 API 호출이
+    // 가능하다. 진짜 실패는 거의 없다.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+    }
+
     let browser_wide: Vec<u16> = browser_dir
         .as_os_str()
         .encode_wide()
