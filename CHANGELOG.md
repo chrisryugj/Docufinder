@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.6.17] - 2026-05-20
+
+**LTSC 핫픽스 — WebView2 controller hang 근본 해결 (이슈 #23 austinjung827 v2.6.16 후속)**
+
+### 배경
+v2.6.16 의 `CoInitializeEx` 추가로 environment 생성 실패(`0x800401F0`)는 해소. 로그상 `WebView2 fixed runtime detected ... environment injected` 까지 도달했으나, 그 직후 `builder.build()` 단계에서 hang — UI 미표시, 프로세스만 생존.
+
+### 근본 원인 (CI 로그 + wry 0.54 소스 + Microsoft 공식 문서로 확정)
+1. **`linkid=2099617` 은 X86 installer 였다.** 빌드 스크립트가 X64 로 오인 (`go.microsoft.com/fwlink/?linkid=2099617` → `MicrosoftEdgeWebView2RuntimeInstallerX86.exe`). 그 결과 evergreen 이 x86 으로 깔려, v2.6.13~v2.6.16 이 GH Actions runner 의 Microsoft Edge **브라우저** 폴더(`Edge\Application\<ver>`, 764 files 827MB)를 fixed runtime 으로 짜깁기. Edge 브라우저 트리는 WebView2 Fixed Version Runtime 이 아니므로 environment 는 통과해도 controller(브라우저 자식 프로세스) 생성에서 실패.
+2. **Fixed Version Runtime 폴더에 App Container ACL 누락.** WebView2 v120+ 는 renderer 프로세스가 App Container sandbox 에서 실행된다. unpackaged Win32 앱이 Windows 10 에서 Fixed Version Runtime 을 쓸 때 runtime 폴더에 `ALL APPLICATION PACKAGES`(S-1-15-2-1) / `ALL RESTRICTED APPLICATION PACKAGES`(S-1-15-2-2) 읽기 권한이 없으면 sandbox renderer 가 runtime 파일을 못 읽어 controller 생성이 실패한다 (Microsoft 공식 distribution 문서 명시). austin = LTSC 1809 = Windows 10.
+3. **wry 0.54 의 `create_controller` 는 `webview2_com::wait_with_pump` 로 controller 완료 callback 을 무한 대기.** controller 가 실패해도 callback 의 `error_code?` 가 결과 송신을 건너뛰어 `build()` 가 영원히 hang — 에러조차 안 남는다.
+
+### 변경
+- **`scripts/setup-webview2-runtime.ps1`** — `linkid` 를 2124701 (검증된 X64 installer) 로 교정. evergreen `EdgeWebView\Application\<ver>\` 폴더를 구조 변형 없이 통째로 `webview2-runtime\EBWebView\x64\` 로 번들. system 전체 짜깁기/평탄화 로직 폐기. architecture + controller 필수 파일(`icudtl.dat`, `resources.pak`, `v8_context_snapshot.bin`, `Locales\`)을 fail-hard 검증 (v2.6.15 fail-soft 폐기).
+- **`src-tauri/src/webview2_runtime.rs`** — `grant_app_container_access` 추가: startup 에 fixed runtime 폴더에 App Container 읽기 권한 부여 (`icacls`, SID 직접 지정, `.acl-applied` 마커로 멱등). `spawn_build_watchdog` 추가: `builder.build()` 가 60초 내 미완료 시 진단 다이얼로그 표시 후 종료 (작업관리자 강제종료 방지). `runtime_diagnostics` 추가: runtime 폴더 인벤토리 로그.
+- **`src-tauri/src/lib.rs`** — main window build 전 ACL 부여 + 진단 로그 출력, `builder.build()` 를 watchdog 으로 감쌈.
+
+### 사용자 안내
+- **이슈 #23 austinjung827** — v2.6.17 LTSC installer 재설치 후 본체 실행. UI 가 정상 표시돼야 정상. 만약 60초 후 진단 다이얼로그가 뜨면 그 내용을 캡처해 회신 — 회사 보안 정책(EDR/AppLocker) 차단으로 원인이 좁혀진다.
+
 ## [2.6.16] - 2026-05-19
 
 **LTSC 핫픽스 — WebView2 environment 생성 전 COM apartment 초기화 (이슈 #23 austinjung827 v2.6.15 후속)**

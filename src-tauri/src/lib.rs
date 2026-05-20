@@ -547,11 +547,20 @@ pub fn run() {
                 //
                 // LTSC installer 의 풀린 위치 `<exe_dir>/webview2-runtime/EBWebView/x64/`
                 // 는 detect_fixed_runtime_dir 의 우선순위 1 후보로 등록되어 있다.
+                // v2.6.17: Windows 10 + Fixed Version Runtime v120+ 는 renderer 가
+                // App Container sandbox 에서 실행되므로 runtime 폴더에 App Container
+                // 읽기 권한이 필수다 (이슈 #23). NSIS 가 푼 폴더엔 없으므로 startup
+                // 에서 보강한다. webview2_diag 는 watchdog 진단 다이얼로그에 쓰인다.
                 #[cfg(target_os = "windows")]
-                {
+                let webview2_diag: String = {
                     if let Some(runtime_dir) =
                         crate::webview2_runtime::detect_fixed_runtime_dir()
                     {
+                        let acl_ok =
+                            crate::webview2_runtime::grant_app_container_access(&runtime_dir);
+                        let diag = crate::webview2_runtime::runtime_diagnostics(&runtime_dir);
+                        tracing::info!("WebView2 fixed runtime 진단:\n{diag}");
+
                         match crate::webview2_runtime::create_environment(&runtime_dir) {
                             Ok(env) => {
                                 tracing::info!(
@@ -568,16 +577,33 @@ pub fn run() {
                                 );
                             }
                         }
+                        format!(
+                            "{diag}\nApp Container ACL: {}",
+                            if acl_ok { "OK" } else { "FAILED" }
+                        )
                     } else {
                         tracing::info!(
                             "no fixed-runtime detected near exe — relying on system WebView2 (registry detection)"
                         );
+                        "fixed runtime 미감지 — system WebView2 사용".to_string()
                     }
-                }
+                };
 
-                builder
-                    .build()
-                    .map_err(|e| format!("main window build failed: {e}"))?;
+                // builder.build() 는 wry 가 WebView2 controller 를 생성하는 단계로,
+                // controller 완료 callback 무한 대기(wait_with_pump)로 hang 할 수 있다
+                // (이슈 #23 v2.6.16). watchdog 으로 60초 후 진단 다이얼로그 + 종료.
+                #[cfg(target_os = "windows")]
+                let build_watchdog = crate::webview2_runtime::spawn_build_watchdog(
+                    std::time::Duration::from_secs(60),
+                    webview2_diag,
+                );
+
+                let build_result = builder.build();
+
+                #[cfg(target_os = "windows")]
+                build_watchdog.disarm();
+
+                build_result.map_err(|e| format!("main window build failed: {e}"))?;
             }
 
             // Create models directory
