@@ -80,6 +80,7 @@ Anything/
 | `pnpm tauri:dev` | Tauri 개발 모드 |
 | `pnpm tauri:build` | MSI 설치파일 생성 |
 | `pnpm run download-model` | ONNX 모델 다운로드 |
+| `./scripts/release.sh X.Y.Z` | 릴리즈 — 로컬 CI 검증 통과 시에만 태그 생성+푸시 |
 
 ## 개발 Phase
 
