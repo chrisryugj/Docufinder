@@ -16,7 +16,8 @@
 
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use webview2_com::CreateCoreWebView2EnvironmentCompletedHandler;
@@ -26,7 +27,8 @@ use webview2_com::Microsoft::Web::WebView2::Win32::{
 use windows::core::PCWSTR;
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE, WM_QUIT,
+    DispatchMessageW, MessageBoxW, PeekMessageW, TranslateMessage, MB_ICONERROR, MB_OK,
+    MB_SYSTEMMODAL, MSG, PM_REMOVE, WM_QUIT,
 };
 
 /// 환경 생성 대기 timeout. callback 은 일반적으로 수백 ms 안에 호출되므로 5초면
@@ -178,5 +180,199 @@ fn pump_until_recv<T>(rx: &mpsc::Receiver<T>, timeout: Duration) -> Result<T, St
                 }
             }
         }
+    }
+}
+
+/// Fixed Version Runtime 폴더에 App Container 읽기 권한을 부여한다 (Windows 10 필수).
+///
+/// WHY: WebView2 v120 부터 renderer 프로세스가 App Container sandbox 안에서
+/// 실행된다. unpackaged Win32 앱(본 앱)이 Fixed Version Runtime 을 쓸 때, runtime
+/// 폴더에 `ALL APPLICATION PACKAGES`(S-1-15-2-1) / `ALL RESTRICTED APPLICATION
+/// PACKAGES`(S-1-15-2-2) 읽기 권한이 없으면 sandbox 안 renderer 가 runtime 파일을
+/// 못 읽어 controller 생성이 hang/실패한다 (Microsoft 공식 문서
+/// microsoft-edge/webview2/concepts/distribution 의 Fixed Version 배포 절차 명시).
+/// NSIS 가 푼 폴더엔 이 ACL 이 없으므로 startup 에서 보강한다. Windows 11 / packaged
+/// 앱에는 영향 없음.
+///
+/// `.acl-applied` 마커로 멱등 처리. runtime 폴더가 앱 업데이트로 통째 교체되면
+/// 마커도 사라져 자동 재실행된다. 반환값은 ACL 부여 성공 여부 (진단용).
+pub fn grant_app_container_access(runtime_dir: &Path) -> bool {
+    let marker = runtime_dir.join(".acl-applied");
+    if marker.exists() {
+        tracing::info!("App Container ACL: 이미 적용됨 (marker present)");
+        return true;
+    }
+
+    // SID 직접 지정 — 로케일 독립적 (한글 Windows 의 "모든 애플리케이션 패키지" 등
+    // 표시 이름에 의존하지 않는다). (OI)(CI) = 하위 파일/폴더 상속, (RX) = 읽기+실행.
+    let mut all_ok = true;
+    for sid in ["*S-1-15-2-1", "*S-1-15-2-2"] {
+        match std::process::Command::new("icacls")
+            .arg(runtime_dir)
+            .arg("/grant")
+            .arg(format!("{sid}:(OI)(CI)(RX)"))
+            .args(["/T", "/C", "/Q"])
+            .output()
+        {
+            Ok(out) if out.status.success() => {
+                tracing::info!("App Container ACL 부여: {sid}");
+            }
+            Ok(out) => {
+                all_ok = false;
+                tracing::warn!(
+                    "App Container ACL 부여 실패 {sid} (exit {:?}): {}",
+                    out.status.code(),
+                    String::from_utf8_lossy(&out.stderr).trim()
+                );
+            }
+            Err(e) => {
+                all_ok = false;
+                tracing::warn!("icacls 실행 실패 {sid}: {e}");
+            }
+        }
+    }
+
+    if all_ok {
+        let _ = std::fs::write(&marker, b"v2.6.17");
+    }
+    all_ok
+}
+
+/// Fixed Version Runtime 폴더의 controller 필수 파일 존재/크기 요약 문자열.
+/// startup 로그 + watchdog 진단 다이얼로그 양쪽에서 쓴다.
+pub fn runtime_diagnostics(runtime_dir: &Path) -> String {
+    let mut lines = vec![format!("runtime: {}", runtime_dir.display())];
+
+    // controller(브라우저 자식 프로세스) 가 요구하는 핵심 파일 — 존재 + 크기.
+    for name in [
+        "msedgewebview2.exe",
+        "msedgewebview2.exe.sig",
+        "icudtl.dat",
+        "resources.pak",
+        "v8_context_snapshot.bin",
+    ] {
+        match std::fs::metadata(runtime_dir.join(name)) {
+            Ok(m) => lines.push(format!("  {name}: {} bytes", m.len())),
+            Err(_) => lines.push(format!("  {name}: MISSING")),
+        }
+    }
+
+    // EmbeddedBrowserWebView.dll 은 evergreen 구조상 EBWebView\<arch>\ 하위에 있어
+    // 재귀 탐색한다.
+    lines.push(match find_recursive(runtime_dir, "EmbeddedBrowserWebView.dll") {
+        Some((path, size)) => {
+            format!("  EmbeddedBrowserWebView.dll: {size} bytes ({})", path.display())
+        }
+        None => "  EmbeddedBrowserWebView.dll: MISSING".to_string(),
+    });
+
+    let (count, total) = dir_size(runtime_dir);
+    lines.push(format!("  total: {count} files, {} MB", total / 1_048_576));
+    lines.join("\n")
+}
+
+/// runtime_dir 하위에서 파일명이 일치하는 첫 파일의 (경로, 크기).
+fn find_recursive(root: &Path, name: &str) -> Option<(PathBuf, u64)> {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name().is_some_and(|n| n == name) {
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                return Some((path, size));
+            }
+        }
+    }
+    None
+}
+
+/// runtime_dir 하위 (파일 수, 총 바이트).
+fn dir_size(root: &Path) -> (u64, u64) {
+    let mut stack = vec![root.to_path_buf()];
+    let (mut count, mut total) = (0u64, 0u64);
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                count += 1;
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    (count, total)
+}
+
+/// `builder.build()` (wry 의 controller 생성) 가 hang 할 때를 대비한 watchdog.
+///
+/// wry 0.54 는 `CreateCoreWebView2Controller` 의 완료 callback 을
+/// `webview2_com::wait_with_pump` 로 **무한 대기**한다 (GetMessageA 블로킹). 회사
+/// 보안 정책이 브라우저 자식 프로세스를 차단하거나 runtime 이 불완전하면 callback
+/// 이 영영 안 와서 `build()` 가 영원히 멈춘다 (이슈 #23 v2.6.16). 사용자는 작업
+/// 관리자 강제 종료 외에 방법이 없다. timeout 후 진단 메시지를 띄우고 종료한다.
+pub struct BuildWatchdog {
+    done: Arc<AtomicBool>,
+}
+
+impl BuildWatchdog {
+    /// `build()` 가 (성공이든 실패든) 반환된 직후 호출해 watchdog 을 해제한다.
+    pub fn disarm(&self) {
+        self.done.store(true, Ordering::SeqCst);
+    }
+}
+
+/// `timeout` 안에 `disarm()` 이 호출되지 않으면 `diag` 를 담은 에러 다이얼로그를
+/// 띄우고 `exit(1)`.
+pub fn spawn_build_watchdog(timeout: Duration, diag: String) -> BuildWatchdog {
+    let done = Arc::new(AtomicBool::new(false));
+    let done_thread = done.clone();
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(250));
+            if done_thread.load(Ordering::SeqCst) {
+                return;
+            }
+        }
+        if done_thread.load(Ordering::SeqCst) {
+            return;
+        }
+        tracing::error!(
+            "WebView2 controller 생성이 {}s 내 미완료 — hang 판정, 종료",
+            timeout.as_secs()
+        );
+        let body = format!(
+            "WebView2 초기화가 응답하지 않습니다.\n\n\
+             WebView2 런타임은 정상 감지됐으나 브라우저 프로세스 생성 단계에서\n\
+             멈췄습니다. 회사 보안 정책(EDR / AppLocker)이 자식 프로세스 생성을\n\
+             차단하는 환경일 수 있습니다.\n\n\
+             [진단 정보]\n{diag}\n\n\
+             위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다."
+        );
+        show_error_dialog("Anything — WebView2 초기화 실패", &body);
+        std::process::exit(1);
+    });
+    BuildWatchdog { done }
+}
+
+fn show_error_dialog(title: &str, body: &str) {
+    let title_w: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+    let body_w: Vec<u16> = body.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            PCWSTR(body_w.as_ptr()),
+            PCWSTR(title_w.as_ptr()),
+            MB_OK | MB_ICONERROR | MB_SYSTEMMODAL,
+        );
     }
 }
