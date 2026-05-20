@@ -140,9 +140,12 @@ jobs:
       # 다운받아 관리자 권한으로 선설치할 수 있도록 release 에 함께 첨부.
       #
       # [v2.6.18] linkid 교정: 2099617 은 X86 installer 다 (이슈 #23 검증 —
-      # go.microsoft.com redirect 가 ...InstallerX86.exe). X64 앱용 standalone
+      # go.microsoft.com redirect 가 ...InstallerX86.exe). X64 런타임용 standalone
       # 은 linkid=2124701 (...InstallerX64.exe). 잘못된 파일명(X64.exe)으로 X86
-      # 을 올려 사용자가 x86 런타임을 깔던 배포 버그를 수정. PE 헤더로 arch 검증.
+      # 을 올려 사용자가 x86 런타임을 깔던 배포 버그를 수정.
+      # NOTE: standalone installer exe **자체**의 PE 는 x86 stub 이 정상이다 (어느
+      # 아키텍처 머신에서도 실행돼야 하므로). 설치되는 런타임 arch 는 linkid 가
+      # 결정하므로 installer exe 의 PE 검증은 무의미 — 다운로드 크기만 sanity check.
       - name: Download & upload WebView2 Standalone Installer
         if: success()
         shell: pwsh
@@ -152,19 +155,12 @@ jobs:
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           $size = (Get-Item $out).Length
-          # PE 헤더 IMAGE_FILE_HEADER.Machine 으로 X64(0x8664) 검증 — 아니면 중단.
-          $fs = [System.IO.File]::OpenRead((Resolve-Path $out))
-          $br = New-Object System.IO.BinaryReader($fs)
-          $fs.Seek(0x3C, [System.IO.SeekOrigin]::Begin) | Out-Null
-          $peOff = $br.ReadInt32()
-          $fs.Seek($peOff + 4, [System.IO.SeekOrigin]::Begin) | Out-Null
-          $machine = $br.ReadUInt16()
-          $fs.Close()
-          if ($machine -ne 0x8664) {
-            Write-Error "standalone installer 가 X64 아님 (machine=0x$($machine.ToString('X4'))) — 중단."
+          # sanity check — 정상 standalone installer 는 ~190MB. HTML 에러 페이지 등은 수 KB.
+          if ($size -lt 50MB) {
+            Write-Error "standalone installer 다운로드 비정상 ($size bytes) — 중단."
             exit 1
           }
-          Write-Host "Downloaded WebView2 X64 standalone installer: $size bytes (x64 verified)"
+          Write-Host "Downloaded WebView2 X64 standalone installer: $size bytes"
           gh release upload "${{ github.ref_name }}" $out --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
