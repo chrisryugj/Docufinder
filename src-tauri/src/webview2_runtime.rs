@@ -259,12 +259,17 @@ pub fn runtime_diagnostics(runtime_dir: &Path) -> String {
 
     // EmbeddedBrowserWebView.dll 은 evergreen 구조상 EBWebView\<arch>\ 하위에 있어
     // 재귀 탐색한다.
-    lines.push(match find_recursive(runtime_dir, "EmbeddedBrowserWebView.dll") {
-        Some((path, size)) => {
-            format!("  EmbeddedBrowserWebView.dll: {size} bytes ({})", path.display())
-        }
-        None => "  EmbeddedBrowserWebView.dll: MISSING".to_string(),
-    });
+    lines.push(
+        match find_recursive(runtime_dir, "EmbeddedBrowserWebView.dll") {
+            Some((path, size)) => {
+                format!(
+                    "  EmbeddedBrowserWebView.dll: {size} bytes ({})",
+                    path.display()
+                )
+            }
+            None => "  EmbeddedBrowserWebView.dll: MISSING".to_string(),
+        },
+    );
 
     let (count, total) = dir_size(runtime_dir);
     lines.push(format!("  total: {count} files, {} MB", total / 1_048_576));
