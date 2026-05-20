@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.6.18] - 2026-05-20
+
+**v2.6.17 후속 — 배포 버그 2건 수정 (standalone installer x86 / watchdog 문구 오도)**
+
+### 배경
+v2.6.17 출시 후 두 가지 보고:
+- 이슈 #23 austinjung827 — v2.6.17 LTSC 설치본에서 fixed runtime 은 x64 정상 + App Container ACL OK 로 확인됐으나 controller 생성에서 hang. 사내 백신 = AhnLab V3 Internet Security 9.0.
+- 메일 제보 (일반 사용자) — `Anything_2.6.17_x64-setup.exe` (일반 설치본) 실행 시 watchdog 다이얼로그. 진단: "fixed runtime 미감지 — system WebView2 사용".
+
+### 원인
+1. **release 의 standalone installer 가 x86 이었음.** `publish.yml` 의 "Download & upload WebView2 Standalone Installer" step 이 `linkid=2099617` (X86 installer) 을 받아 `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` 라는 **잘못된 파일명**으로 release 에 업로드. v2.6.17 의 `setup-webview2-runtime.ps1` 는 x64 로 교정됐으나 이 별도 step 을 놓쳤다. 이슈 #23/#24 에서 사용자에게 "이 파일을 admin 으로 설치하세요" 라고 안내한 standalone 이 x86 이었다.
+2. **watchdog 다이얼로그 문구가 fixed runtime 미감지/감지를 구분하지 않음.** "WebView2 런타임은 정상 감지됐으나..." 로 단정해, 일반 설치본(fixed runtime 미번들)을 받은 사용자에게도 보안 솔루션 차단으로 원인을 오도. 일반 설치본 사용자는 LTSC 설치본 안내가 우선이어야 한다.
+
+### 변경
+- **`.github/workflows/publish.yml`** — standalone 업로드 `linkid` 를 2124701 (검증된 X64) 로 교정. 업로드 전 PE 헤더로 architecture 검증 (X86 이면 빌드 중단).
+- **`src-tauri/src/lib.rs` · `webview2_runtime.rs`** — watchdog 다이얼로그 본문을 fixed runtime 감지 여부로 분기. 미감지(일반 설치본) → "파일명에 ltsc 가 붙은 설치본을 받으세요" 안내. 감지(LTSC, runtime 정상)인데도 hang → 안랩 V3 / EDR / AppLocker 차단 안내 + IT 부서 실행 허용 요청 항목.
+
+### 사용자 안내
+- **이슈 #23 austinjung827** — v2.6.17 LTSC 설치본에서 fixed runtime 은 완전히 정상(x64 + ACL). controller hang 은 AhnLab V3 가 `msedgewebview2.exe` 자식 프로세스 생성을 차단하는 것으로, 앱 코드로는 해결 불가. IT 부서에 `Anything.exe` / `msedgewebview2.exe` 실행·자식 프로세스 허용(예외 등록) 요청 필요.
+- **메일 제보 일반 사용자 / 이슈 #24** — `x64-ltsc-setup.exe` (WebView2 자체 포함 빌드) 로 재설치 권장.
+
 ## [2.6.17] - 2026-05-20
 
 **LTSC 핫픽스 — WebView2 controller hang 근본 해결 (이슈 #23 austinjung827 v2.6.16 후속)**
