@@ -550,9 +550,14 @@ pub fn run() {
                 // v2.6.17: Windows 10 + Fixed Version Runtime v120+ 는 renderer 가
                 // App Container sandbox 에서 실행되므로 runtime 폴더에 App Container
                 // 읽기 권한이 필수다 (이슈 #23). NSIS 가 푼 폴더엔 없으므로 startup
-                // 에서 보강한다. webview2_diag 는 watchdog 진단 다이얼로그에 쓰인다.
+                // 에서 보강한다.
+                //
+                // v2.6.18: watchdog 다이얼로그 본문을 fixed runtime 감지 여부로 분기.
+                // 미감지(일반 설치본 + system WebView2)면 LTSC 설치본 안내가 우선이고,
+                // 감지(LTSC 설치본, runtime 정상)인데도 hang 이면 보안 솔루션 차단이
+                // 유력하다 — 두 경우를 같은 문구로 묶으면 원인을 오도한다 (이슈 #23/#24).
                 #[cfg(target_os = "windows")]
-                let webview2_diag: String = {
+                let webview2_watchdog_body: String = {
                     if let Some(runtime_dir) =
                         crate::webview2_runtime::detect_fixed_runtime_dir()
                     {
@@ -577,15 +582,34 @@ pub fn run() {
                                 );
                             }
                         }
+                        // fixed runtime 정상 감지 — hang 이면 보안 솔루션 차단 유력.
                         format!(
-                            "{diag}\nApp Container ACL: {}",
+                            "WebView2 초기화가 응답하지 않습니다.\n\n\
+                             WebView2 런타임(LTSC 포함본)은 정상 감지됐으나 브라우저\n\
+                             프로세스 생성 단계에서 멈췄습니다. 안랩 V3 / AppLocker /\n\
+                             EDR 등 보안 솔루션이 자식 프로세스 생성을 차단하는 환경일\n\
+                             수 있습니다. IT 부서에 아래 실행 허용을 요청해 주세요:\n\
+                             - Anything.exe\n\
+                             - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
+                             [진단 정보]\n{diag}\nApp Container ACL: {}\n\n\
+                             위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다.",
                             if acl_ok { "OK" } else { "FAILED" }
                         )
                     } else {
                         tracing::info!(
                             "no fixed-runtime detected near exe — relying on system WebView2 (registry detection)"
                         );
-                        "fixed runtime 미감지 — system WebView2 사용".to_string()
+                        // fixed runtime 미감지 = 일반 설치본. system WebView2 의존.
+                        // 회사 / 오프라인 PC 면 LTSC 설치본이 맞다.
+                        "WebView2 초기화가 응답하지 않습니다.\n\n\
+                         이 설치본은 WebView2 런타임을 자체 포함하지 않아 시스템에 깔린\n\
+                         WebView2 에 의존합니다. 회사 / 관공서 / 오프라인 PC 에서 화면이\n\
+                         안 뜨면, 릴리스 페이지에서 파일명에 'ltsc' 가 붙은 설치본\n\
+                         (Anything_x.x.x_x64-ltsc-setup.exe — WebView2 를 자체 포함한\n\
+                         오프라인 전용 빌드) 을 받아 다시 설치해 주세요.\n\n\
+                         [진단 정보] fixed runtime 미감지 — system WebView2 경로\n\n\
+                         위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다."
+                            .to_string()
                     }
                 };
 
@@ -595,7 +619,7 @@ pub fn run() {
                 #[cfg(target_os = "windows")]
                 let build_watchdog = crate::webview2_runtime::spawn_build_watchdog(
                     std::time::Duration::from_secs(60),
-                    webview2_diag,
+                    webview2_watchdog_body,
                 );
 
                 let build_result = builder.build();

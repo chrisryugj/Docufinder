@@ -335,9 +335,11 @@ impl BuildWatchdog {
     }
 }
 
-/// `timeout` 안에 `disarm()` 이 호출되지 않으면 `diag` 를 담은 에러 다이얼로그를
-/// 띄우고 `exit(1)`.
-pub fn spawn_build_watchdog(timeout: Duration, diag: String) -> BuildWatchdog {
+/// `timeout` 안에 `disarm()` 이 호출되지 않으면 `body` 를 담은 에러 다이얼로그를
+/// 띄우고 `exit(1)`. `body` 는 호출측(lib.rs)이 fixed runtime 감지 여부에 따라
+/// 케이스별로 구성한다 — 미감지면 LTSC installer 안내, 감지(정상)면 보안 솔루션
+/// 안내. 진단 텍스트도 호출측이 `body` 에 포함시킨다.
+pub fn spawn_build_watchdog(timeout: Duration, body: String) -> BuildWatchdog {
     let done = Arc::new(AtomicBool::new(false));
     let done_thread = done.clone();
     std::thread::spawn(move || {
@@ -354,14 +356,6 @@ pub fn spawn_build_watchdog(timeout: Duration, diag: String) -> BuildWatchdog {
         tracing::error!(
             "WebView2 controller 생성이 {}s 내 미완료 — hang 판정, 종료",
             timeout.as_secs()
-        );
-        let body = format!(
-            "WebView2 초기화가 응답하지 않습니다.\n\n\
-             WebView2 런타임은 정상 감지됐으나 브라우저 프로세스 생성 단계에서\n\
-             멈췄습니다. 회사 보안 정책(EDR / AppLocker)이 자식 프로세스 생성을\n\
-             차단하는 환경일 수 있습니다.\n\n\
-             [진단 정보]\n{diag}\n\n\
-             위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다."
         );
         show_error_dialog("Anything — WebView2 초기화 실패", &body);
         std::process::exit(1);

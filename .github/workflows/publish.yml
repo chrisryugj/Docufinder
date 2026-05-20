@@ -138,17 +138,33 @@ jobs:
       # 시스템 등록 단계가 부분 실패하여 wry 가 detect 못 하는 경로가 있음
       # (회사 PC / LTSC 1809 / GPO 차단 환경 등). 이 경우 사용자가 별도로
       # 다운받아 관리자 권한으로 선설치할 수 있도록 release 에 함께 첨부.
-      # Microsoft 공식 stable URL (linkid=2099617) → unmodified 재배포 허용.
+      #
+      # [v2.6.18] linkid 교정: 2099617 은 X86 installer 다 (이슈 #23 검증 —
+      # go.microsoft.com redirect 가 ...InstallerX86.exe). X64 앱용 standalone
+      # 은 linkid=2124701 (...InstallerX64.exe). 잘못된 파일명(X64.exe)으로 X86
+      # 을 올려 사용자가 x86 런타임을 깔던 배포 버그를 수정. PE 헤더로 arch 검증.
       - name: Download & upload WebView2 Standalone Installer
         if: success()
         shell: pwsh
         run: |
-          $url = "https://go.microsoft.com/fwlink/?linkid=2099617"
+          $url = "https://go.microsoft.com/fwlink/?linkid=2124701"
           $out = "MicrosoftEdgeWebView2RuntimeInstallerX64.exe"
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
           Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
           $size = (Get-Item $out).Length
-          Write-Host "Downloaded WebView2 standalone installer: $size bytes"
+          # PE 헤더 IMAGE_FILE_HEADER.Machine 으로 X64(0x8664) 검증 — 아니면 중단.
+          $fs = [System.IO.File]::OpenRead((Resolve-Path $out))
+          $br = New-Object System.IO.BinaryReader($fs)
+          $fs.Seek(0x3C, [System.IO.SeekOrigin]::Begin) | Out-Null
+          $peOff = $br.ReadInt32()
+          $fs.Seek($peOff + 4, [System.IO.SeekOrigin]::Begin) | Out-Null
+          $machine = $br.ReadUInt16()
+          $fs.Close()
+          if ($machine -ne 0x8664) {
+            Write-Error "standalone installer 가 X64 아님 (machine=0x$($machine.ToString('X4'))) — 중단."
+            exit 1
+          }
+          Write-Host "Downloaded WebView2 X64 standalone installer: $size bytes (x64 verified)"
           gh release upload "${{ github.ref_name }}" $out --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
