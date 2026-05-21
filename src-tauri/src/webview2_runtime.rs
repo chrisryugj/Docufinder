@@ -96,7 +96,10 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
 ///
 /// setup() 콜백은 Tauri 가 main thread 에서 호출하며, 우리가 직접 펌프를 돌리므로
 /// winit/tao event loop 시작 여부와 무관하게 동작.
-pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment, String> {
+pub fn create_environment(
+    browser_dir: &Path,
+    user_data_dir: &Path,
+) -> Result<ICoreWebView2Environment, String> {
     // v2.6.16: WebView2 environment 생성 API 는 COM 기반이라 호출 thread 가
     // CoInitializeEx 로 STA apartment 초기화돼 있어야 한다. Tauri setup() 시점의
     // main thread 는 winit/tao event loop 가 아직 시작되지 않아 COM 미초기화 상태일
@@ -112,6 +115,11 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
     }
 
     let browser_wide: Vec<u16> = browser_dir
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let user_data_wide: Vec<u16> = user_data_dir
         .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))
@@ -136,7 +144,7 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
     unsafe {
         CreateCoreWebView2EnvironmentWithOptions(
             PCWSTR(browser_wide.as_ptr()),
-            PCWSTR::null(),
+            PCWSTR(user_data_wide.as_ptr()),
             None,
             &handler,
         )
@@ -144,6 +152,38 @@ pub fn create_environment(browser_dir: &Path) -> Result<ICoreWebView2Environment
     }
 
     pump_until_recv(&rx, CREATE_ENV_TIMEOUT)?
+}
+
+/// WebView2 loader 는 `CreateCoreWebView2EnvironmentWithOptions` 인자보다
+/// `WEBVIEW2_*` 환경변수와 Edge WebView2 group policy registry 를 우선한다.
+/// 회사 PC / VDI 에 남은 정책 또는 예전 workaround 환경변수가 있으면 우리가 넘긴
+/// fixed-runtime 경로가 무시될 수 있으므로, 이 프로세스 안에서는 명시적으로
+/// LTSC 포함 런타임을 우선시한다.
+pub fn force_process_overrides(browser_dir: &Path, user_data_dir: &Path) {
+    unsafe {
+        std::env::set_var(
+            "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+            browser_dir.as_os_str(),
+        );
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", user_data_dir.as_os_str());
+    }
+}
+
+pub fn process_override_diagnostics() -> String {
+    [
+        "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+        "WEBVIEW2_USER_DATA_FOLDER",
+        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+        "WEBVIEW2_CHANNEL_SEARCH_KIND",
+        "WEBVIEW2_RELEASE_CHANNELS",
+    ]
+    .into_iter()
+    .map(|name| match std::env::var_os(name) {
+        Some(value) => format!("  {name}: {}", value.to_string_lossy()),
+        None => format!("  {name}: <unset>"),
+    })
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 /// Non-blocking Win32 message pump + bounded `recv_timeout` 조합. callback 이
@@ -257,19 +297,37 @@ pub fn runtime_diagnostics(runtime_dir: &Path) -> String {
         }
     }
 
-    // EmbeddedBrowserWebView.dll 은 evergreen 구조상 EBWebView\<arch>\ 하위에 있어
-    // 재귀 탐색한다.
-    lines.push(
-        match find_recursive(runtime_dir, "EmbeddedBrowserWebView.dll") {
-            Some((path, size)) => {
-                format!(
-                    "  EmbeddedBrowserWebView.dll: {size} bytes ({})",
-                    path.display()
-                )
-            }
-            None => "  EmbeddedBrowserWebView.dll: MISSING".to_string(),
-        },
-    );
+    // EmbeddedBrowserWebView.dll 은 EBWebView\<arch>\ 하위에 있다. x86 도 같이
+    // 들어있으므로 재귀 탐색의 "첫 파일"을 찍으면 x86 으로 오진할 수 있다.
+    for rel in [
+        ["EBWebView", "x64", "EmbeddedBrowserWebView.dll"],
+        ["EBWebView", "x86", "EmbeddedBrowserWebView.dll"],
+    ] {
+        let path = runtime_dir.join(rel[0]).join(rel[1]).join(rel[2]);
+        match std::fs::metadata(&path) {
+            Ok(m) => lines.push(format!(
+                "  {}/{}/{}: {} bytes",
+                rel[0],
+                rel[1],
+                rel[2],
+                m.len()
+            )),
+            Err(_) => lines.push(format!("  {}/{}/{}: MISSING", rel[0], rel[1], rel[2])),
+        }
+    }
+    if !runtime_dir
+        .join("EBWebView")
+        .join("x64")
+        .join("EmbeddedBrowserWebView.dll")
+        .is_file()
+    {
+        if let Some((path, size)) = find_recursive(runtime_dir, "EmbeddedBrowserWebView.dll") {
+            lines.push(format!(
+                "  EmbeddedBrowserWebView.dll first recursive hit: {size} bytes ({})",
+                path.display()
+            ));
+        }
+    }
 
     let (count, total) = dir_size(runtime_dir);
     lines.push(format!("  total: {count} files, {} MB", total / 1_048_576));
