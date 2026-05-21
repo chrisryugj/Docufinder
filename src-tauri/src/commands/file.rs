@@ -18,7 +18,12 @@ fn windows_system32(exe: &str) -> std::path::PathBuf {
 fn open_with_default(path_str: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        Command::new(windows_system32("explorer.exe"))
+        // explorer.exe 는 System32 가 아니라 Windows 디렉토리 루트에 있다.
+        // windows_system32 로 만들면 C:\Windows\System32\explorer.exe — 부재
+        // 경로라 spawn 이 항상 실패한다 (PATH hijack 방지 커밋 #28 의 회귀로
+        // 파일/폴더/로그폴더 열기가 모두 깨져 있었음).
+        let win_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
+        Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
             .arg(path_str)
             .spawn()
             .map_err(|e| format!("열기 실패: {}", e))?;
