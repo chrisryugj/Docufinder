@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.6.19] - 2026-05-21
+
+**버그 수정 — 파일/폴더/로그폴더 열기가 모두 실패하던 회귀 (#28 PATH hijack 방지 커밋의 회귀)**
+
+### 원인
+`87ea2b7` ("prod review 1차 — PATH hijack 방지", #28) 가 Windows 시스템 실행파일을 System32 절대경로로 호출하도록 바꿨는데, `explorer.exe` 는 `System32` 가 아니라 Windows 디렉토리 루트(`C:\Windows\explorer.exe`)에 있다. `windows_system32("explorer.exe")` 가 부재 경로(`C:\Windows\System32\explorer.exe`)를 만들어 `Command::spawn()` 이 항상 실패했다.
+
+`open_with_default` 헬퍼를 쓰는 모든 기능 — **파일 열기**(PDF 가 아니거나 SumatraPDF 미설치 시), **폴더 열기**, **로그 폴더 열기** — 가 v2.6.0 ~ v2.6.18 내내 깨져 있었다 ("열기 실패" / "폴더 열기 실패").
+
+### 변경
+- **`src-tauri/src/commands/file.rs::open_with_default`** — `explorer.exe` 를 `%SystemRoot%\explorer.exe` (Windows 디렉토리 루트) 로 호출. `windows_system32` 헬퍼는 `where.exe` / `rundll32.exe` 에는 올바르므로 그대로 유지.
+
 ## [2.6.18] - 2026-05-20
 
 **v2.6.17 후속 — 배포 버그 2건 수정 (standalone installer x86 / watchdog 문구 오도)**
