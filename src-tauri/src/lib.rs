@@ -561,12 +561,34 @@ pub fn run() {
                     if let Some(runtime_dir) =
                         crate::webview2_runtime::detect_fixed_runtime_dir()
                     {
+                        let override_before =
+                            crate::webview2_runtime::process_override_diagnostics();
+                        let webview2_user_data_dir = app_data_dir.join("webview2-user-data");
+                        if let Err(e) = std::fs::create_dir_all(&webview2_user_data_dir) {
+                            tracing::warn!(
+                                "WebView2 user data dir 생성 실패 {}: {e}",
+                                webview2_user_data_dir.display()
+                            );
+                        }
+                        crate::webview2_runtime::force_process_overrides(
+                            &runtime_dir,
+                            &webview2_user_data_dir,
+                        );
+                        let override_after =
+                            crate::webview2_runtime::process_override_diagnostics();
+                        tracing::info!(
+                            "WebView2 process override before:\n{override_before}\nWebView2 process override after:\n{override_after}"
+                        );
+
                         let acl_ok =
                             crate::webview2_runtime::grant_app_container_access(&runtime_dir);
                         let diag = crate::webview2_runtime::runtime_diagnostics(&runtime_dir);
                         tracing::info!("WebView2 fixed runtime 진단:\n{diag}");
 
-                        match crate::webview2_runtime::create_environment(&runtime_dir) {
+                        match crate::webview2_runtime::create_environment(
+                            &runtime_dir,
+                            &webview2_user_data_dir,
+                        ) {
                             Ok(env) => {
                                 tracing::info!(
                                     "WebView2 fixed runtime detected at {} — environment injected",
@@ -591,7 +613,8 @@ pub fn run() {
                              수 있습니다. IT 부서에 아래 실행 허용을 요청해 주세요:\n\
                              - Anything.exe\n\
                              - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
-                             [진단 정보]\n{diag}\nApp Container ACL: {}\n\n\
+                             [진단 정보]\n{diag}\nApp Container ACL: {}\n\
+                             Process overrides:\n{override_after}\n\n\
                              위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다.",
                             if acl_ok { "OK" } else { "FAILED" }
                         )

@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.6.20] - 2026-05-21
+
+**LTSC/WebView2 핫픽스 — fixed runtime 경로가 환경변수·정책 override 에 덮이는 잔여 케이스 차단 (#24)**
+
+### 원인
+이슈 #24 최신 로그는 LTSC 설치본 안의 `webview2-runtime\EBWebView\x64` 폴더와 핵심 파일이 존재하는데도 `CreateCoreWebView2EnvironmentWithOptions` 가 `0x80070002` 로 실패했다. Microsoft WebView2 loader 는 API 인자보다 `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` / `WEBVIEW2_USER_DATA_FOLDER` 환경변수와 Edge WebView2 group policy registry 를 우선하므로, 회사 PC·VDI·이전 workaround 에 남은 override 가 앱이 넘긴 fixed runtime 경로를 무시하게 만들 수 있었다.
+
+기존 코드는 fixed runtime 생성 실패 시 system runtime 으로 fallback 해서, 결국 같은 "WebView2 Runtime not found" 다이얼로그로 돌아갔다.
+
+### 변경
+- **`src-tauri/src/webview2_runtime.rs`** — fixed runtime 감지 후 프로세스 범위 `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` / `WEBVIEW2_USER_DATA_FOLDER` 를 앱 포함 런타임과 앱 데이터 폴더로 명시 설정. environment 생성 호출에도 동일한 user data folder 를 전달.
+- **`src-tauri/src/lib.rs`** — override 전/후 값을 로그와 watchdog 진단에 남겨, 사용자 환경변수·정책 개입 여부를 다음 로그에서 바로 확인 가능하게 함.
+- **`runtime_diagnostics`** — `EmbeddedBrowserWebView.dll` 을 x64/x86 별도로 출력. fixed runtime 패키지에는 두 architecture 파일이 모두 있으므로, 재귀 탐색의 첫 결과가 x86 으로 찍혀 원인을 오진하던 진단 노이즈를 제거.
+
 ## [2.6.19] - 2026-05-21
 
 **버그 수정 — 파일/폴더/로그폴더 열기가 모두 실패하던 회귀 (#28 PATH hijack 방지 커밋의 회귀)**
