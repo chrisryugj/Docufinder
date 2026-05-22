@@ -604,13 +604,19 @@ pub fn run() {
                                 );
                             }
                         }
-                        // fixed runtime 정상 감지 — hang 이면 보안 솔루션 차단 유력.
+                        // fixed runtime 정상 감지 — hang 이면 controller 생성 단계에서
+                        // msedgewebview2 자식 프로세스 실행 또는 runtime 파일 접근이
+                        // 막힌 상태다. Defender Controlled Folder Access / AppLocker /
+                        // EDR / App Container ACL 누락 등 여러 경로가 가능하므로
+                        // 보안 솔루션 하나로 단정하지 않는다.
                         format!(
                             "WebView2 초기화가 응답하지 않습니다.\n\n\
-                             WebView2 런타임(LTSC 포함본)은 정상 감지됐으나 브라우저\n\
-                             프로세스 생성 단계에서 멈췄습니다. 안랩 V3 / AppLocker /\n\
-                             EDR 등 보안 솔루션이 자식 프로세스 생성을 차단하는 환경일\n\
-                             수 있습니다. IT 부서에 아래 실행 허용을 요청해 주세요:\n\
+                             WebView2 런타임(LTSC 포함본)은 정상 감지됐고 environment\n\
+                             생성도 완료됐으나, 브라우저 controller 생성 단계가 끝나지\n\
+                             않았습니다. Windows Defender 차단 기록, AppLocker, EDR,\n\
+                             Controlled Folder Access 또는 App Container 권한 문제로\n\
+                             자식 프로세스 실행/파일 접근이 막힌 상태일 수 있습니다.\n\
+                             아래 실행 파일을 허용 목록에 추가해 주세요:\n\
                              - Anything.exe\n\
                              - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
                              [진단 정보]\n{diag}\nApp Container ACL: {}\n\

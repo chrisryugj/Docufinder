@@ -172,9 +172,15 @@ jobs:
       # 같은 수동 단계 0. lib.rs::webview2_runtime 가 설치 후 EBWebView 를 detect 해
       # 직접 만든 ICoreWebView2Environment 를 wry 에 inject.
       #
-      # v2.5.27 의 webviewInstallMode:fixedRuntime 회귀를 피하기 위해 그 모드는 안 쓰고
-      # bundle.resources 일반 파일로 EBWebView 를 추가 (kordoc/vcredist 처리 경로와 동일).
-      - name: Prepare EBWebView for LTSC variant (copy runner Edge → src-tauri/resources/)
+      # [v2.6.21] CI runner 에 Evergreen Runtime 을 설치한 뒤 Application 폴더를 복사하는
+      # 방식 대신, Microsoft 공식 Fixed Version Runtime CAB 를 직접 다운로드/추출해
+      # bundle 한다. issue #24 에서 Evergreen 복사본은 environment 생성 후 controller
+      # 단계에서 hang 이 남았다.
+      #
+      # tauri.windows-ltsc.conf.json 의 webviewInstallMode:fixedRuntime 은
+      # webview2-runtime/ 폴더를 NSIS 에 포함시키는 용도로만 쓴다. 런타임 선택은
+      # 앱 시작 시 lib.rs::webview2_runtime 이 직접 environment 를 생성해 주입한다.
+      - name: Prepare WebView2 Fixed Version Runtime for LTSC variant
         if: success()
         shell: pwsh
         run: ./scripts/setup-webview2-runtime.ps1
