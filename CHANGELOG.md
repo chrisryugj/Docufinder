@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.6.21] - 2026-05-22
+
+**LTSC/WebView2 핫픽스 — environment 생성 성공 후 controller hang 잔여 케이스 대응 (#24)**
+
+### 원인
+v2.6.20 최신 로그에서 fixed runtime 경로 override 와 `CreateCoreWebView2EnvironmentWithOptions` 는 성공했다. 즉 이전 `0x80070002` 단계는 통과했지만, 다음 단계인 WebView2 controller 생성이 60초 내 완료되지 않았다.
+
+LTSC 빌드는 그동안 CI runner 에 Evergreen Runtime 을 silent install 한 뒤 `%ProgramFiles(x86)%\Microsoft\EdgeWebView\Application\<version>\` 폴더를 복사해 번들했다. 이 폴더는 시스템 WebView2 런타임으로는 동작하지만, 앱과 함께 배포하는 self-contained 런타임으로는 Microsoft 가 제공하는 **Fixed Version Runtime CAB** 를 직접 쓰는 편이 맞다. 또한 기존 `.acl-applied` 마커가 남으면 App Container ACL 재부여를 스킵해, 덮어쓰기 설치/런타임 교체 후 실제 권한 상태를 다시 보강하지 못할 수 있었다.
+
+### 변경
+- **`scripts/setup-webview2-runtime.ps1`** — Evergreen standalone installer 설치 결과 복사 방식을 폐기하고, Microsoft 공식 Fixed Version Runtime x64 CAB (`148.0.3967.83`) 를 직접 다운로드/추출해 `webview2-runtime\EBWebView\x64\` 로 번들한다.
+- **`src-tauri/src/webview2_runtime.rs`** — `.acl-applied` 마커가 있어도 LTSC runtime 감지 시 App Container ACL 을 매번 재부여한다. `icacls /grant` 는 멱등이고, stale marker 로 권한 보강을 놓치는 위험을 제거한다.
+- **진단 로그** — `msedge.dll` / `msedge.dll.sig` 도 runtime diagnostics 에 포함해 Fixed Version Runtime 핵심 파일 누락 여부를 더 명확히 확인한다.
+- **watchdog 문구** — controller hang 을 특정 백신으로 단정하지 않고, Defender Controlled Folder Access / AppLocker / EDR / App Container ACL 등 자식 프로세스 실행·파일 접근 차단 후보로 안내한다.
+
 ## [2.6.20] - 2026-05-21
 
 **LTSC/WebView2 핫픽스 — fixed runtime 경로가 환경변수·정책 override 에 덮이는 잔여 케이스 차단 (#24)**

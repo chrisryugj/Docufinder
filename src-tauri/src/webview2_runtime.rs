@@ -234,13 +234,15 @@ fn pump_until_recv<T>(rx: &mpsc::Receiver<T>, timeout: Duration) -> Result<T, St
 /// NSIS 가 푼 폴더엔 이 ACL 이 없으므로 startup 에서 보강한다. Windows 11 / packaged
 /// 앱에는 영향 없음.
 ///
-/// `.acl-applied` 마커로 멱등 처리. runtime 폴더가 앱 업데이트로 통째 교체되면
-/// 마커도 사라져 자동 재실행된다. 반환값은 ACL 부여 성공 여부 (진단용).
+/// v2.6.21: `.acl-applied` 마커만 보고 스킵하지 않는다. 사용자 환경에서 기존
+/// 마커가 남아 있는데 controller 생성이 hang 난 사례가 확인되어, LTSC runtime
+/// 감지 시마다 ACL 을 다시 부여한다. `icacls /grant` 는 같은 ACE 에 대해 멱등이며,
+/// stale marker 때문에 실제 권한 보강을 놓치는 것보다 startup 1~2초 비용이 낫다.
+/// 반환값은 ACL 부여 성공 여부 (진단용).
 pub fn grant_app_container_access(runtime_dir: &Path) -> bool {
     let marker = runtime_dir.join(".acl-applied");
     if marker.exists() {
-        tracing::info!("App Container ACL: 이미 적용됨 (marker present)");
-        return true;
+        tracing::info!("App Container ACL marker present — 재검증/재부여 진행");
     }
 
     // SID 직접 지정 — 로케일 독립적 (한글 Windows 의 "모든 애플리케이션 패키지" 등
@@ -273,7 +275,7 @@ pub fn grant_app_container_access(runtime_dir: &Path) -> bool {
     }
 
     if all_ok {
-        let _ = std::fs::write(&marker, b"v2.6.17");
+        let _ = std::fs::write(&marker, b"v2.6.21");
     }
     all_ok
 }
@@ -287,6 +289,8 @@ pub fn runtime_diagnostics(runtime_dir: &Path) -> String {
     for name in [
         "msedgewebview2.exe",
         "msedgewebview2.exe.sig",
+        "msedge.dll",
+        "msedge.dll.sig",
         "icudtl.dat",
         "resources.pak",
         "v8_context_snapshot.bin",
