@@ -60,6 +60,7 @@ src-tauri/resources/kordoc/
 src-tauri/resources/onnxruntime/libonnxruntime.dylib
 # WebView2 fixed runtime — CI 빌드 시 setup-webview2-runtime.ps1 가 생성 (~500MB)
 src-tauri/webview2-runtime/
+src-tauri/resources/webview2-runtime/
 
 # Promo video (Remotion)
 promo-video/node_modules/

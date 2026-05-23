@@ -14,6 +14,7 @@
 //! 생성하고, Tauri 의 `WebviewWindowBuilder::with_environment` 로 inject 한다.
 //! registry / installer scope 와 무관하게 동작.
 
+use std::cmp::Ordering as CmpOrdering;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -56,7 +57,18 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
 
     let mut candidates: Vec<PathBuf> = Vec::with_capacity(16);
-    // 우선순위 1: LTSC installer 가 풀어두는 정식 위치
+    // 우선순위 1: v2.6.23+ LTSC installer 가 Tauri fixedRuntime env override 없이
+    // 일반 resource 로 포함시키는 위치. Tauri fixedRuntime 은 프로세스 시작 전에
+    // WEBVIEW2_BROWSER_EXECUTABLE_FOLDER 를 박아 넣어 system runtime fallback 까지
+    // 오염시킬 수 있으므로 더 이상 쓰지 않는다.
+    candidates.push(
+        exe_dir
+            .join("resources")
+            .join("webview2-runtime")
+            .join("EBWebView")
+            .join("x64"),
+    );
+    // 우선순위 2: v2.6.21~v2.6.22 LTSC installer 가 풀어두던 위치
     // (이슈 #24 JS190-prog 로그 상 `webview2-runtime/EBWebView/x64/` 로 풀림 확인).
     candidates.push(
         exe_dir
@@ -64,18 +76,20 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
             .join("EBWebView")
             .join("x64"),
     );
-    // 우선순위 2: EBWebView 폴더만 평면으로 풀어둠.
+    // 우선순위 3: EBWebView 폴더만 평면으로 풀어둠.
     candidates.push(exe_dir.join("EBWebView").join("x64"));
     candidates.push(exe_dir.join("EBWebView"));
-    // 우선순위 3: exe 와 같은 폴더에 직접.
+    // 우선순위 4: exe 와 같은 폴더에 직접.
     candidates.push(exe_dir.to_path_buf());
-    // 우선순위 4: sub dir 한 단계 안 + 그 안의 `EBWebView/x64/` 도 함께.
+    // 우선순위 5: sub dir 한 단계 안 + 그 안의 `EBWebView/x64/` 도 함께.
     if let Ok(entries) = std::fs::read_dir(exe_dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 let p = entry.path();
-                // webview2-runtime 은 우선순위 1 에서 명시 확인됐으므로 skip.
-                if p.file_name().is_some_and(|n| n == "webview2-runtime") {
+                // 명시 후보는 위에서 이미 확인했으므로 skip.
+                if p.file_name()
+                    .is_some_and(|n| n == "webview2-runtime" || n == "resources")
+                {
                     continue;
                 }
                 candidates.push(p.join("EBWebView").join("x64"));
@@ -87,6 +101,50 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     candidates
         .into_iter()
         .find(|c| c.join("msedgewebview2.exe").is_file())
+}
+
+pub fn fixed_runtime_version(runtime_dir: &Path) -> Option<String> {
+    std::fs::read_to_string(runtime_dir.join("VERSION.txt"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+pub fn should_prefer_system_runtime(system_version: &str, fixed_version: Option<&str>) -> bool {
+    match fixed_version.and_then(|fixed| compare_versions(system_version, fixed)) {
+        Some(CmpOrdering::Greater) => true,
+        Some(CmpOrdering::Equal | CmpOrdering::Less) => false,
+        None => true,
+    }
+}
+
+fn compare_versions(left: &str, right: &str) -> Option<CmpOrdering> {
+    let left_parts = parse_version(left)?;
+    let right_parts = parse_version(right)?;
+    let max_len = left_parts.len().max(right_parts.len());
+
+    for idx in 0..max_len {
+        let l = *left_parts.get(idx).unwrap_or(&0);
+        let r = *right_parts.get(idx).unwrap_or(&0);
+        match l.cmp(&r) {
+            CmpOrdering::Equal => {}
+            ord => return Some(ord),
+        }
+    }
+
+    Some(CmpOrdering::Equal)
+}
+
+fn parse_version(version: &str) -> Option<Vec<u64>> {
+    let mut parts = Vec::new();
+    for raw in version.split('.') {
+        let digits: String = raw.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            return None;
+        }
+        parts.push(digits.parse().ok()?);
+    }
+    Some(parts)
 }
 
 /// Detect a system-registered WebView2 Runtime while ignoring Tauri's
@@ -420,6 +478,7 @@ pub fn runtime_diagnostics(runtime_dir: &Path) -> String {
 
     // controller(브라우저 자식 프로세스) 가 요구하는 핵심 파일 — 존재 + 크기.
     for name in [
+        "VERSION.txt",
         "msedgewebview2.exe",
         "msedgewebview2.exe.sig",
         "msedge.dll",
