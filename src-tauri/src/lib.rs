@@ -536,14 +536,17 @@ pub fn run() {
                 )
                 .map_err(|e| format!("WebviewWindowBuilder::from_config failed: {e}"))?;
 
-                // Windows: fixed-runtime 폴더가 감지되면 직접 environment 만들어
-                // with_environment 로 wry 에 명시 inject. v2.6.5 LTSC 가 fail 한
-                // 원인 분석 결과 (이슈 #24) Tauri 의 `webviewInstallMode:fixedRuntime`
-                // 모드는 NSIS bundle 만 해주고 wry 에 path 를 전달하는 런타임 코드는
-                // 없음 (`tauri-bundler` nsis template: fixedRuntime → 빈 분기,
-                // `tauri-runtime-wry`: webview_attributes.environment 가 Some 일 때만
-                // wry 의 with_environment 호출). 따라서 LTSC build 도 이 inject
-                // 메커니즘을 통해야 동작 — DOCUFINDER_LTSC_BUILD 가드 제거.
+                // Windows: LTSC installer 에 fixed-runtime 폴더가 있어도 시스템
+                // WebView2 Runtime 이 정상 등록된 PC에서는 시스템 런타임을 우선 사용한다.
+                // 집 PC에서 v2.6.1/2.6.2 가 됐다가 LTSC 설치본에서만 실패한 이유가 이
+                // 차이다. 시스템 런타임이 없거나 강제 플래그가 있을 때만 직접 만든
+                // ICoreWebView2Environment 를 with_environment 로 wry 에 주입한다.
+                //
+                // Tauri 의 `webviewInstallMode:fixedRuntime` 는 프로세스 시작 전
+                // WEBVIEW2_BROWSER_EXECUTABLE_FOLDER 를 설정하지만, 설정 경로가
+                // webview2-runtime/ 부모 폴더라 현재 CAB 레이아웃의 실제
+                // msedgewebview2.exe 위치(EBWebView/x64)와 맞지 않는다. 그래서
+                // fixed-runtime fallback 에서는 런타임 경로와 UDF를 직접 지정한다.
                 //
                 // LTSC installer 의 풀린 위치 `<exe_dir>/webview2-runtime/EBWebView/x64/`
                 // 는 detect_fixed_runtime_dir 의 우선순위 1 후보로 등록되어 있다.
@@ -561,84 +564,160 @@ pub fn run() {
                     if let Some(runtime_dir) =
                         crate::webview2_runtime::detect_fixed_runtime_dir()
                     {
-                        let override_before =
-                            crate::webview2_runtime::process_override_diagnostics();
-                        let webview2_user_data_dir = app_data_dir.join("webview2-user-data");
-                        if let Err(e) = std::fs::create_dir_all(&webview2_user_data_dir) {
-                            tracing::warn!(
-                                "WebView2 user data dir 생성 실패 {}: {e}",
-                                webview2_user_data_dir.display()
-                            );
-                        }
-                        crate::webview2_runtime::force_process_overrides(
-                            &runtime_dir,
-                            &webview2_user_data_dir,
-                        );
-                        let override_after =
-                            crate::webview2_runtime::process_override_diagnostics();
-                        tracing::info!(
-                            "WebView2 process override before:\n{override_before}\nWebView2 process override after:\n{override_after}"
-                        );
+                        let force_fixed =
+                            std::env::var_os("DOCUFINDER_FORCE_FIXED_WEBVIEW2").is_some();
+                        let system_status = if force_fixed {
+                            Err("DOCUFINDER_FORCE_FIXED_WEBVIEW2=1".to_string())
+                        } else {
+                            crate::webview2_runtime::detect_system_runtime_version_ignoring_overrides()
+                        };
 
-                        let acl_ok =
-                            crate::webview2_runtime::grant_app_container_access(&runtime_dir);
-                        let diag = crate::webview2_runtime::runtime_diagnostics(&runtime_dir);
-                        tracing::info!("WebView2 fixed runtime 진단:\n{diag}");
-
-                        match crate::webview2_runtime::create_environment(
-                            &runtime_dir,
-                            &webview2_user_data_dir,
-                        ) {
-                            Ok(env) => {
+                        match system_status {
+                            Ok(version) => {
+                                crate::webview2_runtime::clear_process_overrides();
+                                let override_after =
+                                    crate::webview2_runtime::process_override_diagnostics();
                                 tracing::info!(
-                                    "WebView2 fixed runtime detected at {} — environment injected",
+                                    "System WebView2 Runtime available ({version}) — using system runtime instead of bundled fixed runtime at {}",
                                     runtime_dir.display()
                                 );
-                                builder = builder.with_environment(env);
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    "WebView2 fixed runtime present at {} but environment creation failed: {} — falling back to system runtime",
-                                    runtime_dir.display(),
-                                    e
+                                tracing::info!(
+                                    "WebView2 process override after system runtime selection:\n{override_after}"
                                 );
+
+                                format!(
+                                    "WebView2 초기화가 응답하지 않습니다.\n\n\
+                                     시스템 WebView2 Runtime({version})이 정상 등록되어 있어\n\
+                                     LTSC 포함 런타임 대신 시스템 런타임으로 시작했습니다.\n\
+                                     그래도 controller 생성이 끝나지 않았으므로 WebView2\n\
+                                     프로세스 생성/프로필 쓰기/보안 정책 쪽을 확인해야 합니다.\n\n\
+                                     [진단 정보]\nSystem WebView2 Runtime: {version}\n\
+                                     Bundled fixed runtime: {}\n\
+                                     Process overrides:\n{override_after}\n\n\
+                                     위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다.",
+                                    runtime_dir.display()
+                                )
+                            }
+                            Err(system_reason) => {
+                                if force_fixed {
+                                    tracing::info!(
+                                        "System WebView2 Runtime bypassed ({system_reason}) — using bundled fixed runtime at {}",
+                                        runtime_dir.display()
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        "System WebView2 Runtime unavailable ({system_reason}) — using bundled fixed runtime at {}",
+                                        runtime_dir.display()
+                                    );
+                                }
+
+                                let webview2_user_data_dir = match app.path().app_local_data_dir() {
+                                    Ok(dir) => dir.join("webview2-user-data"),
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "app_local_data_dir 확보 실패, app_data_dir로 fallback: {e}"
+                                        );
+                                        app_data_dir.join("webview2-user-data")
+                                    }
+                                };
+                                let udf_ok = crate::webview2_runtime::prepare_user_data_dir(
+                                    &webview2_user_data_dir,
+                                );
+                                builder = builder.data_directory(webview2_user_data_dir.clone());
+
+                                let override_before =
+                                    crate::webview2_runtime::process_override_diagnostics();
+                                crate::webview2_runtime::force_process_overrides(
+                                    &runtime_dir,
+                                    &webview2_user_data_dir,
+                                );
+                                let override_after =
+                                    crate::webview2_runtime::process_override_diagnostics();
+                                tracing::info!(
+                                    "WebView2 process override before:\n{override_before}\nWebView2 process override after:\n{override_after}"
+                                );
+
+                                let runtime_acl_ok =
+                                    crate::webview2_runtime::grant_app_container_access(
+                                        &runtime_dir,
+                                    );
+                                let runtime_diag =
+                                    crate::webview2_runtime::runtime_diagnostics(&runtime_dir);
+                                let udf_diag = crate::webview2_runtime::user_data_diagnostics(
+                                    &webview2_user_data_dir,
+                                );
+                                tracing::info!("WebView2 fixed runtime 진단:\n{runtime_diag}");
+                                tracing::info!("WebView2 user data dir 진단:\n{udf_diag}");
+
+                                let mut env_injected = false;
+                                match crate::webview2_runtime::create_environment(
+                                    &runtime_dir,
+                                    &webview2_user_data_dir,
+                                ) {
+                                    Ok(env) => {
+                                        tracing::info!(
+                                            "WebView2 fixed runtime detected at {} — environment injected",
+                                            runtime_dir.display()
+                                        );
+                                        builder = builder.with_environment(env);
+                                        env_injected = true;
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "WebView2 fixed runtime present at {} but environment creation failed: {}",
+                                            runtime_dir.display(),
+                                            e
+                                        );
+                                        if !force_fixed {
+                                            crate::webview2_runtime::clear_process_overrides();
+                                        }
+                                    }
+                                }
+
+                                // fixed runtime 정상 감지 — hang 이면 controller 생성 단계에서
+                                // msedgewebview2 자식 프로세스 실행, runtime 읽기 또는 UDF
+                                // 쓰기가 막힌 상태다.
+                                format!(
+                                    "WebView2 초기화가 응답하지 않습니다.\n\n\
+                                     시스템 WebView2 Runtime을 찾지 못해 LTSC 포함 런타임으로\n\
+                                     시작했습니다. 포함 런타임과 User Data Folder 권한을\n\
+                                     보강했지만 controller 생성 단계가 끝나지 않았습니다.\n\
+                                     Windows Defender 차단 기록, AppLocker, EDR, Controlled\n\
+                                     Folder Access 또는 App Container 권한 문제를 확인해야 합니다.\n\
+                                     아래 실행 파일을 허용 목록에 추가해 주세요:\n\
+                                     - Anything.exe\n\
+                                     - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
+                                     [진단 정보]\nSystem WebView2 Runtime: {system_reason}\n\
+                                     Fixed environment injected: {env_injected}\n\
+                                     Runtime ACL: {}\nUDF ACL: {}\n\
+                                     {runtime_diag}\n\n{udf_diag}\n\
+                                     Process overrides:\n{override_after}\n\n\
+                                     위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다.",
+                                    if runtime_acl_ok { "OK" } else { "FAILED" },
+                                    if udf_ok { "OK" } else { "FAILED" }
+                                )
                             }
                         }
-                        // fixed runtime 정상 감지 — hang 이면 controller 생성 단계에서
-                        // msedgewebview2 자식 프로세스 실행 또는 runtime 파일 접근이
-                        // 막힌 상태다. Defender Controlled Folder Access / AppLocker /
-                        // EDR / App Container ACL 누락 등 여러 경로가 가능하므로
-                        // 보안 솔루션 하나로 단정하지 않는다.
-                        format!(
-                            "WebView2 초기화가 응답하지 않습니다.\n\n\
-                             WebView2 런타임(LTSC 포함본)은 정상 감지됐고 environment\n\
-                             생성도 완료됐으나, 브라우저 controller 생성 단계가 끝나지\n\
-                             않았습니다. Windows Defender 차단 기록, AppLocker, EDR,\n\
-                             Controlled Folder Access 또는 App Container 권한 문제로\n\
-                             자식 프로세스 실행/파일 접근이 막힌 상태일 수 있습니다.\n\
-                             아래 실행 파일을 허용 목록에 추가해 주세요:\n\
-                             - Anything.exe\n\
-                             - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
-                             [진단 정보]\n{diag}\nApp Container ACL: {}\n\
-                             Process overrides:\n{override_after}\n\n\
-                             위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다.",
-                            if acl_ok { "OK" } else { "FAILED" }
-                        )
                     } else {
+                        crate::webview2_runtime::clear_process_overrides();
+                        let override_after =
+                            crate::webview2_runtime::process_override_diagnostics();
                         tracing::info!(
                             "no fixed-runtime detected near exe — relying on system WebView2 (registry detection)"
                         );
                         // fixed runtime 미감지 = 일반 설치본. system WebView2 의존.
                         // 회사 / 오프라인 PC 면 LTSC 설치본이 맞다.
-                        "WebView2 초기화가 응답하지 않습니다.\n\n\
-                         이 설치본은 WebView2 런타임을 자체 포함하지 않아 시스템에 깔린\n\
-                         WebView2 에 의존합니다. 회사 / 관공서 / 오프라인 PC 에서 화면이\n\
-                         안 뜨면, 릴리스 페이지에서 파일명에 'ltsc' 가 붙은 설치본\n\
-                         (Anything_x.x.x_x64-ltsc-setup.exe — WebView2 를 자체 포함한\n\
-                         오프라인 전용 빌드) 을 받아 다시 설치해 주세요.\n\n\
-                         [진단 정보] fixed runtime 미감지 — system WebView2 경로\n\n\
-                         위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다."
-                            .to_string()
+                        format!(
+                            "WebView2 초기화가 응답하지 않습니다.\n\n\
+                             이 설치본은 WebView2 런타임을 자체 포함하지 않아 시스템에 깔린\n\
+                             WebView2 에 의존합니다. 회사 / 관공서 / 오프라인 PC 에서 화면이\n\
+                             안 뜨면, 릴리스 페이지에서 파일명에 'ltsc' 가 붙은 설치본\n\
+                             (Anything_x.x.x_x64-ltsc-setup.exe — WebView2 를 자체 포함한\n\
+                             오프라인 전용 빌드) 을 받아 다시 설치해 주세요.\n\n\
+                             [진단 정보] fixed runtime 미감지 — system WebView2 경로\n\
+                             Process overrides:\n{override_after}\n\n\
+                             위 내용을 캡처해 개발자에게 전달해 주세요. 앱을 종료합니다."
+                        )
                     }
                 };
 
