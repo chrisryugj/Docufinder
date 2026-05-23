@@ -20,11 +20,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use webview2_com::CreateCoreWebView2EnvironmentCompletedHandler;
 use webview2_com::Microsoft::Web::WebView2::Win32::{
-    CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2Environment,
+    CreateCoreWebView2EnvironmentWithOptions, GetAvailableCoreWebView2BrowserVersionString,
+    ICoreWebView2Environment,
 };
-use windows::core::PCWSTR;
+use webview2_com::{take_pwstr, CreateCoreWebView2EnvironmentCompletedHandler};
+use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, MessageBoxW, PeekMessageW, TranslateMessage, MB_ICONERROR, MB_OK,
@@ -34,6 +35,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// 환경 생성 대기 timeout. callback 은 일반적으로 수백 ms 안에 호출되므로 5초면
 /// 충분. 초과 시 inject 포기하고 fallback (system registry detection) 진행.
 const CREATE_ENV_TIMEOUT: Duration = Duration::from_secs(5);
+const APP_CONTAINER_SIDS: [&str; 2] = ["*S-1-15-2-1", "*S-1-15-2-2"];
 
 /// `msedgewebview2.exe` 가 직접 들어있는 폴더를 exe 디렉토리 기준으로 검색한다.
 /// (Microsoft 의 `CreateCoreWebView2EnvironmentWithOptions(browserExecutableFolder=...)`
@@ -85,6 +87,47 @@ pub fn detect_fixed_runtime_dir() -> Option<PathBuf> {
     candidates
         .into_iter()
         .find(|c| c.join("msedgewebview2.exe").is_file())
+}
+
+/// Detect a system-registered WebView2 Runtime while ignoring Tauri's
+/// fixedRuntime env override. LTSC installers include a bundled runtime, but
+/// on normal Windows 10/11 machines the system runtime is simpler and has the
+/// OS-managed ACL/profile layout that already works.
+pub fn detect_system_runtime_version_ignoring_overrides() -> Result<String, String> {
+    let saved_browser = std::env::var_os("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER");
+    let saved_user_data = std::env::var_os("WEBVIEW2_USER_DATA_FOLDER");
+
+    // Tauri sets WEBVIEW2_BROWSER_EXECUTABLE_FOLDER for fixedRuntime before
+    // setup(). Temporarily remove it so WebView2 checks HKLM/HKCU system
+    // registration instead of the bundled folder.
+    unsafe {
+        std::env::remove_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER");
+        std::env::remove_var("WEBVIEW2_USER_DATA_FOLDER");
+    }
+
+    let result = detect_system_runtime_version();
+
+    unsafe {
+        match saved_browser {
+            Some(value) => std::env::set_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", value),
+            None => std::env::remove_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER"),
+        }
+        match saved_user_data {
+            Some(value) => std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", value),
+            None => std::env::remove_var("WEBVIEW2_USER_DATA_FOLDER"),
+        }
+    }
+
+    result
+}
+
+fn detect_system_runtime_version() -> Result<String, String> {
+    let mut versioninfo = PWSTR::null();
+    unsafe {
+        GetAvailableCoreWebView2BrowserVersionString(PCWSTR::null(), &mut versioninfo)
+            .map(|_| take_pwstr(versioninfo))
+            .map_err(|e| format!("GetAvailableCoreWebView2BrowserVersionString HRESULT: {e}"))
+    }
 }
 
 /// Fixed-runtime 경로로 `ICoreWebView2Environment` 를 동기적으로 생성한다.
@@ -169,6 +212,13 @@ pub fn force_process_overrides(browser_dir: &Path, user_data_dir: &Path) {
     }
 }
 
+pub fn clear_process_overrides() {
+    unsafe {
+        std::env::remove_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER");
+        std::env::remove_var("WEBVIEW2_USER_DATA_FOLDER");
+    }
+}
+
 pub fn process_override_diagnostics() -> String {
     [
         "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
@@ -184,6 +234,96 @@ pub fn process_override_diagnostics() -> String {
     })
     .collect::<Vec<_>>()
     .join("\n")
+}
+
+/// Prepare the WebView2 User Data Folder for Fixed Version Runtime.
+///
+/// The runtime folder needs read/execute access for AppContainer processes; the
+/// UDF additionally needs write access. Without this, the environment can be
+/// created successfully but controller creation can stall because the sandboxed
+/// browser child process cannot initialize its profile/cache.
+pub fn prepare_user_data_dir(user_data_dir: &Path) -> bool {
+    let mut all_ok = true;
+
+    if let Err(e) = std::fs::create_dir_all(user_data_dir) {
+        tracing::warn!(
+            "WebView2 user data dir 생성 실패 {}: {e}",
+            user_data_dir.display()
+        );
+        return false;
+    }
+
+    for sid in APP_CONTAINER_SIDS {
+        let grant = format!("{sid}:(OI)(CI)(M)");
+        match run_icacls(
+            user_data_dir,
+            vec!["/grant".into(), grant, "/C".into(), "/Q".into()],
+        ) {
+            Ok(()) => tracing::info!("WebView2 UDF App Container 쓰기 권한 부여: {sid}"),
+            Err(e) => {
+                all_ok = false;
+                tracing::warn!("WebView2 UDF App Container 쓰기 권한 부여 실패 {sid}: {e}");
+            }
+        }
+    }
+
+    match run_icacls(
+        user_data_dir,
+        vec![
+            "/setintegritylevel".into(),
+            "(OI)(CI)L".into(),
+            "/C".into(),
+            "/Q".into(),
+        ],
+    ) {
+        Ok(()) => tracing::info!("WebView2 UDF Low Integrity Level 부여"),
+        Err(e) => {
+            all_ok = false;
+            tracing::warn!("WebView2 UDF Low Integrity Level 부여 실패: {e}");
+        }
+    }
+
+    all_ok
+}
+
+fn run_icacls(path: &Path, args: Vec<String>) -> Result<(), String> {
+    let output = std::process::Command::new("icacls")
+        .arg(path)
+        .args(args)
+        .output()
+        .map_err(|e| format!("icacls 실행 실패: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "exit {:?}: {}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+pub fn user_data_diagnostics(user_data_dir: &Path) -> String {
+    let exists = user_data_dir.exists();
+    let icacls = match std::process::Command::new("icacls")
+        .arg(user_data_dir)
+        .output()
+    {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).trim().to_string(),
+        Ok(out) => format!(
+            "icacls failed (exit {:?}): {}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ),
+        Err(e) => format!("icacls 실행 실패: {e}"),
+    };
+
+    format!(
+        "user_data_dir: {}\n  exists: {exists}\n  icacls:\n{}",
+        user_data_dir.display(),
+        icacls
+    )
 }
 
 /// Non-blocking Win32 message pump + bounded `recv_timeout` 조합. callback 이
@@ -248,28 +388,21 @@ pub fn grant_app_container_access(runtime_dir: &Path) -> bool {
     // SID 직접 지정 — 로케일 독립적 (한글 Windows 의 "모든 애플리케이션 패키지" 등
     // 표시 이름에 의존하지 않는다). (OI)(CI) = 하위 파일/폴더 상속, (RX) = 읽기+실행.
     let mut all_ok = true;
-    for sid in ["*S-1-15-2-1", "*S-1-15-2-2"] {
-        match std::process::Command::new("icacls")
-            .arg(runtime_dir)
-            .arg("/grant")
-            .arg(format!("{sid}:(OI)(CI)(RX)"))
-            .args(["/T", "/C", "/Q"])
-            .output()
-        {
-            Ok(out) if out.status.success() => {
-                tracing::info!("App Container ACL 부여: {sid}");
-            }
-            Ok(out) => {
-                all_ok = false;
-                tracing::warn!(
-                    "App Container ACL 부여 실패 {sid} (exit {:?}): {}",
-                    out.status.code(),
-                    String::from_utf8_lossy(&out.stderr).trim()
-                );
-            }
+    for sid in APP_CONTAINER_SIDS {
+        match run_icacls(
+            runtime_dir,
+            vec![
+                "/grant".into(),
+                format!("{sid}:(OI)(CI)(RX)"),
+                "/T".into(),
+                "/C".into(),
+                "/Q".into(),
+            ],
+        ) {
+            Ok(()) => tracing::info!("App Container ACL 부여: {sid}"),
             Err(e) => {
                 all_ok = false;
-                tracing::warn!("icacls 실행 실패 {sid}: {e}");
+                tracing::warn!("App Container ACL 부여 실패 {sid}: {e}");
             }
         }
     }
