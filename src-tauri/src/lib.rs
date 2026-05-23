@@ -566,20 +566,35 @@ pub fn run() {
                     {
                         let force_fixed =
                             std::env::var_os("DOCUFINDER_FORCE_FIXED_WEBVIEW2").is_some();
+                        let fixed_version =
+                            crate::webview2_runtime::fixed_runtime_version(&runtime_dir);
                         let system_status = if force_fixed {
                             Err("DOCUFINDER_FORCE_FIXED_WEBVIEW2=1".to_string())
                         } else {
                             crate::webview2_runtime::detect_system_runtime_version_ignoring_overrides()
                         };
 
-                        match system_status {
-                            Ok(version) => {
+                        let system_version_to_use = match &system_status {
+                            Ok(version)
+                                if crate::webview2_runtime::should_prefer_system_runtime(
+                                    version,
+                                    fixed_version.as_deref(),
+                                ) =>
+                            {
+                                Some(version.clone())
+                            }
+                            _ => None,
+                        };
+
+                        if let Some(version) = system_version_to_use {
+                            {
                                 crate::webview2_runtime::clear_process_overrides();
                                 let override_after =
                                     crate::webview2_runtime::process_override_diagnostics();
                                 tracing::info!(
-                                    "System WebView2 Runtime available ({version}) — using system runtime instead of bundled fixed runtime at {}",
-                                    runtime_dir.display()
+                                    "System WebView2 Runtime available ({version}) and newer than bundled fixed runtime ({}) — using system runtime instead of bundled fixed runtime at {}",
+                                    fixed_version.as_deref().unwrap_or("unknown"),
+                                    runtime_dir.display(),
                                 );
                                 tracing::info!(
                                     "WebView2 process override after system runtime selection:\n{override_after}"
@@ -598,10 +613,24 @@ pub fn run() {
                                     runtime_dir.display()
                                 )
                             }
-                            Err(system_reason) => {
+                        } else {
+                            {
+                                let system_reason = match system_status {
+                                    Ok(version) => format!(
+                                        "System WebView2 Runtime available ({version}) but not newer than bundled fixed runtime ({})",
+                                        fixed_version.as_deref().unwrap_or("unknown")
+                                    ),
+                                    Err(reason) => reason,
+                                };
+
                                 if force_fixed {
                                     tracing::info!(
                                         "System WebView2 Runtime bypassed ({system_reason}) — using bundled fixed runtime at {}",
+                                        runtime_dir.display()
+                                    );
+                                } else if system_reason.contains("not newer than bundled") {
+                                    tracing::info!(
+                                        "{system_reason} — using bundled fixed runtime at {}",
                                         runtime_dir.display()
                                     );
                                 } else {
@@ -679,13 +708,14 @@ pub fn run() {
                                 // 쓰기가 막힌 상태다.
                                 format!(
                                     "WebView2 초기화가 응답하지 않습니다.\n\n\
-                                     시스템 WebView2 Runtime을 찾지 못해 LTSC 포함 런타임으로\n\
-                                     시작했습니다. 포함 런타임과 User Data Folder 권한을\n\
+                                     LTSC 포함 런타임으로 시작했습니다. 시스템 WebView2가\n\
+                                     없거나, 포함 런타임보다 새 버전이 아니라서 이 경로를\n\
+                                     선택했습니다. 포함 런타임과 User Data Folder 권한을\n\
                                      보강했지만 controller 생성 단계가 끝나지 않았습니다.\n\
                                      Windows Defender 차단 기록, AppLocker, EDR, Controlled\n\
                                      Folder Access 또는 App Container 권한 문제를 확인해야 합니다.\n\
                                      아래 실행 파일을 허용 목록에 추가해 주세요:\n\
-                                     - Anything.exe\n\
+                                     - docufinder.exe\n\
                                      - msedgewebview2.exe (WebView2 브라우저 프로세스)\n\n\
                                      [진단 정보]\nSystem WebView2 Runtime: {system_reason}\n\
                                      Fixed environment injected: {env_injected}\n\

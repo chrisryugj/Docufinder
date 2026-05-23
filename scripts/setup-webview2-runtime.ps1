@@ -16,7 +16,7 @@ $fixedVersion = "148.0.3967.83"
 $cabUrl = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/7a85774b-c5c9-4095-8672-53572bdc8d8f/Microsoft.WebView2.FixedVersionRuntime.$fixedVersion.x64.cab"
 $cabPath = Join-Path $env:TEMP "Microsoft.WebView2.FixedVersionRuntime.$fixedVersion.x64.cab"
 $extractRoot = Join-Path $env:TEMP "docufinder-webview2-fixed-$fixedVersion"
-$dest = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\src-tauri\webview2-runtime"))
+$dest = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\src-tauri\resources\webview2-runtime"))
 $ebDir = Join-Path $dest "EBWebView\x64"
 
 function Get-PEMachine([string]$path) {
@@ -84,6 +84,7 @@ if (Test-Path $dest) {
 }
 New-Item -ItemType Directory -Path $ebDir -Force | Out-Null
 Copy-Item -Path "$($runtimeRoot.FullName)\*" -Destination $ebDir -Recurse -Force
+Set-Content -Path (Join-Path $ebDir "VERSION.txt") -Value $fixedVersion -Encoding ASCII
 
 $critical = @(
     "msedgewebview2.exe",

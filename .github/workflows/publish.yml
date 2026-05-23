@@ -177,9 +177,10 @@ jobs:
       # bundle 한다. issue #24 에서 Evergreen 복사본은 environment 생성 후 controller
       # 단계에서 hang 이 남았다.
       #
-      # tauri.windows-ltsc.conf.json 의 webviewInstallMode:fixedRuntime 은
-      # webview2-runtime/ 폴더를 NSIS 에 포함시키는 용도로만 쓴다. 런타임 선택은
-      # 앱 시작 시 lib.rs::webview2_runtime 이 직접 environment 를 생성해 주입한다.
+      # [v2.6.23] Tauri webviewInstallMode:fixedRuntime 은 프로세스 시작 전
+      # WEBVIEW2_BROWSER_EXECUTABLE_FOLDER 를 설정해 system runtime fallback 까지
+      # 오염시킬 수 있어 제거했다. Fixed Runtime 은 일반 resource 로만 포함하고,
+      # 런타임 선택은 앱 시작 시 lib.rs::webview2_runtime 이 직접 처리한다.
       - name: Prepare WebView2 Fixed Version Runtime for LTSC variant
         if: success()
         shell: pwsh
