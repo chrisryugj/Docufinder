@@ -50,8 +50,8 @@ pub async fn add_folder(
     // 경로 정규화 — std::canonicalize 는 UNC 를 \\?\UNC\... 로 만들어 외부 도구 호환을 깨고
     // 네트워크 폴더면 서버 응답을 기다리며 수십 초 block 될 수 있다.
     // dunce::canonicalize 는 가능한 곳까지 정규화 후 \\srv\share\... 형태로 보존한다.
-    let canonical_path = dunce::canonicalize(folder_path)
-        .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+    // 실패 시(SMB/매핑 드라이브 권한 — 이슈 #29) 원본 경로로 fallback 후 probe 가 접근성을 게이트.
+    let canonical_path = canonicalize_best_effort(folder_path);
 
     // 시스템 폴더 / 드라이브 루트 차단
     crate::constants::validate_watch_path(&canonical_path)
@@ -321,8 +321,8 @@ pub async fn reindex_folder(
     // UNC/네트워크 경로 보존 정규화. std::canonicalize 는 `\\server\share` 를
     // `\\?\UNC\server\share` 로 바꿔 DB 에 기록된 감시 경로와 불일치해 재인덱싱 대상이
     // 0건으로 보이는 현상을 일으킨다. dunce 는 `\\server\share\...` 형태를 유지한다.
-    let canonical_path = dunce::canonicalize(folder_path)
-        .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+    // 실패 시(SMB/매핑 드라이브 권한 — 이슈 #29) 원본 경로로 fallback.
+    let canonical_path = canonicalize_best_effort(folder_path);
 
     // 시스템 폴더 / 드라이브 루트 차단
     crate::constants::validate_watch_path(&canonical_path)
@@ -425,9 +425,9 @@ pub async fn resume_indexing(
         return Err(ApiError::PathNotFound(path));
     }
 
-    // UNC/네트워크 경로 보존 정규화 — add_folder 와 동일 (dunce 로 통일)
-    let canonical_path = dunce::canonicalize(folder_path)
-        .map_err(|e| ApiError::InvalidPath(format!("'{}': {}", path, e)))?;
+    // UNC/네트워크 경로 보존 정규화 — add_folder 와 동일.
+    // 실패 시(SMB/매핑 드라이브 권한 — 이슈 #29) 원본 경로로 fallback.
+    let canonical_path = canonicalize_best_effort(folder_path);
 
     // 시스템 폴더 / 드라이브 루트 차단 (DB에 남은 오래된 경로 방어)
     crate::constants::validate_watch_path(&canonical_path)
