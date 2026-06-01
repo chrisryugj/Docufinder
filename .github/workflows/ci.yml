@@ -143,6 +143,15 @@ jobs:
       # 우회: rustup proxy 가 아니라 toolchain 디렉토리 안의 진짜 cargo binary 를 직접
       # 호출. dtolnay/rust-toolchain@stable + targets:aarch64-apple-darwin → 정확히
       # `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo` 에 설치됨.
+      # [v2.6.24] macos-14 runner 이미지(2026-06 갱신)에 rust-src 가 사전설치돼 있어,
+      # proc-macro 크레이트(quote/proc-macro2) 의 build script 를 컴파일할 때 rustup
+      # proxy 가 rust-src 를 재다운로드하려다 `detected conflict: lib/rustlib/src/rust/
+      # library/Cargo.lock` 로 빌드가 실패한다(이전 runner 이미지에선 통과, 코드 무관).
+      # rust-src 는 이 프로젝트 빌드에 불필요(build-std 미사용)하므로 사전 제거해
+      # 충돌 자체를 없앤다. 멱등 — 없으면 조용히 통과.
+      - name: Remove preinstalled rust-src to avoid rustup conflict
+        run: rustup component remove rust-src 2>/dev/null || true
+
       - name: Cargo check (mac target)
         working-directory: src-tauri
         env:
