@@ -212,13 +212,37 @@ pub(super) async fn probe_network_path(path: &Path) -> ApiResult<()> {
             path.display(),
             join_err
         ))),
-        Ok(Ok(Err(io_err))) => Err(ApiError::InvalidPath(format!(
-            "네트워크 폴더 접근 실패 ({}): {}",
-            path.display(),
-            io_err
-        ))),
+        Ok(Ok(Err(io_err))) => {
+            // os error 5(액세스 거부)는 매핑 드라이브 자체보다 프로세스 토큰 문제인
+            // 경우가 많다 — 앱이 관리자 권한으로 실행되면 매핑 드라이브가 비관리자
+            // 로그온 세션에만 묶여 보이지 않는다(이슈 #29 SMB Y:\). 진단 힌트를 덧붙인다.
+            let hint = if io_err.raw_os_error() == Some(5) {
+                "\n\n액세스가 거부되었습니다. 앱을 관리자 권한으로 실행 중이라면 일반 권한으로 다시 실행해 보세요(관리자 세션에는 매핑 네트워크 드라이브가 보이지 않을 수 있습니다). 또는 탐색기에서 해당 드라이브를 다시 연결한 뒤 시도하세요."
+            } else {
+                ""
+            };
+            Err(ApiError::InvalidPath(format!(
+                "네트워크 폴더 접근 실패 ({}): {}{}",
+                path.display(),
+                io_err,
+                hint
+            )))
+        }
         Ok(Ok(Ok(()))) => Ok(()),
     }
+}
+
+/// 경로 정규화 — 실패 시 원본 경로로 fallback (best-effort).
+///
+/// `exists()` 확인 후에만 호출되므로 경로 자체는 유효하다. dunce 가 os error 5
+/// (액세스 거부) 등으로 실패해도 정규화는 best-effort 이며, 실제 접근성은
+/// `probe_network_path` 가 별도로 검증한다. SMB/매핑 드라이브에서 canonicalize 가
+/// 권한으로 실패해 폴더 추가 자체가 막히던 회귀를 푼다(이슈 #29 — Y:\ os error 5).
+pub(super) fn canonicalize_best_effort(path: &Path) -> PathBuf {
+    dunce::canonicalize(path).unwrap_or_else(|e| {
+        tracing::warn!("경로 정규화 실패, 원본 경로 사용 ({}): {e}", path.display());
+        path.to_path_buf()
+    })
 }
 
 pub(super) fn stop_file_watching(

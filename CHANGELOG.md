@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.6.24] - 2026-06-01
+
+**사내망 설치 안정화 + SMB 네트워크 폴더 추가 실패 수정 (#29)**
+
+### 원인
+이슈 #29(JS190-prog) 제보로 두 가지 문제가 확인됐다.
+
+1. **설치** — LTSC 단일 통합 installer(`...-ltsc-setup.exe`, ~573MB)가 망간(단방향) 전송 솔루션에서 파일 무결성이 깨져 설치 자체가 안 됐고, 설치되더라도 Fixed Version Runtime inject 경로의 WebView2 controller 생성 hang(#23/#24)이 잔존했다. 제보자는 **일반 `setup.exe` + `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` 를 따로 전송해 각각 설치**하니 정상 동작함을 실증했다.
+2. **SMB 폴더 추가** — 매핑 네트워크 드라이브(`Y:\`) 추가 시 `폴더 추가 실패: 'Y:\' 액세스가 거부되었습니다. (os error 5)`. `exists()` 는 통과했지만 그 다음 `dunce::canonicalize` 가 핸들 오픈 권한 부족으로 실패해, 실제 접근성 검사(`probe_network_path`)에 도달하기도 전에 폴더 추가가 막혔다.
+
+### 변경
+- **`.github/workflows/publish.yml`** — LTSC 통합 installer 빌드/업로드 3개 스텝 폐기. 일반 `setup.exe`(offlineInstaller) + standalone WebView2 분리 배포로 전환. standalone WebView2 다운로드/첨부는 유지.
+- **`src-tauri/src/commands/index/mod.rs`** — `canonicalize_best_effort` 헬퍼 추가. 정규화 실패 시 (이미 존재 확인된) 원본 경로로 fallback 하고, 실제 접근성은 `probe_network_path` 가 게이트한다. probe 가 `os error 5` 를 만나면 관리자 권한 실행/드라이브 재연결 진단 힌트를 메시지에 덧붙인다.
+- **`src-tauri/src/commands/index/folder.rs`** — `add_folder` / `reindex_folder` / `resume_indexing` 의 canonicalize 호출을 `canonicalize_best_effort` 로 통일.
+- **`README.md`** — 다운로드 안내를 분리 설치(`setup.exe` + standalone WebView2) 중심으로 재작성. 망간/오프라인 사내망 설치 절차(두 파일을 나눠 전송)와 WebView2 우선 설치를 명시.
+
+> **DRM 문서(소프트웍스 등)**: 제3자 DRM 으로 암호화된 HWP/문서는 kordoc 이 복호화할 수 없어 `kordoc 실행 실패 (exit 1)` 로 개별 파일만 실패 처리되며(전체 인덱싱은 계속), 이는 정상 동작이다. 표준 HWP 암호/DRM 비트는 사전 감지해 호출 전 스킵한다.
+
 ## [2.6.21] - 2026-05-22
 
 **LTSC/WebView2 핫픽스 — environment 생성 성공 후 controller hang 잔여 케이스 대응 (#24)**

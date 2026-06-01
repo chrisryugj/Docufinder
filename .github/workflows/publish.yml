@@ -139,6 +139,16 @@ jobs:
       # (회사 PC / LTSC 1809 / GPO 차단 환경 등). 이 경우 사용자가 별도로
       # 다운받아 관리자 권한으로 선설치할 수 있도록 release 에 함께 첨부.
       #
+      # [v2.6.24] 사내 폐쇄망 권장 설치 경로의 핵심 산출물.
+      # 단일 통합본(ltsc-setup ~573MB, Fixed Runtime 번들)은 (1) 망간/단방향 전송
+      # 솔루션에서 파일 무결성이 깨지고, (2) Fixed Runtime inject 경로가 controller
+      # 생성 단계에서 hang 하는 회귀가 #23/#24 내내 반복돼 폐기했다(이슈 #29 JS190-prog
+      # 실증: 일반 setup.exe + 이 standalone 을 따로 전송해 각각 설치하면 성공).
+      # 이제 사내망 사용자는 [일반 setup.exe] + [이 standalone WebView2] 두 파일을
+      # 나눠 전송 후 설치한다 — 큰 단일 파일보다 전송 성공률이 높고, system runtime
+      # 경로라 controller hang 도 없다. 고급 사용자용 수동 Fixed Runtime fallback 은
+      # webview2_runtime.rs 의 EBWebView 탐색으로 여전히 동작한다.
+      #
       # [v2.6.18] linkid 교정: 2099617 은 X86 installer 다 (이슈 #23 검증 —
       # go.microsoft.com redirect 가 ...InstallerX86.exe). X64 런타임용 standalone
       # 은 linkid=2124701 (...InstallerX64.exe). 잘못된 파일명(X64.exe)으로 X86
@@ -165,59 +175,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # [v2.6.4] LTSC 1809 / admin 권한 없는 / GPO 차단 환경 전용 별도 installer build.
-      # 기본 installer 는 system WebView2 Runtime 에 의존하지만, 이 build 는 EBWebView
-      # 폴더 자체를 NSIS resources 로 통째 bundle (~170MB 추가). 사용자는 LTSC installer
-      # 한 번 실행이면 끝 — zip 풀기 / standalone installer admin 권한 / registry 등록
-      # 같은 수동 단계 0. lib.rs::webview2_runtime 가 설치 후 EBWebView 를 detect 해
-      # 직접 만든 ICoreWebView2Environment 를 wry 에 inject.
-      #
-      # [v2.6.21] CI runner 에 Evergreen Runtime 을 설치한 뒤 Application 폴더를 복사하는
-      # 방식 대신, Microsoft 공식 Fixed Version Runtime CAB 를 직접 다운로드/추출해
-      # bundle 한다. issue #24 에서 Evergreen 복사본은 environment 생성 후 controller
-      # 단계에서 hang 이 남았다.
-      #
-      # [v2.6.23] Tauri webviewInstallMode:fixedRuntime 은 프로세스 시작 전
-      # WEBVIEW2_BROWSER_EXECUTABLE_FOLDER 를 설정해 system runtime fallback 까지
-      # 오염시킬 수 있어 제거했다. Fixed Runtime 은 일반 resource 로만 포함하고,
-      # 런타임 선택은 앱 시작 시 lib.rs::webview2_runtime 이 직접 처리한다.
-      - name: Prepare WebView2 Fixed Version Runtime for LTSC variant
-        if: success()
-        shell: pwsh
-        run: ./scripts/setup-webview2-runtime.ps1
-
-      - name: Build LTSC installer (tauri build --config tauri.windows-ltsc.conf.json)
-        if: success()
-        shell: pwsh
-        run: |
-          pnpm exec tauri build --config src-tauri/tauri.windows-ltsc.conf.json
-        env:
-          # 동일 signing key 로 LTSC installer 도 서명. updater latest.json 은
-          # tauri.windows-ltsc.conf.json 의 createUpdaterArtifacts:false 로 차단 →
-          # 첫 build 의 updater 아티팩트가 보존된다.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
-      - name: Rename + upload LTSC installer to release
-        if: success()
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = $tag.TrimStart('v')
-          $src = "src-tauri/target/release/bundle/nsis/Anything_${ver}_x64-setup.exe"
-          if (-not (Test-Path $src)) {
-            Write-Error "LTSC build output not found: $src"
-            exit 1
-          }
-          $dst = "Anything_${ver}_x64-ltsc-setup.exe"
-          Move-Item $src $dst -Force
-          $size = [math]::Round((Get-Item $dst).Length / 1MB, 1)
-          Write-Host "LTSC installer: $dst ($size MB) — uploading to release $tag"
-          gh release upload $tag $dst --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # [v2.6.24] LTSC 단일 통합 installer(ltsc-setup ~573MB) 빌드를 폐기했다.
+      # 배경: Fixed Version Runtime 을 NSIS 에 통째 bundle 하는 노선은
+      #   1) 573MB 단일 exe 가 망간/단방향 전송에서 무결성이 깨져 설치 불가,
+      #   2) Fixed Runtime inject 후 WebView2 controller 생성이 hang (#23/#24),
+      # 두 문제로 사내망에서 실패했다. 대신 [일반 setup.exe(offlineInstaller)] +
+      # [위 standalone WebView2] 분리 배포로 전환 — 두 파일을 나눠 전송/설치하면
+      # 망간 전송 무결성·system runtime 안정성을 모두 확보한다(이슈 #29).
+      # 관련 스크립트(scripts/setup-webview2-runtime.ps1, src-tauri/tauri.windows-ltsc.conf.json)는
+      # 고급 사용자용 수동 Fixed Runtime 배포 참고용으로 남겨둔다.
 
   publish-macos:
     name: Build & Release (macOS arm64)
