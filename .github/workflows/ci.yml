@@ -143,19 +143,19 @@ jobs:
       # 우회: rustup proxy 가 아니라 toolchain 디렉토리 안의 진짜 cargo binary 를 직접
       # 호출. dtolnay/rust-toolchain@stable + targets:aarch64-apple-darwin → 정확히
       # `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo` 에 설치됨.
-      # [v2.6.24] macos-14 runner 이미지(2026-06 갱신)에 rust-src 가 사전설치돼 있어,
-      # proc-macro 크레이트(quote/proc-macro2) 의 build script 를 컴파일할 때 rustup
-      # proxy 가 rust-src 를 재다운로드하려다 `detected conflict: lib/rustlib/src/rust/
-      # library/Cargo.lock` 로 빌드가 실패한다(이전 runner 이미지에선 통과, 코드 무관).
-      # rust-src 는 이 프로젝트 빌드에 불필요(build-std 미사용)하므로 사전 제거해
-      # 충돌 자체를 없앤다. 멱등 — 없으면 조용히 통과.
-      - name: Remove preinstalled rust-src to avoid rustup conflict
-        run: rustup component remove rust-src 2>/dev/null || true
-
+      # [v2.6.24] macos-14 runner 이미지(2026-06 갱신) + rustup 1.28 조합에서,
+      # proc-macro 크레이트(proc-macro2/quote)의 build script 를 컴파일하는 `rustc`
+      # 호출이 rustup proxy 를 거치면서 rust-src 컴포넌트를 자동 다운로드하려다
+      # 실패(`downloading component rust-src` → conflict / rename 오류)해 빌드가 깨진다
+      # (이전 runner 이미지에선 통과, 코드 무관). RUSTUP_CARGO 로 cargo 는 toolchain
+      # 직접 바이너리로 우회했지만 cargo 가 spawn 하는 rustc 는 여전히 PATH proxy 였던
+      # 것이 원인. RUSTC 도 toolchain 직접 바이너리로 지정해 proxy 를 완전히 우회하면
+      # auto-install 시도 자체가 사라진다. rust-src 는 이 빌드에 불필요(build-std 미사용).
       - name: Cargo check (mac target)
         working-directory: src-tauri
         env:
           RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
+          RUSTC: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
         run: |
           ls -la "$RUSTUP_CARGO" || (ls -la "$HOME/.rustup/toolchains/" ; exit 1)
           "$RUSTUP_CARGO" --version
@@ -165,10 +165,12 @@ jobs:
         working-directory: src-tauri
         env:
           RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
+          RUSTC: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
         run: $RUSTUP_CARGO clippy --target aarch64-apple-darwin --all-targets -- -D warnings
 
       - name: Cargo test (mac target)
         working-directory: src-tauri
         env:
           RUSTUP_CARGO: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo
+          RUSTC: /Users/runner/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
         run: $RUSTUP_CARGO test --target aarch64-apple-darwin
