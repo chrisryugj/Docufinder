@@ -102,6 +102,8 @@ pub fn get_watched_folders(conn: &Connection) -> Result<Vec<String>> {
 /// UAC elevated 실행 시 매핑 드라이브가 안 보여 sync/재인덱싱이 막히던 기존 등록
 /// 경로를 자동 치유한다. `files`·`watched_folders` 의 `Y:\…` → `\\srv\share\…`.
 /// 멱등 — 이미 UNC 면 매칭 0건. `(files_updated, folders_updated)` 반환.
+/// 호출부(`lib.rs` 시작 시 마이그레이션)가 windows 전용이라 함수도 cfg 게이트.
+#[cfg(windows)]
 pub fn remap_drive_prefix(
     conn: &Connection,
     letter: char,
