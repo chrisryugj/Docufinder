@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.6.26] - 2026-06-03
+
+**스마트(자연어) 검색의 날짜·파일타입 필터 전면 수정 — "작년 hwp", "xlsx" 등 누락**
+
+### 원인
+스마트 검색에서 날짜/파일타입 조건이 걸린 질의가 광범위하게 결과를 누락했다. 세 가지 독립 원인:
+
+1. **파일타입 정규화 불일치** — NL 파서는 `hwp`→`"hwpx"`, `xls`→`"xlsx"`, `doc`→`"docx"`, `ppt`→`"pptx"` 로 정규화하는데, 후처리 필터(`smart_apply_file_type_filter`)는 파일명이 `.hwpx` 로 끝나는지만 검사했다. 그 결과 실제 `.hwp` 파일이 전부 탈락 — 공공기관 문서는 `.hwp` 가 대다수라 "작년 hwp", "지난달 한글 파일" 질의가 사실상 빈 결과였다.
+2. **필터 전용 검색의 범위 한계** — 키워드 없이 필터만 있는 질의("xlsx", "작년 hwp")는 `browse_recent_files` 가 최근 수정 N건(`over_fetch = max×10`)만 가져와 후처리로 걸렀다. DB 에 있어도 최근 목록 범위 밖이면 0건 — "xlsx 만 쳐도 DB 의 xlsx 가 안 나오던" 직접 원인.
+3. **키워드+필터 조합의 BM25 누락** — "예산 작년 hwp" 처럼 키워드가 동반되면 FTS 가 키워드만으로 BM25 상위 N 을 뽑은 뒤 날짜/타입을 후처리해, 흔한 키워드일수록 타깃이 상위 N 밖으로 밀려 누락됐다.
+
+### 변경
+- **`src-tauri/src/application/services/search_service/helpers.rs`** — `file_type_extensions()` 추가: 정규화 그룹을 실제 확장자 집합으로 되돌린다(`"hwpx"`→`{hwp, hwpx}`, `"xlsx"`→`{xls, xlsx}` …). `smart_apply_file_type_filter` 가 이를 사용해 레거시 확장자(`.hwp`/`.xls`/`.doc`/`.ppt`)도 매칭. 날짜 경계 계산을 `date_filter_range()` 로 추출해 SQL·후처리가 동일 범위를 공유.
+- **`src-tauri/src/application/services/search_service/smart.rs`** — `browse_recent_files` 가 날짜·파일타입을 SQL `WHERE` 로 직접 적용(전체 인덱스 대상). 최근순 후처리 한계 제거.
+- **`src-tauri/src/search/fts.rs`** — `MetaFilter`(날짜·파일타입) 추가. `search_internal` 과 LIKE 폴백이 `chunks_fts MATCH` 와 함께 메타 조건을 SQL 로 합성해, 키워드+필터 질의를 검색 단계에서 좁힌다.
+- **`src-tauri/src/application/services/search_service/{keyword,hybrid}.rs` · `src-tauri/src/commands/search.rs`** — `*_with_mode` 함수에 `MetaFilter` 파라미터 추가. 스마트 검색만 실제 필터를 구성하고, 일반 검색·RAG 경로는 기본값(무필터)으로 동작 불변. 하이브리드의 벡터 검색은 스마트 최종 필터에 위임(FTS 가 타깃을 이미 보장).
+
+### 검증
+임시 DB end-to-end 통합 테스트 추가 — 필터 전용 4개 시나리오("xlsx" / "작년 hwp" / "지난달 pdf" / "지난달 한글 파일") + 키워드+필터("budget 작년 hwp", 노이즈 60건으로 BM25 범위 한계 재현). 전체 182개 테스트 통과, clippy 무경고.
+
 ## [2.6.25] - 2026-06-03
 
 **매핑 네트워크 드라이브(`Y:\`) elevated 접근 실패 근본 수정 (#29 후속)**

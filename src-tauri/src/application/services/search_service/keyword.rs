@@ -17,17 +17,24 @@ impl SearchService {
         max_results: usize,
         folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
-        self.search_keyword_with_mode(query, max_results, folder_scope, KeywordMode::And)
-            .await
+        self.search_keyword_with_mode(
+            query,
+            max_results,
+            folder_scope,
+            KeywordMode::And,
+            &fts::MetaFilter::default(),
+        )
+        .await
     }
 
-    /// 키워드 검색 (FTS5) — 검색 모드 지정
+    /// 키워드 검색 (FTS5) — 검색 모드 + 메타 필터 지정
     pub async fn search_keyword_with_mode(
         &self,
         query: &str,
         max_results: usize,
         folder_scope: Option<&str>,
         mode: KeywordMode,
+        filter: &fts::MetaFilter,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let conn = self.get_connection()?;
@@ -41,9 +48,10 @@ impl SearchService {
                 tok.as_ref(),
                 folder_scope,
                 mode,
+                filter,
             )
             .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-            None => fts::search(&conn, query, max_results, folder_scope, mode)
+            None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 

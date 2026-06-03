@@ -17,24 +17,35 @@ impl SearchService {
         max_results: usize,
         folder_scope: Option<&str>,
     ) -> AppResult<SearchResponse> {
-        self.search_hybrid_with_mode(query, max_results, folder_scope, KeywordMode::And)
-            .await
+        self.search_hybrid_with_mode(
+            query,
+            max_results,
+            folder_scope,
+            KeywordMode::And,
+            &fts::MetaFilter::default(),
+        )
+        .await
     }
 
-    /// 하이브리드 검색 — 검색 모드 지정
+    /// 하이브리드 검색 — 검색 모드 + 메타 필터 지정
+    ///
+    /// 메타 필터(날짜·파일타입)는 FTS 단계에 SQL 로 적용해 키워드+필터 질의가
+    /// BM25 상위 N 밖으로 밀려 누락되는 것을 막는다. 벡터 검색은 메타 후처리를
+    /// `search_smart` 의 최종 필터에 위임한다(FTS 가 타깃을 이미 보장).
     pub async fn search_hybrid_with_mode(
         &self,
         query: &str,
         max_results: usize,
         folder_scope: Option<&str>,
         mode: KeywordMode,
+        filter: &fts::MetaFilter,
     ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
 
         let conn = self.get_connection()?;
 
-        // 1. FTS5 검색 (mode 적용)
+        // 1. FTS5 검색 (mode + 메타 필터 적용)
         let fts_results = match self.tokenizer.as_ref() {
             Some(tok) => fts::search_with_tokenizer(
                 &conn,
@@ -43,9 +54,10 @@ impl SearchService {
                 tok.as_ref(),
                 folder_scope,
                 mode,
+                filter,
             )
             .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-            None => fts::search(&conn, query, max_results, folder_scope, mode)
+            None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
         };
 
