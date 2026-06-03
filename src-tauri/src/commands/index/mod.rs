@@ -216,8 +216,14 @@ pub(super) async fn probe_network_path(path: &Path) -> ApiResult<()> {
             // os error 5(액세스 거부)는 매핑 드라이브 자체보다 프로세스 토큰 문제인
             // 경우가 많다 — 앱이 관리자 권한으로 실행되면 매핑 드라이브가 비관리자
             // 로그온 세션에만 묶여 보이지 않는다(이슈 #29 SMB Y:\). 진단 힌트를 덧붙인다.
+            // 경로는 canonicalize_best_effort 에서 이미 UNC 변환을 시도한 뒤다. 그럼에도
+            // os error 5 면, elevated 여부로 원인을 갈라 안내한다(이슈 #29).
             let hint = if io_err.raw_os_error() == Some(5) {
-                "\n\n액세스가 거부되었습니다. 앱을 관리자 권한으로 실행 중이라면 일반 권한으로 다시 실행해 보세요(관리자 세션에는 매핑 네트워크 드라이브가 보이지 않을 수 있습니다). 또는 탐색기에서 해당 드라이브를 다시 연결한 뒤 시도하세요."
+                if crate::utils::elevation::is_elevated() {
+                    "\n\n앱이 관리자 권한으로 실행 중입니다. 관리자 세션에는 일반 세션에서 연결한 매핑 네트워크 드라이브가 보이지 않습니다. 앱을 일반 권한으로 다시 실행하거나, 폴더를 `\\\\서버\\공유` 형태의 UNC 경로로 직접 추가해 보세요."
+                } else {
+                    "\n\n액세스가 거부되었습니다. 네트워크 자격 증명이 만료됐거나 공유 폴더 접근 권한이 없을 수 있습니다. 탐색기에서 해당 폴더가 열리는지 확인한 뒤 다시 시도하세요."
+                }
             } else {
                 ""
             };
@@ -239,9 +245,15 @@ pub(super) async fn probe_network_path(path: &Path) -> ApiResult<()> {
 /// `probe_network_path` 가 별도로 검증한다. SMB/매핑 드라이브에서 canonicalize 가
 /// 권한으로 실패해 폴더 추가 자체가 막히던 회귀를 푼다(이슈 #29 — Y:\ os error 5).
 pub(super) fn canonicalize_best_effort(path: &Path) -> PathBuf {
-    dunce::canonicalize(path).unwrap_or_else(|e| {
+    // 매핑 네트워크 드라이브(`Y:\`)는 먼저 UNC(`\\server\share`)로 치환한다. UAC
+    // elevated 프로세스에선 일반 세션의 드라이브 매핑이 안 보여 `Y:\` 가 os error 5
+    // 로 막히지만, UNC 는 매핑 계층을 우회한다(이슈 #29). 여기서 변환해두면 DB·
+    // watcher·sync 가 모두 같은 UNC 경로로 통일된다. 로컬/비매핑 경로면 그대로.
+    let path = crate::utils::network_path::resolve_mapped_drive_to_unc(path)
+        .unwrap_or_else(|| path.to_path_buf());
+    dunce::canonicalize(&path).unwrap_or_else(|e| {
         tracing::warn!("경로 정규화 실패, 원본 경로 사용 ({}): {e}", path.display());
-        path.to_path_buf()
+        path
     })
 }
 

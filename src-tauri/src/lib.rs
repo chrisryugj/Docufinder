@@ -889,6 +889,40 @@ pub fn run() {
 
             tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);
 
+            // 이슈 #29: 기존에 매핑 드라이브(`Y:\`)로 등록된 감시 폴더·파일 경로를 UNC
+            // (`\\server\share`)로 마이그레이션. UAC elevated 실행 시 일반 세션의 매핑
+            // 드라이브가 안 보여 sync/재인덱싱이 os error 5 로 막히던 것을 자동 치유한다.
+            // 드라이브 매핑이 살아 있어야 resolve 되므로 매 시작마다 best-effort 재시도(멱등).
+            #[cfg(windows)]
+            if let Ok(conn) = db::get_connection(&container.db_path) {
+                if let Ok(folders) = db::get_watched_folders(&conn) {
+                    let mut seen = std::collections::HashSet::new();
+                    for f in &folders {
+                        let b = f.as_bytes();
+                        if b.len() < 2 || b[1] != b':' || !b[0].is_ascii_alphabetic() {
+                            continue; // 드라이브 경로 아님(UNC/posix)
+                        }
+                        let letter = (b[0] as char).to_ascii_uppercase();
+                        if !seen.insert(letter) {
+                            continue; // 드라이브당 1회
+                        }
+                        let root = format!("{letter}:\\");
+                        if let Some(unc) = crate::utils::network_path::resolve_mapped_drive_to_unc(
+                            std::path::Path::new(&root),
+                        ) {
+                            let base = unc.to_string_lossy();
+                            match db::remap_drive_prefix(&conn, letter, &base) {
+                                Ok((nf, nd)) if nf + nd > 0 => tracing::info!(
+                                    "[#29] {letter}:\\ → {base} 마이그레이션: files {nf}, folders {nd}"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!("[#29] {letter}: 마이그레이션 실패: {e}"),
+                            }
+                        }
+                    }
+                }
+            }
+
             // 이전 세션에서 남긴 미전송 crash log 를 Telegram 으로 지연 전송
             // (네이티브 크래시/OOM kill 등 panic hook 이 실행되지 못한 경우 대비)
             // 사용자 설정 백엔드 게이트는 함수 내부에서 처리한다.
