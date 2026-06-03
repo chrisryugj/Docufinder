@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "2.6.24"
+version = "2.6.25"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -103,7 +103,12 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_SystemInformation",
-    "Win32_Storage_FileSystem"
+    "Win32_Storage_FileSystem",
+    # 이슈 #29: 매핑 드라이브→UNC 해석(레지스트리/WNet) + elevation 감지(토큰)
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Registry",
+    "Win32_NetworkManagement_WNet"
 ] }
 # Fixed-version WebView2 Runtime 지원 (이슈 #24): registry 미등록 환경에서도
 # EBWebView 폴더만 있으면 ICoreWebView2Environment 를 직접 만들어 wry 에 inject.
