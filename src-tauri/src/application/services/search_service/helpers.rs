@@ -304,19 +304,15 @@ pub fn matches_folder_scope(file_path: &str, folder_scope: Option<&str>) -> bool
 
 // ── Smart Search 후처리 필터 ─────────────────────────
 
-/// 날짜 필터 적용
-pub fn smart_apply_date_filter(r: &SearchResult, filter: &Option<DateFilter>, _now: i64) -> bool {
+/// DateFilter → (start, end) UTC Unix timestamp 범위 (KST 기준 경계).
+/// SQL 필터(browse_recent_files)와 후처리 필터가 동일 범위를 공유한다.
+pub fn date_filter_range(filter: &DateFilter) -> (i64, i64) {
     use chrono::{Datelike, Duration, FixedOffset};
-
-    let Some(filter) = filter else { return true };
-    let Some(modified) = r.modified_at else {
-        return false;
-    };
 
     let kst = FixedOffset::east_opt(9 * 3600).unwrap();
     let today = chrono::Utc::now().with_timezone(&kst).date_naive();
 
-    let (start, end) = match filter {
+    match filter {
         DateFilter::Today => {
             let s = today.and_hms_opt(0, 0, 0).unwrap();
             (kst_to_utc(&kst, s), i64::MAX)
@@ -404,8 +400,16 @@ pub fn smart_apply_date_filter(r: &SearchResult, filter: &Option<DateFilter>, _n
             let s = past.and_hms_opt(0, 0, 0).unwrap();
             (kst_to_utc(&kst, s), i64::MAX)
         }
-    };
+    }
+}
 
+/// 날짜 필터 적용 (후처리)
+pub fn smart_apply_date_filter(r: &SearchResult, filter: &Option<DateFilter>, _now: i64) -> bool {
+    let Some(filter) = filter else { return true };
+    let Some(modified) = r.modified_at else {
+        return false;
+    };
+    let (start, end) = date_filter_range(filter);
     modified >= start && modified <= end
 }
 
@@ -426,10 +430,28 @@ pub fn smart_apply_filename_filter(r: &SearchResult, filename: &Option<String>) 
     name_lower.contains(&filter_lower)
 }
 
-/// 파일 타입 필터 적용
+/// 정규화된 파일타입 그룹 키 → 실제 매칭할 확장자 목록.
+///
+/// NL 파서는 hwp/hwpx → "hwpx", xls/xlsx → "xlsx", doc/docx → "docx",
+/// ppt/pptx → "pptx"로 정규화한다. 따라서 매칭 시점에 같은 그룹의 모든
+/// 확장자로 다시 확장해야 .hwp / .xls / .doc / .ppt 파일도 잡힌다.
+pub fn file_type_extensions(ft: &str) -> Vec<String> {
+    match ft {
+        "hwpx" => vec!["hwp".to_string(), "hwpx".to_string()],
+        "docx" => vec!["doc".to_string(), "docx".to_string()],
+        "xlsx" => vec!["xls".to_string(), "xlsx".to_string()],
+        "pptx" => vec!["ppt".to_string(), "pptx".to_string()],
+        other => vec![other.to_string()],
+    }
+}
+
+/// 파일 타입 필터 적용 (그룹 확장자 중 하나로 끝나면 통과)
 pub fn smart_apply_file_type_filter(r: &SearchResult, ft: &Option<String>) -> bool {
     let Some(ft) = ft else { return true };
-    r.file_name.to_lowercase().ends_with(&format!(".{}", ft))
+    let name_lower = r.file_name.to_lowercase();
+    file_type_extensions(ft)
+        .iter()
+        .any(|ext| name_lower.ends_with(&format!(".{}", ext)))
 }
 
 /// 제외 키워드 필터 적용
@@ -482,6 +504,33 @@ pub fn count_article_pattern(text: &str) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::dto::search::MatchType;
+    use crate::search::nl_query::DateFilter;
+
+    fn dummy(name: &str, modified_at: Option<i64>) -> SearchResult {
+        SearchResult {
+            file_path: format!("/docs/{name}"),
+            file_name: name.to_string(),
+            chunk_index: 0,
+            content_preview: String::new(),
+            full_content: String::new(),
+            score: 1.0,
+            confidence: 50,
+            match_type: MatchType::Keyword,
+            highlight_ranges: vec![],
+            page_number: None,
+            start_offset: 0,
+            location_hint: None,
+            snippet: None,
+            modified_at,
+            has_hwp_pair: false,
+            total_chunks: 0,
+            lineage_id: None,
+            lineage_role: None,
+            version_label: None,
+            version_count: 0,
+        }
+    }
 
     #[test]
     fn count_article_pattern_works() {
@@ -489,5 +538,72 @@ mod tests {
         assert_eq!(count_article_pattern("제 750 조 내용"), 1);
         assert_eq!(count_article_pattern("제출 기한 제한"), 0);
         assert_eq!(count_article_pattern("보험료 22150.00"), 0);
+    }
+
+    #[test]
+    fn file_type_extensions_expands_groups() {
+        assert_eq!(file_type_extensions("hwpx"), ["hwp", "hwpx"]);
+        assert_eq!(file_type_extensions("xlsx"), ["xls", "xlsx"]);
+        assert_eq!(file_type_extensions("docx"), ["doc", "docx"]);
+        assert_eq!(file_type_extensions("pptx"), ["ppt", "pptx"]);
+        assert_eq!(file_type_extensions("pdf"), ["pdf"]);
+        assert_eq!(file_type_extensions("txt"), ["txt"]);
+    }
+
+    #[test]
+    fn file_type_filter_matches_legacy_hwp() {
+        // 핵심 회귀: 파서가 "hwp"를 "hwpx"로 정규화해도 실제 .hwp 파일이 잡혀야 한다
+        let ft = Some("hwpx".to_string());
+        assert!(smart_apply_file_type_filter(
+            &dummy("보고서.hwp", None),
+            &ft
+        ));
+        assert!(smart_apply_file_type_filter(
+            &dummy("보고서.hwpx", None),
+            &ft
+        ));
+        assert!(smart_apply_file_type_filter(
+            &dummy("대문자.HWP", None),
+            &ft
+        ));
+        assert!(!smart_apply_file_type_filter(&dummy("문서.pdf", None), &ft));
+    }
+
+    #[test]
+    fn file_type_filter_matches_legacy_office() {
+        assert!(smart_apply_file_type_filter(
+            &dummy("예산.xls", None),
+            &Some("xlsx".into())
+        ));
+        assert!(smart_apply_file_type_filter(
+            &dummy("예산.xlsx", None),
+            &Some("xlsx".into())
+        ));
+        assert!(smart_apply_file_type_filter(
+            &dummy("기안.doc", None),
+            &Some("docx".into())
+        ));
+        assert!(smart_apply_file_type_filter(
+            &dummy("발표.ppt", None),
+            &Some("pptx".into())
+        ));
+        // 교차 그룹은 탈락
+        assert!(!smart_apply_file_type_filter(
+            &dummy("예산.xlsx", None),
+            &Some("hwpx".into())
+        ));
+    }
+
+    #[test]
+    fn date_filter_range_last_year_spans_one_year() {
+        let (start, end) = date_filter_range(&DateFilter::LastYear);
+        assert!(start < end, "start must precede end");
+        let span = end - start;
+        let day = 24 * 3600;
+        // 1/1 00:00:00 ~ 12/31 23:59:59 → 약 365~366일
+        assert!(
+            (364 * day..=367 * day).contains(&span),
+            "LastYear span ~1 year, got {span} sec"
+        );
     }
 }
