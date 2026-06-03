@@ -97,6 +97,34 @@ pub fn get_watched_folders(conn: &Connection) -> Result<Vec<String>> {
     rows.collect()
 }
 
+/// 이슈 #29: 매핑 네트워크 드라이브 prefix(`Y:\`)를 UNC base(`\\srv\share`)로 일괄 치환.
+///
+/// UAC elevated 실행 시 매핑 드라이브가 안 보여 sync/재인덱싱이 막히던 기존 등록
+/// 경로를 자동 치유한다. `files`·`watched_folders` 의 `Y:\…` → `\\srv\share\…`.
+/// 멱등 — 이미 UNC 면 매칭 0건. `(files_updated, folders_updated)` 반환.
+pub fn remap_drive_prefix(
+    conn: &Connection,
+    letter: char,
+    unc_base: &str,
+) -> Result<(usize, usize)> {
+    let unc_base = unc_base.trim_end_matches(['\\', '/']);
+    // `Y:\` 로 시작하는 경로만. 백슬래시는 ESCAPE 로 리터럴화 → `Y:\\%`.
+    let like = format!("{}%", escape_like_pattern(&format!("{letter}:\\")));
+    // 드라이브 prefix(`Y:`)는 항상 2 ASCII 글자라 substr(path, 3) 은 그 뒤 나머지(`\…`).
+    // 한글 등 멀티바이트 경로에서도 SQLite substr 는 문자(코드포인트) 단위라 안전.
+    let tx = conn.unchecked_transaction()?;
+    let files = tx.execute(
+        r"UPDATE files SET path = ?1 || substr(path, 3) WHERE path LIKE ?2 ESCAPE '\'",
+        params![unc_base, like],
+    )?;
+    let folders = tx.execute(
+        r"UPDATE watched_folders SET path = ?1 || substr(path, 3) WHERE path LIKE ?2 ESCAPE '\'",
+        params![unc_base, like],
+    )?;
+    tx.commit()?;
+    Ok((files, folders))
+}
+
 /// 감시 폴더 삭제
 pub fn remove_watched_folder(conn: &Connection, path: &str) -> Result<usize> {
     conn.execute("DELETE FROM watched_folders WHERE path = ?", params![path])

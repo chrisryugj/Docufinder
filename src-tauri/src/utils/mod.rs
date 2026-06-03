@@ -1,5 +1,6 @@
 pub mod cloud_detect;
 pub mod disk_info;
+pub mod elevation;
 pub mod filename_normalize;
 pub mod folder_scope;
 pub mod idle_detector;

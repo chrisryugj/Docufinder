@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+**매핑 네트워크 드라이브(`Y:\`) elevated 접근 실패 근본 수정 (#29 후속)**
+
+### 원인
+v2.6.24 의 `canonicalize_best_effort` fallback 으로 canonicalize 회귀는 우회됐으나, JS190-prog 의 후속 로그에서 `Y:\` 가 여전히 `os error 5` 로 막힘이 확인됐다. 정규화 다음 단계의 실제 `read_dir`(`probe_network_path`) 와 `sync_folder`(`validate_path`)에서 거부됐고, 근본 원인은 코드가 아니라 **UAC** 였다 — 앱이 관리자 권한으로 실행되면 일반 logon 세션이 만든 매핑 드라이브(DosDevices symlink)가 그 토큰에 보이지 않는다. 탐색기(일반 세션)에선 `Y:` 가 보이는데 앱만 거부되던 것이 증거다.
+
+### 변경
+- **`src-tauri/src/utils/network_path.rs`** — `resolve_mapped_drive_to_unc` 추가. 매핑 드라이브를 `HKCU\Network\<letter>\RemotePath`(레지스트리 — logon session 무관, elevated 에서도 읽힘) → `WNetGetConnectionW` 폴백으로 UNC(`\\server\share`)로 해석한다. UNC 는 드라이브 매핑 계층을 우회하므로 elevated 에서도 접근 가능. `GetDriveTypeW(DRIVE_REMOTE)` 게이트는 쓰지 않는다 — elevated 에선 매핑이 안 보여 정작 우회가 필요한 변환을 막기 때문.
+- **`src-tauri/src/commands/index/mod.rs`** — `canonicalize_best_effort` 가 폴더 추가/재색인 시 매핑 드라이브를 UNC 로 먼저 치환. DB·watcher·sync 가 모두 같은 UNC 경로로 통일된다. `os error 5` 진단 힌트를 `is_elevated()` 로 분기(관리자 실행 vs 자격증명/권한).
+- **`src-tauri/src/db/mod.rs` · `src-tauri/src/lib.rs`** — 시작 시 기존에 `Y:\` 로 등록된 `watched_folders`·`files` 경로를 UNC 로 마이그레이션(`remap_drive_prefix`, 멱등). 기존 사용자의 등록 폴더를 자동 치유한다.
+- **`src-tauri/src/utils/elevation.rs`** (신규) — 프로세스 토큰(`TOKEN_ELEVATION`) 기반 관리자 권한 감지.
+
+> **남는 한계**: UNC 직접 접근도 네트워크 자격증명이 유효해야 한다. 도메인/Kerberos 통합인증이면 elevated 에서도 동작(사내망 대부분). 별도 계정 자격증명(`net use /user:`)으로 매핑한 경우엔 UNC 도 막힐 수 있으며, 그땐 진단 안내가 일반 권한 재실행을 유도한다.
+
 ## [2.6.24] - 2026-06-01
 
 **사내망 설치 안정화 + SMB 네트워크 폴더 추가 실패 수정 (#29)**
