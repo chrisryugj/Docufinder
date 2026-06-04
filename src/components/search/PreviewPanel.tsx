@@ -24,9 +24,19 @@ interface MarkdownPreviewResponse {
   markdown: string;
 }
 
+/** 인용 점프 타깃 — AI 답변 [출처N] 클릭 시 부모가 내려보냄.
+ *  token은 nonce: 같은 파일/같은 앵커라도 token이 바뀌면 점프 재실행. */
+export interface PreviewJumpTarget {
+  anchors: string[];
+  page: number | null;
+  token: number;
+}
+
 interface PreviewPanelProps {
   filePath: string | null;
   highlightQuery?: string;
+  /** AI 인용 점프 타깃 (없으면 일반 미리보기) */
+  jumpTarget?: PreviewJumpTarget;
   onClose: () => void;
   onOpenFile?: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
@@ -93,6 +103,49 @@ function highlightTextWithLegal(
   }
 
   return <>{segments}</>;
+}
+
+// ─── 인용 점프: 앵커 텍스트 → 미리보기 DOM 위치 탐색 ──
+
+const JUMP_BLOCK_SELECTOR = "p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote";
+
+/** 공백 + 마크다운 마크업 문자 제거 — 앵커(DB 청크)와 미리보기(kordoc 재파싱)의
+ *  공백/줄바꿈 및 ** _ # | ` ~ [ ] 같은 마커 차이를 흡수해 매칭률을 높인다.
+ *  앵커와 DOM textContent 양쪽 모두 이 함수를 거치므로 어느 쪽에 마커가 있든 정렬된다. */
+const normForMatch = (s: string): string => s.replace(/[\s*#`|_~[\]]/g, "");
+
+/**
+ * 백엔드 앵커 텍스트(청크 앞부분)를 렌더된 미리보기에서 찾아 해당 블록 요소를 반환.
+ * offset 좌표가 아닌 텍스트 검색인 이유: kordoc 경로에서 page/offset이 비거나
+ * 좌표 단위가 혼재해 신뢰 불가하기 때문. 못 찾으면 페이지 헤딩으로 폴백.
+ */
+function findJumpTarget(
+  root: HTMLElement,
+  anchors: string[],
+  page: number | null,
+): HTMLElement | null {
+  const blocks = Array.from(root.querySelectorAll<HTMLElement>(JUMP_BLOCK_SELECTOR));
+
+  // 1) 앵커 텍스트 매칭 (검색 score 순 → 가장 관련 높은 청크 우선)
+  for (const anchor of anchors) {
+    const needle = normForMatch(anchor).slice(0, 20);
+    if (needle.length < 6) continue;
+    for (const el of blocks) {
+      if (normForMatch(el.textContent || "").includes(needle)) return el;
+    }
+  }
+
+  // 2) 페이지 헤딩 폴백 — DB 폴백 경로가 주입하는 "## N페이지" 헤딩
+  if (page != null) {
+    const tag = normForMatch(`${page}페이지`);
+    for (const el of blocks) {
+      if (/^h[1-6]$/i.test(el.tagName) && normForMatch(el.textContent || "").includes(tag)) {
+        return el;
+      }
+    }
+  }
+
+  return null;
 }
 
 // ─── HTML 태그 전처리 (kordoc이 HTML 표를 반환하는 경우 대응) ──
@@ -453,6 +506,7 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
 export const PreviewPanel = memo(function PreviewPanel({
   filePath,
   highlightQuery,
+  jumpTarget,
   onClose,
   onOpenFile,
   onCopyPath,
@@ -563,6 +617,29 @@ export const PreviewPanel = memo(function PreviewPanel({
 
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filePath]);
+
+  // 인용 점프 — AI 답변 [출처N] 클릭 시 앵커 위치로 스크롤 + 플래시 하이라이트.
+  // markdown 렌더 완료 후 실행해야 DOM 검색 가능 (300ms debounce + async fetch 고려).
+  const jumpDoneRef = useRef(0);
+  useEffect(() => {
+    if (!jumpTarget || loading || !markdown) return;
+    if (jumpDoneRef.current === jumpTarget.token) return; // 같은 점프 중복 방지
+    const root = contentRef.current;
+    if (!root) return;
+
+    const raf = requestAnimationFrame(() => {
+      const el = findJumpTarget(root, jumpTarget.anchors, jumpTarget.page);
+      jumpDoneRef.current = jumpTarget.token;
+      if (el) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        el.classList.add("cite-flash");
+        window.setTimeout(() => el.classList.remove("cite-flash"), 2200);
+      } else {
+        root.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [jumpTarget, loading, markdown]);
 
   // AI 요약 생성
   const handleGenerateSummary = useCallback((type: SummaryType) => {

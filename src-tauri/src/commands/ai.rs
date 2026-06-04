@@ -4,7 +4,7 @@
 //! - ask_ai_file: 단일 파일 청크 → LLM 스트리밍 응답 (파일 전용 QA)
 //! - summarize_ai: 파일 청크 → LLM 요약 (유형 선택 가능)
 
-use crate::application::dto::search::{AiAnalysis, MatchType, SearchResult, TokenUsage};
+use crate::application::dto::search::{AiAnalysis, MatchType, SearchResult, SourceRef, TokenUsage};
 use crate::application::services::search_service::helpers::{
     collapse_by_lineage, smart_apply_exclude_filter, smart_apply_file_type_filter,
 };
@@ -279,14 +279,37 @@ fn sanitize_doc_content(s: &str) -> String {
         .replace("--- System ---", "— System —")
 }
 
-/// 검색 결과 → RAG 컨텍스트 문자열
+/// 미리보기 점프용 앵커 텍스트 추출 — 청크 본문 앞부분을 공백 정규화하여 ~40자.
+///
+/// 프론트가 미리보기 마크다운에서 이 텍스트를 검색해 해당 위치로 스크롤+하이라이트한다.
+/// 너무 짧으면(이웃 확장 빈 청크 등) None. offset 기반 점프가 불가한 이유는
+/// kordoc 경로에서 page/offset이 비거나 좌표 단위가 혼재하기 때문 — 텍스트 앵커가 견고.
+fn extract_anchor(r: &SearchResult) -> Option<String> {
+    let raw = if !r.full_content.is_empty() {
+        r.full_content.as_str()
+    } else {
+        r.content_preview.as_str()
+    };
+    let normalized: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed = normalized.trim();
+    if trimmed.chars().count() < 6 {
+        return None;
+    }
+    Some(trimmed.chars().take(40).collect())
+}
+
+/// 한 문서(doc_num)당 수집하는 최대 앵커 수 — 큰 문서 과다 방지
+const MAX_ANCHORS_PER_SOURCE: usize = 6;
+
+/// 검색 결과 → RAG 컨텍스트 문자열 + 인용 점프 매핑
 ///
 /// 동일 파일의 청크를 그룹화하여 문맥 연속성 확보.
 /// location_hint(페이지/시트) 포함으로 출처 정확도 향상.
 /// 문서 내용은 sanitize_doc_content로 Prompt Injection 방어.
+/// 세 번째 반환값 `sources`는 `[문서N]` 번호 ↔ 실제 문서 위치/앵커 매핑(검증가능 인용).
 fn build_rag_context(
     results: &[crate::application::dto::search::SearchResult],
-) -> (String, Vec<String>) {
+) -> (String, Vec<String>, Vec<SourceRef>) {
     // 파일별 청크 그룹화 (검색 순서 유지)
     let mut file_order: Vec<String> = Vec::new();
     let mut file_groups: std::collections::HashMap<
@@ -302,6 +325,7 @@ fn build_rag_context(
 
     let mut context = String::new();
     let mut source_files: Vec<String> = Vec::new();
+    let mut sources: Vec<SourceRef> = Vec::new();
 
     for file_path in &file_order {
         let chunks = match file_groups.get(file_path) {
@@ -315,6 +339,35 @@ fn build_rag_context(
         source_files.push(file_path.clone());
         let doc_num = source_files.len();
         let file_name = &chunks[0].file_name;
+
+        // 인용 점프 매핑 — 검색 score 순으로 앵커 수집(이웃 확장 청크는 뒤쪽).
+        // page/location_hint는 위치정보 보유 첫 청크 값을 채택.
+        let mut anchors: Vec<String> = Vec::new();
+        let mut page_number: Option<i64> = None;
+        let mut location_hint: Option<String> = None;
+        for r in chunks.iter() {
+            if anchors.len() < MAX_ANCHORS_PER_SOURCE {
+                if let Some(a) = extract_anchor(r) {
+                    if !anchors.contains(&a) {
+                        anchors.push(a);
+                    }
+                }
+            }
+            if page_number.is_none() {
+                page_number = r.page_number;
+            }
+            if location_hint.is_none() {
+                location_hint = r.location_hint.clone();
+            }
+        }
+        sources.push(SourceRef {
+            doc_num,
+            file_path: file_path.clone(),
+            file_name: file_name.clone(),
+            page_number,
+            location_hint,
+            anchors,
+        });
 
         // 문서 헤더 (파일당 1회)
         context.push_str(&format!("[문서{}: {}]\n", doc_num, file_name));
@@ -364,7 +417,7 @@ fn build_rag_context(
         context.push_str("\n\n");
     }
 
-    (context, source_files)
+    (context, source_files, sources)
 }
 
 /// 파일 청크 텍스트 로드 (공통 헬퍼)
@@ -452,11 +505,13 @@ fn load_file_chunks_text_limited(
 fn to_analysis(
     response: crate::llm::LlmResponse,
     source_files: Vec<String>,
+    sources: Vec<SourceRef>,
     elapsed: u64,
 ) -> AiAnalysis {
     AiAnalysis {
         answer: response.text,
         source_files,
+        sources,
         processing_time_ms: elapsed,
         model: "gemini".to_string(),
         tokens_used: match (response.prompt_tokens, response.completion_tokens) {
@@ -695,7 +750,7 @@ pub async fn ask_ai(
             return;
         }
 
-        let (context, source_files) = build_rag_context(&results);
+        let (context, source_files, sources) = build_rag_context(&results);
         let prompt = format!(
             "{}\n\n--- 문서 내용 ---\n{}\n--- 질문 ---\n{}",
             QA_SYSTEM_PROMPT, context, query_clone
@@ -735,7 +790,7 @@ pub async fn ask_ai(
                     "ai-complete",
                     AiCompleteEvent {
                         request_id: rid,
-                        analysis: to_analysis(response, source_files, elapsed),
+                        analysis: to_analysis(response, source_files, sources, elapsed),
                     },
                 );
             }
@@ -860,7 +915,7 @@ pub async fn ask_ai_file(
         let targeted_len = targeted_results.len();
 
         let content = if !targeted_results.is_empty() {
-            let (targeted_ctx, _) = build_rag_context(&targeted_results);
+            let (targeted_ctx, _, _) = build_rag_context(&targeted_results);
             let targeted_chars = targeted_ctx.len();
 
             // 남은 예산으로 순차 청크 보충 (문서 앞부분 맥락 제공)
@@ -966,7 +1021,8 @@ pub async fn ask_ai_file(
                     "ai-file-complete",
                     AiCompleteEvent {
                         request_id: rid,
-                        analysis: to_analysis(response, source_files, elapsed),
+                        // 파일 QA는 단일 파일 내부 점프라 sources 미생성(인용 점프 범위 밖)
+                        analysis: to_analysis(response, source_files, vec![], elapsed),
                     },
                 );
             }
@@ -1050,5 +1106,10 @@ pub async fn summarize_ai(
 
     let elapsed = start.elapsed().as_millis() as u64;
 
-    Ok(to_analysis(response, vec![file_path_for_result], elapsed))
+    Ok(to_analysis(
+        response,
+        vec![file_path_for_result],
+        vec![],
+        elapsed,
+    ))
 }

@@ -184,6 +184,42 @@ mark.hl-filename {
   border-bottom: 2px solid var(--color-highlight-filename-border);
 }
 
+/* Citation chip — AI 답변 본문 인라인 [출처N] 클릭 버튼 */
+.cite-chip {
+  display: inline;
+  font-size: 0.78em;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-accent-ai);
+  background-color: var(--color-accent-ai-subtle);
+  border: none;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  cursor: pointer;
+  vertical-align: baseline;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+.cite-chip:hover:not(:disabled) {
+  background-color: var(--color-accent-ai);
+  color: #fff;
+}
+.cite-chip:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* Citation jump flash — AI 답변 [출처N] 클릭 시 점프 대상 블록 강조 */
+.cite-flash {
+  animation: cite-flash-pulse 2.2s ease-out;
+  border-radius: 4px;
+}
+@keyframes cite-flash-pulse {
+  0%   { background-color: var(--color-accent-light); box-shadow: 0 0 0 3px var(--color-accent-light); }
+  15%  { background-color: var(--color-accent-light); box-shadow: 0 0 0 3px var(--color-accent-light); }
+  100% { background-color: transparent; box-shadow: 0 0 0 3px transparent; }
+}
+
 /* Snippet separator (preview mode ... → ·) */
 .snippet-sep {
   color: var(--color-text-muted);
