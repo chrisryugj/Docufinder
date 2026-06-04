@@ -399,10 +399,12 @@ impl IndexService {
             return Err(AppError::PathNotFound(path.display().to_string()));
         }
 
-        // 경로 정규화 (심볼릭 링크 해결)
-        let canonical = path
-            .canonicalize()
-            .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
+        // 경로 정규화 (심볼릭 링크 해결) — best-effort.
+        // 일부 SMB 서버는 `std::canonicalize` 의 핸들 오픈은 거부(os error 5)하면서도
+        // 디렉토리 열거(read_dir)는 허용한다. 정규화 실패를 hard-fail 하면 resume/
+        // reindex/periodic_sync 가 전부 막혔다(이슈 #29). 실패 시 원본 경로로 폴백해
+        // 블랙리스트 검사만 수행하고 인덱싱은 계속 진행한다.
+        let canonical = crate::utils::network_path::canonicalize_best_effort(path);
 
         // 시스템 폴더 블랙리스트 검증
         let path_str = canonical.to_string_lossy().to_lowercase();

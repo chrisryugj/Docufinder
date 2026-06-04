@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play } from "lucide-react";
+import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play, RotateCcw } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
@@ -189,6 +189,24 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       onFoldersChange?.();
     } catch (err) {
       logToBackend("error", "Failed to resume indexing", String(err), "FolderTree");
+    }
+  };
+
+  // 인덱싱 상태 초기화 (이슈 #29 — SMB 등에서 반복 실패해 failed/indexing 으로 고착된
+  // 폴더의 자동 resume 루프를 끊는다. 데이터는 유지, 상태 플래그만 completed 로 리셋)
+  const handleReset = async () => {
+    const path = contextMenu.folderPath;
+    closeContextMenu();
+    try {
+      // 자동 resume 트리거가 다시 발동하지 않도록 ref 에 미리 추가
+      resumedRef.current.add(path);
+      await invoke("reset_folder_indexing", { path });
+      await fetchFolderInfo();
+      onFoldersChange?.();
+      showToast("인덱싱 상태를 초기화했습니다", "success");
+    } catch (err) {
+      logToBackend("error", "Failed to reset indexing status", String(err), "FolderTree");
+      showToast("인덱싱 상태 초기화 실패", "error");
     }
   };
 
@@ -537,6 +555,20 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
           <RefreshCw className="w-4 h-4 clr-info" />
           재인덱싱
         </button>
+        {/* 인덱싱 상태 초기화 — 미완료(failed/cancelled/indexing) 상태일 때만.
+            SMB 등에서 반복 실패해 고착된 자동 resume 루프를 끊는 escape hatch (이슈 #29) */}
+        {folderInfo[contextMenu.folderPath]?.indexing_status
+          && folderInfo[contextMenu.folderPath]?.indexing_status !== "completed" && (
+          <button
+            role="menuitem"
+            onClick={handleReset}
+            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+            title="인덱싱 상태 플래그만 초기화 (데이터 유지) — 반복 실패로 멈춘 폴더의 자동 재시도 루프를 끊습니다"
+          >
+            <RotateCcw className="w-4 h-4 clr-warning" />
+            인덱싱 상태 초기화
+          </button>
+        )}
         {onRemoveFolder && (
           <button
             onClick={() => {
