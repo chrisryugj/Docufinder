@@ -532,6 +532,32 @@ pub async fn resume_indexing(
     })
 }
 
+/// 폴더 인덱싱 상태 강제 초기화 (이슈 #29 — failed/incomplete job reset).
+///
+/// SMB 등에서 인덱싱이 반복 실패해 상태가 `failed`/`indexing`/`cancelled` 로 고착되면
+/// 자동 resume 루프가 계속 재시도하거나 폴더가 미완료로 남는다. 사용자가 수동으로
+/// 상태를 `completed` 로 되돌려 루프를 끊고, 필요하면 재인덱싱을 다시 시도할 수 있게
+/// 한다. 인덱싱된 데이터(files/chunks)는 건드리지 않고 상태 플래그만 초기화한다.
+#[tauri::command]
+pub async fn reset_folder_indexing(
+    path: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
+    tracing::info!("Resetting indexing status for folder: {}", path);
+
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    let conn = crate::db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+    crate::db::set_folder_indexing_status(&conn, &path, "completed")
+        .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+
+    Ok(())
+}
+
 // ============================================
 // Folder Info Commands (FolderService 위임)
 // ============================================

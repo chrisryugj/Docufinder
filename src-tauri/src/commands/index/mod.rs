@@ -240,21 +240,11 @@ pub(super) async fn probe_network_path(path: &Path) -> ApiResult<()> {
 
 /// 경로 정규화 — 실패 시 원본 경로로 fallback (best-effort).
 ///
-/// `exists()` 확인 후에만 호출되므로 경로 자체는 유효하다. dunce 가 os error 5
-/// (액세스 거부) 등으로 실패해도 정규화는 best-effort 이며, 실제 접근성은
-/// `probe_network_path` 가 별도로 검증한다. SMB/매핑 드라이브에서 canonicalize 가
-/// 권한으로 실패해 폴더 추가 자체가 막히던 회귀를 푼다(이슈 #29 — Y:\ os error 5).
+/// 매핑 드라이브→UNC 치환 + dunce 정규화 + 실패 시 폴백 로직은
+/// `utils::network_path::canonicalize_best_effort` 로 통일했다(commands·application
+/// 양 레이어 공유, 이슈 #29). 실제 접근성은 `probe_network_path` 가 별도로 검증한다.
 pub(super) fn canonicalize_best_effort(path: &Path) -> PathBuf {
-    // 매핑 네트워크 드라이브(`Y:\`)는 먼저 UNC(`\\server\share`)로 치환한다. UAC
-    // elevated 프로세스에선 일반 세션의 드라이브 매핑이 안 보여 `Y:\` 가 os error 5
-    // 로 막히지만, UNC 는 매핑 계층을 우회한다(이슈 #29). 여기서 변환해두면 DB·
-    // watcher·sync 가 모두 같은 UNC 경로로 통일된다. 로컬/비매핑 경로면 그대로.
-    let path = crate::utils::network_path::resolve_mapped_drive_to_unc(path)
-        .unwrap_or_else(|| path.to_path_buf());
-    dunce::canonicalize(&path).unwrap_or_else(|e| {
-        tracing::warn!("경로 정규화 실패, 원본 경로 사용 ({}): {e}", path.display());
-        path
-    })
+    crate::utils::network_path::canonicalize_best_effort(path)
 }
 
 pub(super) fn stop_file_watching(

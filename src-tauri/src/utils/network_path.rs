@@ -17,6 +17,38 @@ pub fn simplify(path: &Path) -> PathBuf {
     dunce::simplified(path).to_path_buf()
 }
 
+/// best-effort 경로 정규화 — 인덱싱/검증 진입점이 공유한다(이슈 #29).
+///
+/// 1. 매핑 네트워크 드라이브(`Y:\`)는 UNC(`\\srv\share`)로 치환 — elevated 세션에서
+///    드라이브 매핑이 보이지 않아 `os error 5` 로 막히는 문제를 우회한다.
+/// 2. `dunce::canonicalize` 로 정규화(심볼릭 링크 해소 + `\\?\` prefix 회피).
+/// 3. 실패(일부 SMB 서버가 핸들 오픈을 거부하는 `os error 5` 등) 시 원본 경로로
+///    폴백한다 — `read_dir` 열거(=탐색기/PowerShell)는 가능하므로 정규화 실패가
+///    인덱싱 전체를 막아선 안 된다(이슈 #29: resume/reindex/periodic_sync 차단 회귀).
+pub fn canonicalize_best_effort(path: &Path) -> PathBuf {
+    let resolved = resolve_mapped_drive_to_unc(path).unwrap_or_else(|| path.to_path_buf());
+    match dunce::canonicalize(&resolved) {
+        Ok(c) => c,
+        Err(e) => {
+            // os error 5(액세스 거부)는 환경 의존 원인이 많아 상세 진단을 함께 남긴다.
+            if e.raw_os_error() == Some(5) {
+                tracing::warn!(
+                    "경로 정규화 실패, 원본 경로 사용\n{}",
+                    crate::utils::access_diag::context(
+                        &resolved,
+                        "path-normalize",
+                        "dunce::canonicalize",
+                        &e
+                    )
+                );
+            } else {
+                tracing::warn!("경로 정규화 실패, 원본 경로 사용 ({}): {e}", resolved.display());
+            }
+            resolved
+        }
+    }
+}
+
 /// 경로가 UNC(`\\server\share\...`) 인지 검사.
 /// 매핑드라이브(예: `Z:\...`) 는 OS 가 추상화하므로 여기서는 false 로 두고,
 /// 호출자가 필요하면 `GetDriveTypeW` 로 별도 판정한다.

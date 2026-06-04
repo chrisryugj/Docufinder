@@ -231,8 +231,9 @@ impl FolderService {
             return Err(AppError::PathNotFound(path.display().to_string()));
         }
 
-        let canonical = dunce::canonicalize(path)
-            .map_err(|e| AppError::InvalidPath(format!("{}: {}", path.display(), e)))?;
+        // best-effort 정규화 — SMB/매핑 드라이브에서 canonicalize 가 os error 5 로
+        // 실패해도 원본(UNC 치환) 경로로 폴백해 폴더 추가가 막히지 않게 한다(이슈 #29).
+        let canonical = crate::utils::network_path::canonicalize_best_effort(path);
 
         // `validate_watch_path`는 `allow_system_folders` 토글을 반영해 진입점 전체에서
         // 일관된 차단/허용 동작을 보장한다.

@@ -1,3 +1,4 @@
+pub mod access_diag;
 pub mod cloud_detect;
 pub mod disk_info;
 pub mod elevation;

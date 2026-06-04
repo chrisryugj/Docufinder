@@ -1240,6 +1240,7 @@ pub fn run() {
             commands::index::cancel_indexing,
             commands::index::reindex_folder,
             commands::index::resume_indexing,
+            commands::index::reset_folder_indexing,
             commands::index::get_vector_indexing_status,
             commands::index::cancel_vector_indexing,
             commands::index::start_vector_indexing,
