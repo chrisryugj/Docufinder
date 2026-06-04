@@ -245,10 +245,26 @@ export interface SmartSearchResponse {
 // AI RAG (v2.6)
 // =====================
 
+/** 검증가능한 인용 — `[출처N]`의 N(doc_num) ↔ 실제 문서 위치/앵커 매핑 */
+export interface SourceRef {
+  /** `[출처: N]`의 N (1-based). source_files[N-1]과 동일 문서 */
+  doc_num: number;
+  file_path: string;
+  file_name: string;
+  /** 첫 위치정보 보유 청크의 페이지 (kordoc 경로에선 null일 수 있음) */
+  page_number: number | null;
+  /** 위치 힌트 ("Sheet1!행1-50", "페이지 3" 등) */
+  location_hint: string | null;
+  /** 미리보기 점프용 앵커 텍스트 목록 (각 청크 앞부분, 검색 순서) */
+  anchors: string[];
+}
+
 /** AI 분석 응답 */
 export interface AiAnalysis {
   answer: string;
   source_files: string[];
+  /** 검증가능 인용 매핑 (구버전 응답엔 없을 수 있어 optional) */
+  sources?: SourceRef[];
   processing_time_ms: number;
   model: string;
   tokens_used: TokenUsage | null;

@@ -36,6 +36,7 @@ import { UpdateModal } from "./components/updater/UpdateModal";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
+import type { SourceRef } from "./types/search";
 
 // ── App Shell (Provider 래핑) ──────────────────────────
 
@@ -253,6 +254,29 @@ function AppContent() {
     ui.setPreviewFilePath(filePath);
     handleOpenFile(filePath, pageNumber ?? undefined);
   }, [handleOpenFile, ui.setPreviewFilePath]);
+
+  // 검증가능 인용 점프 — AI 답변 [출처N]/참조문서 클릭 → 인앱 미리보기에서 해당 위치로.
+  // handleBookmarkSelect와 동일하게 useResultSelection 우회(인용 파일은 검색결과에 없을 수 있음).
+  const [citationJump, setCitationJump] = useState<
+    { filePath: string; anchors: string[]; page: number | null; token: number } | null
+  >(null);
+  const citeTokenRef = useRef(0);
+  const handleCitationJump = useCallback((src: SourceRef) => {
+    ui.setPreviewFilePath(src.file_path);
+    citeTokenRef.current += 1;
+    setCitationJump({
+      filePath: src.file_path,
+      anchors: src.anchors,
+      page: src.page_number,
+      token: citeTokenRef.current,
+    });
+  }, [ui.setPreviewFilePath]);
+
+  // 미리보기 닫을 때 stale 인용 점프 제거 (닫았다 다시 열어도 과거 점프 재발 방지)
+  const handlePreviewClose = useCallback(() => {
+    setCitationJump(null);
+    ui.handlePreviewClose();
+  }, [ui.handlePreviewClose]);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts(
@@ -586,6 +610,7 @@ function AppContent() {
                     error={search.aiError}
                     onReset={search.resetAi}
                     currentQuestion={search.aiAskedQuery}
+                    onCite={handleCitationJump}
                     onExampleClick={(text) => {
                       search.setQuery(text);
                       if (!isAiDisclaimerAccepted()) {
@@ -651,7 +676,8 @@ function AppContent() {
                 <PreviewPanel
                   filePath={ui.previewFilePath}
                   highlightQuery={search.query}
-                  onClose={ui.handlePreviewClose}
+                  jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
+                  onClose={handlePreviewClose}
                   onOpenFile={handleOpenFile}
                   onCopyPath={handleCopyPath}
                   onOpenFolder={handleOpenFolder}
@@ -669,7 +695,7 @@ function AppContent() {
             <>
               <div
                 className="absolute inset-0 z-40 bg-black/15 animate-fade-in"
-                onClick={ui.handlePreviewClose}
+                onClick={handlePreviewClose}
               />
               <div
                 className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
@@ -678,7 +704,8 @@ function AppContent() {
                 <PreviewPanel
                   filePath={ui.previewFilePath}
                   highlightQuery={search.query}
-                  onClose={ui.handlePreviewClose}
+                  jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
+                  onClose={handlePreviewClose}
                   onOpenFile={handleOpenFile}
                   onCopyPath={handleCopyPath}
                   onOpenFolder={handleOpenFolder}

@@ -118,6 +118,27 @@ impl SearchResponse {
     }
 }
 
+/// 검증가능한 인용 — `[출처N]`의 N(doc_num)을 실제 문서 위치/앵커로 매핑.
+///
+/// `build_rag_context`가 `[문서N]` 번호를 부여하는 시점에 그 문서 청크들의
+/// 위치 메타(page/location_hint)와 본문 앵커 텍스트를 함께 캡처한다.
+/// 프론트는 이 앵커를 미리보기 마크다운에서 검색해 해당 위치로 점프+하이라이트한다.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SourceRef {
+    /// `[출처: N]` 의 N (1-based). `source_files[N-1]` 과 동일 문서.
+    pub doc_num: usize,
+    /// 파일 전체 경로
+    pub file_path: String,
+    /// 파일명
+    pub file_name: String,
+    /// 첫 위치정보 보유 청크의 페이지 번호 (없을 수 있음 — kordoc 경로)
+    pub page_number: Option<i64>,
+    /// 위치 힌트 (XLSX "Sheet1!행1-50", PDF "페이지 3" 등)
+    pub location_hint: Option<String>,
+    /// 미리보기 점프용 앵커 텍스트 목록 (각 청크 본문 앞부분, 검색 순서)
+    pub anchors: Vec<String>,
+}
+
 /// AI RAG 응답 DTO
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AiAnalysis {
@@ -125,6 +146,9 @@ pub struct AiAnalysis {
     pub answer: String,
     /// 참조한 문서 경로 목록
     pub source_files: Vec<String>,
+    /// 검증가능 인용 — doc_num ↔ 문서 위치/앵커 매핑 (인용 점프용)
+    #[serde(default)]
+    pub sources: Vec<SourceRef>,
     /// 처리 시간 (ms)
     pub processing_time_ms: u64,
     /// 사용 모델

@@ -1,11 +1,11 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import type { AiAnalysis } from "../../types/search";
+import type { AiAnalysis, SourceRef } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { ResultContextMenu, useContextMenu } from "./ResultContextMenu";
 
@@ -17,6 +17,8 @@ interface Props {
   onReset: () => void;
   currentQuestion?: string;
   onExampleClick?: (text: string) => void;
+  /** AI 답변 [출처N] 또는 참조 문서 클릭 → 미리보기 인용 점프 */
+  onCite?: (source: SourceRef) => void;
 }
 
 const EXAMPLE_CATEGORIES: { label: string; icon: string; examples: string[] }[] = [
@@ -53,7 +55,17 @@ function parseSourceRefs(text: string): { cleanText: string; refIndices: Set<num
   };
 }
 
-function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion }: Props) {
+// fragment(#) 형식 사용 — react-markdown defaultUrlTransform이 커스텀 프로토콜(df-cite:)은
+// 안전하지 않다고 제거하지만, 콜론 없는 fragment URL은 그대로 통과시킨다.
+const CITE_SCHEME = "#cite-";
+
+/** 본문 인라인 [출처N] (콜론 옵션, 단일 숫자) → 클릭 가능한 마크다운 링크로 치환.
+ *  맨끝 종합줄 [출처: 1, 3]은 parseSourceRefs가 먼저 제거하므로 여기 안 옴. */
+function linkifyCitations(text: string): string {
+  return text.replace(/\[출처\s*:?\s*(\d+)\s*\]/g, (_m, n) => `[출처${n}](${CITE_SCHEME}${n})`);
+}
+
+function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, onCite }: Props) {
   const handleOpenFile = useCallback((path: string) => {
     invoke("open_file", { path }).catch(() => {});
   }, []);
@@ -61,6 +73,37 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   const handleOpenFolder = useCallback((path: string) => {
     invoke("open_folder", { path }).catch(() => {});
   }, []);
+
+  const sources = analysis?.sources ?? [];
+
+  // 본문 마크다운 컴포넌트 — df-cite: 링크를 인용 칩으로 가로채기
+  const markdownComponents = useMemo(
+    () => ({
+      a: ({ href, children }: { href?: string; children?: React.ReactNode }) => {
+        if (href?.startsWith(CITE_SCHEME)) {
+          const n = parseInt(href.slice(CITE_SCHEME.length), 10);
+          const src = sources.find((s) => s.doc_num === n);
+          return (
+            <button
+              type="button"
+              onClick={() => src && onCite?.(src)}
+              disabled={!src || !onCite}
+              className="cite-chip"
+              title={src ? `${src.file_name} — 원문에서 보기` : "원문"}
+            >
+              {children}
+            </button>
+          );
+        }
+        return (
+          <a href={href} target="_blank" rel="noreferrer" style={{ color: "var(--color-accent)" }}>
+            {children}
+          </a>
+        );
+      },
+    }),
+    [sources, onCite],
+  );
 
   // 에러 상태
   if (error) {
@@ -136,6 +179,8 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   }
 
   const { cleanText, refIndices } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer, refIndices: new Set<number>() };
+  // 완료 후 + sources 있을 때만 인라인 [출처N]을 클릭 칩으로 변환
+  const renderText = !isStreaming && sources.length > 0 ? linkifyCitations(cleanText) : cleanText;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-2 py-2 gap-3">
@@ -214,12 +259,13 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               />
             </span>
           ) : (
-            // 완료: 마크다운 렌더링 ($...$ 수식은 KaTeX 로)
+            // 완료: 마크다운 렌더링 ($...$ 수식은 KaTeX 로, [출처N]은 클릭 칩으로)
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
+              components={markdownComponents}
             >
-              {cleanText}
+              {renderText}
             </ReactMarkdown>
           )}
         </div>
@@ -239,12 +285,14 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
 
             return (
               <div className="flex flex-col gap-0.5">
-                {sorted.map(({ path, isRef }) => (
+                {sorted.map(({ path, i, isRef }) => (
                   <SourceFileItem
-                    key={path}
+                    key={`${i}-${path}`}
                     path={path}
+                    source={sources[i]}
                     isRef={isRef}
                     dimmed={hasRefs && !isRef}
+                    onCite={onCite}
                     onOpenFile={handleOpenFile}
                     onOpenFolder={handleOpenFolder}
                   />
@@ -264,17 +312,21 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
   );
 }
 
-/** 참조 문서 아이템 — 우클릭 컨텍스트 메뉴 지원 */
+/** 참조 문서 아이템 — 행 클릭 시 원문 인용 점프, 우클릭 컨텍스트 메뉴 지원 */
 function SourceFileItem({
   path,
+  source,
   isRef,
   dimmed,
+  onCite,
   onOpenFile,
   onOpenFolder,
 }: {
   path: string;
+  source?: SourceRef;
   isRef: boolean;
   dimmed: boolean;
+  onCite?: (source: SourceRef) => void;
   onOpenFile: (path: string) => void;
   onOpenFolder: (path: string) => void;
 }) {
@@ -287,6 +339,13 @@ function SourceFileItem({
 
   const folderPath = cleanPath(path).replace(/\\/g, "/").split("/").slice(0, -1).join("/");
 
+  // 행 클릭: 인용 점프(인앱 미리보기) 우선, 불가하면 OS로 열기 폴백
+  const canCite = !!(source && onCite);
+  const handleRowClick = () => {
+    if (source && onCite) onCite(source);
+    else onOpenFile(path);
+  };
+
   return (
     <>
       <div
@@ -298,9 +357,9 @@ function SourceFileItem({
           backgroundColor: isRef ? "var(--color-bg-secondary)" : "transparent",
           border: isRef ? "1px solid var(--color-border)" : "1px solid transparent",
         }}
-        onClick={() => onOpenFile(path)}
+        onClick={handleRowClick}
         onContextMenu={handleContextMenu}
-        title={cleanPath(path)}
+        title={canCite ? `${cleanPath(path)} — 클릭하여 원문에서 보기` : cleanPath(path)}
       >
         <FileIcon fileName={name} size="sm" />
         <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">
