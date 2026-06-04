@@ -18,11 +18,6 @@ export interface UIContextValue {
   // Theme
   setTheme: (theme: import("../hooks/useTheme").Theme) => void;
 
-  // First Run
-  showOnboarding: boolean;
-  completeOnboarding: () => void;
-  skipOnboarding: () => void;
-
   // Sidebar
   sidebarOpen: boolean;
   toggleSidebar: () => void;
