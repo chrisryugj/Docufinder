@@ -296,6 +296,34 @@ fn cleanup_vector_resources(container: &AppContainer) {
     cleanup_database(&container.db_path);
 }
 
+/// 앱 종료 절차 (트레이 quit + 창 닫기 공통):
+/// 즉시 취소 신호 → cleanup 교착 대비 3초 watchdog → 벡터 리소스 정리 → 프로세스 종료
+fn graceful_shutdown(app: &tauri::AppHandle) {
+    // 즉시 취소 신호 (인덱싱 스레드가 최대한 빨리 탈출하도록)
+    if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+        if let Ok(container) = container.read() {
+            container.cancel_indexing();
+            container.signal_sync_shutdown();
+            if let Ok(worker) = container.get_vector_worker().read() {
+                worker.cancel();
+            }
+        }
+    }
+    // Watchdog: cleanup 교착 시 3초 후 강제 종료 (인덱싱 중 종료 안 되는 버그 방지)
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        tracing::warn!("Cleanup timeout — forcing process exit");
+        std::process::exit(0);
+    });
+    // 정상 cleanup 시도
+    if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
+        if let Ok(container) = container.read() {
+            cleanup_vector_resources(&container);
+        }
+    }
+    app.exit(0);
+}
+
 /// 모델 디렉토리 내 .tmp 잔여 파일 정리 (다운로드 중 크래시 시 생성됨)
 fn cleanup_tmp_files(models_dir: &std::path::Path) {
     let mut cleaned = 0usize;
@@ -1100,29 +1128,7 @@ pub fn run() {
                         }
                     }
                     "quit" => {
-                        // 즉시 취소 신호 (인덱싱 스레드가 최대한 빨리 탈출하도록)
-                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = container.read() {
-                                container.cancel_indexing();
-                                container.signal_sync_shutdown();
-                                if let Ok(worker) = container.get_vector_worker().read() {
-                                    worker.cancel();
-                                }
-                            }
-                        }
-                        // Watchdog: cleanup 교착 시 3초 후 강제 종료 (인덱싱 중 종료 안 되는 버그 방지)
-                        std::thread::spawn(|| {
-                            std::thread::sleep(std::time::Duration::from_secs(3));
-                            tracing::warn!("Cleanup timeout — forcing process exit");
-                            std::process::exit(0);
-                        });
-                        // 정상 cleanup 시도
-                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = container.read() {
-                                cleanup_vector_resources(&container);
-                            }
-                        }
-                        app.exit(0);
+                        graceful_shutdown(app);
                     }
                     _ => {}
                 })
@@ -1201,29 +1207,7 @@ pub fn run() {
                     } else {
                         tracing::info!("Window closing (close_to_tray=false)");
                         // 트레이 아이콘이 프로세스를 유지시키므로 명시적 종료 필요
-                        let app = window.app_handle().clone();
-                        // 즉시 취소 신호
-                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = container.read() {
-                                container.cancel_indexing();
-                                container.signal_sync_shutdown();
-                                if let Ok(worker) = container.get_vector_worker().read() {
-                                    worker.cancel();
-                                }
-                            }
-                        }
-                        // Watchdog: 3초 후 강제 종료
-                        std::thread::spawn(|| {
-                            std::thread::sleep(std::time::Duration::from_secs(3));
-                            tracing::warn!("Cleanup timeout — forcing process exit");
-                            std::process::exit(0);
-                        });
-                        if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = container.read() {
-                                cleanup_vector_resources(&container);
-                            }
-                        }
-                        app.exit(0);
+                        graceful_shutdown(window.app_handle());
                     }
                 }
                 tauri::WindowEvent::Destroyed => {
