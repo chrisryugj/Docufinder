@@ -199,12 +199,12 @@ function AppContent() {
     });
   }, []);
 
-  // 폴더 0개 → 자동 인덱싱 안내
+  // 폴더 0개 → 자동 인덱싱 안내 (첫 실행: AutoIndexPrompt + OnboardingTour)
   useEffect(() => {
-    if (idx.status && idx.status.watched_folders.length === 0 && !ui.showOnboarding) {
+    if (idx.status && idx.status.watched_folders.length === 0) {
       ui.tryShowAutoIndexPrompt();
     }
-  }, [idx.status, ui.showOnboarding, ui.tryShowAutoIndexPrompt]);
+  }, [idx.status, ui.tryShowAutoIndexPrompt]);
 
   // ── Cross-cutting: 인덱싱 완료 → 캐시 무효화 ──
   const prevIndexPhaseRef = useRef(idx.progress?.phase);
@@ -723,9 +723,6 @@ function AppContent() {
         helpOpen={ui.helpOpen}
         onHelpClose={() => ui.setHelpOpen(false)}
         onRestartTour={restartTour}
-        showOnboarding={ui.showOnboarding}
-        onCompleteOnboarding={() => { ui.completeOnboarding(); ui.setShowAutoIndexPrompt(true); }}
-        onSkipOnboarding={() => { ui.skipOnboarding(); ui.setShowAutoIndexPrompt(true); }}
       />
       <ToastContainer toasts={ui.toasts} onDismiss={ui.dismissToast} />
       <IndexingReportModal
