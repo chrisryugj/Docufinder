@@ -130,7 +130,7 @@ impl Embedder {
         let shape = [batch_size as i64, seq_len as i64];
 
         // ONNX 추론 (Session은 &mut self 필요 → Mutex 사용)
-        // e5-small INT8 모델은 input_ids, attention_mask 2개 입력만 필요
+        // KoSimCSE-roberta INT8 모델은 input_ids, attention_mask 2개 입력만 필요
         let input_ids_value = Value::from_array((shape, input_ids_vec))?;
         // attention_mask_vec는 mean pooling에서 재사용 → clone 후 텐서에 전달
         let attention_mask_value = Value::from_array((shape, attention_mask_vec.clone()))?;

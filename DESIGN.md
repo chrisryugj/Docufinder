@@ -245,7 +245,7 @@ Use the design system defined in DESIGN.md:
 - Shadows: Use shadow vars (--shadow-sm/md/lg/xl/card)
 - Borders: Use --color-border vars, --radius-* for corners
 - Animations: Use existing animation classes (animate-fade-in, stagger-item, skeleton-shimmer)
-- Result items: Always include file-type left border (result-stripe-*)
+- Result items: Borderless — hover elevation + subtle file-type background tint (no left-border stripe)
 - Content: Wrap in content-column class for max-width constraint
 - AI features: Use --color-accent-ai (indigo) for semantic/AI indicators
 ```

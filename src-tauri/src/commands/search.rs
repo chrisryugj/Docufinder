@@ -160,7 +160,7 @@ pub async fn search_semantic(
     Ok(apply_lineage_collapse(response, group_versions))
 }
 
-/// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
+/// 하이브리드 검색 (FTS5 키워드 + usearch 벡터 + RRF 병합)
 /// 시맨틱 비활성화 시 키워드 검색으로 폴백
 #[tauri::command]
 pub async fn search_hybrid(

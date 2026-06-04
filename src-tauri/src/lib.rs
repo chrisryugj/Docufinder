@@ -3,11 +3,9 @@ pub mod breadcrumb; // 현재 처리 중 파일/단계 추적 (panic hook 에서
 mod commands;
 mod constants;
 mod db;
-mod domain; // 클린 아키텍처: Domain Layer
 mod embedder;
 mod error;
 mod indexer;
-mod infrastructure; // 클린 아키텍처: Infrastructure Layer
 mod llm; // LLM 클라이언트 (RAG + AI 요약)
 mod model_downloader; // 모델 자동 다운로드
 pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
@@ -1252,7 +1250,6 @@ pub fn run() {
             commands::index::classify_folder,
             commands::index::remove_folder,
             commands::index::get_index_status,
-            commands::index::get_folder_stats,
             commands::index::get_all_folder_stats,
             commands::index::get_folders_with_info,
             commands::index::toggle_favorite,
@@ -1262,7 +1259,6 @@ pub fn run() {
             commands::index::get_vector_indexing_status,
             commands::index::cancel_vector_indexing,
             commands::index::start_vector_indexing,
-            commands::index::get_db_debug_info,
             commands::index::clear_all_data,
             commands::index::initialize_app,
             commands::index::start_indexing_batch,
@@ -1275,16 +1271,13 @@ pub fn run() {
             commands::file::check_github_release,
             commands::file::open_folder,
             commands::file::log_frontend_error,
-            commands::file::get_log_dir,
             commands::file::open_log_dir,
             commands::system::get_suggested_folders,
-            commands::preview::load_document_preview,
             commands::preview::load_markdown_preview,
             commands::preview::add_bookmark,
             commands::preview::remove_bookmark,
             commands::preview::update_bookmark_note,
             commands::preview::get_bookmarks,
-            commands::preview::generate_summary,
             commands::export::export_csv,
             commands::export::export_markdown,
             commands::search::get_search_history_stats,
@@ -1298,7 +1291,6 @@ pub fn run() {
             commands::tags::remove_file_tag,
             commands::tags::get_file_tags,
             commands::tags::get_all_tags,
-            commands::tags::get_files_by_tag,
             commands::typo::suggest_correction,
             commands::ai::ask_ai,
             commands::ai::ask_ai_file,
