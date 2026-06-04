@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { FileText, Crown, Clock, GitCompare } from "lucide-react";
 import { invokeWithTimeout } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import type { LineageVersion } from "../../types/search";
-import { VersionDiffModal } from "./VersionDiffModal";
+
+// 코드 스플리팅 (P2-1): 버전 비교 모달은 diff 클릭 시에만 로딩
+const VersionDiffModal = lazy(() =>
+  import("./VersionDiffModal").then((m) => ({ default: m.VersionDiffModal }))
+);
 
 interface LineageBadgeProps {
   lineageId: string;
@@ -249,13 +253,15 @@ export function LineageBadge({
         )}
 
       {diffTarget && (
-        <VersionDiffModal
-          aPath={currentFilePath}
-          aName={currentVersion?.file_name ?? currentFilePath.split(/[\\/]/).pop() ?? "현재"}
-          bPath={diffTarget.file_path}
-          bName={diffTarget.file_name}
-          onClose={() => setDiffTarget(null)}
-        />
+        <Suspense fallback={null}>
+          <VersionDiffModal
+            aPath={currentFilePath}
+            aName={currentVersion?.file_name ?? currentFilePath.split(/[\\/]/).pop() ?? "현재"}
+            bPath={diffTarget.file_path}
+            bName={diffTarget.file_name}
+            onClose={() => setDiffTarget(null)}
+          />
+        </Suspense>
       )}
     </>
   );

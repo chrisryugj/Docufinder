@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -17,18 +17,33 @@ import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 import { getErrorMessage } from "./types/error";
 
 // Components
-import { Header, StatusBar, ErrorBanner, AppModals, FloatingUI } from "./components/layout";
+import { Header, StatusBar, ErrorBanner, FloatingUI } from "./components/layout";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
 import { TypoSuggestion } from "./components/search/TypoSuggestion";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
-import AiAnswerPanel from "./components/search/AiAnswerPanel";
 import { AiDisclaimerModal, isAiDisclaimerAccepted } from "./components/search/AiDisclaimerModal";
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
-import { PreviewPanel } from "./components/search/PreviewPanel";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
-import { StatisticsModal } from "./components/search/StatisticsModal";
-import { DuplicateFinderModal } from "./components/search/DuplicateFinderModal";
+import { LazyMount } from "./components/LazyMount";
+
+// ── 코드 스플리팅 (P2-1) ──────────────────────────────
+// 초기 렌더에 불필요한 무거운 컴포넌트는 lazy 로딩. PreviewPanel/AiAnswerPanel 은
+// react-markdown + katex(~200kB) 의 유일 소비자라, 둘을 떼면 그 청크가 통째로
+// 초기 번들에서 빠진다. 모달류는 LazyMount 로 첫 오픈 전까지 마운트 지연.
+const AiAnswerPanel = lazy(() => import("./components/search/AiAnswerPanel"));
+const PreviewPanel = lazy(() =>
+  import("./components/search/PreviewPanel").then((m) => ({ default: m.PreviewPanel }))
+);
+const AppModals = lazy(() =>
+  import("./components/layout/AppModals").then((m) => ({ default: m.AppModals }))
+);
+const StatisticsModal = lazy(() =>
+  import("./components/search/StatisticsModal").then((m) => ({ default: m.StatisticsModal }))
+);
+const DuplicateFinderModal = lazy(() =>
+  import("./components/search/DuplicateFinderModal").then((m) => ({ default: m.DuplicateFinderModal }))
+);
 import { Sidebar } from "./components/sidebar";
 import { ToastContainer } from "./components/ui/Toast";
 import { OnboardingTour, resetOnboardingTour } from "./components/onboarding/OnboardingTour";
@@ -603,23 +618,25 @@ function AppContent() {
                 )}
 
                 {search.paradigm === "question" ? (
-                  <AiAnswerPanel
-                    answer={search.aiAnswer}
-                    isStreaming={search.isAiStreaming}
-                    analysis={search.aiAnalysis}
-                    error={search.aiError}
-                    onReset={search.resetAi}
-                    currentQuestion={search.aiAskedQuery}
-                    onCite={handleCitationJump}
-                    onExampleClick={(text) => {
-                      search.setQuery(text);
-                      if (!isAiDisclaimerAccepted()) {
-                        setShowAiDisclaimer(true);
-                      } else {
-                        search.askAi(text, search.filters.searchScope);
-                      }
-                    }}
-                  />
+                  <Suspense fallback={null}>
+                    <AiAnswerPanel
+                      answer={search.aiAnswer}
+                      isStreaming={search.isAiStreaming}
+                      analysis={search.aiAnalysis}
+                      error={search.aiError}
+                      onReset={search.resetAi}
+                      currentQuestion={search.aiAskedQuery}
+                      onCite={handleCitationJump}
+                      onExampleClick={(text) => {
+                        search.setQuery(text);
+                        if (!isAiDisclaimerAccepted()) {
+                          setShowAiDisclaimer(true);
+                        } else {
+                          search.askAi(text, search.filters.searchScope);
+                        }
+                      }}
+                    />
+                  </Suspense>
                 ) : (
                   <SearchResultList
                     results={search.filteredResults}
@@ -673,21 +690,23 @@ function AppContent() {
                 <div className="absolute inset-y-0 -left-1 -right-1" />
               </div>
               <div className="shrink-0" style={{ width: Math.max(ui.previewWidth, MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH, maxWidth: '50%' }}>
-                <PreviewPanel
-                  filePath={ui.previewFilePath}
-                  highlightQuery={search.query}
-                  jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
-                  onClose={handlePreviewClose}
-                  onOpenFile={handleOpenFile}
-                  onCopyPath={handleCopyPath}
-                  onOpenFolder={handleOpenFolder}
-                  onBookmark={ui.addBookmark}
-                  isBookmarked={ui.isBookmarked(ui.previewFilePath)}
-                  tags={ui.previewTags}
-                  tagSuggestions={ui.tagSuggestions}
-                  onAddTag={ui.handleAddTag}
-                  onRemoveTag={ui.handleRemoveTag}
-                />
+                <Suspense fallback={null}>
+                  <PreviewPanel
+                    filePath={ui.previewFilePath}
+                    highlightQuery={search.query}
+                    jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
+                    onClose={handlePreviewClose}
+                    onOpenFile={handleOpenFile}
+                    onCopyPath={handleCopyPath}
+                    onOpenFolder={handleOpenFolder}
+                    onBookmark={ui.addBookmark}
+                    isBookmarked={ui.isBookmarked(ui.previewFilePath)}
+                    tags={ui.previewTags}
+                    tagSuggestions={ui.tagSuggestions}
+                    onAddTag={ui.handleAddTag}
+                    onRemoveTag={ui.handleRemoveTag}
+                  />
+                </Suspense>
               </div>
             </>
           )}
@@ -701,21 +720,23 @@ function AppContent() {
                 className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
                 style={{ width: Math.max(Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH }}
               >
-                <PreviewPanel
-                  filePath={ui.previewFilePath}
-                  highlightQuery={search.query}
-                  jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
-                  onClose={handlePreviewClose}
-                  onOpenFile={handleOpenFile}
-                  onCopyPath={handleCopyPath}
-                  onOpenFolder={handleOpenFolder}
-                  onBookmark={ui.addBookmark}
-                  isBookmarked={ui.isBookmarked(ui.previewFilePath)}
-                  tags={ui.previewTags}
-                  tagSuggestions={ui.tagSuggestions}
-                  onAddTag={ui.handleAddTag}
-                  onRemoveTag={ui.handleRemoveTag}
-                />
+                <Suspense fallback={null}>
+                  <PreviewPanel
+                    filePath={ui.previewFilePath}
+                    highlightQuery={search.query}
+                    jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
+                    onClose={handlePreviewClose}
+                    onOpenFile={handleOpenFile}
+                    onCopyPath={handleCopyPath}
+                    onOpenFolder={handleOpenFolder}
+                    onBookmark={ui.addBookmark}
+                    isBookmarked={ui.isBookmarked(ui.previewFilePath)}
+                    tags={ui.previewTags}
+                    tagSuggestions={ui.tagSuggestions}
+                    onAddTag={ui.handleAddTag}
+                    onRemoveTag={ui.handleRemoveTag}
+                  />
+                </Suspense>
               </div>
             </>
           )}
@@ -740,17 +761,19 @@ function AppContent() {
         }}
         onDecline={() => setShowAiDisclaimer(false)}
       />
-      <AppModals
-        settingsOpen={ui.settingsOpen}
-        onSettingsClose={handleSettingsClose}
-        onThemeChange={ui.setTheme}
-        onSettingsSaved={handleSettingsSaved}
-        onClearData={handleClearData}
-        onAutoIndexAllDrives={idx.autoIndexAllDrives}
-        helpOpen={ui.helpOpen}
-        onHelpClose={() => ui.setHelpOpen(false)}
-        onRestartTour={restartTour}
-      />
+      <LazyMount active={ui.settingsOpen || ui.helpOpen}>
+        <AppModals
+          settingsOpen={ui.settingsOpen}
+          onSettingsClose={handleSettingsClose}
+          onThemeChange={ui.setTheme}
+          onSettingsSaved={handleSettingsSaved}
+          onClearData={handleClearData}
+          onAutoIndexAllDrives={idx.autoIndexAllDrives}
+          helpOpen={ui.helpOpen}
+          onHelpClose={() => ui.setHelpOpen(false)}
+          onRestartTour={restartTour}
+        />
+      </LazyMount>
       <ToastContainer toasts={ui.toasts} onDismiss={ui.dismissToast} />
       <IndexingReportModal
         isOpen={ui.reportResults.length > 0}
@@ -758,30 +781,34 @@ function AppContent() {
         results={ui.reportResults}
       />
 
-      <StatisticsModal
-        isOpen={ui.statsOpen}
-        onClose={() => ui.setStatsOpen(false)}
-        onFilterByType={(fileType) => {
-          const typeMap: Record<string, import("./types/search").FileTypeFilter> = {
-            hwpx: "hwpx", hwp: "hwpx", docx: "docx", doc: "docx",
-            pptx: "pptx", ppt: "pptx", xlsx: "xlsx", xls: "xlsx",
-            pdf: "pdf", txt: "txt", md: "txt",
-          };
-          const ft = typeMap[fileType];
-          search.setFilters((prev) => ({ ...prev, fileTypes: ft ? [ft] : [] }));
-          if (!search.query) search.setQuery("*");
-        }}
-        onOpenFile={handleOpenFile}
-        onSearchQuery={search.handleSelectSearch}
-      />
+      <LazyMount active={ui.statsOpen}>
+        <StatisticsModal
+          isOpen={ui.statsOpen}
+          onClose={() => ui.setStatsOpen(false)}
+          onFilterByType={(fileType) => {
+            const typeMap: Record<string, import("./types/search").FileTypeFilter> = {
+              hwpx: "hwpx", hwp: "hwpx", docx: "docx", doc: "docx",
+              pptx: "pptx", ppt: "pptx", xlsx: "xlsx", xls: "xlsx",
+              pdf: "pdf", txt: "txt", md: "txt",
+            };
+            const ft = typeMap[fileType];
+            search.setFilters((prev) => ({ ...prev, fileTypes: ft ? [ft] : [] }));
+            if (!search.query) search.setQuery("*");
+          }}
+          onOpenFile={handleOpenFile}
+          onSearchQuery={search.handleSelectSearch}
+        />
+      </LazyMount>
 
-      <DuplicateFinderModal
-        isOpen={ui.duplicateOpen}
-        onClose={() => ui.setDuplicateOpen(false)}
-        onOpenFile={handleOpenFile}
-        onOpenFolder={handleOpenFolder}
-        showToast={ui.showToast}
-      />
+      <LazyMount active={ui.duplicateOpen}>
+        <DuplicateFinderModal
+          isOpen={ui.duplicateOpen}
+          onClose={() => ui.setDuplicateOpen(false)}
+          onOpenFile={handleOpenFile}
+          onOpenFolder={handleOpenFolder}
+          showToast={ui.showToast}
+        />
+      </LazyMount>
 
 
       <AutoIndexPrompt
