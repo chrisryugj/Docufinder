@@ -44,8 +44,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          // 마크다운 렌더링 (react-markdown + remark + rehype)
-          markdown: ["react-markdown", "remark-gfm"],
+          // 마크다운 + 수식 플러그인 (react-markdown + remark/rehype). PreviewPanel/
+          // AiAnswerPanel 이 lazy 라 이 청크도 async 분리 → 초기 번들에서 빠진다 (P2-1).
+          markdown: ["react-markdown", "remark-gfm", "remark-math", "rehype-katex"],
+          // katex 본체(~267kB)만 leaf 청크로 분리 — rehype-katex 를 여기 넣으면
+          // markdown↔katex 순환 청크가 생기므로 leaf 인 katex 만 둔다.
+          katex: ["katex"],
           // 아이콘 라이브러리
           icons: ["lucide-react"],
         },
