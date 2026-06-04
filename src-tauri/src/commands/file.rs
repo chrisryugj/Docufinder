@@ -382,17 +382,6 @@ pub async fn log_frontend_error(
     Ok(())
 }
 
-/// 로그 폴더 경로 반환
-#[tauri::command]
-pub async fn get_log_dir(app_handle: AppHandle) -> Result<String, String> {
-    let data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("앱 데이터 경로를 가져올 수 없습니다: {}", e))?;
-    let logs_dir = data_dir.join("logs");
-    Ok(logs_dir.to_string_lossy().to_string())
-}
-
 /// 로그 폴더를 파일 탐색기로 열기
 #[tauri::command]
 pub async fn open_log_dir(app_handle: AppHandle) -> Result<(), String> {

@@ -304,7 +304,7 @@ impl AppContainer {
                 // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
                 // (멀티스레드 환경에서 unsafe set_var 호출 방지)
 
-                // 8GB RAM 환경 경고: ONNX 모델(INT8 ~106MB / F32 ~840MB) + Reranker ~24MB 상주
+                // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
                 let sys_mem = sysinfo_total_memory_mb();
                 if sys_mem > 0 && sys_mem <= 8192 {
                     tracing::warn!(

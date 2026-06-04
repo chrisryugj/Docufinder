@@ -124,28 +124,3 @@ pub async fn get_all_tags(state: State<'_, RwLock<AppContainer>>) -> ApiResult<V
     .await?
 }
 
-/// 특정 태그가 붙은 파일 경로 목록
-#[tauri::command]
-pub async fn get_files_by_tag(
-    tag: String,
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<Vec<String>> {
-    let db_path = {
-        let container = state.read()?;
-        container.db_path.to_string_lossy().to_string()
-    };
-
-    tokio::task::spawn_blocking(move || -> ApiResult<Vec<String>> {
-        let conn = db::get_connection(std::path::Path::new(&db_path))?;
-        let mut stmt = conn
-            .prepare("SELECT file_path FROM file_tags WHERE tag = ?1 ORDER BY file_path")
-            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
-        let paths: Vec<String> = stmt
-            .query_map(rusqlite::params![tag], |row| row.get::<_, String>(0))
-            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?
-            .filter_map(|r| r.ok())
-            .collect();
-        Ok(paths)
-    })
-    .await?
-}

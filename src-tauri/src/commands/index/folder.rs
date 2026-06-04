@@ -536,22 +536,6 @@ pub async fn resume_indexing(
 // Folder Info Commands (FolderService 위임)
 // ============================================
 
-/// 폴더별 인덱싱 통계 조회
-#[tauri::command]
-pub async fn get_folder_stats(
-    path: String,
-    state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<FolderStats> {
-    let service = {
-        let container = state.read()?;
-        container.folder_service()
-    };
-    service
-        .get_folder_stats(&path)
-        .await
-        .map_err(ApiError::from)
-}
-
 /// 전체 폴더 통계 배치 조회 (N+1 IPC 방지)
 #[tauri::command]
 pub async fn get_all_folder_stats(

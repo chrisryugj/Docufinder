@@ -39,29 +39,29 @@ pub fn dylib_filename() -> &'static str {
 #[cfg(target_os = "windows")]
 const ONNX_RUNTIME_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download/v1.23.0/onnxruntime-win-x64-1.23.0.zip";
 // KoSimCSE-roberta-multitask (HuggingFace) — INT8 동적 양자화 모델
-const E5_MODEL_URL: &str =
+const KOSIMCSE_MODEL_URL: &str =
     "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model_int8.onnx";
-const E5_TOKENIZER_URL: &str =
+const KOSIMCSE_TOKENIZER_URL: &str =
     "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/tokenizer.json";
 // F32 원본 URL (하위 호환용, 현재 미사용)
 #[allow(dead_code)]
-const E5_MODEL_F32_URL: &str =
+const KOSIMCSE_MODEL_F32_URL: &str =
     "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx";
 #[allow(dead_code)]
-const E5_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx.data";
+const KOSIMCSE_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcse-roberta-multitask-onnx/resolve/main/model.onnx.data";
 
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
 // INT8 양자화 모델 SHA-256
-const E5_MODEL_SHA256: &str = "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33";
+const KOSIMCSE_MODEL_SHA256: &str = "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33";
 // F32 원본 해시 (하위 호환용, 현재 미사용)
 #[allow(dead_code)]
-const E5_MODEL_F32_SHA256: &str =
+const KOSIMCSE_MODEL_F32_SHA256: &str =
     "a1e12d33caecc60aa192fa1bb56a5a7a4d817486e7420e38662acc6e1c357b5d";
 #[allow(dead_code)]
-const E5_MODEL_DATA_SHA256: &str =
+const KOSIMCSE_MODEL_DATA_SHA256: &str =
     "98691c75a2129885f4a9da144749d0a97c36d2c7a0d425559463046eadb2de9f";
-const E5_TOKENIZER_SHA256: &str =
+const KOSIMCSE_TOKENIZER_SHA256: &str =
     "d607daae73f6a05440b09833097b34c3f6eea3a53d6ab010a6c0c07081f0a5ab";
 // ONNX Runtime ZIP SHA-256 (v1.23.0 win-x64, Microsoft 공식 릴리스 78,078,377 바이트)
 #[cfg(target_os = "windows")]
@@ -104,12 +104,12 @@ pub struct DownloadResult {
 
 /// 필요한 모델 파일들을 확인하고 없으면 다운로드
 pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
-    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
-    fs::create_dir_all(&e5_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    let model_dir = models_dir.join("kosimcse-roberta-multitask");
+    fs::create_dir_all(&model_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
 
-    let model_int8_path = e5_dir.join("model_int8.onnx");
-    let model_f32_path = e5_dir.join("model.onnx");
-    let tokenizer_path = e5_dir.join("tokenizer.json");
+    let model_int8_path = model_dir.join("model_int8.onnx");
+    let model_f32_path = model_dir.join("model.onnx");
+    let tokenizer_path = model_dir.join("tokenizer.json");
 
     let mut result = DownloadResult {
         onnx_runtime_downloaded: false,
@@ -124,7 +124,7 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
     // macOS/Linux: 다운로드 미지원 — 번들 dylib 사용 (seed_bundled_models 가 처리).
     #[cfg(target_os = "windows")]
     {
-        let dll_path = e5_dir.join(dylib_filename());
+        let dll_path = model_dir.join(dylib_filename());
         if needs_dll_replacement(&dll_path) {
             if dll_path.exists() {
                 tracing::warn!(
@@ -135,7 +135,7 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
             } else {
                 tracing::info!("ONNX Runtime 다운로드 중...");
             }
-            download_onnx_runtime(&e5_dir)?;
+            download_onnx_runtime(&model_dir)?;
             result.onnx_runtime_downloaded = true;
             tracing::info!("ONNX Runtime 다운로드 완료");
         }
@@ -144,16 +144,16 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
     // INT8 양자화 모델 다운로드 (SHA-256 검증)
     if !model_int8_path.exists() {
         tracing::info!("임베딩 모델 다운로드 중 (model_int8.onnx, ~106MB)...");
-        download_file_verified(E5_MODEL_URL, &model_int8_path, E5_MODEL_SHA256)?;
+        download_file_verified(KOSIMCSE_MODEL_URL, &model_int8_path, KOSIMCSE_MODEL_SHA256)?;
         result.model_downloaded = true;
         tracing::info!("임베딩 모델(INT8) 다운로드 및 검증 완료");
     } else {
-        verify_existing_file(&model_int8_path, E5_MODEL_SHA256, "임베딩 모델(INT8)")?;
+        verify_existing_file(&model_int8_path, KOSIMCSE_MODEL_SHA256, "임베딩 모델(INT8)")?;
     }
 
     // F32 → INT8 마이그레이션: INT8 다운로드 성공 후 F32 원본 삭제 (RAM 절약)
     if model_int8_path.exists() && model_f32_path.exists() {
-        let model_data_path = e5_dir.join("model.onnx.data");
+        let model_data_path = model_dir.join("model.onnx.data");
         tracing::info!("F32 원본 모델 삭제 중 (INT8로 교체 완료)...");
         let _ = fs::remove_file(&model_f32_path);
         let _ = fs::remove_file(&model_data_path);
@@ -163,11 +163,11 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
     // 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
         tracing::info!("토크나이저 다운로드 중...");
-        download_file_verified(E5_TOKENIZER_URL, &tokenizer_path, E5_TOKENIZER_SHA256)?;
+        download_file_verified(KOSIMCSE_TOKENIZER_URL, &tokenizer_path, KOSIMCSE_TOKENIZER_SHA256)?;
         result.tokenizer_downloaded = true;
         tracing::info!("토크나이저 다운로드 및 검증 완료");
     } else {
-        verify_existing_file(&tokenizer_path, E5_TOKENIZER_SHA256, "토크나이저")?;
+        verify_existing_file(&tokenizer_path, KOSIMCSE_TOKENIZER_SHA256, "토크나이저")?;
     }
 
     Ok(result)
@@ -202,9 +202,9 @@ fn needs_dll_replacement(dll_path: &Path) -> bool {
 /// 실패 시 Err 를 반환하지만 app 은 계속 부팅된다(시맨틱/OCR 기능 비활성).
 #[cfg(target_os = "windows")]
 pub fn ensure_onnx_runtime_dll(models_dir: &Path) -> Result<(), String> {
-    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
-    fs::create_dir_all(&e5_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
-    let dll_path = e5_dir.join(dylib_filename());
+    let model_dir = models_dir.join("kosimcse-roberta-multitask");
+    fs::create_dir_all(&model_dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    let dll_path = model_dir.join(dylib_filename());
 
     if !needs_dll_replacement(&dll_path) {
         return Ok(());
@@ -217,7 +217,7 @@ pub fn ensure_onnx_runtime_dll(models_dir: &Path) -> Result<(), String> {
         );
         let _ = fs::remove_file(&dll_path);
     }
-    download_onnx_runtime(&e5_dir)
+    download_onnx_runtime(&model_dir)
 }
 
 /// macOS/Linux: 자동 다운로드 미지원 — 번들 dylib 검증만.
@@ -512,13 +512,13 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
 
 /// 모델 파일 존재 여부 확인
 pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
-    let e5_dir = models_dir.join("kosimcse-roberta-multitask");
+    let model_dir = models_dir.join("kosimcse-roberta-multitask");
     let model_exists =
-        e5_dir.join("model_int8.onnx").exists() || e5_dir.join("model.onnx").exists();
+        model_dir.join("model_int8.onnx").exists() || model_dir.join("model.onnx").exists();
     (
-        e5_dir.join(dylib_filename()).exists(),
+        model_dir.join(dylib_filename()).exists(),
         model_exists,
-        e5_dir.join("tokenizer.json").exists(),
+        model_dir.join("tokenizer.json").exists(),
     )
 }
 

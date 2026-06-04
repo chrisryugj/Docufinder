@@ -2,14 +2,11 @@
 //!
 //! 비즈니스 로직 실행 중 발생하는 에러
 
-use crate::domain::DomainError;
 use std::fmt;
 
 /// Application Layer 에러
 #[derive(Debug)]
 pub enum AppError {
-    /// 도메인 규칙 위반
-    Domain(DomainError),
     /// 검색어가 비어있음
     EmptyQuery,
     /// 경로를 찾을 수 없음
@@ -37,7 +34,6 @@ pub enum AppError {
 impl fmt::Display for AppError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AppError::Domain(e) => write!(f, "Domain error: {}", e),
             AppError::EmptyQuery => write!(f, "Search query is empty"),
             AppError::PathNotFound(p) => write!(f, "Path not found: {}", p),
             AppError::InvalidPath(p) => write!(f, "Invalid path: {}", p),
@@ -56,12 +52,6 @@ impl fmt::Display for AppError {
 }
 
 impl std::error::Error for AppError {}
-
-impl From<DomainError> for AppError {
-    fn from(e: DomainError) -> Self {
-        AppError::Domain(e)
-    }
-}
 
 /// Application 결과 타입
 pub type AppResult<T> = Result<T, AppError>;

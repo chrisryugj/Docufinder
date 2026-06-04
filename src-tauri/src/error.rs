@@ -136,7 +136,6 @@ impl From<crate::application::errors::AppError> for ApiError {
     fn from(e: crate::application::errors::AppError) -> Self {
         use crate::application::errors::AppError;
         match e {
-            AppError::Domain(d) => ApiError::IndexingFailed(d.to_string()),
             AppError::EmptyQuery => ApiError::SearchFailed("검색어가 비어있습니다".to_string()),
             AppError::PathNotFound(p) => ApiError::PathNotFound(p),
             AppError::InvalidPath(p) => ApiError::InvalidPath(p),

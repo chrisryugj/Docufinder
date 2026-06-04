@@ -1,4 +1,4 @@
-//! 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
+//! 하이브리드 검색 (FTS5 키워드 + usearch 벡터 + RRF 병합)
 
 use super::helpers::*;
 use super::SearchService;
@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 impl SearchService {
-    /// 하이브리드 검색 (FTS + 벡터 + RRF + Reranking)
+    /// 하이브리드 검색 (FTS5 키워드 + usearch 벡터 + RRF 병합)
     pub async fn search_hybrid(
         &self,
         query: &str,

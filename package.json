@@ -58,7 +58,6 @@
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
-    "tailwind-merge": "^3.5.0"
+    "remark-math": "^6.0.0"
   }
 }
