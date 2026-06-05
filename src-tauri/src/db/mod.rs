@@ -1129,6 +1129,25 @@ pub fn get_recent_files(conn: &Connection, limit: usize) -> Result<Vec<(String, 
     rows.collect()
 }
 
+/// 사용자가 최근 연 문서 Top N (last_opened_at 기준) — 홈 화면 "최근 작업한 문서"용.
+/// open_file 시 기록되는 열람 신호(open_count/last_opened_at)를 노출한다.
+pub fn get_recently_opened_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, name, last_opened_at FROM files
+         WHERE last_opened_at IS NOT NULL
+         ORDER BY last_opened_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, i64>(2)?,
+        ))
+    })?;
+    rows.collect()
+}
+
 /// 가장 큰 문서 Top N
 pub fn get_largest_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
     let mut stmt = conn.prepare(

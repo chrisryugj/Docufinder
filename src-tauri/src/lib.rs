@@ -1230,6 +1230,7 @@ pub fn run() {
             commands::search::classify_document,
             commands::search::save_search_query,
             commands::search::get_document_statistics,
+            commands::search::get_recently_opened_documents,
             commands::index::add_folder,
             commands::index::classify_folder,
             commands::index::remove_folder,

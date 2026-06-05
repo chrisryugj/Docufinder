@@ -592,6 +592,7 @@ export const SearchResultList = memo(function SearchResultList({
       onSelectSearch={onSelectSearch}
       semanticEnabled={semanticEnabled}
       onAddFolder={onAddFolder}
+      onOpenFile={onOpenFile}
     />
   );
 });

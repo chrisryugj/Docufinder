@@ -1,6 +1,8 @@
 import { memo } from "react";
-import { Search, Sparkles, Clock } from "lucide-react";
+import { Search, Sparkles, Clock, FileClock } from "lucide-react";
 import type { RecentSearch } from "../../types/search";
+import { FileIcon } from "../ui/FileIcon";
+import { useRecentDocuments } from "../../hooks/useRecentDocuments";
 
 interface WelcomeHeroProps {
   indexedFiles?: number;
@@ -9,6 +11,8 @@ interface WelcomeHeroProps {
   onSelectSearch?: (query: string) => void;
   semanticEnabled?: boolean;
   onAddFolder?: () => void;
+  /** 최근 작업한 문서 열기 */
+  onOpenFile?: (path: string) => void;
 }
 
 export const WelcomeHero = memo(function WelcomeHero({
@@ -18,8 +22,10 @@ export const WelcomeHero = memo(function WelcomeHero({
   onSelectSearch,
   semanticEnabled = false,
   onAddFolder,
+  onOpenFile,
 }: WelcomeHeroProps) {
   const hasIndex = indexedFiles > 0;
+  const recentDocs = useRecentDocuments(hasIndex);
 
   const triggerSearchFocus = () => {
     document.dispatchEvent(
@@ -174,6 +180,59 @@ export const WelcomeHero = memo(function WelcomeHero({
               >
                 <Search className="w-3 h-3 opacity-40 group-hover:opacity-80 transition-opacity" />
                 <span className="truncate max-w-[140px]">{s.query}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recently opened documents — 열람 신호 노출 */}
+      {hasIndex && recentDocs.length > 0 && (
+        <div
+          className="relative z-10 mt-6 w-full flex flex-col items-center animate-fade-in"
+          style={{ maxWidth: "520px", animationDelay: "200ms" }}
+        >
+          <div className="flex items-center gap-1.5 mb-3">
+            <FileClock
+              className="w-3 h-3"
+              style={{ color: "var(--color-text-muted)", opacity: 0.6 }}
+            />
+            <span
+              className="ts-xs font-semibold uppercase"
+              style={{
+                color: "var(--color-text-muted)",
+                letterSpacing: "0.08em",
+                opacity: 0.6,
+              }}
+            >
+              최근 작업한 문서
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 w-full">
+            {recentDocs.slice(0, 6).map((doc) => (
+              <button
+                key={doc.path}
+                onClick={() => onOpenFile?.(doc.path)}
+                title={doc.path}
+                className="group flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] text-left min-w-0"
+                style={{
+                  backgroundColor: "var(--color-bg-secondary)",
+                  borderColor: "var(--color-border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-accent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-border)";
+                }}
+              >
+                <FileIcon fileName={doc.name} size="sm" />
+                <span
+                  className="truncate ts-sm"
+                  style={{ color: "var(--color-text-secondary)" }}
+                >
+                  {doc.name}
+                </span>
               </button>
             ))}
           </div>
