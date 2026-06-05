@@ -123,4 +123,3 @@ pub async fn get_all_tags(state: State<'_, RwLock<AppContainer>>) -> ApiResult<V
     })
     .await?
 }
-

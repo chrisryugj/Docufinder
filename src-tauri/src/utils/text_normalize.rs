@@ -128,7 +128,10 @@ mod tests {
 
     #[test]
     fn unify_crlf_and_cr() {
-        assert_eq!(normalize_text("line1\r\nline2\rline3"), "line1\nline2\nline3");
+        assert_eq!(
+            normalize_text("line1\r\nline2\rline3"),
+            "line1\nline2\nline3"
+        );
     }
 
     #[test]

@@ -451,25 +451,6 @@ pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()
 
 // ==================== 청크 ====================
 
-/// 파일의 기존 청크 삭제 - 트랜잭션 보장 (단독 호출용)
-pub fn delete_chunks_for_file(conn: &Connection, file_id: i64) -> Result<()> {
-    // 트랜잭션 시작 (원자성 보장)
-    conn.execute("BEGIN IMMEDIATE", [])?;
-
-    let result = delete_chunks_for_file_no_tx(conn, file_id);
-
-    match result {
-        Ok(()) => {
-            conn.execute("COMMIT", [])?;
-            Ok(())
-        }
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
-}
-
 /// 파일의 기존 청크 삭제 - 트랜잭션 없음 (배치 파이프라인용)
 ///
 /// 호출자가 이미 트랜잭션을 관리하는 경우 사용.
@@ -1131,7 +1112,10 @@ pub fn get_recent_files(conn: &Connection, limit: usize) -> Result<Vec<(String, 
 
 /// 사용자가 최근 연 문서 Top N (last_opened_at 기준) — 홈 화면 "최근 작업한 문서"용.
 /// open_file 시 기록되는 열람 신호(open_count/last_opened_at)를 노출한다.
-pub fn get_recently_opened_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
+pub fn get_recently_opened_files(
+    conn: &Connection,
+    limit: usize,
+) -> Result<Vec<(String, String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT path, name, last_opened_at FROM files
          WHERE last_opened_at IS NOT NULL
