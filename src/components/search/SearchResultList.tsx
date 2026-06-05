@@ -22,7 +22,11 @@ interface SearchResultListProps {
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   viewDensity?: ViewDensity;
+  /** 라이브 입력 쿼리 — 로딩/빈결과 등 렌더 분기 판단용 */
   query: string;
+  /** 결과 하이라이트용 쿼리(=searchedQuery). 결과와 함께만 갱신돼 타이핑 중 재하이라이트를
+   *  막는다. 미지정 시 query 로 폴백(P2-2). */
+  highlightQuery?: string;
   isLoading: boolean;
   selectedIndex?: number;
   onOpenFile: (filePath: string, page?: number | null) => void;
@@ -85,6 +89,7 @@ export const SearchResultList = memo(function SearchResultList({
   onViewModeChange,
   viewDensity = "normal",
   query,
+  highlightQuery = query,
   isLoading,
   selectedIndex,
   onOpenFile,
@@ -267,7 +272,7 @@ export const SearchResultList = memo(function SearchResultList({
           isCollapsed={isFilenameCollapsed}
           onToggleCollapse={() => setIsFilenameCollapsed(!isFilenameCollapsed)}
           isCompact={isCompact}
-          query={query}
+          query={highlightQuery}
           onOpenFile={onOpenFile}
           onCopyPath={onCopyPath}
           onOpenFolder={onOpenFolder}
@@ -304,7 +309,7 @@ export const SearchResultList = memo(function SearchResultList({
                           onCopyPath={onCopyPath}
                           onOpenFolder={onOpenFolder}
                           refineKeywords={refineKeywords}
-                          query={query}
+                          query={highlightQuery}
                           onFindSimilar={onFindSimilar}
                           category={categories?.[group.file_path]}
                         />
@@ -328,7 +333,7 @@ export const SearchResultList = memo(function SearchResultList({
                         onCopyPath={onCopyPath}
                         onOpenFolder={onOpenFolder}
                         isCompact={isCompact}
-                        searchQuery={query}
+                        searchQuery={highlightQuery}
                         isExpanded={expandedGroups.has(group.file_path)}
                         onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
                       />
@@ -372,7 +377,7 @@ export const SearchResultList = memo(function SearchResultList({
                       onCopyPath={onCopyPath}
                       onOpenFolder={onOpenFolder}
                       refineKeywords={refineKeywords}
-                      query={query}
+                      query={highlightQuery}
                       onFindSimilar={onFindSimilar}
                       category={categories?.[result.file_path]}
                     />

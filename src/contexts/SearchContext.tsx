@@ -12,6 +12,8 @@ export interface SearchContextValue {
   // Core search
   query: string;
   setQuery: (q: string) => void;
+  /** 현재 결과를 생성한 쿼리 (결과와 함께 갱신) — 하이라이트/타이머용, 라이브 query 와 분리 */
+  searchedQuery: string;
   results: SearchResult[];
   filenameResults: SearchResult[];
   filteredResults: SearchResult[];
@@ -127,7 +129,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
   // ── Core Search ──
   const {
-    query, setQuery, results, filenameResults, filteredResults, groupedResults,
+    query, setQuery, searchedQuery, results, filenameResults, filteredResults, groupedResults,
     searchTime, isLoading, error: searchError, clearError: clearSearchError,
     searchMode, setSearchMode, filters, setFilters, viewMode, setViewMode,
     refineQuery, setRefineQuery, clearRefine, setComposing,
@@ -163,11 +165,14 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
   const handleQueryChange = useCallback((newQuery: string) => setQuery(newQuery), [setQuery]);
 
-  // 검색 결과가 있고 3초 유지 시 최근 검색에 자동 저장
-  useRecentSearchSaver(query, filteredResults.length, addSearch);
+  // 검색 결과가 있고 3초 유지 시 최근 검색에 자동 저장.
+  // 라이브 query 대신 searchedQuery(결과를 만든 settled 쿼리)에 물려 키스트로크마다
+  // 타이머가 재설정되지 않게 하고, 실제 검색된 쿼리만 히스토리에 저장한다(P2-2).
+  useRecentSearchSaver(searchedQuery, filteredResults.length, addSearch);
 
   // ── Typo Correction ──
-  const { suggestion: typoSuggestion, dismiss: dismissTypo } = useTypoCorrection(query, results.length === 0 && !isLoading);
+  // searchedQuery 기준 — 0건으로 확정된 검색에만 교정 제안(타이핑 중간 단계엔 안 뜸)(P2-2).
+  const { suggestion: typoSuggestion, dismiss: dismissTypo } = useTypoCorrection(searchedQuery, results.length === 0 && !isLoading);
 
   // ── Filter Presets ──
   const { presets, addPreset, removePreset, applyPreset } = useFilterPresets();
@@ -190,8 +195,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
   // ── Export (memoized) ──
   const { exportToCSV, copyToClipboard } = useExport({ showToast });
-  const handleExportCSV = useCallback(() => exportToCSV(filteredResults, query), [exportToCSV, filteredResults, query]);
-  const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, query), [copyToClipboard, filteredResults, query]);
+  // searchedQuery 사용 — 내보내는 결과와 라벨이 일치하고, 타이핑 중 콜백 ID 가 안정적이라
+  // ResultsToolbar 등 하위 memo 가 키스트로크마다 깨지지 않는다(P2-2).
+  const handleExportCSV = useCallback(() => exportToCSV(filteredResults, searchedQuery), [exportToCSV, filteredResults, searchedQuery]);
+  const handleCopyAll = useCallback(() => copyToClipboard(filteredResults, searchedQuery), [copyToClipboard, filteredResults, searchedQuery]);
   const memoizedRefineKeywords = useMemo(
     () => refineQuery.trim() ? refineQuery.trim().split(/\s+/) : undefined,
     [refineQuery]
@@ -205,7 +212,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   }, [searchMode, setFilters]);
 
   const value: SearchContextValue = useMemo(() => ({
-    query, setQuery, results, filenameResults, filteredResults, groupedResults,
+    query, setQuery, searchedQuery, results, filenameResults, filteredResults, groupedResults,
     searchTime, isLoading, searchError, clearSearchError,
     searchMode, setSearchMode, filters, setFilters, viewMode, setViewMode,
     refineQuery, setRefineQuery, clearRefine, setComposing,
@@ -223,7 +230,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     searchInputRef, compactSearchInputRef,
     clearSearchCache,
   }), [
-    query, results, filenameResults, filteredResults, groupedResults,
+    query, searchedQuery, results, filenameResults, filteredResults, groupedResults,
     searchTime, isLoading, searchError, clearSearchError,
     searchMode, filters, viewMode,
     refineQuery, clearRefine,

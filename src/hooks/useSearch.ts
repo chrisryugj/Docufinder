@@ -144,6 +144,8 @@ function setToCache(key: string, entry: Omit<CacheEntry, "timestamp">): void {
 interface UseSearchReturn {
   query: string;
   setQuery: (query: string) => void;
+  /** 현재 결과를 생성한 쿼리 (결과와 함께 갱신). 하이라이트/타이머용 — 라이브 query 와 분리 */
+  searchedQuery: string;
   results: SearchResult[];
   /** 파일명 검색 결과 (통합 모드에서 상단 표시용) */
   filenameResults: SearchResult[];
@@ -194,6 +196,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   const [query, setQueryInternal] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  // 결과를 생성한 "검색된 쿼리". 결과 커밋과 같은 transition 으로 갱신해 라이브 query 와
+  // 분리한다 — 하이라이트/타이머(typo/recent)가 이 값을 쓰면 키스트로크마다 재계산되지
+  // 않고, 보이는 결과와 하이라이트 대상이 항상 일치한다(P2-2).
+  const [searchedQuery, setSearchedQuery] = useState("");
   const [filenameResults, setFilenameResults] = useState<SearchResult[]>([]);
   const [searchTime, setSearchTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -288,6 +294,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
       if (!searchQuery.trim()) {
         startTransition(() => {
+          setSearchedQuery("");
           setResults([]);
           setFilenameResults([]);
           setSearchTime(null);
@@ -302,6 +309,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       const cached = getFromCache(cacheKey);
       if (cached) {
         startTransition(() => {
+          setSearchedQuery(searchQuery);
           setResults(cached.results);
           setFilenameResults(cached.filenameResults);
           setSearchTime(cached.searchTime);
@@ -327,6 +335,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             searchTime: response.search_time_ms,
           });
           startTransition(() => {
+            setSearchedQuery(searchQuery);
             setResults(response.results);
             setFilenameResults([]);
             setSearchTime(response.search_time_ms);
@@ -373,6 +382,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
             searchTime: contentResponse.search_time_ms,
           });
           startTransition(() => {
+            setSearchedQuery(searchQuery);
             setResults(contentResponse.results);
             setFilenameResults(filenameResponse.results);
             setSearchTime(contentResponse.search_time_ms);
@@ -385,6 +395,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         logToBackend("error", "Search failed", message, "useSearch");
         setError(`검색 실패: ${message}`);
         startTransition(() => {
+          setSearchedQuery(searchQuery);
           setResults([]);
           setFilenameResults([]);
           setSearchTime(null);
@@ -414,6 +425,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     setNlSubmitted(false);
     clearSearchCache();
     startTransition(() => {
+      setSearchedQuery("");
       setResults([]);
       setFilenameResults([]);
       setSearchTime(null);
@@ -441,6 +453,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
         setParsedQuery(response.parsed_query);
         startTransition(() => {
+          setSearchedQuery(query.trim());
           setResults(response.results);
           setFilenameResults([]);
           setSearchTime(response.search_time_ms);
@@ -452,6 +465,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         logToBackend("error", "Smart search failed", message, "useSearch");
         setError(`검색 실패: ${message}`);
         startTransition(() => {
+          setSearchedQuery(query.trim());
           setResults([]);
           setFilenameResults([]);
           setSearchTime(null);
@@ -667,6 +681,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       executeSearch(query, searchMode);
     } else {
       startTransition(() => {
+        setSearchedQuery("");
         setResults([]);
         setFilenameResults([]);
         setSearchTime(null);
@@ -677,6 +692,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   return {
     query,
     setQuery,
+    searchedQuery,
     results,
     filenameResults: filteredFilenameResults,
     filteredResults,
