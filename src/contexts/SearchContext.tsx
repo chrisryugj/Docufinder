@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useCallback, useEffect, useMemo, use
 import { useSearch, useCollapsibleSearch, useRecentSearches, useExport, useSimilarDocuments, useRecentSearchSaver, useResultSelection, useAiAnswer } from "../hooks";
 import { clearSearchCache } from "../hooks/useSearch";
 import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
+import { useSmartFolders, type SmartFolder } from "../hooks/useSmartFolders";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
 import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, RecentSearch, AiAnalysis, KeywordMatchMode } from "../types/search";
 import { useUIContext } from "./UIContext";
@@ -69,6 +70,12 @@ export interface SearchContextValue {
   handleSavePreset: (name: string) => void;
   handleApplyPreset: (preset: FilterPreset) => void;
   removePreset: (id: string) => void;
+
+  // Smart folders (저장된 검색 = 쿼리 + 필터 + 모드)
+  smartFolders: SmartFolder[];
+  handleSaveSmartFolder: () => void;
+  handleApplySmartFolder: (folder: SmartFolder) => void;
+  removeSmartFolder: (id: string) => void;
 
   // Similar documents
   similarResults: SearchResult[];
@@ -184,6 +191,36 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     setFilters(applyPreset(preset, filters));
   }, [applyPreset, filters, setFilters]);
 
+  // ── Smart Folders (저장된 검색) ──
+  const { smartFolders, addSmartFolder, removeSmartFolder } = useSmartFolders();
+  const handleSaveSmartFolder = useCallback(() => {
+    const name = query.trim();
+    if (!name) return;
+    const added = addSmartFolder({
+      name,
+      query: name,
+      filters: {
+        sortBy: filters.sortBy,
+        fileTypes: filters.fileTypes,
+        dateRange: filters.dateRange,
+        keywordOnly: filters.keywordOnly,
+        excludeFilename: filters.excludeFilename,
+      },
+      searchMode,
+      keywordMatchMode,
+    });
+    showToast(added ? `스마트 폴더 "${name}" 저장됨` : "이미 저장된 검색입니다", added ? "success" : "info");
+  }, [query, filters, searchMode, keywordMatchMode, addSmartFolder, showToast]);
+  const handleApplySmartFolder = useCallback((folder: SmartFolder) => {
+    // 저장된 검색 재실행 — instant 패러다임으로 전환 후 쿼리/필터/모드 복원.
+    setParadigm("instant");
+    setSearchMode(folder.searchMode);
+    setKeywordMatchMode(folder.keywordMatchMode);
+    setFilters((prev) => ({ ...folder.filters, searchScope: prev.searchScope }));
+    setQuery(folder.query);
+    searchInputRef.current?.focus();
+  }, [setParadigm, setSearchMode, setKeywordMatchMode, setFilters, setQuery]);
+
   // ── Similar Documents ──
   const { similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults } = useSimilarDocuments(showToast);
 
@@ -223,6 +260,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     recentSearches, addSearch, removeSearch, clearSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,
     presets, handleSavePreset, handleApplyPreset, removePreset,
+    smartFolders, handleSaveSmartFolder, handleApplySmartFolder, removeSmartFolder,
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex, setSelectedIndex,
     handleExportCSV, handleCopyAll, memoizedRefineKeywords,
@@ -240,6 +278,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     recentSearches, handleSelectSearch, handleQueryChange,
     typoSuggestion, dismissTypo,
     presets, handleSavePreset, handleApplyPreset, removePreset,
+    smartFolders, handleSaveSmartFolder, handleApplySmartFolder, removeSmartFolder,
     similarResults, similarSourceFile, handleFindSimilar, clearSimilarResults,
     selectedIndex,
     handleExportCSV, handleCopyAll, memoizedRefineKeywords,

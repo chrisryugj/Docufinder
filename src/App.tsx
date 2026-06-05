@@ -416,6 +416,11 @@ function AppContent() {
         onSelectSearch={search.handleSelectSearch}
         onRemoveSearch={search.removeSearch}
         onClearSearches={search.clearSearches}
+        smartFolders={search.smartFolders}
+        onApplySmartFolder={search.handleApplySmartFolder}
+        onRemoveSmartFolder={search.removeSmartFolder}
+        onSaveSmartFolder={search.handleSaveSmartFolder}
+        currentQuery={search.query}
         bookmarks={ui.bookmarks}
         onBookmarkSelect={handleBookmarkSelect}
         onBookmarkRemove={ui.removeBookmark}
