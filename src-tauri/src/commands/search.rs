@@ -423,6 +423,28 @@ pub async fn get_document_statistics(
     .await?
 }
 
+/// 사용자가 최근 연 문서 (홈 화면 "최근 작업한 문서") — 열람 신호 노출.
+#[tauri::command]
+pub async fn get_recently_opened_documents(
+    limit: usize,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<Vec<FileEntry>> {
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<Vec<FileEntry>> {
+        let conn = crate::db::get_connection(&db_path)?;
+        let docs = crate::db::get_recently_opened_files(&conn, limit.min(50))?
+            .into_iter()
+            .map(|(path, name, value)| FileEntry { path, name, value })
+            .collect();
+        Ok(docs)
+    })
+    .await?
+}
+
 /// 통계 항목
 #[derive(Debug, serde::Serialize)]
 pub struct StatEntry {
