@@ -3,11 +3,13 @@ import { ChevronLeft, ChevronRight, Plus, Clock, Folder, Trash2, Bookmark } from
 import { invoke } from "@tauri-apps/api/core";
 import { FolderTree } from "./FolderTree";
 import { RecentSearches } from "./RecentSearches";
+import { SmartFolders } from "./SmartFolders";
 import { SuggestedFolders } from "./SuggestedFolders";
 import { BookmarkList } from "./BookmarkList";
 import { DriveIndexingPanel } from "./DriveIndexingPanel";
 import { Tooltip } from "../ui/Tooltip";
 import type { RecentSearch } from "../../types/search";
+import type { SmartFolder } from "../../hooks/useSmartFolders";
 import type { BookmarkInfo } from "../../hooks/useBookmarks";
 import type { BatchState } from "../../types/index";
 
@@ -24,6 +26,11 @@ interface SidebarProps {
   onSelectSearch: (query: string) => void;
   onRemoveSearch: (query: string) => void;
   onClearSearches: () => void;
+  smartFolders?: SmartFolder[];
+  onApplySmartFolder?: (folder: SmartFolder) => void;
+  onRemoveSmartFolder?: (id: string) => void;
+  onSaveSmartFolder?: () => void;
+  currentQuery?: string;
   bookmarks?: BookmarkInfo[];
   onBookmarkSelect?: (filePath: string, pageNumber?: number | null) => void;
   onBookmarkRemove?: (id: number) => void;
@@ -46,6 +53,11 @@ export const Sidebar = memo(function Sidebar({
   onSelectSearch,
   onRemoveSearch,
   onClearSearches,
+  smartFolders = [],
+  onApplySmartFolder,
+  onRemoveSmartFolder,
+  onSaveSmartFolder,
+  currentQuery,
   bookmarks = [],
   onBookmarkSelect,
   onBookmarkRemove,
@@ -56,6 +68,7 @@ export const Sidebar = memo(function Sidebar({
 }: SidebarProps) {
   const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
+  const [isSmartFoldersExpanded, setIsSmartFoldersExpanded] = useState(true);
 
   return (
     <>
@@ -206,6 +219,46 @@ export const Sidebar = memo(function Sidebar({
                       />
                     )}
                   </>
+                )}
+              </section>
+
+              {/* Section: Smart Folders (저장된 검색) */}
+              <section className="pt-1 pb-3">
+                <div
+                  className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
+                  style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+                >
+                  <button
+                    onClick={() => setIsSmartFoldersExpanded(!isSmartFoldersExpanded)}
+                    className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
+                    aria-expanded={isSmartFoldersExpanded}
+                  >
+                    <ChevronRight
+                      className={`w-3.5 h-3.5 transition-transform duration-150 ${isSmartFoldersExpanded ? "rotate-90" : ""}`}
+                    />
+                    스마트 폴더
+                    <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
+                      ({smartFolders.length})
+                    </span>
+                  </button>
+                  {currentQuery?.trim() && onSaveSmartFolder && (
+                    <button
+                      onClick={onSaveSmartFolder}
+                      className="p-1 rounded hover-sidebar-item"
+                      aria-label="현재 검색을 스마트 폴더로 저장"
+                      title="현재 검색을 스마트 폴더로 저장"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {isSmartFoldersExpanded && (
+                  <SmartFolders
+                    folders={smartFolders}
+                    onApply={onApplySmartFolder ?? (() => {})}
+                    onRemove={onRemoveSmartFolder ?? (() => {})}
+                  />
                 )}
               </section>
 
