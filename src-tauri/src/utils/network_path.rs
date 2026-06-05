@@ -42,7 +42,10 @@ pub fn canonicalize_best_effort(path: &Path) -> PathBuf {
                     )
                 );
             } else {
-                tracing::warn!("경로 정규화 실패, 원본 경로 사용 ({}): {e}", resolved.display());
+                tracing::warn!(
+                    "경로 정규화 실패, 원본 경로 사용 ({}): {e}",
+                    resolved.display()
+                );
             }
             resolved
         }

@@ -43,15 +43,6 @@ impl Drop for PooledConnection {
     }
 }
 
-impl PooledConnection {
-    /// 커넥션을 풀에서 분리하여 반환 (Drop 시 풀로 반환하지 않음)
-    /// 장기 보유하는 Repository 등에서 사용
-    /// 이미 take된 경우 None 반환
-    pub fn into_inner(mut self) -> Option<Connection> {
-        self.inner.take()
-    }
-}
-
 impl std::ops::Deref for PooledConnection {
     type Target = Connection;
     fn deref(&self) -> &Connection {

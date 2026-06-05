@@ -53,7 +53,8 @@ const KOSIMCSE_MODEL_DATA_URL: &str = "https://huggingface.co/chrisryugj/kosimcs
 // SHA-256 해시 (무결성 검증)
 // 주의: 모델 버전 업데이트 시 해시값도 업데이트 필요
 // INT8 양자화 모델 SHA-256
-const KOSIMCSE_MODEL_SHA256: &str = "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33";
+const KOSIMCSE_MODEL_SHA256: &str =
+    "877e43d3f3a2ee09a58c08a0d1720f99b3496962e92569c5846299f862ac0f33";
 // F32 원본 해시 (하위 호환용, 현재 미사용)
 #[allow(dead_code)]
 const KOSIMCSE_MODEL_F32_SHA256: &str =
@@ -163,7 +164,11 @@ pub fn ensure_models(models_dir: &Path) -> Result<DownloadResult, String> {
     // 토크나이저 다운로드 (SHA-256 검증)
     if !tokenizer_path.exists() {
         tracing::info!("토크나이저 다운로드 중...");
-        download_file_verified(KOSIMCSE_TOKENIZER_URL, &tokenizer_path, KOSIMCSE_TOKENIZER_SHA256)?;
+        download_file_verified(
+            KOSIMCSE_TOKENIZER_URL,
+            &tokenizer_path,
+            KOSIMCSE_TOKENIZER_SHA256,
+        )?;
         result.tokenizer_downloaded = true;
         tracing::info!("토크나이저 다운로드 및 검증 완료");
     } else {

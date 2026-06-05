@@ -1,4 +1,4 @@
-//! Data Management Commands - clear_all_data, get_db_debug_info
+//! Data Management Commands - clear_all_data
 
 use super::*;
 
@@ -76,19 +76,3 @@ pub async fn clear_all_data(
     emit_step("completed");
     Ok(())
 }
-
-// ============================================
-// Debug Commands
-// ============================================
-
-#[derive(Debug, Serialize)]
-pub struct DbDebugInfo {
-    pub files_count: usize,
-    pub chunks_count: usize,
-    pub chunks_fts_count: usize,
-    pub files_fts_count: usize,
-    pub fts_match_count: usize,
-    pub filename_match_count: usize,
-    pub test_query: String,
-}
-

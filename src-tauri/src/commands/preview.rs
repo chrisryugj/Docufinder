@@ -45,16 +45,6 @@ fn validate_preview_path(
 
 // ======================== 미리보기 ========================
 
-/// 미리보기 청크 (프론트엔드용)
-#[derive(Debug, Serialize)]
-pub struct PreviewChunk {
-    pub chunk_id: i64,
-    pub chunk_index: i64,
-    pub content: String,
-    pub page_number: Option<i64>,
-    pub location_hint: Option<String>,
-}
-
 /// 미리보기 섹션 (오버랩 제거 후 병합된 연속 텍스트)
 #[derive(Debug, Serialize)]
 pub struct PreviewSection {
@@ -62,17 +52,6 @@ pub struct PreviewSection {
     pub label: Option<String>,
     /// 병합된 연속 텍스트
     pub content: String,
-}
-
-/// 미리보기 응답
-#[derive(Debug, Serialize)]
-pub struct PreviewResponse {
-    pub file_path: String,
-    pub file_name: String,
-    pub chunks: Vec<PreviewChunk>,
-    /// 오버랩 제거 후 섹션별 병합 텍스트
-    pub sections: Vec<PreviewSection>,
-    pub total_chars: usize,
 }
 
 /// 청크들을 오버랩 제거 후 섹션(페이지/시트)별로 병합
@@ -506,32 +485,3 @@ pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<
 
     Ok(result)
 }
-
-// ======================== 요약 ========================
-
-/// 요약 문장 (프론트엔드용)
-#[derive(Debug, Serialize)]
-pub struct SummarySentence {
-    /// 문장 텍스트
-    pub text: String,
-    /// 스코어 (항상 1.0 — 단순 미리보기)
-    pub score: f32,
-    /// 원본 문장 순서 (0-based)
-    pub original_index: usize,
-    /// 해당 문장이 속한 페이지 번호
-    pub page_number: Option<i64>,
-    /// 위치 힌트
-    pub location_hint: Option<String>,
-}
-
-/// 요약 응답
-#[derive(Debug, Serialize)]
-pub struct SummaryResponse {
-    /// 요약 문장 목록 (원문 순서)
-    pub sentences: Vec<SummarySentence>,
-    /// 전체 문장 수
-    pub total_sentences: usize,
-    /// 생성 시간 (ms)
-    pub generation_time_ms: u64,
-}
-
