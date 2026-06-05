@@ -109,10 +109,13 @@ function highlightTextWithLegal(
 
 const JUMP_BLOCK_SELECTOR = "p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote";
 
-/** 공백 + 마크다운 마크업 문자 제거 — 앵커(DB 청크)와 미리보기(kordoc 재파싱)의
- *  공백/줄바꿈 및 ** _ # | ` ~ [ ] 같은 마커 차이를 흡수해 매칭률을 높인다.
- *  앵커와 DOM textContent 양쪽 모두 이 함수를 거치므로 어느 쪽에 마커가 있든 정렬된다. */
-const normForMatch = (s: string): string => s.replace(/[\s*#`|_~[\]]/g, "");
+/** NFC 정규화 + 공백/비가시 문자 + 마크다운 마커 제거 — 앵커(DB 청크, 백엔드에서
+ *  normalize_text 적용됨)와 미리보기(kordoc 재파싱, 비정규화)의 차이를 흡수한다.
+ *  `\s` 가 NBSP·ideographic space·BOM 을 이미 포함하므로, 그 밖의 zero-width
+ *  (U+200B/C/D)·soft-hyphen(U+00AD) 만 추가 제거하면 백엔드 normalize_text 와 정합.
+ *  앵커와 DOM textContent 양쪽 모두 이 함수를 거치므로 어느 쪽에 차이가 있든 정렬된다. */
+const normForMatch = (s: string): string =>
+  s.normalize("NFC").replace(/[\s\u200B\u200C\u200D\u00AD*#`|_~[\]]/g, "");
 
 /**
  * 백엔드 앵커 텍스트(청크 앞부분)를 렌더된 미리보기에서 찾아 해당 블록 요소를 반환.

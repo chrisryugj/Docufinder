@@ -154,7 +154,9 @@ pub fn strip_highlight_markers(snippet: &str) -> String {
 
 /// FTS5 snippet에 키워드가 없을 때 content에서 키워드를 찾아 커스텀 snippet 생성
 fn create_keyword_snippet(content: &str, query: &str) -> Option<String> {
-    let query_trimmed = query.trim();
+    // 인덱싱 content(parse_file→normalize_text)와 매칭되도록 쿼리도 동일 정규화.
+    let normalized_query = crate::utils::normalize_text(query);
+    let query_trimmed = normalized_query.trim();
     if query_trimmed.is_empty() || content.is_empty() {
         return None;
     }

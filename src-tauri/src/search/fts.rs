@@ -194,7 +194,10 @@ fn sanitize_fts_query(
     tokenizer: Option<&dyn TextTokenizer>,
     mode: KeywordMode,
 ) -> String {
-    let trimmed = query.trim();
+    // 인덱싱 텍스트(parse_file → normalize_text)와 동일 정규화를 거쳐야
+    // NFD 한글·비가시 문자가 섞인 쿼리도 매칭된다. 한쪽만 정규화하면 불일치.
+    let normalized = crate::utils::normalize_text(query);
+    let trimmed = normalized.trim();
     if trimmed.is_empty() {
         return String::new();
     }
@@ -328,7 +331,9 @@ fn search_like_fallback(
     folder_scope: Option<&str>,
     filter: &MetaFilter,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
-    let like_pattern = format!("%{}%", query);
+    // 인덱싱 content(정규화됨)와 매칭되도록 쿼리도 동일 정규화 (sanitize_fts_query 와 동일 기준).
+    let normalized = crate::utils::normalize_text(query);
+    let like_pattern = format!("%{}%", normalized.trim());
 
     let (scope_clause, scope_pattern) =
         match crate::utils::folder_scope::scope_like_pattern(folder_scope.unwrap_or("")) {

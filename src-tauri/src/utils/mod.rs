@@ -6,6 +6,9 @@ pub mod filename_normalize;
 pub mod folder_scope;
 pub mod idle_detector;
 pub mod network_path;
+pub mod text_normalize;
+
+pub use text_normalize::normalize_text;
 
 /// PowerShell `-EncodedCommand`용 Base64(UTF-16LE) 인코딩.
 /// 문자열 보간 기반 인젝션을 원천 차단한다.

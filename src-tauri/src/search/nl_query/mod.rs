@@ -64,7 +64,10 @@ impl NlQueryParser {
         query: &str,
         tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
     ) -> ParsedQuery {
-        let mut remaining = query.trim().to_string();
+        // 인덱싱·FTS 와 동일 정규화 — NFD/비가시 문자가 의도·키워드 추출 규칙
+        // (remove_intent 등 문자열 매칭)을 깨뜨리지 않도록 먼저 정규화한다.
+        let normalized = crate::utils::normalize_text(query);
+        let mut remaining = normalized.trim().to_string();
         let mut parse_log = Vec::new();
         let original = remaining.clone();
 
