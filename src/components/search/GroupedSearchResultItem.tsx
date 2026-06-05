@@ -91,9 +91,11 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     }
   };
 
-  const handleOpenFolder = (e: React.MouseEvent) => {
+  // "파일 위치 열기" — 파일 경로를 넘기면 백엔드가 탐색기/Finder에서 해당 파일을
+  // 선택(reveal)한 채로 폴더를 연다. (경로 표시줄의 폴더 클릭은 folderPath 유지)
+  const handleRevealFile = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onOpenFolder?.(folderPath);
+    onOpenFolder?.(group.file_path);
   };
 
 
@@ -167,10 +169,10 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             </button>
             {onOpenFolder && (
               <button
-                onClick={handleOpenFolder}
+                onClick={handleRevealFile}
                 className="p-1.5 rounded transition-colors btn-icon-hover"
                 style={{ color: "var(--color-warning)" }}
-                title="폴더 열기"
+                title="파일 위치 열기 (탐색기에서 선택)"
               >
                 <FolderOpen className="w-4 h-4" />
               </button>
@@ -331,7 +333,6 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       {/* 컨텍스트 메뉴 (공용 컴포넌트 사용) */}
       <ResultContextMenu
         filePath={group.file_path}
-        folderPath={folderPath}
         onOpenFile={onOpenFile}
         onCopyPath={onCopyPath}
         onOpenFolder={onOpenFolder}

@@ -694,7 +694,6 @@ export const PreviewPanel = memo(function PreviewPanel({
 
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
-  const dirPath = filePath.replace(/[/\\][^/\\]*$/, "");
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
 
   return (
@@ -726,7 +725,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         >
           <Copy size={13} />
         </button>
-        <button onClick={() => onOpenFolder?.(dirPath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="폴더 열기">
+        <button onClick={() => onOpenFolder?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
           <FolderOpen size={13} />
         </button>
         {onBookmark && (

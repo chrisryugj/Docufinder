@@ -122,12 +122,14 @@ export const SearchResultItem = memo(function SearchResultItem({
     [result.file_path, onCopyPath]
   );
 
-  const handleOpenFolder = useCallback(
+  // "파일 위치 열기" — 파일 경로를 넘기면 백엔드가 탐색기/Finder에서 해당 파일을
+  // 선택(reveal)한 채로 폴더를 연다. (경로 표시줄의 폴더 클릭은 folderPath 유지)
+  const handleRevealFile = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onOpenFolder?.(folderPath);
+      onOpenFolder?.(result.file_path);
     },
-    [folderPath, onOpenFolder]
+    [result.file_path, onOpenFolder]
   );
 
   return (
@@ -337,10 +339,10 @@ export const SearchResultItem = memo(function SearchResultItem({
             </button>
             {onOpenFolder && (
               <button
-                onClick={handleOpenFolder}
+                onClick={handleRevealFile}
                 className="p-1 rounded btn-icon-hover"
-                title="폴더 열기"
-                aria-label="상위 폴더 열기"
+                title="파일 위치 열기 (탐색기에서 선택)"
+                aria-label="파일 위치 열기"
               >
                 <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-accent-warm)" }} />
               </button>
@@ -364,7 +366,6 @@ export const SearchResultItem = memo(function SearchResultItem({
 
       <ResultContextMenu
         filePath={result.file_path}
-        folderPath={folderPath}
         pageNumber={result.page_number}
         onOpenFile={onOpenFile}
         onCopyPath={onCopyPath}

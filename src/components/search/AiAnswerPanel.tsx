@@ -337,8 +337,6 @@ function SourceFileItem({
     navigator.clipboard.writeText(cleanPath(p));
   }, []);
 
-  const folderPath = cleanPath(path).replace(/\\/g, "/").split("/").slice(0, -1).join("/");
-
   // 행 클릭: 인용 점프(인앱 미리보기) 우선, 불가하면 OS로 열기 폴백
   const canCite = !!(source && onCite);
   const handleRowClick = () => {
@@ -385,7 +383,6 @@ function SourceFileItem({
       </div>
       <ResultContextMenu
         filePath={cleanPath(path)}
-        folderPath={folderPath}
         onOpenFile={() => onOpenFile(path)}
         onCopyPath={handleCopyPath}
         onOpenFolder={() => onOpenFolder(path)}

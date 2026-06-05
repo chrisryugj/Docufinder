@@ -45,6 +45,42 @@ fn open_with_default(path_str: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 플랫폼별 파일 탐색기에서 파일을 선택(reveal)한 채로 폴더 열기 (공통 헬퍼)
+fn reveal_with_default(path_str: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        // explorer /select,<path> — 폴더를 열고 해당 파일을 선택 상태로 표시.
+        // open_with_default 와 동일하게 Windows 루트의 explorer.exe 절대경로 사용.
+        let win_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
+        Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
+            .arg(format!("/select,{}", path_str))
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // open -R — Finder 에서 파일을 reveal (선택 상태로 표시)
+        Command::new("open")
+            .arg("-R")
+            .arg(path_str)
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // 대부분의 Linux 파일 매니저는 파일 선택을 지원하지 않으므로 부모 폴더 열기로 폴백
+        let parent = std::path::Path::new(path_str)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| path_str.to_string());
+        Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|e| format!("열기 실패: {}", e))?;
+    }
+    Ok(())
+}
+
 /// 허용된 파일 확장자 (대소문자 무관)
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "hwp", "hwpx", "txt", "md", "rtf", "csv",
@@ -397,15 +433,15 @@ pub async fn open_log_dir(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 폴더를 파일 탐색기로 열기
+/// 탐색기로 열기 — 파일 경로면 해당 파일을 선택(reveal)한 채로, 폴더 경로면 폴더만.
 #[tauri::command]
 pub async fn open_folder(path: String) -> Result<(), String> {
     // 경로 검증
     let canonical_path = validate_path(&path)?;
 
-    // 폴더 존재 확인
-    if !canonical_path.is_dir() {
-        return Err("폴더를 찾을 수 없습니다".to_string());
+    // 존재 확인 (파일/폴더 모두 허용)
+    if !canonical_path.exists() {
+        return Err("경로를 찾을 수 없습니다".to_string());
     }
 
     // 시스템 폴더 접근 차단
@@ -421,6 +457,12 @@ pub async fn open_folder(path: String) -> Result<(), String> {
         .to_string()
         .trim_start_matches("\\\\?\\")
         .to_string();
-    open_with_default(&path_str)?;
+    // 파일 경로면 탐색기/Finder 에서 해당 파일을 선택(reveal)한 채로 폴더를 연다.
+    // 폴더 경로면(경로 표시줄 클릭 등) 기존대로 폴더만 연다.
+    if canonical_path.is_file() {
+        reveal_with_default(&path_str)?;
+    } else {
+        open_with_default(&path_str)?;
+    }
     Ok(())
 }
