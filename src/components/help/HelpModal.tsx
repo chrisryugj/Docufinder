@@ -295,7 +295,8 @@ function ShortcutsSection() {
       </Paragraph>
 
       <div className="space-y-0">
-        <ShortcutRow keys="Ctrl + K" description="검색창으로 이동" />
+        <ShortcutRow keys="Ctrl + K" description="명령 팔레트 열기" />
+        <ShortcutRow keys="/" description="검색창으로 이동" />
         <ShortcutRow keys="Ctrl + B" description="사이드바 열기/닫기" />
         <ShortcutRow keys="↑ / ↓" description="결과 목록 이동" />
         <ShortcutRow keys="Enter" description="선택한 파일 열기" />

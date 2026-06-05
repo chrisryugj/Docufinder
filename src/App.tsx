@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -26,6 +26,12 @@ import { AiDisclaimerModal, isAiDisclaimerAccepted } from "./components/search/A
 import { VectorIndexingBanner } from "./components/search/VectorIndexingBanner";
 import { IndexingReportModal } from "./components/search/IndexingReportModal";
 import { LazyMount } from "./components/LazyMount";
+import { CommandPalette, type Command } from "./components/CommandPalette";
+import {
+  FolderPlus, Settings as SettingsIcon, HelpCircle, BarChart3, CopyCheck,
+  PanelLeft, SunMoon, Home as HomeIcon, Download, Compass, Search as SearchIcon,
+  Sparkles, FileText, MessageCircleQuestion, Bookmark, Clock,
+} from "lucide-react";
 
 // ── 코드 스플리팅 (P2-1) ──────────────────────────────
 // 초기 렌더에 불필요한 무거운 컴포넌트는 lazy 로딩. PreviewPanel/AiAnswerPanel 은
@@ -80,6 +86,9 @@ function AppContent() {
     resetOnboardingTour(DOCUFINDER_TOUR_STORAGE_KEY);
     setTourRunKey((k) => k + 1);
   }, []);
+
+  // 명령 팔레트 (Cmd/Ctrl+K)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   // ── App Settings (cross-cutting) ──
   const {
@@ -152,6 +161,15 @@ function AppContent() {
   const handleSwitchToAnything = useCallback(() => {
     search.setParadigm("question");
   }, [search.setParadigm]);
+
+  // ── 홈으로(검색 초기화) — Header + 명령 팔레트 공유 ──
+  const handleGoHome = useCallback(() => {
+    search.setQuery("");
+    search.setSelectedIndex(-1);
+    search.setParadigm("instant");
+    search.resetAi();
+    search.searchInputRef.current?.focus();
+  }, [search.setQuery, search.setSelectedIndex, search.setParadigm, search.resetAi, search.searchInputRef]);
 
   // ── File Actions (cross-cutting) ──
   const {
@@ -306,6 +324,7 @@ function AppContent() {
           (target as HTMLInputElement).select();
         }
       },
+      onCommandPalette: () => setCommandPaletteOpen((o) => !o),
       onEscape: () => {
         if (search.selectedIndex >= 0) {
           search.setSelectedIndex(-1);
@@ -387,6 +406,47 @@ function AppContent() {
       throw err;
     }
   }, [idx, ui]);
+
+  // ── 명령 팔레트 커맨드 목록 ──
+  const commands = useMemo<Command[]>(() => {
+    const ico = "w-4 h-4";
+    const list: Command[] = [
+      // 작업
+      { id: "add-folder", group: "작업", label: "폴더 추가", keywords: "folder add 인덱싱 index", icon: <FolderPlus className={ico} />, run: () => { handleAddFolder(); } },
+      { id: "duplicates", group: "작업", label: "중복 문서 찾기", keywords: "duplicate 중복", icon: <CopyCheck className={ico} />, run: () => ui.setDuplicateOpen(true) },
+      { id: "stats", group: "작업", label: "통계 보기", keywords: "statistics 통계 차트", icon: <BarChart3 className={ico} />, run: () => ui.setStatsOpen(true) },
+      { id: "home", group: "작업", label: "홈으로 (검색 초기화)", keywords: "home reset 초기화", icon: <HomeIcon className={ico} />, run: handleGoHome },
+      // 검색 모드
+      { id: "mode-keyword", group: "검색 모드", label: "키워드 검색", hint: search.searchMode === "keyword" ? "현재" : undefined, keywords: "keyword 키워드", icon: <SearchIcon className={ico} />, run: () => { search.setParadigm("instant"); search.setSearchMode("keyword"); } },
+      ...(semanticEnabled
+        ? [{ id: "mode-hybrid", group: "검색 모드", label: "하이브리드 검색 (시맨틱)", hint: search.searchMode === "hybrid" ? "현재" : undefined, keywords: "hybrid semantic 시맨틱 의미", icon: <Sparkles className={ico} />, run: () => { search.setParadigm("instant"); search.setSearchMode("hybrid"); } } as Command]
+        : []),
+      { id: "mode-filename", group: "검색 모드", label: "파일명 검색", hint: search.searchMode === "filename" ? "현재" : undefined, keywords: "filename 파일명", icon: <FileText className={ico} />, run: () => { search.setParadigm("instant"); search.setSearchMode("filename"); } },
+      { id: "mode-ai", group: "검색 모드", label: "AI에게 질문", keywords: "ai question 질문 anything", icon: <MessageCircleQuestion className={ico} />, run: () => search.setParadigm("question") },
+      // 보기
+      { id: "sidebar", group: "보기", label: "사이드바 토글", keywords: "sidebar 사이드바", icon: <PanelLeft className={ico} />, run: ui.toggleSidebar },
+      { id: "theme", group: "보기", label: "테마 전환 (라이트 ↔ 다크)", keywords: "theme dark light 다크 라이트 어둡게 밝게", icon: <SunMoon className={ico} />, run: () => { const isDark = document.documentElement.classList.contains("dark"); ui.setTheme(isDark ? "light" : "dark"); } },
+      // 설정/기타
+      { id: "settings", group: "설정", label: "설정 열기", keywords: "settings 설정 환경", icon: <SettingsIcon className={ico} />, run: () => ui.setSettingsOpen(true) },
+      { id: "help", group: "설정", label: "도움말", keywords: "help 도움말 단축키", icon: <HelpCircle className={ico} />, run: () => ui.setHelpOpen(true) },
+      { id: "tour", group: "설정", label: "기능 둘러보기 다시 보기", keywords: "tour 투어 둘러보기 가이드", icon: <Compass className={ico} />, run: restartTour },
+      { id: "update", group: "설정", label: "업데이트 확인", keywords: "update 업데이트", icon: <Download className={ico} />, run: () => setUpdateModalOpen(true) },
+    ];
+    // 동적: 스마트 폴더
+    for (const f of search.smartFolders) {
+      list.push({ id: `sf-${f.id}`, group: "스마트 폴더", label: f.name, hint: f.query, keywords: `${f.name} ${f.query}`, icon: <Bookmark className={ico} />, run: () => search.handleApplySmartFolder(f) });
+    }
+    // 동적: 최근 검색 (최대 6)
+    for (const r of search.recentSearches.slice(0, 6)) {
+      list.push({ id: `rs-${r.timestamp}`, group: "최근 검색", label: r.query, keywords: r.query, icon: <Clock className={ico} />, run: () => search.handleSelectSearch(r.query) });
+    }
+    return list;
+  }, [
+    handleAddFolder, handleGoHome, restartTour, semanticEnabled, search.searchMode,
+    search.smartFolders, search.recentSearches, search.setParadigm, search.setSearchMode,
+    search.handleApplySmartFolder, search.handleSelectSearch,
+    ui.setDuplicateOpen, ui.setStatsOpen, ui.toggleSidebar, ui.setTheme, ui.setSettingsOpen, ui.setHelpOpen,
+  ]);
 
   // ── Render ──
 
@@ -479,13 +539,7 @@ function AppContent() {
               onOpenHelp={() => ui.setHelpOpen(true)}
               onOpenStats={() => ui.setStatsOpen(true)}
               onOpenDuplicates={() => ui.setDuplicateOpen(true)}
-              onGoHome={() => {
-                search.setQuery("");
-                search.setSelectedIndex(-1);
-                search.setParadigm("instant");
-                search.resetAi();
-                search.searchInputRef.current?.focus();
-              }}
+              onGoHome={handleGoHome}
               isIndexing={idx.isIndexing}
               isSidebarOpen={ui.sidebarOpen}
               hasQuery={search.query.length > 0}
@@ -850,6 +904,12 @@ function AppContent() {
         storageKey={DOCUFINDER_TOUR_STORAGE_KEY}
         autoStart={!ui.showAutoIndexPrompt}
         runKey={tourRunKey}
+      />
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={commands}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 
 interface ShortcutHandlers {
   onFocusSearch?: () => void;
+  onCommandPalette?: () => void;
   onEscape?: () => void;
   onArrowUp?: () => void;
   onArrowDown?: () => void;
@@ -29,8 +30,15 @@ export function useKeyboardShortcuts(
         document.activeElement?.tagName === "INPUT" ||
         document.activeElement?.tagName === "TEXTAREA";
 
-      // Ctrl+K: 검색창 포커스 (타겟 선택은 핸들러에서 처리)
+      // Ctrl+K: 명령 팔레트 (입력 중에도 동작)
       if (isCtrlOrCmd && e.key === "k") {
+        e.preventDefault();
+        h.onCommandPalette?.();
+        return;
+      }
+
+      // "/": 검색창 포커스 (입력 중이 아닐 때만 — 타이핑 방해 방지)
+      if (e.key === "/" && !isInputFocused) {
         e.preventDefault();
         h.onFocusSearch?.();
         return;
