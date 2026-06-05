@@ -57,6 +57,26 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   const defaultCount = 1;
   const displayChunks = isExpanded ? group.chunks : group.chunks.slice(0, defaultCount);
   const hasMore = group.chunks.length > defaultCount;
+
+  // 청크 미리보기(텍스트+하이라이트 범위) 메모이즈 — searchQuery(=searchedQuery, P2-2)가
+  // 타이핑 중 안정적이라, 셸이 재렌더돼도 preview.ranges 참조가 유지돼 memo 된
+  // HighlightedText 의 regex 재계산을 건너뛴다. deps 는 stable 한 group.chunks 기준
+  // (displayChunks 는 slice 라 매 렌더 새 배열이므로 dep 으로 못 씀).
+  const chunkPreviews = useMemo(
+    () => (isExpanded ? group.chunks : group.chunks.slice(0, defaultCount)).map((chunk) => {
+      const cleanSnippet = chunk.snippet ? stripHtmlTags(chunk.snippet) : undefined;
+      const cleanPreview = stripHtmlTags(chunk.content_preview);
+      const effectiveFullText = cleanSnippet || cleanPreview;
+      return buildPreviewContext({
+        previewText: cleanPreview,
+        fullText: effectiveFullText,
+        highlightRanges: chunk.highlight_ranges,
+        snippet: cleanSnippet,
+        query: searchQuery,
+      });
+    }),
+    [group.chunks, isExpanded, searchQuery]
+  );
   const isSingleMatch = group.total_matches === 1;
 
   // 컨텍스트 메뉴 (공용 훅 사용)
@@ -210,17 +230,8 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       {/* 청크 목록 */}
       <div className={isCompact ? "space-y-1" : "space-y-2"}>
         {displayChunks.map((chunk, idx) => {
-          // HTML 태그 제거 (HWPX/DOCX 테이블 파싱 잔재: <td>, <tr>, colspan 등)
-          const cleanSnippet = chunk.snippet ? stripHtmlTags(chunk.snippet) : undefined;
-          const cleanPreview = stripHtmlTags(chunk.content_preview);
-          const effectiveFullText = cleanSnippet || cleanPreview;
-          const preview = buildPreviewContext({
-            previewText: cleanPreview,
-            fullText: effectiveFullText,
-            highlightRanges: chunk.highlight_ranges,
-            snippet: cleanSnippet,
-            query: searchQuery,
-          });
+          // 미리보기는 위에서 메모이즈한 chunkPreviews 사용 (displayChunks 와 동일 순서/길이)
+          const preview = chunkPreviews[idx];
           return (
           <div
             key={`${chunk.chunk_index}-${idx}`}

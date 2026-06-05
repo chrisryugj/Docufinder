@@ -646,6 +646,7 @@ function AppContent() {
                     onViewModeChange={search.setViewMode}
                     viewDensity={viewDensity}
                     query={search.query}
+                    highlightQuery={search.searchedQuery}
                     isLoading={search.isLoading}
                     selectedIndex={search.selectedIndex}
                     onOpenFile={handleOpenFile}
@@ -693,7 +694,7 @@ function AppContent() {
                 <Suspense fallback={null}>
                   <PreviewPanel
                     filePath={ui.previewFilePath}
-                    highlightQuery={search.query}
+                    highlightQuery={search.searchedQuery}
                     jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
                     onClose={handlePreviewClose}
                     onOpenFile={handleOpenFile}
@@ -723,7 +724,7 @@ function AppContent() {
                 <Suspense fallback={null}>
                   <PreviewPanel
                     filePath={ui.previewFilePath}
-                    highlightQuery={search.query}
+                    highlightQuery={search.searchedQuery}
                     jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
                     onClose={handlePreviewClose}
                     onOpenFile={handleOpenFile}

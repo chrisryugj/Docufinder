@@ -1,4 +1,4 @@
-import { useCallback, memo } from "react";
+import { useCallback, useMemo, memo } from "react";
 import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
@@ -76,34 +76,39 @@ export const SearchResultItem = memo(function SearchResultItem({
   // Context menu
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
 
-  // Text processing — HTML 태그 제거
-  const cleanSnippet = result.snippet?.replace(/\[\[HL\]\]/g, '').replace(/\[\[\/HL\]\]/g, '');
-  const rawFullText = cleanSnippet || result.content_preview;
-
-  const clean = {
-    snippet: result.snippet ? stripHtmlTags(result.snippet) : undefined,
-    preview: stripHtmlTags(result.content_preview),
-    fullText: stripHtmlTags(rawFullText),
-  };
-
-  const expandedView = isExpanded
-    ? buildExpandedContext(clean.fullText, result.highlight_ranges, clean.snippet)
-    : null;
-  const previewView = !isExpanded
-    ? buildPreviewContext({
-        previewText: clean.preview,
-        fullText: clean.fullText,
-        highlightRanges: result.highlight_ranges,
-        snippet: clean.snippet,
-        query,
-      })
-    : null;
-  const displayText = isExpanded
-    ? (expandedView?.text ?? clean.fullText)
-    : (previewView?.text ?? clean.preview);
-  const displayRanges = isExpanded
-    ? (expandedView?.ranges ?? result.highlight_ranges)
-    : (previewView?.ranges ?? []);
+  // Text processing — HTML 태그 제거 + 스니펫/하이라이트 범위 계산을 메모이즈.
+  // query(=searchedQuery, P2-2)가 타이핑 중 안정적이라, 부모 리렌더로 이 컴포넌트가
+  // 재실행돼도 displayRanges(배열) 참조가 유지돼 memo 된 HighlightedText 의 regex
+  // 재계산을 건너뛴다(onToggleExpand 등 불안정 prop 으로 셸이 재렌더돼도 비용 없음).
+  const { displayText, displayRanges } = useMemo(() => {
+    const cleanSnippet = result.snippet?.replace(/\[\[HL\]\]/g, '').replace(/\[\[\/HL\]\]/g, '');
+    const rawFullText = cleanSnippet || result.content_preview;
+    const clean = {
+      snippet: result.snippet ? stripHtmlTags(result.snippet) : undefined,
+      preview: stripHtmlTags(result.content_preview),
+      fullText: stripHtmlTags(rawFullText),
+    };
+    const expandedView = isExpanded
+      ? buildExpandedContext(clean.fullText, result.highlight_ranges, clean.snippet)
+      : null;
+    const previewView = !isExpanded
+      ? buildPreviewContext({
+          previewText: clean.preview,
+          fullText: clean.fullText,
+          highlightRanges: result.highlight_ranges,
+          snippet: clean.snippet,
+          query,
+        })
+      : null;
+    return {
+      displayText: isExpanded
+        ? (expandedView?.text ?? clean.fullText)
+        : (previewView?.text ?? clean.preview),
+      displayRanges: isExpanded
+        ? (expandedView?.ranges ?? result.highlight_ranges)
+        : (previewView?.ranges ?? []),
+    };
+  }, [result, isExpanded, query]);
 
   const handleCopyPath = useCallback(
     (e: React.MouseEvent) => {

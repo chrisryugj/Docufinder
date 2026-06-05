@@ -32,9 +32,16 @@ export function useFileActions({
   const isProcessingRef = useRef(false);
   const queueResultsRef = useRef<AddFolderResult[]>([]);
 
+  // query 는 키스트로크마다 바뀌므로 deps 에서 빼고 ref 로 최신값을 읽는다(P2-2).
+  // 이렇게 해야 handleOpenFile 의 identity 가 안정적이라, 이를 prop 으로 받는
+  // memo 컴포넌트(PreviewPanel — 문서 전체 재하이라이트 / 결과 아이템)가 타이핑 중
+  // 불필요하게 재렌더되지 않는다.
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
   const handleOpenFile = useCallback(
     async (filePath: string, page?: number | null) => {
-      const trimmedQuery = query.trim();
+      const trimmedQuery = queryRef.current.trim();
       if (trimmedQuery.length >= 2) {
         addSearch(trimmedQuery);
       }
@@ -47,7 +54,7 @@ export function useFileActions({
         updateToast(toastId, { message: "파일 열기 실패", type: "error" });
       }
     },
-    [query, addSearch, showToast, updateToast]
+    [addSearch, showToast, updateToast]
   );
 
   const handleCopyPath = useCallback(
