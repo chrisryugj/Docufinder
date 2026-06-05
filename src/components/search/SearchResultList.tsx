@@ -936,7 +936,6 @@ function FilenameResultItem({
   copies?: SearchResult[];
 }) {
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
-  const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
 
   return (
     <div
@@ -993,7 +992,6 @@ function FilenameResultItem({
       )}
       <ResultContextMenu
         filePath={result.file_path}
-        folderPath={folderPath}
         onOpenFile={onOpenFile}
         onCopyPath={onCopyPath}
         onOpenFolder={onOpenFolder}

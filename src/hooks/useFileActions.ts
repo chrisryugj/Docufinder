@@ -75,9 +75,9 @@ export function useFileActions({
       try {
         const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
         await invokeWithTimeout("open_folder", { path: cleanPath }, IPC_TIMEOUT.FILE_ACTION);
-        showToast("폴더를 열었습니다", "success");
+        showToast("탐색기에서 열었습니다", "success");
       } catch {
-        showToast("폴더 열기 실패", "error");
+        showToast("탐색기 열기 실패", "error");
       }
     },
     [showToast]

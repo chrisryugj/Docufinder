@@ -10,7 +10,6 @@ interface ContextMenuState {
 
 interface ResultContextMenuProps {
   filePath: string;
-  folderPath: string;
   pageNumber?: number | null;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
@@ -57,7 +56,6 @@ export function useContextMenu() {
 /** 검색 결과 컨텍스트 메뉴 */
 export function ResultContextMenu({
   filePath,
-  folderPath,
   pageNumber,
   onOpenFile,
   onCopyPath,
@@ -177,11 +175,11 @@ export function ResultContextMenu({
       {onOpenFolder && (
         <button
           role="menuitem"
-          onClick={(e) => { e.stopPropagation(); closeContextMenu(); onOpenFolder(folderPath); }}
+          onClick={(e) => { e.stopPropagation(); closeContextMenu(); onOpenFolder(filePath); }}
           className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
         >
           <FolderOpen className="w-4 h-4 clr-warning" />
-          <span className="flex-1">폴더 열기</span>
+          <span className="flex-1">파일 위치 열기</span>
         </button>
       )}
 
