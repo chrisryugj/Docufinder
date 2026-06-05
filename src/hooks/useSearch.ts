@@ -415,12 +415,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     }
   }, [query, setQuery]);
 
-  // paradigm 전환 (localStorage 저장 + 쿼리/결과 전체 초기화)
+  // paradigm 전환 — 쿼리는 보존(같은 검색어로 모드만 바꾸는 동선 지원), 결과/파싱 상태만 초기화.
+  // instant 로 전환 시 아래 debounce effect(deps에 paradigm 포함)가 보존된 쿼리로 자동 재검색하고,
+  // natural/question 은 Enter 제출 대기 상태가 된다.
   const setParadigm = useCallback((p: SearchParadigm) => {
     setParadigmInternal(p);
     try { localStorage.setItem("docufinder_paradigm", p); } catch {}
-    // 쿼리 + 결과 + 파싱 상태 모두 초기화
-    setQueryInternal("");
     setParsedQuery(null);
     setNlSubmitted(false);
     clearSearchCache();

@@ -838,11 +838,12 @@ function AppContent() {
         onOpenReleasePage={updater.openReleasePage}
       />
 
-      {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능 */}
+      {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능.
+          단 AutoIndexPrompt 가 떠 있는 동안은 자동시작 보류(모달 닫힌 뒤 시작) — 첫 화면 동시 점유 방지 */}
       <OnboardingTour
         steps={DOCUFINDER_TOUR_STEPS}
         storageKey={DOCUFINDER_TOUR_STORAGE_KEY}
-        autoStart
+        autoStart={!ui.showAutoIndexPrompt}
         runKey={tourRunKey}
       />
     </div>

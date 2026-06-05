@@ -299,7 +299,7 @@ function ShortcutsSection() {
         <ShortcutRow keys="Ctrl + B" description="사이드바 열기/닫기" />
         <ShortcutRow keys="↑ / ↓" description="결과 목록 이동" />
         <ShortcutRow keys="Enter" description="선택한 파일 열기" />
-        <ShortcutRow keys="Ctrl + C" description="선택한 파일 경로 복사" />
+        <ShortcutRow keys="Ctrl + Shift + C" description="선택한 파일 경로 복사" />
         <ShortcutRow keys="Esc" description="선택 해제 / 검색어 지우기" />
       </div>
 
