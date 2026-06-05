@@ -72,10 +72,25 @@ pub struct DocumentChunk {
     pub location_hint: Option<String>,
 }
 
-/// 파일 확장자로 파서 선택 후 파싱
+/// 파일 확장자로 파서 선택 후 파싱.
+///
+/// 추출된 본문은 `utils::normalize_text` 로 정규화되어 검색 쿼리와 동일 정규형
+/// (NFC·비가시 제거·공백 폴딩·줄바꿈 통일)으로 인덱싱된다. 쿼리측
+/// (`sanitize_fts_query` 등)과 반드시 짝을 이뤄야 매칭이 일관된다. 기존 인덱스는
+/// 비정규화 상태로 남으므로(점진 적용) 폴더 재인덱싱 시 정규화가 반영된다.
 ///
 /// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
+    let mut doc = parse_file_inner(path, ocr)?;
+    doc.content = crate::utils::normalize_text(&doc.content);
+    for chunk in &mut doc.chunks {
+        chunk.content = crate::utils::normalize_text(&chunk.content);
+    }
+    Ok(doc)
+}
+
+/// `parse_file` 의 파서 디스패치 본체 (정규화 전 원본 텍스트 반환).
+fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
     // breadcrumb: 어떤 파일이 처리 중인지 글로벌 추적 (panic / native crash 진단용).
     // RAII Guard 라 정상/패닉 양쪽 모두에서 자동 clear. 각 파서 내부에서 더 좁은 stage 로
     // 덮어쓸 수 있다 (예: parse_xlsx, parse_hwpx).

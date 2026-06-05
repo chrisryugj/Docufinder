@@ -77,6 +77,9 @@ base64 = "0.22"
 # Text encoding detection (EUC-KR, CP949 etc.)
 encoding_rs = "0.8"
 
+# Unicode NFC 정규화 (인덱싱/검색 텍스트 매칭 통일 — utils::normalize_text)
+unicode-normalization = "0.1"
+
 # Regex (파일명 정규화 — lineage 추론)
 regex = "1"
 

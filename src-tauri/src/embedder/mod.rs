@@ -252,9 +252,11 @@ impl Embedder {
         Ok(embeddings)
     }
 
-    /// 텍스트 전처리 (KoSimCSE는 접두사 불필요)
+    /// 텍스트 전처리 (KoSimCSE는 접두사 불필요).
+    /// 인덱싱 청크(parse_file→normalize_text)와 쿼리 임베딩이 동일 정규형을 보도록
+    /// 정규화한다. 이미 정규화된 청크엔 idempotent(NFC 빠른 경로), 쿼리만 실질 변환.
     fn prepare_text(&self, text: &str, _is_query: bool) -> String {
-        text.to_string()
+        crate::utils::normalize_text(text)
     }
 }
 
