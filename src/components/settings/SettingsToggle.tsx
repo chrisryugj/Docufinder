@@ -34,7 +34,7 @@ export const SettingsToggle = memo(function SettingsToggle({
         aria-checked={checked}
         disabled={disabled}
         onClick={() => !disabled && onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--color-accent)] ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
         style={{
           backgroundColor: checked ? "var(--color-accent)" : "var(--color-bg-tertiary)",
         }}

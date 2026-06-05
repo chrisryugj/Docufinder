@@ -46,15 +46,16 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 /** 파일 유형별 차트 색상 */
+// DESIGN.md File Type Colors 와 동일한 CSS 변수 사용 (라이트/다크 자동 대응).
 const TYPE_COLORS: Record<string, string> = {
-  hwpx: "#3b82f6", hwp: "#60a5fa",
-  docx: "#8b5cf6", doc: "#a78bfa",
-  pptx: "#f97316", ppt: "#fb923c",
-  xlsx: "#22c55e", xls: "#4ade80",
-  pdf: "#ef4444",
-  txt: "#6b7280", md: "#9ca3af",
+  hwpx: "var(--color-file-hwpx)", hwp: "var(--color-file-hwpx)",
+  docx: "var(--color-file-docx)", doc: "var(--color-file-docx)",
+  pptx: "var(--color-file-pptx)", ppt: "var(--color-file-pptx)",
+  xlsx: "var(--color-file-xlsx)", xls: "var(--color-file-xlsx)",
+  pdf: "var(--color-file-pdf)",
+  txt: "var(--color-file-txt)", md: "var(--color-file-txt)",
 };
-const DEFAULT_COLOR = "#a1a1aa";
+const DEFAULT_COLOR = "var(--color-text-muted)";
 
 /** 도넛 차트 (SVG) */
 function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClick?: (label: string) => void }) {
@@ -84,12 +85,12 @@ function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClic
               key={seg.label}
               cx={cx} cy={cy} r={r}
               fill="none"
-              stroke={seg.color}
               strokeWidth={strokeWidth}
               strokeDasharray={`${seg.dashLen} ${circumference - seg.dashLen}`}
               strokeDashoffset={seg.dashOffset}
               transform={`rotate(-90 ${cx} ${cy})`}
               className="cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ stroke: seg.color }}
               onClick={() => onSegmentClick?.(seg.label)}
             />
         ))}

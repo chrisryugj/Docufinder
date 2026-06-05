@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
-import { List, LayoutGrid, ClipboardCopy, FileDown, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown } from "lucide-react";
+import { List, LayoutGrid, ClipboardCopy, FileDown, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown, FolderPlus } from "lucide-react";
 import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch, ParsedQueryInfo } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
@@ -294,6 +294,8 @@ export const SearchResultList = memo(function SearchResultList({
                     return (
                       <div
                         key={group.file_path}
+                        className={index < 10 ? "stagger-item" : ""}
+                        style={index < 10 ? { animationDelay: `${index * 30}ms` } : undefined}
                         onClick={() => {
                           pointerSelectRef.current = true;
                           selectForPreview();
@@ -321,6 +323,8 @@ export const SearchResultList = memo(function SearchResultList({
                   return (
                     <div
                       key={group.file_path}
+                      className={index < 10 ? "stagger-item" : ""}
+                      style={index < 10 ? { animationDelay: `${index * 30}ms` } : undefined}
                       onClick={() => {
                         pointerSelectRef.current = true;
                         selectForPreview();
@@ -463,6 +467,42 @@ export const SearchResultList = memo(function SearchResultList({
             }}
           >Enter</kbd> 키를 누르면 검색합니다
         </p>
+      </div>
+    );
+  }
+
+  // 인덱싱된 문서가 0개 — "결과 없음"이 아니라 "아직 인덱스 없음"임을 명확히 안내
+  // (신규 사용자가 폴더 추가 전 검색했을 때 "다른 검색어를 쓰세요"라는 오해 유발을 방지)
+  if (query.trim() && !isLoading && indexedFiles === 0) {
+    return (
+      <div className="text-center py-16" role="status" aria-live="polite">
+        <div
+          className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+          style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        >
+          <FolderPlus
+            className="w-10 h-10 opacity-60"
+            style={{ color: "var(--color-text-muted)" }}
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+        </div>
+        <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>
+          아직 인덱싱된 문서가 없습니다
+        </h3>
+        <p className="mb-6" style={{ color: "var(--color-text-muted)" }}>
+          폴더를 추가하면 검색을 시작할 수 있어요
+        </p>
+        {onAddFolder && (
+          <button
+            onClick={onAddFolder}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-[0.98]"
+            style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+          >
+            <FolderPlus className="w-4 h-4" aria-hidden="true" />
+            폴더 추가하여 시작하기
+          </button>
+        )}
       </div>
     );
   }
