@@ -49,11 +49,18 @@ fn open_with_default(path_str: &str) -> Result<(), String> {
 fn reveal_with_default(path_str: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        // explorer /select,<path> — 폴더를 열고 해당 파일을 선택 상태로 표시.
+        use std::os::windows::process::CommandExt;
+
+        // explorer /select,"<path>" — 폴더를 열고 해당 파일을 선택 상태로 표시.
         // open_with_default 와 동일하게 Windows 루트의 explorer.exe 절대경로 사용.
+        //
+        // .arg() 사용 금지: 경로에 공백이 있으면 Rust 가 인자 전체를 따옴표로 감싸
+        // ("/select,C:\a b\f.txt") explorer 가 /select 스위치를 인식하지 못하고
+        // 기본 폴더만 연다. raw_arg 로 경로만 따옴표로 감싼 원형을 그대로 넘긴다.
+        // Windows 파일명에 " 문자는 허용되지 않으므로 추가 이스케이프 불필요.
         let win_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
         Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
-            .arg(format!("/select,{}", path_str))
+            .raw_arg(format!("/select,\"{}\"", path_str))
             .spawn()
             .map_err(|e| format!("열기 실패: {}", e))?;
     }
@@ -161,11 +168,11 @@ pub async fn open_file(
         }
     }
 
-    // Windows canonicalize()가 \\?\ 접두사를 추가하는데, explorer.exe가 이해 못함
-    let path_str = canonical_path
+    // Windows canonicalize()가 \\?\ 접두사를 추가하는데, explorer.exe가 이해 못함.
+    // 단순 strip 은 \\?\UNC\srv\share\... 를 UNC\srv\... 로 깨뜨리므로(매핑드라이브·
+    // 네트워크 파일 열기 실패 + DB open_count 경로 불일치) dunce 기반 simplify 사용.
+    let path_str = crate::utils::network_path::simplify(&canonical_path)
         .to_string_lossy()
-        .to_string()
-        .trim_start_matches("\\\\?\\")
         .to_string();
 
     #[cfg(target_os = "windows")]
@@ -452,10 +459,11 @@ pub async fn open_folder(path: String) -> Result<(), String> {
         }
     }
 
-    let path_str = canonical_path
+    // canonicalize() 의 \\?\ 접두사를 dunce 기반 simplify 로 복원.
+    // 단순 strip 은 \\?\UNC\srv\share\... 를 UNC\srv\... 로 깨뜨려(매핑드라이브·
+    // 네트워크 폴더) explorer 가 경로를 해석 못 하고 기본 폴더만 열게 된다.
+    let path_str = crate::utils::network_path::simplify(&canonical_path)
         .to_string_lossy()
-        .to_string()
-        .trim_start_matches("\\\\?\\")
         .to_string();
     // 파일 경로면 탐색기/Finder 에서 해당 파일을 선택(reveal)한 채로 폴더를 연다.
     // 폴더 경로면(경로 표시줄 클릭 등) 기존대로 폴더만 연다.
