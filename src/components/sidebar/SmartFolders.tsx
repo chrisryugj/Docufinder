@@ -17,10 +17,11 @@ export const SmartFolders = memo(function SmartFolders({
   if (folders.length === 0) {
     return (
       <div
-        className="text-sm py-2 px-3"
+        className="flex items-start gap-2 text-xs py-2 px-3 leading-relaxed"
         style={{ color: "var(--color-sidebar-muted)" }}
       >
-        저장된 스마트 폴더가 없습니다
+        <FolderSearch className="flex-shrink-0 w-3.5 h-3.5 mt-0.5" aria-hidden="true" />
+        <span>자주 쓰는 검색 조건을 저장하면 여기서 한 번에 다시 실행할 수 있어요</span>
       </div>
     );
   }

@@ -1,7 +1,7 @@
-import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
+import { memo, useEffect, useState, useRef, useCallback, useMemo, Fragment, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -103,6 +103,33 @@ function highlightTextWithLegal(
   }
 
   return <>{segments}</>;
+}
+
+// ─── 찾기 바(Ctrl+F) 하이라이트 ───────────────────────
+// 찾기 매치를 먼저 mark.hl-find 로 분리하고, 나머지 구간에는 기존
+// 검색어/법령 하이라이트(highlightTextWithLegal)를 그대로 적용한다.
+function highlightWithFind(
+  text: string,
+  searchRegex: RegExp | null,
+  findRegex: RegExp | null,
+  onOpenUrl: (url: string) => void,
+): React.ReactNode {
+  if (!findRegex || !text) return highlightTextWithLegal(text, searchRegex, onOpenUrl);
+  const parts = text.split(new RegExp(`(${findRegex.source})`, "gi"));
+  if (parts.length === 1) return highlightTextWithLegal(text, searchRegex, onOpenUrl);
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={`find-${i}`} className="hl-find">{part}</mark>
+        ) : (
+          <Fragment key={`seg-${i}`}>
+            {highlightTextWithLegal(part, searchRegex, onOpenUrl)}
+          </Fragment>
+        ),
+      )}
+    </>
+  );
 }
 
 // ─── 인용 점프: 앵커 텍스트 → 미리보기 DOM 위치 탐색 ──
@@ -233,12 +260,13 @@ function firstTextOf(children: React.ReactNode): string {
 
 function createMarkdownComponents(
   searchRegex: RegExp | null,
+  findRegex: RegExp | null,
   onOpenUrl: (url: string) => void,
 ): ComponentProps<typeof ReactMarkdown>["components"] {
   // 텍스트 노드에 하이라이트 적용하는 래퍼
   const TextWrapper = ({ children }: { children: React.ReactNode }) => {
     if (typeof children === "string") {
-      return <>{highlightTextWithLegal(children, searchRegex, onOpenUrl)}</>;
+      return <>{highlightWithFind(children, searchRegex, findRegex, onOpenUrl)}</>;
     }
     return <>{children}</>;
   };
@@ -541,6 +569,16 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 텍스트 내보내기 메뉴 토글
   const [showExportMenu, setShowExportMenu] = useState(false);
 
+  // 찾기 바 (Ctrl+F) — 문서 내 즉석 찾기
+  const panelRef = useRef<HTMLDivElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const findComposingRef = useRef(false); // IME 조합 중 여부 (compositionend 후 검색)
+  const [findOpen, setFindOpen] = useState(false);
+  const [findInput, setFindInput] = useState("");
+  const [findTerm, setFindTerm] = useState(""); // 디바운스 + 조합 완료 후 확정값
+  const [findCount, setFindCount] = useState(0);
+  const [findActiveIdx, setFindActiveIdx] = useState(0);
+
   const { showToast, updateToast } = useUIContext();
 
   // 파싱된 텍스트 복사
@@ -595,6 +633,10 @@ export const PreviewPanel = memo(function PreviewPanel({
     setShowSummaryMenu(false);
     setShowFileQa(false);
     setShowExportMenu(false);
+    setFindOpen(false);
+    setFindInput("");
+    setFindTerm("");
+    setFindActiveIdx(0);
 
     let cancelled = false;
     setLoading(true);
@@ -685,10 +727,113 @@ export const PreviewPanel = memo(function PreviewPanel({
     return new RegExp(pattern, "gi");
   }, [highlightQuery]);
 
+  // 찾기 바 정규식 (확정 검색어 기준, 바 닫힘 시 비활성)
+  const findRegex = useMemo(() => {
+    const term = findTerm.trim();
+    if (!term) return null;
+    return new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  }, [findTerm]);
+  const activeFindRegex = findOpen ? findRegex : null;
+
+  // AI 요약용 — 찾기 하이라이트 미적용 (찾기는 문서 본문 한정)
   const markdownComponents = useMemo(
-    () => createMarkdownComponents(searchRegex, handleOpenUrl),
+    () => createMarkdownComponents(searchRegex, null, handleOpenUrl),
     [searchRegex, handleOpenUrl],
   );
+
+  // 문서 본문용 — 찾기(Ctrl+F) 하이라이트 포함
+  const previewMarkdownComponents = useMemo(
+    () => createMarkdownComponents(searchRegex, activeFindRegex, handleOpenUrl),
+    [searchRegex, activeFindRegex, handleOpenUrl],
+  );
+
+  // ── 찾기 바 동작 ──
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindActiveIdx(0);
+  }, []);
+
+  const handleFindNav = useCallback((dir: 1 | -1) => {
+    setFindActiveIdx((prev) => (findCount > 0 ? (prev + dir + findCount) % findCount : 0));
+  }, [findCount]);
+
+  const handleFindInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 전역 단축키와 격리 — Escape(선택 해제→프리뷰 닫힘), ↑/↓(결과 이동) 누출 방지
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeFind();
+    } else if (e.key === "Enter") {
+      if (e.nativeEvent.isComposing) return;
+      e.preventDefault();
+      handleFindNav(e.shiftKey ? -1 : 1);
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      e.currentTarget.select();
+    }
+  }, [closeFind, handleFindNav]);
+
+  // 찾기 바 열린 상태에서 패널 내 어디서든 Esc → 찾기 바만 닫기 (프리뷰 닫힘 차단)
+  const handlePanelKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && findOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeFind();
+    }
+  }, [findOpen, closeFind]);
+
+  // 입력 디바운스 → 확정 검색어 (IME 조합 중에는 compositionend 핸들러가 확정)
+  useEffect(() => {
+    if (findComposingRef.current) return;
+    const timer = setTimeout(() => setFindTerm(findInput), 150);
+    return () => clearTimeout(timer);
+  }, [findInput]);
+
+  // Ctrl+F 토글 — 패널이 열려 있고 포커스/호버 컨텍스트일 때만 (전역 Ctrl+F 충돌 방지)
+  useEffect(() => {
+    if (!filePath) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "f" && e.code !== "KeyF") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (!panel.contains(document.activeElement) && !panel.matches(":hover")) return;
+      e.preventDefault();
+      setFindOpen((v) => !v);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [filePath]);
+
+  // 열릴 때 입력 포커스 (기존 검색어 유지 시 전체 선택)
+  useEffect(() => {
+    if (findOpen) {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    }
+  }, [findOpen]);
+
+  // 매치 수집 — ReactMarkdown 커밋 후 DOM에서 mark.hl-find 질의 (렌더 순서 = 문서 순서)
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!activeFindRegex || loading || !markdown || !root) {
+      setFindCount(0);
+      setFindActiveIdx(0);
+      return;
+    }
+    setFindCount(root.querySelectorAll("mark.hl-find").length);
+    setFindActiveIdx(0);
+  }, [activeFindRegex, markdown, loading]);
+
+  // 활성 매치 강조 + 스크롤 — DOM class 직접 토글 (마크다운 전체 재렌더 회피)
+  useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const marks = root.querySelectorAll<HTMLElement>("mark.hl-find");
+    marks.forEach((m, i) => m.classList.toggle("hl-find-active", i === findActiveIdx));
+    if (marks.length > 0) marks[findActiveIdx]?.scrollIntoView({ block: "center" });
+  }, [findActiveIdx, findCount, activeFindRegex]);
 
   if (!filePath) return null;
 
@@ -697,7 +842,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
 
   return (
-    <div className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
+    <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
       {/* 헤더 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-[var(--color-bg-secondary)]" style={{ borderColor: "var(--color-border)" }}>
         <FileIcon fileName={fileName} size="sm" />
@@ -714,8 +859,8 @@ export const PreviewPanel = memo(function PreviewPanel({
 
       {/* 액션 바 — 아이콘 전용, 컴팩트 */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
-        <button onClick={() => onOpenFile?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
-          <ExternalLink size={13} />
+        <button onClick={() => onOpenFile?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
+          <ExternalLink size={13} />열기
         </button>
         <button
           onClick={() => setShowExportMenu((v) => !v)}
@@ -725,8 +870,8 @@ export const PreviewPanel = memo(function PreviewPanel({
         >
           <Copy size={13} />
         </button>
-        <button onClick={() => onOpenFolder?.(filePath)} className="p-1.5 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
-          <FolderOpen size={13} />
+        <button onClick={() => onOpenFolder?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
+          <FolderOpen size={13} />위치
         </button>
         {onBookmark && (
           <button
@@ -742,6 +887,14 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {markdown && (
           <>
+            <button
+              onClick={() => setFindOpen((v) => !v)}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              title="문서 내 찾기 (Ctrl+F)"
+              aria-label="문서 내 찾기"
+            >
+              <Search size={12} />찾기
+            </button>
             <button
               onClick={() => setShowSummaryMenu((v) => !v)}
               disabled={summaryLoading}
@@ -908,6 +1061,68 @@ export const PreviewPanel = memo(function PreviewPanel({
         </div>
       )}
 
+      {/* 찾기 바 (Ctrl+F) — 문서 내 즉석 찾기, 패널 상단 고정 */}
+      {findOpen && (
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 border-b shrink-0"
+          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}
+        >
+          <Search size={12} className="shrink-0 text-[var(--color-text-muted)]" />
+          <input
+            ref={findInputRef}
+            type="text"
+            value={findInput}
+            onChange={(e) => setFindInput(e.target.value)}
+            onCompositionStart={() => { findComposingRef.current = true; }}
+            onCompositionEnd={(e) => {
+              findComposingRef.current = false;
+              setFindInput(e.currentTarget.value);
+              setFindTerm(e.currentTarget.value);
+            }}
+            onKeyDown={handleFindInputKeyDown}
+            placeholder="문서 내 찾기..."
+            className="flex-1 min-w-0 bg-transparent border-none focus:outline-none text-xs"
+            style={{ color: "var(--color-text-primary)" }}
+            aria-label="문서 내 찾기"
+          />
+          {findTerm.trim() && (
+            <span
+              className="text-[10px] tabular-nums shrink-0"
+              aria-live="polite"
+              style={{ color: findCount === 0 ? "var(--color-error)" : "var(--color-text-muted)" }}
+            >
+              {findCount === 0 ? "0/0" : `${findActiveIdx + 1}/${findCount}`}
+            </span>
+          )}
+          <button
+            onClick={() => handleFindNav(-1)}
+            disabled={findCount === 0}
+            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
+            title="이전 매치 (Shift+Enter)"
+            aria-label="이전 매치"
+          >
+            <ChevronUp size={12} />
+          </button>
+          <button
+            onClick={() => handleFindNav(1)}
+            disabled={findCount === 0}
+            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
+            title="다음 매치 (Enter)"
+            aria-label="다음 매치"
+          >
+            <ChevronDown size={12} />
+          </button>
+          <button
+            onClick={closeFind}
+            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors"
+            title="찾기 닫기 (Esc)"
+            aria-label="찾기 닫기"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
       {/* 마크다운 스크롤 영역 */}
       <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         {loading && (
@@ -936,7 +1151,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <ReactMarkdown
               remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
               rehypePlugins={[rehypeKatex]}
-              components={markdownComponents}
+              components={previewMarkdownComponents}
             >
               {stripHtmlForMarkdown(markdown)}
             </ReactMarkdown>

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { Search } from "lucide-react";
 import type { RecentSearch } from "../../types/search";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 
@@ -36,14 +37,12 @@ export const RecentSearches = memo(function RecentSearches({
               className="group flex items-center gap-2 px-2 py-1.5 mx-1 rounded-lg cursor-pointer hover-sidebar-item"
               onClick={() => onSelect(search.query)}
             >
-              {/* 불릿 */}
-              <span
-                className="flex-shrink-0 text-[8px] leading-none"
+              {/* 검색어 아이콘 */}
+              <Search
+                className="flex-shrink-0 w-3.5 h-3.5"
                 style={{ color: "var(--color-sidebar-muted)" }}
                 aria-hidden="true"
-              >
-                ·
-              </span>
+              />
 
               {/* 검색어 */}
               <span

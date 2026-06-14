@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Plus, Minus, Edit3, Check, ArrowRight } from "lucide-react";
+import { X, Plus, Minus, Edit3, Check, ArrowRight, Info } from "lucide-react";
 import { invokeWithTimeout } from "../../utils/invokeWithTimeout";
 import { cleanPath } from "../../utils/cleanPath";
 import type { LineageDiffResponse, ChunkDiffEntry } from "../../types/search";
@@ -10,14 +10,25 @@ interface Props {
   aName: string;
   bPath: string;
   bName: string;
+  /** 모달 제목 — 기본은 lineage 버전 비교 문구. 임의 두 문서 비교 시 "문서 비교" 등으로 교체. */
+  title?: string;
   onClose: () => void;
 }
 
 /** 두 버전 간 청크 레벨 변경점을 보여주는 모달. */
-export function VersionDiffModal({ aPath, aName, bPath, bName, onClose }: Props) {
+export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 간 변경점", onClose }: Props) {
   const [data, setData] = useState<LineageDiffResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [elapsed, setElapsed] = useState(0);
+
+  // 로딩 동안 경과 초 카운트 — 단일 invoke라 실제 단계 이벤트는 없으므로
+  // 가짜 단계 대신 정직한 경과 시간으로 '멈춘 듯한 인상'만 제거한다.
+  useEffect(() => {
+    if (!loading) return;
+    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,11 +66,24 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, onClose }: Props)
   const unchangedSamples = data?.changes.filter((c) => c.kind === "unchanged") ?? [];
   const hasRealChanges = modifiedRows.length + addedRows.length + removedRows.length > 0;
 
+  // 비 lineage 임의 문서 비교 시 분량(청크 수) 비대칭이 크면 추가/제거가 부풀려 보임 — 안내 문구
+  const chunkAsymmetry = (() => {
+    if (!data) return false;
+    const big = Math.max(data.a_total_chunks, data.b_total_chunks);
+    const small = Math.min(data.a_total_chunks, data.b_total_chunks);
+    return big - small >= 5 && big >= small * 2;
+  })();
+
   const content = (
     <div
       className="fixed inset-0 flex items-center justify-center p-4"
       style={{ backgroundColor: "rgba(0,0,0,0.55)", zIndex: 1000 }}
-      onClick={onClose}
+      onClick={(e) => {
+        // 결과 카드 트리 내부에서 portal 렌더 시 backdrop 클릭이 카드 onClick 으로
+        // 버블링(React 합성 이벤트는 컴포넌트 트리 기준)되지 않도록 차단
+        e.stopPropagation();
+        onClose();
+      }}
     >
       <div
         className="rounded-lg shadow-2xl overflow-hidden flex flex-col"
@@ -82,7 +106,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, onClose }: Props)
         >
           <div className="flex-1 min-w-0">
             <h3 className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>
-              버전 간 변경점
+              {title}
             </h3>
             <div
               className="mt-2 text-xs flex items-center gap-2"
@@ -144,11 +168,35 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, onClose }: Props)
           </div>
         )}
 
+        {/* 분량 비대칭 안내 — 서로 다른 문서(비 lineage 쌍) 비교 시 흔한 케이스 */}
+        {data && chunkAsymmetry && (
+          <div
+            className="px-4 py-2 text-xs flex items-start gap-1.5 border-b"
+            style={{
+              borderColor: "var(--color-border-subtle)",
+              backgroundColor: "var(--color-warning-bg)",
+              color: "var(--color-warning)",
+            }}
+            role="note"
+          >
+            <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" aria-hidden="true" />
+            <span>
+              두 문서의 분량 차이가 큽니다 (A {data.a_total_chunks}청크 · B {data.b_total_chunks}청크).
+              서로 다른 문서를 비교하면 한쪽에만 있는 내용이 추가/제거로 많게 표시될 수 있습니다.
+            </span>
+          </div>
+        )}
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {loading && (
-            <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              두 파일의 청크 임베딩을 생성하고 비교 중... (최대 1분)
+            <div className="flex items-center gap-2.5 text-sm" style={{ color: "var(--color-text-muted)" }}>
+              <div className="w-4 h-4 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <span>
+                두 파일의 청크 임베딩을 생성하고 비교하고 있어요
+                <span className="tabular-nums"> · {elapsed}초 경과</span>
+                <span className="opacity-70"> (최대 1분)</span>
+              </span>
             </div>
           )}
           {error && (

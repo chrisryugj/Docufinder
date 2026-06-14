@@ -63,6 +63,7 @@ export function OnboardingTour({
   const [rect, setRect] = useState<Rect>(FALLBACK_RECT);
   const [hasTarget, setHasTarget] = useState(false);
   const [tipSize, setTipSize] = useState<{ w: number; h: number }>({ w: 380, h: 220 });
+  const [smallViewport, setSmallViewport] = useState(false);
   const tipRef = useRef<HTMLDivElement | null>(null);
   const finishedRef = useRef(false);
 
@@ -70,7 +71,16 @@ export function OnboardingTour({
     setMounted(true);
   }, []);
 
-  // 첫 방문 자동 시작 — 작은 창에서는 skip
+  // viewport 크기 추적 — 작으면 spotlight 측정이 깨져 stuck 되므로(이슈 #22) selector를
+  // 무시하고 화면 중앙 카드 모드로 폴백한다. 진행 중 창이 작아져도 자동 전환.
+  useEffect(() => {
+    const update = () => setSmallViewport(isViewportTooSmallForTour());
+    update();
+    window.addEventListener("resize", update, { passive: true });
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  // 첫 방문 자동 시작 — 작은 창에서는 중앙 카드 모드로 폴백 시작(skip 대신)
   useEffect(() => {
     if (!mounted || !autoStart) return;
     try {
@@ -78,10 +88,7 @@ export function OnboardingTour({
     } catch {
       /* ignore */
     }
-    if (isViewportTooSmallForTour()) return;
     const t = setTimeout(() => {
-      // 1.2s 후에도 다시 한 번 viewport 크기 검사
-      if (isViewportTooSmallForTour()) return;
       finishedRef.current = false;
       setIndex(0);
       setOpen(true);
@@ -98,7 +105,8 @@ export function OnboardingTour({
   }, [runKey, mounted]);
 
   const current = steps[index];
-  const currentSelector = current?.selector ?? null;
+  // 작은 창에서는 selector를 무시 → hasTarget=false 중앙 카드 폴백 경로를 탄다(이슈 #22)
+  const currentSelector = smallViewport ? null : (current?.selector ?? null);
   const currentPadding = current?.padding ?? 8;
 
   const measureTarget = useCallback(() => {
@@ -187,17 +195,6 @@ export function OnboardingTour({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, finish, goNext, goPrev]);
-
-  // 진행 중에 viewport가 너무 작아지면 자동 종료
-  // (selector 측정이 깨지거나 툴팁이 화면 밖으로 나가서 stuck 되는 것을 방지)
-  useEffect(() => {
-    if (!open) return;
-    const onResize = () => {
-      if (isViewportTooSmallForTour()) finish(false);
-    };
-    window.addEventListener("resize", onResize, { passive: true });
-    return () => window.removeEventListener("resize", onResize);
-  }, [open, finish]);
 
   // 툴팁 크기 측정
   useEffect(() => {

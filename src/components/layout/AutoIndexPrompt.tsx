@@ -25,12 +25,6 @@ type View = "main" | "folder-select";
 
 // ── 아이콘 ─────────────────────────────────────────────
 
-const BoltIcon = () => (
-  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-  </svg>
-);
-
 const FolderIcon = () => (
   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -143,63 +137,49 @@ export function AutoIndexPrompt({
       closable
     >
       {view === "main" ? (
-        /* ── 메인 뷰: 큰 카드 2개 ── */
+        /* ── 메인 뷰: 권장 1차 액션(폴더 선택) + 보조 링크(전체 인덱싱) ── */
         <div className="space-y-4">
           <p className="text-sm text-center" style={{ color: "var(--color-text-secondary)" }}>
-            어떻게 인덱싱을 시작할까요?
+            검색할 폴더부터 골라볼까요?
           </p>
 
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            {/* 전체 인덱싱 카드 */}
+          {/* 폴더 선택 — 권장 1차 액션 (full-width 큰 카드) */}
+          <button
+            onClick={() => setView("folder-select")}
+            className="w-full flex items-center gap-4 p-5 rounded-xl border-2 transition-all duration-150 hover:shadow-md active:scale-[0.99] text-left group"
+            style={{
+              borderColor: "var(--color-accent)",
+              backgroundColor: "var(--color-accent-light)",
+            }}
+          >
+            <div
+              className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+            >
+              <FolderIcon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>
+                폴더 선택해서 시작
+              </p>
+              <p className="text-xs mt-1 leading-snug" style={{ color: "var(--color-text-secondary)" }}>
+                내 문서·바탕화면 같은 폴더만 골라 1~2분 내 시작
+              </p>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+
+          {/* 전체 인덱싱 — 보조 텍스트 링크로 강등 */}
+          <div className="text-center">
             <button
               onClick={handleAutoIndex}
-              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:shadow-md active:scale-[0.98] text-left group"
-              style={{
-                borderColor: "var(--color-accent)",
-                backgroundColor: "var(--color-accent-light)",
-                color: "var(--color-accent)",
-              }}
+              className="text-xs transition-colors hover:text-[var(--color-text-secondary)]"
+              style={{ color: "var(--color-text-muted)" }}
+              title="모든 드라이브를 자동 스캔합니다(시스템 폴더 제외). 파일 수에 따라 시간이 걸릴 수 있어요."
             >
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center transition-colors"
-                style={{ backgroundColor: "var(--color-accent)", color: "white" }}
-              >
-                <BoltIcon />
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-sm" style={{ color: "var(--color-accent)" }}>
-                  전체 인덱싱
-                </p>
-                <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--color-text-secondary)" }}>
-                  모든 드라이브 자동 스캔<br />시스템 폴더 자동 제외
-                </p>
-              </div>
-            </button>
-
-            {/* 폴더 선택 카드 */}
-            <button
-              onClick={() => setView("folder-select")}
-              className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 transition-all duration-150 hover:shadow-md hover:border-[var(--color-accent)] active:scale-[0.98] text-left group"
-              style={{
-                borderColor: "var(--color-border)",
-                backgroundColor: "var(--color-bg-secondary)",
-                color: "var(--color-text-primary)",
-              }}
-            >
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center transition-colors"
-                style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-secondary)" }}
-              >
-                <FolderIcon />
-              </div>
-              <div className="text-center">
-                <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>
-                  폴더 선택
-                </p>
-                <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--color-text-secondary)" }}>
-                  원하는 폴더만 직접 선택<br />추천 폴더 또는 직접 지정
-                </p>
-              </div>
+              또는 모든 드라이브 전체 인덱싱
             </button>
           </div>
 
