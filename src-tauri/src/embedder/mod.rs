@@ -3,12 +3,18 @@
 use ort::session::Session;
 use ort::value::Value;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use thiserror::Error;
 use tokenizers::Tokenizer;
 
 pub const EMBEDDING_DIM: usize = 768;
 const MAX_LENGTH: usize = 512;
+/// 배치 임베딩 서브배치 크기.
+/// 인덱싱 배치(32건)가 Session Mutex를 통째로 점유하면 쿼리 임베딩(1건)이
+/// 배치 전체(~400ms)를 기다린다 → 서브배치 단위로 락을 잡았다 놓아
+/// 보유 시간을 추론 1회(~100ms)로 제한하고, 사이에 쿼리가 끼어들 수 있게 한다.
+const SUB_BATCH_SIZE: usize = 8;
 
 #[derive(Error, Debug)]
 pub enum EmbedderError {
@@ -38,6 +44,18 @@ impl From<ort::Error> for EmbedderError {
 pub struct Embedder {
     session: Mutex<Session>,
     tokenizer: Tokenizer,
+    /// Session 락 대기 중인 쿼리(레이턴시 민감) 수.
+    /// 배치 임베딩이 서브배치 사이에 이 값을 보고 양보한다.
+    query_waiting: AtomicUsize,
+}
+
+/// query_waiting 카운터 RAII 가드 — 에러/패닉 경로에서도 감소 보장
+struct QueryWaitGuard<'a>(&'a AtomicUsize);
+
+impl Drop for QueryWaitGuard<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
+    }
 }
 
 impl Embedder {
@@ -79,11 +97,18 @@ impl Embedder {
         Ok(Self {
             session: Mutex::new(session),
             tokenizer,
+            query_waiting: AtomicUsize::new(0),
         })
     }
 
     /// 단일 텍스트 임베딩
     pub fn embed(&self, text: &str, is_query: bool) -> Result<Vec<f32>, EmbedderError> {
+        // 쿼리는 레이턴시 민감 — 대기 카운터를 올려 백그라운드 배치 임베딩이
+        // 서브배치 사이에 양보(락 해제 유지)하도록 신호한다
+        let _guard = is_query.then(|| {
+            self.query_waiting.fetch_add(1, Ordering::Release);
+            QueryWaitGuard(&self.query_waiting)
+        });
         let embeddings = self.embed_batch(&[self.prepare_text(text, is_query)])?;
         embeddings
             .into_iter()
@@ -92,11 +117,32 @@ impl Embedder {
     }
 
     /// 배치 임베딩 (불변 참조 - 락 없이 병렬 호출 가능)
+    ///
+    /// SUB_BATCH_SIZE 단위로 나눠 추론한다: Session Mutex 보유 시간이 서브배치
+    /// 1회로 제한되어, 백그라운드 벡터 인덱싱(32건) 중에도 쿼리 임베딩(1건)이
+    /// 락 사이에 끼어들 수 있다.
     pub fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbedderError> {
         if texts.is_empty() {
             return Ok(vec![]);
         }
+        if texts.len() <= SUB_BATCH_SIZE {
+            return self.run_inference(texts);
+        }
 
+        let mut embeddings = Vec::with_capacity(texts.len());
+        for sub in texts.chunks(SUB_BATCH_SIZE) {
+            embeddings.extend(self.run_inference(sub)?);
+            // 쿼리 대기 중이면 1ms 양보 — std Mutex는 불공정해서 yield만으로는
+            // 같은 스레드가 락을 재획득할 수 있으므로 sleep으로 확실히 넘겨준다
+            if self.query_waiting.load(Ordering::Acquire) > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        Ok(embeddings)
+    }
+
+    /// 단일 서브배치 추론 — 호출 동안 Session Mutex 보유
+    fn run_inference(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, EmbedderError> {
         // 토큰화
         let encodings = self
             .tokenizer

@@ -2,8 +2,7 @@ import { useCallback, useMemo, memo } from "react";
 import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext } from "./searchTextUtils";
-import { formatPathSegments, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, formatPathSegments, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -62,6 +61,12 @@ export const SearchResultItem = memo(function SearchResultItem({
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
+
+  // 신뢰도 %는 시맨틱/하이브리드 매칭에서만 노출 (ux-audit-8)
+  // — 키워드/파일명 매칭의 RRF 기반 점수는 일반 사용자에게 의미가 약해 숨긴다.
+  //   (대소문자 무관 비교: serde 직렬화 호환성 — useSearch.ts keywordOnly 필터와 동일 패턴)
+  const matchType = (result.match_type ?? "").toLowerCase();
+  const showConfidence = matchType === "semantic" || matchType === "hybrid";
 
   // Modified date
   const modifiedAtMs = result.modified_at ? result.modified_at * 1000 : null;
@@ -143,7 +148,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           backgroundColor: "var(--color-accent-light)",
           outline: "1.5px solid var(--color-accent)",
           outlineOffset: "-1.5px",
-          borderRadius: "8px",
+          borderRadius: "var(--radius-card)",
         }),
       } as React.CSSProperties}
       role="option"
@@ -179,21 +184,31 @@ export const SearchResultItem = memo(function SearchResultItem({
 
         {/* Right side: confidence % + time + file type */}
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          {/* Confidence — number + a11y label */}
-          <span
-            className="text-[11px] font-semibold tabular-nums leading-none"
-            style={{
-              color: result.confidence >= 70
-                ? "var(--color-success)"
-                : result.confidence >= 40
-                  ? "var(--color-accent-warm)"
-                  : "var(--color-text-muted)",
-            }}
-            aria-label={`신뢰도 ${Math.round(result.confidence)}% (${result.confidence >= 70 ? "높음" : result.confidence >= 40 ? "보통" : "낮음"})`}
-            title={`신뢰도: ${Math.round(result.confidence)}%`}
-          >
-            {Math.round(result.confidence)}%
-          </span>
+          {/* 관련도 — semantic/hybrid 매칭 한정. 숫자 % 대신 점 신호(●●○)로 불안 제거 */}
+          {showConfidence && (() => {
+            const level = result.confidence >= 70 ? 3 : result.confidence >= 40 ? 2 : 1;
+            const levelLabel = level === 3 ? "높음" : level === 2 ? "보통" : "낮음";
+            const dotColor = level === 3
+              ? "var(--color-success)"
+              : level === 2
+                ? "var(--color-accent-warm)"
+                : "var(--color-text-muted)";
+            return (
+              <span
+                className="inline-flex items-center gap-0.5 leading-none"
+                aria-label={`관련도 ${levelLabel} (${Math.round(result.confidence)}%)`}
+                title={`관련도: ${levelLabel} (${Math.round(result.confidence)}%)`}
+              >
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="w-1.5 h-1.5 rounded-full"
+                    style={{ backgroundColor: i < level ? dotColor : "var(--color-border)" }}
+                  />
+                ))}
+              </span>
+            );
+          })()}
 
           {/* Relative time */}
           {relativeTime && (
@@ -211,7 +226,8 @@ export const SearchResultItem = memo(function SearchResultItem({
           <Badge variant={getFileTypeBadgeVariant(result.file_name)} aria-label={`파일 형식: ${fileExt.toUpperCase()}`}>
             {fileExt.toUpperCase()}
           </Badge>
-          {category && category !== "기타" && (
+          {/* 카테고리 — 기본 숨김, 펼친 카드에서만 노출 (ux-audit-8 메타 과밀 정리) */}
+          {isExpanded && category && category !== "기타" && (
             <Badge variant="secondary">{category}</Badge>
           )}
           {/* Document Lineage: 같은 문서의 다른 버전이 있을 때만 표시 */}
@@ -311,18 +327,18 @@ export const SearchResultItem = memo(function SearchResultItem({
                     {seg.label}
                   </button>
                 ) : (
-                  <span className="text-xs px-0.5 py-0.5" style={{ color: "var(--color-text-muted)", opacity: 0.5 }}>
+                  <span className="text-xs px-0.5 py-0.5" style={{ color: "var(--color-text-muted)" }}>
                     {seg.label}
                   </span>
                 )}
                 {i < arr.length - 1 && (
-                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-muted)", opacity: 0.3 }}>/</span>
+                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
                 )}
               </div>
             ))}
           </div>
 
-          {/* Action buttons — always visible, colored */}
+          {/* Action buttons — muted 단색, hover 시 착색 (btn-icon-hover, ux-audit-8) */}
           <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
             {result.page_number && (
               <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
@@ -335,7 +351,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               title="경로 복사"
               aria-label="파일 경로 복사"
             >
-              <ClipboardCopy className="w-3.5 h-3.5" style={{ color: "var(--color-accent)" }} />
+              <ClipboardCopy className="w-3.5 h-3.5" />
             </button>
             {onOpenFolder && (
               <button
@@ -344,7 +360,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 title="파일 위치 열기 (탐색기에서 선택)"
                 aria-label="파일 위치 열기"
               >
-                <FolderOpen className="w-3.5 h-3.5" style={{ color: "var(--color-accent-warm)" }} />
+                <FolderOpen className="w-3.5 h-3.5" />
               </button>
             )}
             {onFindSimilar && (
@@ -357,7 +373,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 title="유사 문서 찾기"
                 aria-label="유사 문서 찾기"
               >
-                <Search className="w-3.5 h-3.5" style={{ color: "var(--color-info)" }} />
+                <Search className="w-3.5 h-3.5" />
               </button>
             )}
           </div>

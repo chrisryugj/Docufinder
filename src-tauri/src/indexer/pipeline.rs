@@ -50,14 +50,17 @@ pub(crate) const TRANSACTION_BATCH_SIZE: usize = 200;
 /// 에러 벡터 최대 엔트리 수 (메모리 bloat 방지)
 pub(crate) const MAX_INDEXING_ERRORS: usize = 200;
 
-/// `\\?\` prefix 제거 + display()로 깔끔한 경로 출력
+/// `\\?\`/`\\?\UNC\` prefix 제거 + display()로 깔끔한 경로 출력
+/// (naive strip은 UNC 경로를 깨뜨리므로 dunce 기반 정식 유틸에 위임)
 fn clean_path_display(path: &Path) -> String {
-    clean_path_str(&path.to_string_lossy())
+    crate::utils::network_path::simplify(path)
+        .display()
+        .to_string()
 }
 
-/// 문자열 경로에서 `\\?\` prefix 제거
+/// 문자열 경로에서 `\\?\`/`\\?\UNC\` prefix 제거
 fn clean_path_str(path: &str) -> String {
-    path.strip_prefix(r"\\?\").unwrap_or(path).to_string()
+    clean_path_display(Path::new(path))
 }
 
 /// 파싱 결과 (스트리밍 파이프라인용)
@@ -282,11 +285,20 @@ fn index_folder_fts_impl(
         let already_indexed =
             crate::db::get_fts_indexed_paths_in_folder(conn, &folder_str).unwrap_or_default();
         if !already_indexed.is_empty() {
+            // 경로 표현 차이(대소문자·슬래시 방향·`\\?\` prefix)로 skip 매칭이 실패하면
+            // resume 시 이미 인덱싱된 파일까지 처음부터 다시 처리된다(이슈 #31).
+            // Windows 경로는 case-insensitive 이므로 양쪽을 정규화한 뒤 비교한다.
+            let norm = |s: &str| -> String {
+                s.strip_prefix(r"\\?\")
+                    .unwrap_or(s)
+                    .replace('/', "\\")
+                    .trim_end_matches('\\')
+                    .to_ascii_lowercase()
+            };
+            let normalized: std::collections::HashSet<String> =
+                already_indexed.iter().map(|p| norm(p)).collect();
             let before = file_paths.len();
-            file_paths.retain(|p| {
-                let path_str = p.to_string_lossy().to_string();
-                !already_indexed.contains(&path_str)
-            });
+            file_paths.retain(|p| !normalized.contains(&norm(&p.to_string_lossy())));
             let skipped = before - file_paths.len();
             tracing::info!("[FTS Resume] Skipping {} already-indexed files", skipped);
         }
@@ -916,46 +928,6 @@ pub(crate) fn index_file_fts_only_no_tx(
         document,
         FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
     )?;
-
-    Ok(IndexResult {
-        file_path: path.to_string_lossy().to_string(),
-        chunks_count,
-        vectors_count: 0,
-        total_chars,
-    })
-}
-
-/// 단일 파일 FTS 인덱싱 (벡터 제외) - 트랜잭션 포함 독립 버전
-#[allow(dead_code)]
-pub fn index_file_fts_only(
-    conn: &Connection,
-    path: &Path,
-    ocr_engine: Option<&OcrEngine>,
-) -> Result<IndexResult, IndexError> {
-    let document =
-        parse_file(path, ocr_engine).map_err(|e| IndexError::ParseError(e.to_string()))?;
-    let total_chars = document.content.len();
-
-    conn.execute_batch("BEGIN")
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    let chunks_count = match save_document_to_db_fts_only_no_tx(
-        conn,
-        path,
-        document,
-        FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(e);
-        }
-    };
-
-    if let Err(e) = conn.execute_batch("COMMIT") {
-        let _ = conn.execute_batch("ROLLBACK");
-        return Err(IndexError::DbError(e.to_string()));
-    }
 
     Ok(IndexResult {
         file_path: path.to_string_lossy().to_string(),

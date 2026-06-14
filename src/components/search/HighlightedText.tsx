@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { extractSearchKeywords, findKeywordRanges, parseSnippetHighlights } from "./searchTextUtils";
+import { extractSearchKeywords, findKeywordRanges, parseSnippetHighlights } from "../../utils/searchTextUtils";
 
 interface HighlightedTextProps {
   text: string;

@@ -108,6 +108,9 @@ impl AppContainer {
         }
 
         // 드라이브 루트 거부 (e.g. C:\, D:\)
+        // naive `\\?\` strip은 UNC(`\\?\UNC\...`)를 깨뜨리지만, 여기서는 `C:` 형태
+        // 드라이브 루트 판정에만 쓰므로 무해 (깨진 UNC 문자열은 어차피 매칭 안 됨).
+        // 경로 표시/저장 용도라면 utils::network_path::simplify 를 쓸 것.
         let canon_str = canonical.to_string_lossy().to_string();
         let stripped = canon_str.strip_prefix(r"\\?\").unwrap_or(&canon_str);
         if stripped.len() <= 3 && stripped.chars().nth(1) == Some(':') {
@@ -226,9 +229,16 @@ impl AppContainer {
 
     /// SearchService 생성
     pub fn search_service(&self) -> SearchService {
+        // 임베더: semantic_search_enabled ON일 때만 로드
+        // (OFF면 모델 파일이 있어도 ONNX 모델(~106MB+) 상주 로드 방지 — 키워드 검색은 임베더 미사용)
+        let embedder = if self.get_settings().semantic_search_enabled {
+            self.get_embedder().ok()
+        } else {
+            None
+        };
         SearchService::new(
             self.db_path.clone(),
-            self.get_embedder().ok(),
+            embedder,
             self.get_vector_index().ok(),
             self.get_tokenizer().ok(),
             Some(self.filename_cache.clone()),
@@ -237,15 +247,23 @@ impl AppContainer {
 
     /// IndexService 생성 - 공유된 vector_worker 사용
     pub fn index_service(&self) -> IndexService {
+        let settings = self.get_settings();
         // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
-        let ocr = if self.get_settings().ocr_enabled {
+        let ocr = if settings.ocr_enabled {
             self.get_ocr_engine().ok()
+        } else {
+            None
+        };
+        // 임베더: semantic_search_enabled ON일 때만 로드
+        // (OFF면 startup/periodic sync의 index_service 생성 시점에도 ONNX 상주 로드 방지)
+        let embedder = if settings.semantic_search_enabled {
+            self.get_embedder().ok()
         } else {
             None
         };
         IndexService::new(
             self.db_path.clone(),
-            self.get_embedder().ok(),
+            embedder,
             self.get_vector_index().ok(),
             self.vector_worker.clone(), // 공유 인스턴스
             self.indexing_cancel_flag.clone(),

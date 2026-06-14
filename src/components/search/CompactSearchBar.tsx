@@ -2,7 +2,6 @@ import { forwardRef, memo, useCallback, useMemo } from "react";
 import { Search, HelpCircle, Settings, Download } from "lucide-react";
 import type { UpdatePhase } from "../../hooks/useUpdater";
 import { useSearchInput } from "../../hooks/useSearchInput";
-import { SearchModeDropdown } from "./SearchModeDropdown";
 import type { SearchMode, SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
 import type {
@@ -44,6 +43,8 @@ interface CompactSearchBarProps {
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
   onParadigmChange?: (p: SearchParadigm) => void;
+  /** 시맨틱 검색 활성 여부 — 스마트/Anything 모드 노출 조건 */
+  semanticEnabled?: boolean;
   /** 자연어 검색 실행 */
   onSubmitNatural?: () => void;
   /** 업데이트 배지 */
@@ -78,12 +79,15 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       onCompositionEnd,
       paradigm = "instant",
       onParadigmChange,
+      semanticEnabled = false,
       onSubmitNatural,
       updatePhase,
       onOpenUpdate,
     },
     ref
   ) => {
+    // SearchBar와 동일 조건: 인덱싱 완료 + 시맨틱 활성 시에만 패러다임 토글 노출
+    const canUseParadigms = (status?.indexed_files ?? 0) > 0 && semanticEnabled;
     const updateVisible =
       updatePhase === "available" ||
       updatePhase === "downloading" ||
@@ -192,7 +196,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
         </button>
 
         {/* 패러다임 토글 */}
-        {onParadigmChange && (
+        {onParadigmChange && canUseParadigms && (
           <SearchParadigmToggle paradigm={paradigm} onChange={onParadigmChange} />
         )}
 
@@ -228,13 +232,6 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             />
           )}
 
-          {!isNatural && (
-            <SearchModeDropdown
-              searchMode={searchMode}
-              onSearchModeChange={onSearchModeChange}
-              status={status}
-            />
-          )}
           {isNatural && (
             <span className="text-xs ml-2 flex-shrink-0" style={{ color: "var(--color-text-muted)" }}>
               Enter ↵
@@ -249,6 +246,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
               filters={filters}
               onFiltersChange={onFiltersChange}
               searchMode={searchMode}
+              onSearchModeChange={onSearchModeChange}
               viewMode={viewMode}
               onViewModeChange={onViewModeChange}
               refineQuery={refineQuery}

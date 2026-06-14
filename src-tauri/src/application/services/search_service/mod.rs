@@ -9,7 +9,6 @@ mod keyword;
 mod semantic;
 mod smart;
 
-use crate::application::dto::search::{SearchMode, SearchQuery, SearchResponse};
 use crate::application::errors::{AppError, AppResult};
 use crate::db;
 use crate::search::filename_cache::FilenameCache;
@@ -44,45 +43,10 @@ impl SearchService {
         }
     }
 
-    /// 검색 실행 (모드에 따라 분기)
-    pub async fn search(&self, query: SearchQuery) -> AppResult<SearchResponse> {
-        if query.query.trim().is_empty() {
-            return Ok(SearchResponse::empty(self.mode_to_string(query.mode)));
-        }
-
-        match query.mode {
-            SearchMode::Keyword => {
-                self.search_keyword(&query.query, query.max_results, None)
-                    .await
-            }
-            SearchMode::Semantic => {
-                self.search_semantic(&query.query, query.max_results, None)
-                    .await
-            }
-            SearchMode::Hybrid => {
-                self.search_hybrid(&query.query, query.max_results, None)
-                    .await
-            }
-            SearchMode::Filename => {
-                self.search_filename(&query.query, query.max_results, None)
-                    .await
-            }
-        }
-    }
-
     // ── Private Helpers ──────────────────────────────────
 
     pub(super) fn get_connection(&self) -> AppResult<db::PooledConnection> {
         db::get_connection(&self.db_path)
             .map_err(|e| AppError::Internal(format!("DB connection failed: {}", e)))
-    }
-
-    fn mode_to_string(&self, mode: SearchMode) -> &'static str {
-        match mode {
-            SearchMode::Keyword => "keyword",
-            SearchMode::Semantic => "semantic",
-            SearchMode::Hybrid => "hybrid",
-            SearchMode::Filename => "filename",
-        }
     }
 }

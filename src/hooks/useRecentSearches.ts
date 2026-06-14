@@ -1,44 +1,6 @@
 import { useState, useCallback } from "react";
 import type { RecentSearch } from "../types/search";
 
-/**
- * 로컬 스토리지 동기화 훅
- */
-export function useLocalStorage<T>(
-  key: string,
-  initialValue: T
-): [T, (value: T | ((prev: T) => T)) => void] {
-  // 초기값 로드
-  const [storedValue, setStoredValue] = useState<T>(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? (JSON.parse(item) as T) : initialValue;
-    } catch {
-      return initialValue;
-    }
-  });
-
-  // 값 변경 시 로컬 스토리지 동기화 (stale closure 방지)
-  const setValue = useCallback(
-    (value: T | ((prev: T) => T)) => {
-      setStoredValue((prev) => {
-        try {
-          const valueToStore = value instanceof Function ? value(prev) : value;
-          window.localStorage.setItem(key, JSON.stringify(valueToStore));
-          return valueToStore;
-        } catch {
-          return prev;
-        }
-      });
-    },
-    [key]
-  );
-
-  return [storedValue, setValue];
-}
-
-// === 특화된 훅들 ===
-
 const RECENT_SEARCHES_KEY = "docufinder_recent_searches_v2";
 const LEGACY_SEARCHES_KEY = "docufinder_recent_searches";
 const MAX_RECENT_SEARCHES = 10;
@@ -146,4 +108,3 @@ export function useRecentSearches() {
     clearSearches,
   };
 }
-

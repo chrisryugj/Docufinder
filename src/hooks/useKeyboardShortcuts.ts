@@ -7,6 +7,11 @@ interface ShortcutHandlers {
   onArrowUp?: () => void;
   onArrowDown?: () => void;
   onEnter?: () => void;
+  /**
+   * 입력 필드 포커스 중 Enter (ux-audit-1: 타이핑 → ↓ 선택 → Enter로 열기 동선).
+   * 소비 여부(어느 입력인지·패러다임)는 호출부가 판정 — true 반환 시 기본 동작 차단.
+   */
+  onEnterInInput?: () => boolean;
   onCopy?: () => void; // Ctrl+Shift+C로 전용 바인딩 (일반 Ctrl+C 복사와 충돌 방지)
   onToggleSidebar?: () => void;
 }
@@ -79,6 +84,16 @@ export function useKeyboardShortcuts(
       if (isCtrlOrCmd && e.shiftKey && (e.key === "C" || e.key === "c")) {
         e.preventDefault();
         h.onCopy?.();
+        return;
+      }
+
+      // Enter: 입력 포커스 중에도 선택된 결과 열기 허용 (ux-audit-1)
+      // - IME 조합 확정 Enter는 제외
+      // - 검색 입력 여부/패러다임 판정은 호출부(App) 책임 — true 반환 시에만 기본 동작 차단
+      if (e.key === "Enter" && isInputFocused) {
+        if (!e.isComposing && h.onEnterInInput?.()) {
+          e.preventDefault();
+        }
         return;
       }
 

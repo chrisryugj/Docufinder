@@ -11,6 +11,7 @@ import {
   FILE_TYPE_OPTIONS,
   DATE_RANGE_OPTIONS,
   DEFAULT_FILTERS,
+  SEARCH_MODES,
 } from "../../types/search";
 import { CustomSelect } from "./CustomSelect";
 
@@ -18,6 +19,8 @@ interface FilterDropdownProps {
   filters: FiltersType;
   onFiltersChange: (filters: FiltersType) => void;
   searchMode?: SearchMode;
+  /** 검색 모드 변경 (키워드 ↔ 파일명만) — 검색바 드롭다운 대신 필터 패널로 흡수 */
+  onSearchModeChange?: (mode: SearchMode) => void;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   refineQuery?: string;
@@ -30,6 +33,7 @@ export function FilterDropdown({
   filters,
   onFiltersChange,
   searchMode,
+  onSearchModeChange,
   viewMode = "flat",
   onViewModeChange,
   refineQuery = "",
@@ -138,6 +142,37 @@ export function FilterDropdown({
           }}
         >
           <div className="p-3 space-y-3">
+            {/* 검색 모드 (키워드 통합 / 파일명만) — 검색바 드롭다운에서 흡수 */}
+            {onSearchModeChange && (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
+                  검색 모드
+                </span>
+                <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+                  {SEARCH_MODES.map((m) => {
+                    const isActive = searchMode === m.value;
+                    return (
+                      <button
+                        key={m.value}
+                        onClick={() => onSearchModeChange(m.value)}
+                        className="px-2.5 py-1 text-xs transition-colors"
+                        style={{
+                          backgroundColor: isActive ? "var(--color-bg-tertiary)" : "transparent",
+                          color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                          fontWeight: isActive ? 600 : 500,
+                        }}
+                        title={m.desc}
+                        aria-pressed={isActive}
+                        aria-label={m.desc}
+                      >
+                        {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* 정렬 */}
             <FilterSelect
               label="정렬"

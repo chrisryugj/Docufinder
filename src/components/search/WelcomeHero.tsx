@@ -3,6 +3,7 @@ import { Search, Sparkles, Clock, FileClock } from "lucide-react";
 import type { RecentSearch } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { useRecentDocuments } from "../../hooks/useRecentDocuments";
+import { usePointerSpotlight } from "../../hooks/usePointerSpotlight";
 
 interface WelcomeHeroProps {
   indexedFiles?: number;
@@ -27,31 +28,44 @@ export const WelcomeHero = memo(function WelcomeHero({
   const hasIndex = indexedFiles > 0;
   const recentDocs = useRecentDocuments(hasIndex);
 
-  const triggerSearchFocus = () => {
-    document.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })
-    );
-  };
+  // 마우스를 따라오는 ambient glow (성능 안전 — ref + rAF, 리렌더 없음)
+  const glowRef = usePointerSpotlight<HTMLDivElement>();
 
   return (
-    <div className="w-full flex flex-col items-center justify-center select-none h-full min-h-[60vh] px-6">
-      {/* Ambient glow */}
+    <div
+      ref={glowRef}
+      className="relative w-full flex flex-col items-center justify-center select-none h-full min-h-[60vh] px-6"
+    >
+      {/* Glow 레이어 — 방사형 마스크로 사방 가장자리를 부드럽게 fade-out.
+          overflow-hidden 사각 클립이 만들던 상/하/좌/우 직선 경계를 모두 제거한다. */}
       <div
-        className="absolute pointer-events-none"
+        aria-hidden
+        className="absolute inset-0 overflow-hidden pointer-events-none"
         style={{
-          width: "500px",
-          height: "500px",
-          background: "radial-gradient(circle, var(--color-accent-glow) 0%, transparent 70%)",
-          opacity: 0.4,
-          filter: "blur(80px)",
-          top: "20%",
-          left: "50%",
-          transform: "translateX(-50%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse 75% 65% at center, black 30%, transparent 72%)",
+          maskImage:
+            "radial-gradient(ellipse 75% 65% at center, black 30%, transparent 72%)",
         }}
-      />
+      >
+        {/* Ambient glow — 마우스를 부드럽게 추종. transform(GPU)으로 reflow 없이 이동. */}
+        <div
+          className="absolute left-0 top-0 transition-transform duration-300 ease-out"
+          style={{
+            width: "460px",
+            height: "460px",
+            background: "radial-gradient(circle, var(--color-accent-glow) 0%, transparent 70%)",
+            opacity: 0.3,
+            filter: "blur(90px)",
+            transform:
+              "translate3d(var(--spot-x, 380px), var(--spot-y, 260px), 0) translate(-50%, -50%)",
+            willChange: "transform",
+          }}
+        />
+      </div>
 
       {/* Logo + Title */}
-      <div className="relative z-10 flex flex-col items-center mb-10 animate-fade-in">
+      <div className="relative z-10 flex flex-col items-center mb-4 animate-fade-in">
         <div className="flex items-center gap-3 mb-4">
           <img
             src="/anything.png"
@@ -91,51 +105,6 @@ export const WelcomeHero = memo(function WelcomeHero({
         </p>
       </div>
 
-      {/* Search Prompt */}
-      <div
-        className="relative z-10 w-full animate-fade-in"
-        style={{ maxWidth: "520px", animationDelay: "80ms" }}
-      >
-        <div
-          onClick={triggerSearchFocus}
-          className="flex items-center gap-3 w-full rounded-2xl px-5 py-4 cursor-text transition-all duration-200 group/search"
-          style={{
-            backgroundColor: "var(--color-bg-secondary)",
-            border: "1px solid var(--color-border)",
-            boxShadow: "var(--shadow-card)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-accent)";
-            e.currentTarget.style.boxShadow = "var(--shadow-card-hover)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-border)";
-            e.currentTarget.style.boxShadow = "var(--shadow-card)";
-          }}
-        >
-          <Search
-            className="w-5 h-5 flex-shrink-0 transition-colors"
-            style={{ color: "var(--color-text-muted)" }}
-          />
-          <span
-            className="flex-1 ts-base font-medium"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            무엇이든 검색하세요...
-          </span>
-          <kbd
-            className="inline-flex items-center px-2 py-1 rounded text-xs font-bold font-mono transition-colors group-hover/search:text-[var(--color-accent)]"
-            style={{
-              backgroundColor: "var(--color-bg-tertiary)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text-muted)",
-            }}
-          >
-            Ctrl+K
-          </kbd>
-        </div>
-      </div>
-
       {/* Recent Searches */}
       {recentSearches.length > 0 && (
         <div
@@ -145,14 +114,13 @@ export const WelcomeHero = memo(function WelcomeHero({
           <div className="flex items-center gap-1.5 mb-3">
             <Clock
               className="w-3 h-3"
-              style={{ color: "var(--color-text-muted)", opacity: 0.6 }}
+              style={{ color: "var(--color-text-tertiary)" }}
             />
             <span
               className="ts-xs font-semibold uppercase"
               style={{
-                color: "var(--color-text-muted)",
+                color: "var(--color-text-tertiary)",
                 letterSpacing: "0.08em",
-                opacity: 0.6,
               }}
             >
               최근 검색
@@ -195,14 +163,13 @@ export const WelcomeHero = memo(function WelcomeHero({
           <div className="flex items-center gap-1.5 mb-3">
             <FileClock
               className="w-3 h-3"
-              style={{ color: "var(--color-text-muted)", opacity: 0.6 }}
+              style={{ color: "var(--color-text-tertiary)" }}
             />
             <span
               className="ts-xs font-semibold uppercase"
               style={{
-                color: "var(--color-text-muted)",
+                color: "var(--color-text-tertiary)",
                 letterSpacing: "0.08em",
-                opacity: 0.6,
               }}
             >
               최근 작업한 문서
@@ -248,7 +215,7 @@ export const WelcomeHero = memo(function WelcomeHero({
           <>
             <span
               className="ts-xs tabular-nums"
-              style={{ color: "var(--color-text-muted)", opacity: 0.5 }}
+              style={{ color: "var(--color-text-tertiary)" }}
             >
               {indexedFiles.toLocaleString()} 문서 · {indexedFolders} 폴더
             </span>
@@ -256,7 +223,7 @@ export const WelcomeHero = memo(function WelcomeHero({
               <>
                 <span
                   className="ts-xs"
-                  style={{ color: "var(--color-text-muted)", opacity: 0.3 }}
+                  style={{ color: "var(--color-text-tertiary)" }}
                 >
                   ·
                 </span>
@@ -278,11 +245,11 @@ export const WelcomeHero = memo(function WelcomeHero({
         ) : (
           <button
             onClick={onAddFolder}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl ts-sm font-medium transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl ts-sm font-semibold transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
             style={{
-              backgroundColor: "var(--color-accent)",
+              backgroundImage: "var(--gradient-accent)",
               color: "white",
-              boxShadow: "0 2px 8px rgba(1, 175, 122, 0.3)",
+              boxShadow: "var(--shadow-premium-accent)",
             }}
           >
             폴더 추가하여 시작하기

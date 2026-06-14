@@ -13,7 +13,7 @@ use std::sync::Mutex;
 /// DB 경로 변경 시 풀을 drain하고 새 커넥션 생성.
 static CONN_POOL: Mutex<(Option<String>, Vec<Connection>)> = Mutex::new((None, Vec::new()));
 /// 풀 크기: Repository 2개(into_inner 영구 점유) + pipeline/vector_worker/prefetch/
-/// background_parser/watch event_loop + 다수 IPC 커맨드 동시 실행을 흡수.
+/// watch event_loop + 다수 IPC 커맨드 동시 실행을 흡수.
 /// 6은 Repository 2 고정 점유 후 4개만 남아 폭주 상황에서 부족 → 16으로 상향.
 const MAX_POOL_SIZE: usize = 16;
 
@@ -55,7 +55,6 @@ impl std::ops::Deref for PooledConnection {
 /// 풀의 모든 커넥션을 drain (data_root 변경 시 호출)
 ///
 /// DB 경로가 변경되면 기존 풀의 커넥션은 이전 DB를 가리키므로 제거 필요.
-#[allow(dead_code)] // data_root 설정 기능 구현 시 사용 예정
 pub fn drain_pool() {
     if let Ok(mut pool) = CONN_POOL.lock().or_else(|e| Ok::<_, ()>(e.into_inner())) {
         let count = pool.1.len();
@@ -103,13 +102,15 @@ pub fn get_connection(db_path: &Path) -> Result<PooledConnection> {
     let mmap_size = if is_hdd { 0 } else { 67108864 }; // SSD: 64MB, HDD: 0
 
     // 모든 PRAGMA를 단일 배치로 실행 (개별 호출 대비 ~50% 오버헤드 절감)
+    // cache_size 64MB: 수 GB FTS DB에서 16MB는 b-tree 내부 노드도 못 담음.
+    // HDD는 mmap=0이라 page cache가 유일한 캐시 — 상향 체감이 특히 큼.
     conn.execute_batch(&format!(
         "PRAGMA foreign_keys = ON;
          PRAGMA journal_mode = WAL;
          PRAGMA busy_timeout = 30000;
          PRAGMA journal_size_limit = 67108864;
          PRAGMA synchronous = NORMAL;
-         PRAGMA cache_size = -16384;
+         PRAGMA cache_size = -65536;
          PRAGMA mmap_size = {};
          PRAGMA temp_store = MEMORY;",
         mmap_size

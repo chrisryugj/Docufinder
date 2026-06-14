@@ -63,8 +63,7 @@
 .hover-btn-primary:hover:not(:disabled) {
   background-color: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 .hover-btn-primary:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -79,8 +78,6 @@
   background-color: var(--color-bg-tertiary);
   border-color: var(--color-border-hover);
   color: var(--color-text-primary);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 .hover-btn-secondary:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -95,8 +92,6 @@
   background-color: var(--color-accent-light);
   border-color: var(--color-accent);
   color: var(--color-accent);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
 }
 .hover-btn-ghost:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -129,8 +124,7 @@
 .hover-btn-danger:hover:not(:disabled) {
   background-color: var(--color-error-hover);
   border-color: var(--color-error-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.2);
 }
 .hover-btn-danger:active:not(:disabled) {
   transform: translateY(0) scale(0.98);
@@ -207,7 +201,6 @@ button[role="switch"]:active:not(:disabled) {
 .btn-icon-hover:hover {
   background-color: var(--color-bg-tertiary);
   color: var(--color-text-primary);
-  transform: scale(1.08);
 }
 .btn-icon-hover:active {
   transform: scale(0.95);

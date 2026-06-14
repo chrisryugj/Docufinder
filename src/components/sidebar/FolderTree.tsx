@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play, RotateCcw } from "lucide-react";
+import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play, RotateCcw, MoreHorizontal } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
@@ -458,12 +458,27 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 파일 수 배지 */}
               {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
                 <span
-                  className="px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0"
+                  className="px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0 group-hover:hidden"
                   style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
                 >
                   {folderStats[folder].indexed_count}
                 </span>
               )}
+
+              {/* 폴더 작업 버튼 (우클릭 대체 — hover 시 노출) */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setContextMenu({ isOpen: true, x: rect.left, y: rect.bottom + 2, folderPath: folder });
+                }}
+                className="hidden group-hover:flex items-center justify-center flex-shrink-0 p-0.5 rounded transition-colors"
+                style={{ color: "var(--color-sidebar-muted)" }}
+                aria-label={`${getFolderName(folder)} 폴더 작업`}
+                title="재인덱싱 · 즐겨찾기 · 제거"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
             </div>
 
             {/* 상세 정보 (확장 시) */}

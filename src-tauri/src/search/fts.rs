@@ -14,6 +14,8 @@ pub struct MetaFilter {
     pub date_range: Option<(i64, i64)>,
     /// 매칭할 확장자 목록 (소문자, 점 없이). 비면 타입 제약 없음.
     pub file_types: Vec<String>,
+    /// 경로 부분 일치 토큰 (소문자, `path:` 연산자). 각 토큰이 모두 포함돼야 함.
+    pub path_contains: Vec<String>,
 }
 
 /// MetaFilter → (SQL 절, 바인드 파라미터). `f` 별칭의 files 테이블을 전제.
@@ -33,6 +35,16 @@ fn build_meta_clause(filter: &MetaFilter) -> (String, Vec<Box<dyn rusqlite::type
         for ft in &filter.file_types {
             params.push(Box::new(ft.clone()));
         }
+    }
+    for token in &filter.path_contains {
+        // 경로 비교는 scope 패턴과 동일하게 `/` 통일 + 소문자.
+        // LIKE 와일드카드(% _)는 이스케이프해 리터럴 매칭.
+        let escaped = token
+            .replace('\\', "/")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        clause.push_str(" AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'");
+        params.push(Box::new(format!("%{}%", escaped)));
     }
 
     (clause, params)
@@ -238,6 +250,205 @@ fn sanitize_fts_query(
     }
 
     terms.join(join_op)
+}
+
+/// 인라인 연산자 검색 (v3.0.0) — `OperatorQuery` 를 FTS5 MATCH 식으로 합성해 검색.
+///
+/// 검색어 없이 필터만 있는 질의(`ext:hwp path:2024` 등)는 메타 필터 브라우즈로
+/// 폴백한다 (최근 수정순). 제외어만 있는 질의는 빈 결과.
+pub fn search_with_operators(
+    conn: &Connection,
+    op: &crate::search::query_syntax::OperatorQuery,
+    limit: usize,
+    tokenizer: Option<&dyn TextTokenizer>,
+    folder_scope: Option<&str>,
+    mode: KeywordMode,
+    filter: &MetaFilter,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    let safe_query = compose_fts_match(op, tokenizer, mode);
+    if safe_query.is_empty() {
+        let has_meta = filter.date_range.is_some()
+            || !filter.file_types.is_empty()
+            || !filter.path_contains.is_empty();
+        if has_meta {
+            return browse_by_meta(conn, limit, folder_scope, filter);
+        }
+        return Ok(vec![]);
+    }
+    search_internal(conn, &safe_query, limit, folder_scope, filter)
+}
+
+/// OperatorQuery → FTS5 MATCH 식 합성.
+///
+/// - 일반 검색어: 기존 sanitize 경로 (형태소 분석 + mode). `~N` 이 있으면 NEAR 식.
+/// - `"구문"`: 인접 토큰 매칭 (인덱스가 원본 어절 순서를 보존하므로 동작)
+/// - `-제외어`: FTS5 NOT 체인. NOT 이 AND 보다 우선순위가 높아 전체를 괄호로 묶는다.
+pub fn compose_fts_match(
+    op: &crate::search::query_syntax::OperatorQuery,
+    tokenizer: Option<&dyn TextTokenizer>,
+    mode: KeywordMode,
+) -> String {
+    let mut positives: Vec<String> = Vec::new();
+
+    let terms = op.terms.trim();
+    if !terms.is_empty() {
+        let near_expr = op
+            .near
+            .and_then(|n| compose_near_expr(terms, tokenizer, n));
+        match near_expr {
+            Some(e) => positives.push(e),
+            None => {
+                let s = sanitize_fts_query(terms, tokenizer, mode);
+                if !s.is_empty() {
+                    positives.push(s);
+                }
+            }
+        }
+    }
+
+    for p in &op.phrases {
+        if let Some(expr) = phrase_match_expr(p) {
+            positives.push(expr);
+        }
+    }
+
+    if positives.is_empty() {
+        return String::new();
+    }
+
+    // AND 결합 — OR 모드 출력이 섞여도 우선순위가 오염되지 않게 각 항을 괄호로
+    let mut expr = if positives.len() == 1 {
+        positives.remove(0)
+    } else {
+        positives
+            .into_iter()
+            .map(|p| format!("({})", p))
+            .collect::<Vec<_>>()
+            .join(" AND ")
+    };
+
+    for e in &op.excludes {
+        if let Some(ex) = phrase_match_expr(e) {
+            expr = format!("({}) NOT {}", expr, ex);
+        }
+    }
+
+    expr
+}
+
+/// 구문 → FTS5 phrase 식. 인덱스 측 clean_token 과 동일 기준(ASCII 영숫자+한글)으로
+/// 단어를 정제해 `"단어1 단어2"` 인접 매칭을 만든다. 전부 정제되면 None.
+fn phrase_match_expr(phrase: &str) -> Option<String> {
+    let normalized = crate::utils::normalize_text(phrase);
+    let words: Vec<String> = normalized
+        .split_whitespace()
+        .map(clean_query_token)
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        return None;
+    }
+    Some(format!("\"{}\"", words.join(" ")))
+}
+
+/// 인덱스 측 LinderaKoTokenizer::clean_token 과 동일 기준 (의도적 미러 — 변경 시 동기화)
+fn clean_query_token(token: &str) -> String {
+    token
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || ('\u{AC00}'..='\u{D7AF}').contains(c))
+        .collect()
+}
+
+/// `~N` 근접 검색: 어절별 대표 토큰(명사 우선 — "예산이"→"예산")으로 NEAR 식 합성.
+/// 어절이 2개 미만이면 None → 일반 검색으로 폴백.
+fn compose_near_expr(
+    terms: &str,
+    tokenizer: Option<&dyn TextTokenizer>,
+    distance: u32,
+) -> Option<String> {
+    let normalized = crate::utils::normalize_text(terms);
+    let mut tokens: Vec<String> = Vec::new();
+    for word in normalized.split_whitespace() {
+        let noun = tokenizer.and_then(|t| t.extract_nouns(word).into_iter().next());
+        let token = clean_query_token(&noun.unwrap_or_else(|| word.to_string()));
+        if !token.is_empty() {
+            tokens.push(token);
+        }
+    }
+    if tokens.len() < 2 {
+        return None;
+    }
+    let phrases: Vec<String> = tokens.iter().map(|t| format!("\"{}\"*", t)).collect();
+    Some(format!("NEAR({}, {})", phrases.join(" "), distance))
+}
+
+/// 검색어 없는 필터 전용 질의 — 파일당 첫 청크를 최근 수정순으로 반환.
+fn browse_by_meta(
+    conn: &Connection,
+    limit: usize,
+    folder_scope: Option<&str>,
+    filter: &MetaFilter,
+) -> Result<Vec<FtsResult>, rusqlite::Error> {
+    let (scope_clause, scope_pattern) =
+        match crate::utils::folder_scope::scope_like_pattern(folder_scope.unwrap_or("")) {
+            Some(pat) => (
+                "AND REPLACE(LOWER(f.path), '\\', '/') LIKE ? ESCAPE '\\'",
+                Some(pat),
+            ),
+            None => ("", None),
+        };
+
+    let (meta_clause, mut meta_params) = build_meta_clause(filter);
+
+    let sql = format!(
+        "SELECT
+            c.id, f.path, f.name, c.chunk_index, c.content,
+            1.0 as score, c.start_offset, c.end_offset,
+            c.page_number, c.page_end, c.location_hint,
+            '' as snippet, f.modified_at
+         FROM chunks c
+         JOIN files f ON f.id = c.file_id
+         WHERE c.chunk_index = 0
+         {scope}{meta}
+         ORDER BY f.modified_at DESC
+         LIMIT ?",
+        scope = scope_clause,
+        meta = meta_clause
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let map_row = |row: &rusqlite::Row| {
+        Ok(FtsResult {
+            chunk_id: row.get(0)?,
+            file_path: row.get(1)?,
+            file_name: row.get(2)?,
+            chunk_index: row.get(3)?,
+            content: row.get(4)?,
+            score: row.get(5)?,
+            start_offset: row.get(6)?,
+            end_offset: row.get(7)?,
+            page_number: row.get(8)?,
+            page_end: row.get(9)?,
+            location_hint: row.get(10)?,
+            snippet: row.get(11)?,
+            modified_at: row.get(12)?,
+        })
+    };
+
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    if let Some(pattern) = scope_pattern {
+        params.push(Box::new(pattern));
+    }
+    params.append(&mut meta_params);
+    params.push(Box::new(limit as i64));
+
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let results: Vec<FtsResult> = stmt
+        .query_map(param_refs.as_slice(), map_row)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(results)
 }
 
 /// 단일 파일 내부 FTS5 검색.

@@ -231,6 +231,23 @@ function SearchSection() {
         description="파일 이름으로만 검색해요. 내용은 보지 않고, 파일명에 검색어가 포함된 파일을 즉시 찾아요."
       />
 
+      <SubTitle>검색 연산자 (키워드 검색)</SubTitle>
+      <Paragraph>
+        키워드 검색에서 아래 연산자를 입력하면 검색을 더 정밀하게 조절할 수 있어요. 입력 중 검색창 아래에 인식된 연산자가 칩으로 표시돼요.
+      </Paragraph>
+      <div className="space-y-0 mb-4">
+        <ShortcutRow keys={'"정확 구문"'} description="따옴표 안 구문이 그대로 포함된 문서만" />
+        <ShortcutRow keys="-제외어" description={'해당 단어 포함 문서 제외 (-"제외 구문"도 가능)'} />
+        <ShortcutRow keys="ext:hwp,pdf" description="확장자 필터 (hwp는 hwpx까지 자동 확장)" />
+        <ShortcutRow keys="path:2024예산" description="파일 경로에 해당 단어가 포함된 문서만" />
+        <ShortcutRow keys="after:2024-06" description="이 날짜 이후 수정된 문서 (YYYY-MM-DD)" />
+        <ShortcutRow keys="before:2025-01-31" description="이 날짜 이전 수정된 문서" />
+        <ShortcutRow keys="~10" description="근접 검색: 단어들이 10단어 이내 (~만 쓰면 10)" />
+      </div>
+      <InfoBox>
+        연산자는 조합할 수 있어요. 예: ext:hwp "감사 결과" -초안 path:2024 — 키워드 모드에서만 동작해요.
+      </InfoBox>
+
       <SubTitle>자연어 검색</SubTitle>
       <Paragraph>
         검색바 상단의 패러다임 토글에서 '자연어' 모드로 전환하면 일상 언어로 검색할 수 있어요. "지난주 예산 관련 한글 문서 찾아줘"처럼 입력하고 Enter를 누르면, 검색어·파일 형식·날짜 범위를 자동으로 분석해서 결과를 보여줘요.
@@ -300,6 +317,7 @@ function ShortcutsSection() {
         <ShortcutRow keys="Ctrl + B" description="사이드바 열기/닫기" />
         <ShortcutRow keys="↑ / ↓" description="결과 목록 이동" />
         <ShortcutRow keys="Enter" description="선택한 파일 열기" />
+        <ShortcutRow keys="Ctrl + F" description="미리보기에서 문서 내 찾기" />
         <ShortcutRow keys="Ctrl + Shift + C" description="선택한 파일 경로 복사" />
         <ShortcutRow keys="Esc" description="선택 해제 / 검색어 지우기" />
       </div>

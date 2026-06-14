@@ -12,36 +12,6 @@ pub enum MatchType {
     Filename,
 }
 
-/// 검색 쿼리 DTO
-#[derive(Debug, Clone)]
-pub struct SearchQuery {
-    /// 검색어
-    pub query: String,
-    /// 검색 모드 (keyword, semantic, hybrid, filename)
-    pub mode: SearchMode,
-    /// 최대 결과 수
-    pub max_results: usize,
-}
-
-/// 검색 모드
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchMode {
-    Keyword,
-    Semantic,
-    Hybrid,
-    Filename,
-}
-
-impl Default for SearchQuery {
-    fn default() -> Self {
-        Self {
-            query: String::new(),
-            mode: SearchMode::Hybrid,
-            max_results: 50,
-        }
-    }
-}
-
 /// 개별 검색 결과 DTO
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchResult {
@@ -53,7 +23,9 @@ pub struct SearchResult {
     pub chunk_index: i64,
     /// 미리보기 텍스트 (200자)
     pub content_preview: String,
-    /// 전체 청크 내용
+    /// 전체 청크 내용 — Rust 내부 전용 (RAG 컨텍스트: commands/ai.rs, semantic enrichment).
+    /// 프론트는 snippet/content_preview만 사용하므로 IPC 직렬화에서 제외 (페이로드 ~60-70% 절감)
+    #[serde(skip_serializing, default)]
     pub full_content: String,
     /// 원시 스코어
     pub score: f64,

@@ -248,7 +248,9 @@ pub fn is_blocked_path(path: &std::path::Path) -> bool {
 /// 인덱싱 대상에서 제외한다.
 pub fn is_drive_root(path: &std::path::Path) -> bool {
     let s = path.to_string_lossy();
-    // `\\?\C:\` prefix 제거
+    // `\\?\C:\` prefix 제거 — naive strip은 UNC(`\\?\UNC\...`)를 깨뜨리지만
+    // 여기서는 드라이브 루트 판정에만 쓰므로 무해 (깨진 UNC는 어차피 매칭 안 됨).
+    // 경로 표시/저장 용도라면 utils::network_path::simplify 를 쓸 것.
     let normalized = s.strip_prefix(r"\\?\").unwrap_or(&s);
     // `C:\` 또는 `C:/` (길이 2~3, 두번째 문자 `:`)
     let chars: Vec<char> = normalized.chars().collect();

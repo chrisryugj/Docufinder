@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 14;
+const CURRENT_SCHEMA_VERSION: i32 = 16;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -90,20 +90,9 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
-                name,
-                content_rowid='id',
-                tokenize='unicode61'
-            )",
-            [],
-        )?;
-
-        conn.execute(
-            "INSERT OR IGNORE INTO files_fts (rowid, name) SELECT id, name FROM files",
-            [],
-        )?;
-
+        // NOTE: 과거 v1은 files_fts 가상 테이블과 idx_files_path 인덱스도 생성했으나
+        // v15/v16에서 제거됨 (files_fts는 어떤 검색도 사용 안 함, idx_files_path는
+        // path UNIQUE 암묵 인덱스와 중복). 신규 DB에서는 처음부터 생성하지 않는다.
         conn.execute(
             "CREATE TABLE IF NOT EXISTS watched_folders (
                 id INTEGER PRIMARY KEY,
@@ -114,10 +103,6 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
             [],
         )?;
 
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)",
-            [],
-        )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)",
             [],
@@ -412,6 +397,33 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
                 "Migration v14: 일부 벡터 인덱스 파일을 회수하지 못해 schema_version 전진을 보류합니다 (다음 재시작 시 재시도)"
             );
         }
+    }
+
+    // === v15: files.modified_at 인덱스 + 중복 idx_files_path 제거 ===
+    // browse_recent_files / get_recent_files / LIKE 폴백이 `ORDER BY modified_at DESC`에
+    // 의존하지만 인덱스가 없어 풀스캔+정렬이 발생했다.
+    // idx_files_path는 path UNIQUE 제약의 암묵 인덱스와 완전 중복 — 쓰기 오버헤드만 유발.
+    //
+    // ⚠️ v14는 실패 시 schema_version을 전진시키지 않고 다음 부팅에 재시도하므로,
+    //    `== 14` 게이트로 v14 완료 전에는 실행하지 않는다 (버전 leapfrog 방지).
+    if get_schema_version(conn) == 14 {
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_modified ON files(modified_at DESC)",
+            [],
+        )?;
+        conn.execute("DROP INDEX IF EXISTS idx_files_path", [])?;
+        set_schema_version(conn, 15)?;
+        tracing::info!("Schema migrated to v15 (files.modified_at index)");
+    }
+
+    // === v16: 미사용 files_fts 제거 ===
+    // 파일명 검색은 인메모리 캐시(filename_cache) 또는 files.name LIKE만 사용하며
+    // files_fts를 SELECT하는 코드는 없다 (unicode61은 한글 부분문자열 매칭 불가).
+    // 모든 upsert마다 DELETE+INSERT 2쿼리 유지 비용과 DB 용량만 차지해 제거.
+    if get_schema_version(conn) == 15 {
+        conn.execute("DROP TABLE IF EXISTS files_fts", [])?;
+        set_schema_version(conn, 16)?;
+        tracing::info!("Schema migrated to v16 (drop unused files_fts)");
     }
 
     tracing::info!(
