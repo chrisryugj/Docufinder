@@ -227,9 +227,17 @@ fn resume_watchers(container: &AppContainer) {
 }
 
 /// 벡터 인덱스 파일 ↔ DB 정합성 검증
-fn validate_vector_index(container: &AppContainer) {
-    let vector_file = container.vector_index_path.clone();
-    let map_file = container.vector_index_path.with_extension("map");
+///
+/// get_vector_indexing_stats 의 chunks JOIN files COUNT 풀스캔이 HDD 대용량 DB에서
+/// 수 초 걸릴 수 있어 setup() 에서는 백그라운드 스레드로 호출한다 (quick_check 와 동일 패턴).
+/// 벡터 검색은 lazy 초기화라 검증/복구(reset_all_vector_indexed)가 수 초 늦게 끝나도 무해.
+fn validate_vector_index(
+    vector_index_path: &std::path::Path,
+    db_path: &std::path::Path,
+    semantic_available: bool,
+) {
+    let vector_file = vector_index_path;
+    let map_file = vector_index_path.with_extension("map");
     let vector_file_exists = vector_file.exists();
     let map_file_exists = map_file.exists();
 
@@ -241,8 +249,8 @@ fn validate_vector_index(container: &AppContainer) {
         map_file.display(),
     );
 
-    if container.is_semantic_available() {
-        if let Ok(conn) = db::get_connection(&container.db_path) {
+    if semantic_available {
+        if let Ok(conn) = db::get_connection(db_path) {
             if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
                 tracing::info!(
                     "[VectorValidate] DB: total={}, vector_indexed={}, pending_chunks={}",
@@ -355,13 +363,67 @@ fn cleanup_tmp_files(models_dir: &std::path::Path) {
     }
 }
 
-/// 앱 종료 시 DB 정리: 풀 drain → WAL 체크포인트 + PRAGMA optimize
+/// FTS5 세그먼트 점진 병합 (종료 시 시간 예산 내 실행)
+///
+/// 증분 인덱싱이 누적되면 automerge 기본값만으로는 작은 b-tree 세그먼트가 늘어나
+/// MATCH doclist 병합 비용이 점진적으로 증가한다 (prefix 와일드카드 쿼리 특히 민감).
+/// 전체 `'optimize'` 는 단일 트랜잭션이라 대용량 DB에서 graceful_shutdown 의 3초
+/// watchdog 을 초과해 통째로 롤백될 수 있으므로, FTS5 문서의 'merge=N' 점진 병합
+/// 패턴을 사용한다 — 회당 자체 트랜잭션으로 커밋되어 중단돼도 진행분이 보존되고,
+/// 남은 병합은 다음 종료 시 이어서 진행된다.
+fn merge_fts_segments(conn: &rusqlite::Connection) {
+    const MERGE_UNITS: i64 = 64;
+    const TIME_BUDGET_MS: u128 = 500; // watchdog 3초 내 체크포인트 시간 확보
+
+    // 음수 파라미터 = 모든 세그먼트를 대상으로 새 병합 사이클 시작
+    if let Err(e) = conn.execute(
+        "INSERT INTO chunks_fts(chunks_fts, rank) VALUES('merge', ?1)",
+        [-MERGE_UNITS],
+    ) {
+        tracing::warn!("FTS5 segment merge start failed: {}", e);
+        return;
+    }
+    let start = std::time::Instant::now();
+    let mut rounds = 0usize;
+    while start.elapsed().as_millis() < TIME_BUDGET_MS {
+        let before: i64 = conn
+            .query_row("SELECT total_changes()", [], |r| r.get(0))
+            .unwrap_or(0);
+        if conn
+            .execute(
+                "INSERT INTO chunks_fts(chunks_fts, rank) VALUES('merge', ?1)",
+                [MERGE_UNITS],
+            )
+            .is_err()
+        {
+            return;
+        }
+        rounds += 1;
+        let after: i64 = conn
+            .query_row("SELECT total_changes()", [], |r| r.get(0))
+            .unwrap_or(0);
+        // FTS5 문서: 'merge' 양수 호출의 total_changes 증가가 2 미만이면 병합할 작업 없음
+        if after - before < 2 {
+            tracing::info!("FTS5 segment merge complete ({} rounds)", rounds);
+            return;
+        }
+    }
+    tracing::info!(
+        "FTS5 segment merge: time budget reached ({} rounds, 다음 종료 시 계속)",
+        rounds
+    );
+}
+
+/// 앱 종료 시 DB 정리: 풀 drain → FTS 세그먼트 병합 → WAL 체크포인트 + PRAGMA optimize
 fn cleanup_database(db_path: &std::path::Path) {
     // 풀의 모든 커넥션을 먼저 닫아야 WAL 체크포인트가 완전히 적용됨
     // (풀 커넥션이 WAL read lock을 보유하면 TRUNCATE 모드 체크포인트 실패)
     crate::db::pool::drain_pool();
 
     if let Ok(conn) = crate::db::get_connection(db_path) {
+        // FTS5 세그먼트 병합 — WAL 체크포인트 전에 실행해 병합분이 본 DB 파일에 흡수되게 함
+        merge_fts_segments(&conn);
+
         match conn.execute_batch(
             "PRAGMA wal_checkpoint(TRUNCATE);
              PRAGMA optimize;
@@ -801,58 +863,39 @@ pub fn run() {
             // 이전 다운로드 중 크래시로 남은 .tmp 파일 정리
             cleanup_tmp_files(&models_dir);
 
-            // 번들 모델 적용: ONNX Runtime DLL + PaddleOCR 3종을 MSI 리소스에서 APPDATA/models/ 로 복사.
-            // 이미 같은 해시면 skip, 다르면 덮어쓰기. 실패해도 다운로드 fallback 으로 자연 진행.
-            // 회사망/방화벽 등으로 huggingface·github 차단된 환경에서도 첫 실행 즉시 OCR/시맨틱 가능.
-            if let Ok(resource_dir) = app.path().resource_dir() {
-                // macOS: ad-hoc 서명 + dmg 다운로드 시 .app 내부 sub-binary(node, *.node, dylib)에
-                // `com.apple.quarantine` xattr 가 상속되어 spawn 시 Gatekeeper 가 차단 → kordoc CLI
-                // 가 실행 안 됨 → HWP5 파싱 전수 실패(이슈 #22). 사용자가 직접 `xattr -dr` 하기 전엔
-                // 발현되므로 startup 1회로 자동 제거한다. xattr 실행 자체는 quarantine 영향 안 받음.
-                #[cfg(target_os = "macos")]
-                {
-                    let sidecar_root = resource_dir.join("resources");
-                    if sidecar_root.exists() {
-                        match std::process::Command::new("/usr/bin/xattr")
-                            .args(["-rd", "com.apple.quarantine"])
-                            .arg(&sidecar_root)
-                            .output()
-                        {
-                            Ok(out) if out.status.success() => {
-                                tracing::info!(
-                                    "macOS 사이드카 quarantine 제거: {}",
-                                    sidecar_root.display()
-                                );
-                            }
-                            Ok(out) => {
-                                let stderr = String::from_utf8_lossy(&out.stderr);
-                                tracing::warn!(
-                                    "xattr 종료코드 {}: {}",
-                                    out.status,
-                                    stderr.trim()
-                                );
-                            }
-                            Err(e) => tracing::warn!("xattr 실행 실패: {}", e),
+            let resource_dir = app.path().resource_dir().ok();
+
+            // macOS: ad-hoc 서명 + dmg 다운로드 시 .app 내부 sub-binary(node, *.node, dylib)에
+            // `com.apple.quarantine` xattr 가 상속되어 spawn 시 Gatekeeper 가 차단 → kordoc CLI
+            // 가 실행 안 됨 → HWP5 파싱 전수 실패(이슈 #22). 사용자가 직접 `xattr -dr` 하기 전엔
+            // 발현되므로 startup 1회로 자동 제거한다. xattr 실행 자체는 quarantine 영향 안 받음.
+            // sync 유지 — 아래 kordoc::is_available 진단이 quarantine 제거 후에 실행돼야 한다.
+            #[cfg(target_os = "macos")]
+            if let Some(resource_dir) = resource_dir.as_ref() {
+                let sidecar_root = resource_dir.join("resources");
+                if sidecar_root.exists() {
+                    match std::process::Command::new("/usr/bin/xattr")
+                        .args(["-rd", "com.apple.quarantine"])
+                        .arg(&sidecar_root)
+                        .output()
+                    {
+                        Ok(out) if out.status.success() => {
+                            tracing::info!(
+                                "macOS 사이드카 quarantine 제거: {}",
+                                sidecar_root.display()
+                            );
                         }
+                        Ok(out) => {
+                            let stderr = String::from_utf8_lossy(&out.stderr);
+                            tracing::warn!("xattr 종료코드 {}: {}", out.status, stderr.trim());
+                        }
+                        Err(e) => tracing::warn!("xattr 실행 실패: {}", e),
                     }
                 }
-
-                model_downloader::seed_bundled_models(&resource_dir, &models_dir);
-            }
-
-            // ONNX Runtime DLL 선제 준비 (sync, 14MB).
-            // ort 2.x 는 DLL 버전 불일치 시 ort::init 단계에서 panic 을 일으키므로
-            // OCR/Embedder 가 처음 DLL 을 건드리기 전에 SHA-256 검증으로 구버전을 강제 교체한다.
-            // 검증만 하면 수백 ms, 다운로드가 필요하면 수초. 실패해도 앱 자체는 부팅시킨다
-            // (시맨틱/OCR 기능이 비활성될 뿐 키워드 검색은 동작).
-            if let Err(e) = model_downloader::ensure_onnx_runtime_dll(&models_dir) {
-                tracing::error!(
-                    "ONNX Runtime DLL 준비 실패: {}. 시맨틱/OCR 기능이 비활성됩니다.",
-                    e
-                );
             }
 
             // ORT_DYLIB_PATH 설정: 단일 스레드(setup) 시점에서 환경변수 설정
+            // (아래 모델 준비 스레드 spawn 전에 실행 — set_var 단일 스레드 안전 논거 유지)
             // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
             // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
             // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
@@ -864,18 +907,51 @@ pub fn run() {
                 tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
             }
 
-            // 모델 자동 다운로드 (백그라운드)
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
-            maybe_download_models(
-                app.handle().clone(),
-                models_dir.clone(),
-                setup_settings.semantic_search_enabled,
-            );
-            maybe_download_ocr_models(
-                app.handle().clone(),
-                models_dir.clone(),
-                setup_settings.ocr_enabled,
-            );
+
+            // 번들 모델 seed + ONNX Runtime DLL 검증 + 모델 자동 다운로드 — 백그라운드 실행.
+            // 기존에는 setup() 동기 실행이라 ~43MB SHA-256 해싱(DLL+OCR 3종)이 콜드 스타트
+            // (AV 상주 PC)에서 첫 창 표시를 1초+ 지연시켰다. 기존 실행 순서(seed → DLL 검증 →
+            // 모델/OCR 다운로드 체크)는 같은 스레드에서 순차 실행으로 그대로 유지 — 번들 적용
+            // 전에 다운로드 체크가 돌아 같은 파일을 동시에 쓰는 레이스를 막는다.
+            // Embedder/OCR 는 lazy(OnceCell) 초기화로 첫 사용 시점(빠르면 initialize_app 1초 후
+            // startup sync)이 DLL 검증 완료(통상 수백 ms)보다 늦어 ort panic 방지 목적은 유지된다.
+            {
+                let models_dir_bg = models_dir.clone();
+                let app_handle_bg = app.handle().clone();
+                let semantic_enabled = setup_settings.semantic_search_enabled;
+                let ocr_enabled = setup_settings.ocr_enabled;
+                std::thread::spawn(move || {
+                    // 번들 모델 적용: ONNX Runtime DLL + PaddleOCR 3종을 MSI 리소스에서
+                    // APPDATA/models/ 로 복사. 이미 같은 해시면 skip, 다르면 덮어쓰기.
+                    // 실패해도 다운로드 fallback 으로 자연 진행. 회사망/방화벽 등으로
+                    // huggingface·github 차단된 환경에서도 첫 실행 즉시 OCR/시맨틱 가능.
+                    if let Some(resource_dir) = resource_dir {
+                        model_downloader::seed_bundled_models(&resource_dir, &models_dir_bg);
+                    }
+
+                    // ONNX Runtime DLL 선제 준비 (14MB).
+                    // ort 2.x 는 DLL 버전 불일치 시 ort::init 단계에서 panic 을 일으키므로
+                    // OCR/Embedder 가 처음 DLL 을 건드리기 전에 SHA-256 검증으로 구버전을 강제 교체한다.
+                    // 검증만 하면 수백 ms, 다운로드가 필요하면 수초. 실패해도 앱 자체는 부팅시킨다
+                    // (시맨틱/OCR 기능이 비활성될 뿐 키워드 검색은 동작).
+                    if let Err(e) = model_downloader::ensure_onnx_runtime_dll(&models_dir_bg) {
+                        tracing::error!(
+                            "ONNX Runtime DLL 준비 실패: {}. 시맨틱/OCR 기능이 비활성됩니다.",
+                            e
+                        );
+                    }
+
+                    // 모델 자동 다운로드 — seed/DLL 검증 후에 존재 여부를 검사해야
+                    // 번들로 채워진 파일을 재다운로드하거나 동시에 쓰지 않는다.
+                    maybe_download_models(
+                        app_handle_bg.clone(),
+                        models_dir_bg.clone(),
+                        semantic_enabled,
+                    );
+                    maybe_download_ocr_models(app_handle_bg, models_dir_bg, ocr_enabled);
+                });
+            }
 
             // Initialize database with AppContainer
             let container = AppContainer::new(&app_data_dir);
@@ -1042,18 +1118,37 @@ pub fn run() {
                 .ok();
             });
 
-            // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색)
-            match container.load_filename_cache() {
-                Ok(count) => {
-                    tracing::info!("FilenameCache loaded: {} files", count);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to load filename cache: {}", e);
-                }
-            }
+            // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색) + 벡터 인덱스 ↔ DB 정합성 검증
+            // — 백그라운드 실행. 캐시 DB 전체 SELECT 는 HDD 5-10초(filename_cache.rs 주석),
+            // 정합성 검증은 chunks JOIN files COUNT 풀스캔 2회로 역시 수 초 걸릴 수 있어
+            // setup() 동기 실행 시 첫 창 표시를 그만큼 지연시킨다. 캐시 로드 완료 전 파일명
+            // 검색은 기존 DB LIKE 폴백이 처리하고(search_service/keyword.rs use_cache 게이트:
+            // !is_empty && !is_truncated), 두 작업은 기존 순서대로 같은 스레드에서 순차 실행해
+            // HDD 디스크 경합을 피한다. container 는 아래 app.manage 로 move 되므로
+            // Arc/PathBuf 만 복제해 넘긴다.
+            {
+                let filename_cache = container.get_filename_cache();
+                let db_path = container.db_path.clone();
+                let vector_index_path = container.vector_index_path.clone();
+                let semantic_available = container.is_semantic_available();
+                std::thread::spawn(move || {
+                    match db::get_connection(&db_path) {
+                        Ok(conn) => match filename_cache.load_from_db(&conn) {
+                            Ok(count) => {
+                                tracing::info!("FilenameCache loaded: {} files", count);
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to load filename cache: {}", e);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("Failed to load filename cache: {}", e);
+                        }
+                    }
 
-            // 벡터 인덱스 ↔ DB 정합성 검증
-            validate_vector_index(&container);
+                    validate_vector_index(&vector_index_path, &db_path, semantic_available);
+                });
+            }
 
             // Store app container
             app.manage(RwLock::new(container));

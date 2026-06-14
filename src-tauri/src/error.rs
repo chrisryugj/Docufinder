@@ -43,10 +43,6 @@ pub enum ApiError {
     #[error("인덱싱 실패: {0}")]
     IndexingFailed(String),
 
-    /// 인덱싱 취소됨
-    #[error("인덱싱이 취소되었습니다")]
-    IndexingCancelled,
-
     // ============ 검색 ============
     /// 검색 실패
     #[error("검색 실패: {0}")]

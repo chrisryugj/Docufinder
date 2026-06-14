@@ -176,6 +176,7 @@ impl SearchService {
                     .as_deref()
                     .map(file_type_extensions)
                     .unwrap_or_default(),
+                ..Default::default()
             };
             if self.embedder.is_some() && self.vector_index.is_some() {
                 self.search_hybrid_with_mode(

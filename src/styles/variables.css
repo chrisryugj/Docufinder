@@ -1,6 +1,6 @@
 /* ============================================
    DocuFinder Premium Design System
-   "Government Elegance" - Trustworthy yet State-of-the-Art
+   Warm Stone base + Green accent (#01AF7A, app icon) — Trustworthy yet State-of-the-Art
    ============================================ */
 
 @theme {
@@ -29,7 +29,7 @@
 :root {
   /* ============================================
      Color Palette — Precision Craft
-     Warm Stone base + Terracotta accent
+     Warm Stone base + Green accent (#01AF7A)
      ============================================ */
 
   /* Backgrounds — warm ivory, not clinical white */
@@ -68,7 +68,7 @@
   --color-accent-subtle: rgba(1, 175, 122, 0.06);
   --color-accent-light: rgba(1, 175, 122, 0.06);
   --color-accent-border: rgba(1, 175, 122, 0.2);
-  --color-accent-tertiary: rgba(1, 175, 122, 0.4);
+  --color-accent-muted: rgba(1, 175, 122, 0.3);
   --color-accent-glow: rgba(1, 175, 122, 0.25);
 
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
@@ -90,6 +90,7 @@
   --color-error-bg: rgba(220, 38, 38, 0.1);
   --color-error-subtle: rgba(220, 38, 38, 0.08);
   --color-error-border: rgba(220, 38, 38, 0.2);
+  --color-danger: var(--color-error);
   --color-info: #0284C7;
   --color-info-bg: rgba(2, 132, 199, 0.1);
   --color-favorite: #FACC15;
@@ -151,15 +152,15 @@
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
 
-  /* Type Scale (1.25 ratio, 15px base) */
+  /* Type Scale (~1.2 ratio, 15px base) — lg/xl/2xl 사이 공백 메워 본문~제목 위계 연속화 */
   --text-2xs: 0.6875rem;  /* 11px — 버전, 최소 메타 */
   --text-xs: 0.75rem;     /* 12px — 배지, 타임스탬프 */
   --text-sm: 0.8125rem;   /* 13px — 보조 텍스트, 경로 */
   --text-base: 0.9375rem; /* 15px — 본문 기본 */
   --text-md: 1rem;        /* 16px — 검색바 입력 */
-  --text-lg: 1.125rem;    /* 18px — 서브헤딩 */
-  --text-xl: 1.5625rem;   /* 25px — 섹션 타이틀 */
-  --text-2xl: 1.953rem;   /* 31px — 페이지 타이틀 */
+  --text-lg: 1.0625rem;   /* 17px — 본문 강조 */
+  --text-xl: 1.3125rem;   /* 21px — 서브섹션 헤딩 */
+  --text-2xl: 1.625rem;   /* 26px — 페이지 타이틀 */
   --text-hero: 2.75rem;   /* 44px — 히어로 */
 
   /* Layout Constraints */
@@ -181,6 +182,20 @@
   --transition-fast: 120ms var(--ease-out-expo);
   --transition-normal: 200ms var(--ease-out-expo);
   --transition-spring: 400ms var(--ease-spring);
+
+  /* ============================================
+     v3.0 Warm Premium Layer (추가 — 기존 토큰 비파괴)
+     전략적 그린 강조 + 입체 depth + 곡률 언어 통일
+     ============================================ */
+  /* 전략적 accent — CTA/히어로 등 "한 곳"에만 사용 (그린 분산 규율 유지) */
+  --gradient-accent: linear-gradient(135deg, #10C48E 0%, #01AF7A 55%, #019468 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(1, 175, 122, 0.09), rgba(1, 175, 122, 0.015));
+  --gradient-surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
+  /* 입체 depth — warm tint 유지하되 또렷한 lift (인터랙티브 표면 전용) */
+  --shadow-premium: 0 1px 2px rgba(28, 25, 23, 0.05), 0 10px 28px -12px rgba(28, 25, 23, 0.16);
+  --shadow-premium-accent: 0 2px 4px rgba(28, 25, 23, 0.04), 0 12px 28px -10px rgba(1, 175, 122, 0.22);
+  /* 카드 곡률 언어 통일 — 결과/칩/패널 카드류 기본값 */
+  --radius-card: var(--radius-xl); /* 12px */
 }
 
 /* ============================================
@@ -221,7 +236,7 @@
   --color-accent-subtle: rgba(16, 196, 142, 0.10);
   --color-accent-light: rgba(16, 196, 142, 0.10);
   --color-accent-border: rgba(16, 196, 142, 0.25);
-  --color-accent-tertiary: rgba(16, 196, 142, 0.45);
+  --color-accent-muted: rgba(16, 196, 142, 0.35);
   --color-accent-glow: rgba(16, 196, 142, 0.25);
 
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
@@ -234,12 +249,17 @@
   --color-accent-warm: #FBBF24;
   --color-accent-warm-subtle: rgba(251, 191, 36, 0.12);
 
-  /* Functional */
+  /* Functional — brighter variants for dark contrast (match -rgb/file-type values) */
+  --color-success: #34D399;
+  --color-warning: #FBBF24;
+  --color-error: #F87171;
   --color-error-hover: #B91C1C;
   --color-error-rgb: 248, 113, 113;
   --color-error-bg: rgba(248, 113, 113, 0.1);
   --color-error-subtle: rgba(248, 113, 113, 0.08);
   --color-error-border: rgba(248, 113, 113, 0.25);
+  --color-danger: var(--color-error);
+  --color-info: #38BDF8;
   --color-info-bg: rgba(56, 189, 248, 0.1);
   --color-favorite: #FDE047;
   --color-favorite-bg: rgba(253, 224, 71, 0.15);
@@ -288,6 +308,13 @@
   --shadow-card: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.04);
   --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(16, 196, 142, 0.2);
   --shadow-inner: inset 0 1px 3px 0 rgba(0, 0, 0, 0.25);
+
+  /* v3.0 Warm Premium Layer — dark 대응 */
+  --gradient-accent: linear-gradient(135deg, #34D9A5 0%, #10C48E 55%, #01AF7A 100%);
+  --gradient-accent-soft: linear-gradient(135deg, rgba(16, 196, 142, 0.12), rgba(16, 196, 142, 0.02));
+  --gradient-surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+  --shadow-premium: 0 2px 8px -2px rgba(0, 0, 0, 0.4), 0 12px 32px -10px rgba(0, 0, 0, 0.5);
+  --shadow-premium-accent: 0 2px 8px -2px rgba(0, 0, 0, 0.4), 0 12px 32px -10px rgba(16, 196, 142, 0.28);
 }
 
 /* ============================================

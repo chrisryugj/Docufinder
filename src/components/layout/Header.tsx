@@ -101,7 +101,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
         <button
           onClick={onAddFolder}
           disabled={isIndexing}
-          className="p-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed btn-icon-hover"
+          className="group p-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed btn-icon-hover"
           aria-label="폴더 추가"
           title={isIndexing ? "인덱싱이 완료된 후 폴더를 추가할 수 있습니다" : "폴더 추가"}
         >
@@ -111,7 +111,8 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
               style={{ border: "1.5px solid var(--color-text-muted)", borderTopColor: "var(--color-accent)" }}
             />
           ) : (
-            <Plus className="w-4 h-4" style={{ color: "var(--color-accent)" }} />
+            // 평소 중립, hover 시에만 accent — 그린 분산을 줄여 실제 CTA(빈 상태 사이드바/WelcomeHero)를 부각
+            <Plus className="w-4 h-4 transition-colors text-[var(--color-text-muted)] group-hover:text-[var(--color-accent)]" />
           )}
         </button>
 

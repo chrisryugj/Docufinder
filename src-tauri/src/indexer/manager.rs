@@ -36,53 +36,6 @@ impl WatchPauseHandle {
     pub fn shared_counter(&self) -> Arc<std::sync::atomic::AtomicUsize> {
         self.pause_count.clone()
     }
-
-    /// Soft pause: 카운터만 증가 (unwatch 없음, 중첩 가능)
-    #[allow(dead_code)]
-    pub fn pause_processing(&self) {
-        let prev = self
-            .pause_count
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        tracing::debug!(
-            "[WatchPauseHandle] pause_processing: {} → {}",
-            prev,
-            prev + 1
-        );
-    }
-
-    /// Soft resume: 카운터 감소 (compare_exchange로 underflow 방지)
-    #[allow(dead_code)]
-    pub fn resume_processing(&self) {
-        loop {
-            let current = self.pause_count.load(std::sync::atomic::Ordering::SeqCst);
-            if current == 0 {
-                tracing::warn!("[WatchPauseHandle] resume_processing called but was not paused");
-                return;
-            }
-            if self
-                .pause_count
-                .compare_exchange(
-                    current,
-                    current - 1,
-                    std::sync::atomic::Ordering::SeqCst,
-                    std::sync::atomic::Ordering::SeqCst,
-                )
-                .is_ok()
-            {
-                tracing::debug!(
-                    "[WatchPauseHandle] resume_processing: {} → {}",
-                    current,
-                    current - 1
-                );
-                return;
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn is_paused(&self) -> bool {
-        self.pause_count.load(std::sync::atomic::Ordering::SeqCst) > 0
-    }
 }
 
 /// 파일 감시 + 인덱싱 매니저
@@ -579,6 +532,13 @@ impl WatchManager {
                     ctx.ocr_engine.is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
 
                 if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
+                    // Modify 이벤트는 속성/메타데이터 변경만으로도 발생하므로,
+                    // 이미 FTS 인덱싱된 파일이 (size, modified_at) 모두 동일하면
+                    // 재파싱(+vector_indexed_at 리셋 → 재임베딩)을 스킵
+                    if Self::is_unchanged_since_fts_index(&conn, path) {
+                        tracing::debug!("[WatchManager] Unchanged, skip reparse: {:?}", path);
+                        continue;
+                    }
                     let ocr_ref = ctx.ocr_engine.as_deref();
                     match pipeline::index_file_fts_only_no_tx(&conn, path, ocr_ref) {
                         Ok(result) => {
@@ -655,6 +615,38 @@ impl WatchManager {
                 }
             }
         }
+    }
+
+    /// 이미 FTS 인덱싱된 파일이 디스크 stat과 (size, modified_at) 모두 동일한지 확인
+    ///
+    /// notify의 Modify는 속성/메타데이터 변경에도 발생하므로, 내용 무변경 파일의
+    /// 재파싱 + 재임베딩(upsert_file_fts_only의 vector_indexed_at=NULL 리셋)을 차단.
+    /// mtime 해상도 문제(FAT 2초, 네트워크 드라이브)가 있어 mtime과 size가
+    /// **모두** 같을 때만 보수적으로 스킵한다. fts_indexed_at IS NULL인 파일
+    /// (metadata-only 저장 등)은 파싱이 필요하므로 스킵하지 않는다.
+    fn is_unchanged_since_fts_index(conn: &rusqlite::Connection, path: &Path) -> bool {
+        let Ok(metadata) = std::fs::metadata(path) else {
+            return false;
+        };
+        let disk_size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
+        let disk_mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if disk_mtime == 0 {
+            // mtime 조회 실패 시 보수적으로 재파싱 (DB의 modified_at=0 fallback과 오매칭 방지)
+            return false;
+        }
+        let path_str = path.to_string_lossy().to_string();
+        conn.query_row(
+            "SELECT 1 FROM files
+             WHERE path = ? AND size = ? AND modified_at = ? AND fts_indexed_at IS NOT NULL",
+            rusqlite::params![path_str, disk_size, disk_mtime],
+            |_| Ok(()),
+        )
+        .is_ok()
     }
 
     /// DB에서 파일 정보 조회하여 FilenameEntry 생성

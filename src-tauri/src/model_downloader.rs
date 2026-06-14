@@ -2,7 +2,6 @@
 //!
 //! ONNX Runtime과 임베딩 모델을 자동으로 다운로드합니다.
 //! SHA-256 무결성 검증을 수행합니다.
-#![allow(dead_code)]
 
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
@@ -90,9 +89,6 @@ const OCR_DICT_KO_SHA256: &str = "a88071c68c01707489baa79ebe0405b7beb5cca229f4fc
 const CONNECT_TIMEOUT_SECS: u64 = 30;
 const READ_TIMEOUT_SECS: u64 = 600; // 10분 (대용량 모델)
 const MAX_FILE_SIZE: u64 = 600 * 1024 * 1024; // 600MB 상한
-
-/// 모델 다운로드 진행률 콜백
-pub type ProgressCallback = Box<dyn Fn(u64, u64, &str) + Send>;
 
 /// 모델 다운로드 결과
 #[derive(Debug)]
@@ -513,18 +509,6 @@ fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
     tracing::info!("ONNX Runtime DLL SHA-256 검증 성공 (v1.23.0)");
 
     Ok(())
-}
-
-/// 모델 파일 존재 여부 확인
-pub fn check_models(models_dir: &Path) -> (bool, bool, bool) {
-    let model_dir = models_dir.join("kosimcse-roberta-multitask");
-    let model_exists =
-        model_dir.join("model_int8.onnx").exists() || model_dir.join("model.onnx").exists();
-    (
-        model_dir.join(dylib_filename()).exists(),
-        model_exists,
-        model_dir.join("tokenizer.json").exists(),
-    )
 }
 
 /// 번들된 리소스(ONNX Runtime DLL + PaddleOCR 3종)를 APPDATA/models/ 로 복사한다.

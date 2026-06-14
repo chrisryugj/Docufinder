@@ -292,12 +292,6 @@ impl TextTokenizer for LinderaKoTokenizer {
     }
 }
 
-impl Default for LinderaKoTokenizer {
-    fn default() -> Self {
-        Self::new().expect("Failed to create LinderaKoTokenizer")
-    }
-}
-
 /// Lindera 관련 에러
 #[derive(Debug, thiserror::Error)]
 pub enum LinderaError {

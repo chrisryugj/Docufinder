@@ -749,7 +749,7 @@ function ResultsToolbar({
             {minConfidence > 0 && (
               <Badge variant="primary">{minConfidence}%↑</Badge>
             )}
-            {searchTime !== null && searchTime !== undefined && (
+            {import.meta.env.DEV && searchTime !== null && searchTime !== undefined && (
               <Badge variant="secondary">{searchTime}ms</Badge>
             )}
           </div>

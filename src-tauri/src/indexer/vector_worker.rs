@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// 벡터 인덱싱 배치 크기
 /// 32로 축소: Embedder Mutex 점유 시간 ~400ms로 제한 → 검색 쿼리 인터리빙 가능
@@ -23,6 +23,10 @@ const EMBEDDING_BATCH_SIZE: usize = 32;
 
 /// 벡터 인덱스 저장 주기 (청크 수) - I/O 최적화를 위해 1000으로 증가
 const SAVE_INTERVAL: usize = 1000;
+
+/// 벡터 인덱스 저장 주기 (시간) — 작은 파일들이 천천히 처리되어
+/// SAVE_INTERVAL 청크에 도달하지 못해도 주기적으로 영속화
+const SAVE_INTERVAL_SECS: u64 = 30;
 
 /// 프리페치 버퍼 크기 (배치 2개 분량 — 파이프라인 유지 + 메모리 절약)
 const PREFETCH_BUFFER_SIZE: usize = 2;
@@ -255,6 +259,11 @@ fn run_vector_indexing(
     // 메인 루프: 임베딩 + 저장
     let mut processed = 0;
     let mut last_save = 0;
+    let mut last_save_time = Instant::now();
+    // 완료 파일 마킹 버퍼: 파일 1개 완료마다 인덱스 전체를 save()하면
+    // 파일 수 N에 대해 O(N²) 디스크 쓰기가 되므로, 완료 file_id를 모았다가
+    // 주기적 flush(save 성공 직후 일괄 마킹)로 처리한다.
+    let mut pending_mark_file_ids: Vec<i64> = Vec::new();
     let recv_timeout = Duration::from_millis(100);
     // 취소 플래그: 최종 is_complete 이벤트를 정확히 내보내기 위한 추적
     let mut was_cancelled = false;
@@ -390,12 +399,11 @@ fn run_vector_indexing(
                         s.pending_chunks = total_chunks.saturating_sub(base_processed + processed);
                     }
 
-                    // 주기적 저장
+                    // 주기적 저장 + 완료 파일 일괄 마킹
                     if processed - last_save >= SAVE_INTERVAL {
-                        if let Err(e) = vector_index.save() {
-                            tracing::warn!("[VectorWorker] Failed to save index: {}", e);
-                        }
+                        flush_save_and_mark(&conn, vector_index, &mut pending_mark_file_ids);
                         last_save = processed;
+                        last_save_time = Instant::now();
                     }
                 }
 
@@ -405,27 +413,28 @@ fn run_vector_indexing(
                     && processed_chunks_in_file == total_chunks_in_file;
 
                 if file_fully_processed {
-                    // Crash consistency: save THEN mark
-                    if let Err(e) = vector_index.save() {
-                        tracing::warn!(
-                            "[VectorWorker] Failed to save index before marking file: {}",
-                            e
-                        );
-                    } else {
-                        last_save = processed;
-                    }
-                    let file_id = prefetched.file_id;
-                    if let Err(e) =
-                        db::retry_on_busy(|| db::mark_file_vector_indexed(&conn, file_id))
-                    {
-                        tracing::warn!("[VectorWorker] Failed to mark file {}: {}", file_id, e);
-                    }
+                    // Crash consistency: save THEN mark — 단, 파일마다 save()하면
+                    // 인덱스 전체 재기록으로 O(N²) 디스크 쓰기가 되므로 즉시 마킹하지
+                    // 않고 버퍼에 모아 주기적 flush(save 성공 직후 일괄 마킹)로 처리.
+                    // 크래시 시 최악 손실은 마지막 저장 이후 분량뿐: 미마킹 파일은
+                    // pending으로 남아 재시작 시 재처리되고, 이미 저장된 청크는
+                    // contains_chunk 스킵으로 재임베딩을 피한다.
+                    pending_mark_file_ids.push(prefetched.file_id);
                 } else if file_failed_chunks > 0 {
                     tracing::warn!(
                         "[VectorWorker] File '{}' has {} failed chunks, keeping pending for retry",
                         prefetched.file_path,
                         file_failed_chunks
                     );
+                }
+
+                // 시간 기준 저장: 청크 수가 SAVE_INTERVAL에 못 미쳐도 주기적 영속화
+                if (processed > last_save || !pending_mark_file_ids.is_empty())
+                    && last_save_time.elapsed() >= Duration::from_secs(SAVE_INTERVAL_SECS)
+                {
+                    flush_save_and_mark(&conn, vector_index, &mut pending_mark_file_ids);
+                    last_save = processed;
+                    last_save_time = Instant::now();
                 }
             }
             Err(RecvTimeoutError::Timeout) => continue,
@@ -439,6 +448,12 @@ fn run_vector_indexing(
 
     // 프리페치 스레드 종료 대기
     let _ = prefetch_handle.join();
+
+    // 최종 flush: 완료/취소 어느 경로로 루프를 빠져나와도 반드시 1회 저장 후
+    // 버퍼에 남은 완료 파일을 일괄 마킹한다 (이 함수의 에러 반환 경로는 모두
+    // 루프 진입 전이므로 루프 종료 시 이 지점은 항상 실행됨).
+    // 이 저장이 누락되면 이번 세션 임베딩이 재시작 때 유실되어 재계산 비용이 발생한다.
+    flush_save_and_mark(&conn, vector_index, &mut pending_mark_file_ids);
 
     // 최종 저장 + mmap view 모드 전환 (RAM 회수)
     let final_chunk_count = vector_index.chunk_count();
@@ -478,6 +493,28 @@ fn run_vector_indexing(
     send_progress(processed, None, fully_done);
 
     Ok(())
+}
+
+/// 인덱스 저장 + 완료 파일 일괄 마킹 (Crash consistency: save THEN mark)
+///
+/// save() 성공 시에만 버퍼의 file_id 들을 vector_indexed 로 마킹한다.
+/// save() 실패 시 버퍼를 유지한다 — 해당 파일들은 pending으로 남아
+/// 다음 flush 또는 재시작 시 재처리되며, 이미 인덱스에 들어간 청크는
+/// contains_chunk 스킵으로 재임베딩을 피한다.
+fn flush_save_and_mark(
+    conn: &rusqlite::Connection,
+    vector_index: &VectorIndex,
+    pending_mark_file_ids: &mut Vec<i64>,
+) {
+    if let Err(e) = vector_index.save() {
+        tracing::warn!("[VectorWorker] Failed to save index: {}", e);
+        return;
+    }
+    for file_id in pending_mark_file_ids.drain(..) {
+        if let Err(e) = db::retry_on_busy(|| db::mark_file_vector_indexed(conn, file_id)) {
+            tracing::warn!("[VectorWorker] Failed to mark file {}: {}", file_id, e);
+        }
+    }
 }
 
 /// 프리페치 스레드: DB에서 청크를 미리 로드하여 채널로 전송

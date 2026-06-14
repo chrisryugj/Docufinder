@@ -59,20 +59,20 @@ pub async fn start_indexing_batch(
             rejected.push((raw.clone(), "경로가 존재하지 않습니다".to_string()));
             continue;
         }
-        // UNC/네트워크 경로는 dunce 로 정규화해야 `\\server\share\...` 형태가 유지됨.
-        // std::canonicalize 는 `\\?\UNC\server\share\...` 로 바꿔 DB 경로 매칭을 깨뜨린다.
-        let canonical_buf = match dunce::canonicalize(p) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!("Batch: canonicalize failed for {}: {}", raw, e);
-                rejected.push((raw.clone(), format!("경로 정규화 실패: {}", e)));
-                continue;
-            }
-        };
+        // 매핑 드라이브→UNC 치환 + UNC 보존 정규화 — add_folder 와 동일 규칙.
+        // 실패 시(SMB/매핑 드라이브 권한 — 이슈 #29) 원본 경로로 fallback 후
+        // probe 가 접근성을 게이트.
+        let canonical_buf = canonicalize_best_effort(p);
         // 시스템 폴더 차단 (드라이브 루트는 허용 — Everything 스타일 전체 검색 지원)
         if let Err(msg) = crate::constants::validate_watch_path(&canonical_buf) {
             tracing::warn!("Batch: rejecting path {}: {}", raw, msg);
             rejected.push((raw.clone(), msg.to_string()));
+            continue;
+        }
+        // 매핑 드라이브/UNC 응답성 사전 검증 — hang 차단 (이슈 #24)
+        if let Err(e) = probe_network_path(&canonical_buf).await {
+            tracing::warn!("Batch: network probe failed for {}: {}", raw, e);
+            rejected.push((raw.clone(), e.to_string()));
             continue;
         }
         let canonical = canonical_buf.to_string_lossy().to_string();
@@ -325,9 +325,14 @@ async fn run_folder_index_job_batch(
 ) -> Result<JobOutcome, String> {
     let ctx = extract_indexing_context(state).map_err(|e| e.to_string())?;
     let folder_path = Path::new(path);
-    // UNC 보존: dunce 로 통일 (add_folder 와 동일 규칙).
-    let canonical_path =
-        dunce::canonicalize(folder_path).map_err(|e| format!("canonicalize failed: {}", e))?;
+    // UNC 보존 정규화: canonicalize_best_effort 로 통일 (add_folder 와 동일 규칙, 이슈 #29).
+    // 실패 시 원본 경로로 fallback — 접근성은 아래 probe 가 게이트.
+    let canonical_path = canonicalize_best_effort(folder_path);
+    // 매핑 드라이브/UNC 응답성 재검증 — 등록 시점 probe 후 job 실행까지 지연될 수 있어
+    // 죽은 네트워크 경로에서의 hang 을 차단 (이슈 #24)
+    probe_network_path(&canonical_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let path_str = canonical_path.to_string_lossy().to_string();
 
     // watch folder 등록 + 인덱싱 상태 마킹

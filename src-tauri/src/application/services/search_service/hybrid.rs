@@ -5,9 +5,49 @@ use super::SearchService;
 use crate::application::dto::search::{MatchType, SearchResponse, SearchResult};
 use crate::application::errors::{AppError, AppResult};
 use crate::db;
-use crate::search::{fts, hybrid, KeywordMode};
+use crate::search::{fts, hybrid, query_syntax, KeywordMode};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
+
+/// 벡터 전용 히트는 SQL 메타 필터를 거치지 않으므로 연산자 조건을 후처리로 적용
+fn vector_chunk_passes_operators(
+    chunk: &db::ChunkInfo,
+    op: &query_syntax::OperatorQuery,
+) -> bool {
+    if !op.ext_filters.is_empty() {
+        let name = chunk.file_name.to_lowercase();
+        if !op
+            .ext_filters
+            .iter()
+            .any(|e| name.ends_with(&format!(".{}", e)))
+        {
+            return false;
+        }
+    }
+    if !op.path_filters.is_empty() {
+        let path = chunk.file_path.to_lowercase().replace('\\', "/");
+        if !op.path_filters.iter().all(|p| path.contains(p.as_str())) {
+            return false;
+        }
+    }
+    if let Some((start, end)) = op.date_range() {
+        match chunk.modified_at {
+            Some(ts) if ts >= start && ts <= end => {}
+            _ => return false,
+        }
+    }
+    if !op.excludes.is_empty() {
+        let content = crate::utils::normalize_text(&chunk.content).to_lowercase();
+        let excluded = op.excludes.iter().any(|e| {
+            let needle = crate::utils::normalize_text(e).to_lowercase();
+            !needle.is_empty() && content.contains(&needle)
+        });
+        if excluded {
+            return false;
+        }
+    }
+    true
+}
 
 impl SearchService {
     /// 하이브리드 검색 (FTS5 키워드 + usearch 벡터 + RRF 병합)
@@ -40,25 +80,94 @@ impl SearchService {
         mode: KeywordMode,
         filter: &fts::MetaFilter,
     ) -> AppResult<SearchResponse> {
+        self.search_hybrid_impl(query, None, max_results, folder_scope, mode, filter)
+            .await
+    }
+
+    /// 하이브리드 검색 — 인라인 연산자 지원 (v3.0.0)
+    ///
+    /// FTS 측은 연산자 합성 MATCH + SQL 메타 필터, 벡터 측은 연산자를 제거한
+    /// 텍스트로 임베딩하고 메타/제외 조건을 후처리로 적용한다.
+    /// 연산자가 없으면 기존 경로와 완전 동일.
+    pub async fn search_hybrid_with_operators(
+        &self,
+        query: &str,
+        max_results: usize,
+        folder_scope: Option<&str>,
+        mode: KeywordMode,
+    ) -> AppResult<SearchResponse> {
+        let op = query_syntax::parse_operators(query);
+        if !op.has_operators() {
+            return self
+                .search_hybrid_impl(
+                    query,
+                    None,
+                    max_results,
+                    folder_scope,
+                    mode,
+                    &fts::MetaFilter::default(),
+                )
+                .await;
+        }
+
+        let filter = fts::MetaFilter {
+            date_range: op.date_range(),
+            file_types: op.ext_filters.clone(),
+            path_contains: op.path_filters.clone(),
+        };
+        self.search_hybrid_impl(query, Some(&op), max_results, folder_scope, mode, &filter)
+            .await
+    }
+
+    async fn search_hybrid_impl(
+        &self,
+        query: &str,
+        op: Option<&query_syntax::OperatorQuery>,
+        max_results: usize,
+        folder_scope: Option<&str>,
+        mode: KeywordMode,
+        filter: &fts::MetaFilter,
+    ) -> AppResult<SearchResponse> {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
 
         let conn = self.get_connection()?;
 
-        // 1. FTS5 검색 (mode + 메타 필터 적용)
-        let fts_results = match self.tokenizer.as_ref() {
-            Some(tok) => fts::search_with_tokenizer(
-                &conn,
-                query,
-                max_results,
-                tok.as_ref(),
-                folder_scope,
-                mode,
-                filter,
-            )
-            .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-            None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
+        // 벡터 임베딩·스니펫 보정용 텍스트 — 연산자 사용 시 연산자 제거본
+        let display_query = match op {
+            Some(o) => o.semantic_text(),
+            None => query.to_string(),
+        };
+
+        // 1. FTS5 검색 (mode + 메타 필터 적용 / 연산자 합성)
+        let fts_results = match op {
+            Some(o) => {
+                let tok_ref = self.tokenizer.as_ref().map(|a| a.as_ref());
+                fts::search_with_operators(
+                    &conn,
+                    o,
+                    max_results,
+                    tok_ref,
+                    folder_scope,
+                    mode,
+                    filter,
+                )
+                .map_err(|e| AppError::SearchFailed(e.to_string()))?
+            }
+            None => match self.tokenizer.as_ref() {
+                Some(tok) => fts::search_with_tokenizer(
+                    &conn,
+                    query,
+                    max_results,
+                    tok.as_ref(),
+                    folder_scope,
+                    mode,
+                    filter,
+                )
                 .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+                None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
+                    .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+            },
         };
 
         // 2. 벡터 검색
@@ -69,7 +178,9 @@ impl SearchService {
         };
         let (vector_results, query_embedding) =
             match (self.embedder.as_ref(), self.vector_index.as_ref()) {
-                (Some(emb), Some(vi)) => match emb.embed(query, true) {
+                // 필터 전용 질의(검색어 없음)는 임베딩할 텍스트가 없으므로 벡터 생략
+                (Some(_), Some(_)) if display_query.trim().is_empty() => (vec![], None),
+                (Some(emb), Some(vi)) => match emb.embed(&display_query, true) {
                     Ok(qe) => {
                         let raw_results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
                         let results = if folder_scope.is_some() && !raw_results.is_empty() {
@@ -155,7 +266,8 @@ impl SearchService {
                         &fts_r.content,
                         &fts_r.snippet,
                     );
-                    let improved = ensure_keyword_in_snippet(&fts_r.snippet, &fts_r.content, query);
+                    let improved =
+                        ensure_keyword_in_snippet(&fts_r.snippet, &fts_r.content, &display_query);
                     let content_preview = strip_highlight_markers(&improved);
                     let highlight_ranges = parse_highlight_ranges(&improved);
 
@@ -185,6 +297,12 @@ impl SearchService {
                     vector_only_chunks.get(&hr.chunk_id).and_then(|chunk| {
                         if !matches_folder_scope(&chunk.file_path, folder_scope) {
                             return None;
+                        }
+                        // 연산자 검색: 벡터 전용 히트에도 ext/path/날짜/제외 조건 적용
+                        if let Some(o) = op {
+                            if !vector_chunk_passes_operators(chunk, o) {
+                                return None;
+                            }
                         }
                         Some(SearchResult {
                             file_path: chunk.file_path.clone(),

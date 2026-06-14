@@ -6,7 +6,7 @@
 use crate::application::dto::search::SearchResponse;
 use crate::application::services::search_service::helpers::collapse_by_lineage;
 use crate::error::{ApiError, ApiResult};
-use crate::search::{fts, KeywordMode};
+use crate::search::KeywordMode;
 use crate::AppContainer;
 use std::sync::RwLock;
 use tauri::State;
@@ -77,13 +77,7 @@ pub async fn search_keyword(
     };
 
     let response = service
-        .search_keyword_with_mode(
-            &query,
-            max_results,
-            folder_scope.as_deref(),
-            mode,
-            &fts::MetaFilter::default(),
-        )
+        .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
         .await
         .map_err(ApiError::from)?;
     Ok(apply_lineage_collapse(response, group_versions))
@@ -195,26 +189,14 @@ pub async fn search_hybrid(
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
     if !semantic_enabled {
         let response = service
-            .search_keyword_with_mode(
-                &query,
-                max_results,
-                folder_scope.as_deref(),
-                mode,
-                &fts::MetaFilter::default(),
-            )
+            .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
             .await
             .map_err(ApiError::from)?;
         return Ok(apply_lineage_collapse(response, group_versions));
     }
 
     let response = service
-        .search_hybrid_with_mode(
-            &query,
-            max_results,
-            folder_scope.as_deref(),
-            mode,
-            &fts::MetaFilter::default(),
-        )
+        .search_hybrid_with_operators(&query, max_results, folder_scope.as_deref(), mode)
         .await
         .map_err(ApiError::from)?;
     Ok(apply_lineage_collapse(response, group_versions))

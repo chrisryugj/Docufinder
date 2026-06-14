@@ -66,6 +66,7 @@ export const Sidebar = memo(function Sidebar({
   onCancelBatch,
   onDismissBatch,
 }: SidebarProps) {
+  const hasFolders = watchedFolders.length > 0;
   const [isFoldersExpanded, setIsFoldersExpanded] = useState(true);
   const [isSearchesExpanded, setIsSearchesExpanded] = useState(true);
   const [isSmartFoldersExpanded, setIsSmartFoldersExpanded] = useState(true);
@@ -205,6 +206,21 @@ export const Sidebar = memo(function Sidebar({
 
                 {isFoldersExpanded && (
                   <>
+                    {!hasFolders && (
+                      <div className="px-2 py-4 text-center">
+                        <Folder className="w-8 h-8 mx-auto mb-2 opacity-50" style={{ color: "var(--color-sidebar-muted)" }} />
+                        <p className="text-xs mb-3 leading-relaxed" style={{ color: "var(--color-sidebar-muted)" }}>
+                          검색하려면 먼저<br />폴더를 추가하세요
+                        </p>
+                        <button
+                          onClick={onAddFolder}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                          style={{ backgroundColor: "var(--color-accent)" }}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> 폴더 추가
+                        </button>
+                      </div>
+                    )}
                     <FolderTree
                       folders={watchedFolders}
                       onRemoveFolder={onRemoveFolder}
@@ -222,7 +238,8 @@ export const Sidebar = memo(function Sidebar({
                 )}
               </section>
 
-              {/* Section: Smart Folders (저장된 검색) */}
+              {/* Section: Smart Folders / Recent — 폴더 있을 때만 (첫 사용자 빈 섹션 노이즈 제거) */}
+              {hasFolders && (<>
               <section className="pt-1 pb-3">
                 <div
                   className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
@@ -301,6 +318,7 @@ export const Sidebar = memo(function Sidebar({
                   />
                 )}
               </section>
+              </>)}
 
               {/* Section: Bookmarks */}
               {onBookmarkSelect && (

@@ -4,7 +4,7 @@
 //!
 //! ## 구성요소
 //! - **container**: DI 컨테이너 (AppContainer)
-//! - **dto**: 데이터 전송 객체 (SearchQuery, SearchResponse 등)
+//! - **dto**: 데이터 전송 객체 (SearchResponse, AddFolderResult 등)
 //! - **services**: 비즈니스 로직 서비스 (SearchService, IndexService 등)
 //! - **errors**: 애플리케이션 레벨 에러
 

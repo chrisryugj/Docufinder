@@ -4,10 +4,7 @@ export { useIndexStatus } from "./useIndexStatus";
 export { useIndexingBatch } from "./useIndexingBatch";
 export { useVectorIndexing } from "./useVectorIndexing";
 export { useKeyboardShortcuts } from "./useKeyboardShortcuts";
-export {
-  useLocalStorage,
-  useRecentSearches,
-} from "./useLocalStorage";
+export { useRecentSearches } from "./useRecentSearches";
 export { useExport } from "./useExport";
 export { useToast } from "./useToast";
 export { useTheme } from "./useTheme";

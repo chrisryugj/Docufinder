@@ -13,6 +13,7 @@ import {
   DATE_RANGE_OPTIONS,
   DEFAULT_FILTERS,
   KEYWORD_MATCH_MODES,
+  SEARCH_MODES,
 } from "../../types/search";
 import { CustomSelect } from "../ui/CustomSelect";
 import type { FilterPreset } from "../../hooks/useFilterPresets";
@@ -23,6 +24,8 @@ interface SearchFiltersProps {
   /** 결과 내 검색 표시 여부 (결과가 있을 때만 표시) */
   showRefineSearch?: boolean;
   searchMode?: SearchMode;
+  /** 검색 모드 변경 (키워드 ↔ 파일명만) — 검색바 드롭다운 대신 옵션 패널로 흡수 */
+  onSearchModeChange?: (mode: SearchMode) => void;
   /** 결과 내 검색 쿼리 */
   refineQuery?: string;
   onRefineQueryChange?: (query: string) => void;
@@ -46,6 +49,7 @@ export const SearchFilters = memo(function SearchFilters({
   onFiltersChange,
   showRefineSearch = false,
   searchMode,
+  onSearchModeChange,
   refineQuery = "",
   onRefineQueryChange,
   onRefineQueryClear,
@@ -87,6 +91,14 @@ export const SearchFilters = memo(function SearchFilters({
   // 파일명 모드가 아닐 때만 "파일명 제외" 필터 표시
   const showExcludeFilenameToggle = searchMode !== "filename";
 
+  // 고급 옵션 2단 위계: 검색모드/매칭모드/키워드포함만/파일명제외/프리셋은 '옵션' 버튼으로 접는다
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const advancedActiveCount =
+    (searchMode === "filename" ? 1 : 0) +
+    (keywordMatchMode !== "and" ? 1 : 0) +
+    (filters.keywordOnly ? 1 : 0) +
+    (filters.excludeFilename ? 1 : 0);
+
   return (
     <div
       className="flex flex-wrap items-center gap-1.5 py-1 text-xs relative z-40 isolate"
@@ -94,8 +106,61 @@ export const SearchFilters = memo(function SearchFilters({
       aria-label="검색 필터"
       data-tour="search-filters"
     >
-      {/* 키워드 매칭 모드 (AND/OR/EXACT) */}
-      {onKeywordMatchModeChange && searchMode !== "filename" && (
+      {/* 고급 옵션 토글 — 검색모드/매칭모드/세부토글/프리셋을 접어 첫 화면 압도감 완화 */}
+      {(onSearchModeChange || onKeywordMatchModeChange || (onSavePreset && onApplyPreset)) && (
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium transition-colors"
+          style={{
+            borderColor: showAdvanced ? "var(--color-accent)" : "var(--color-border)",
+            color: showAdvanced || advancedActiveCount > 0 ? "var(--color-accent)" : "var(--color-text-muted)",
+            backgroundColor: "transparent",
+          }}
+          aria-expanded={showAdvanced}
+          aria-label="고급 검색 옵션"
+          title="매칭 방식 · 세부 필터 · 프리셋"
+        >
+          옵션
+          {advancedActiveCount > 0 && (
+            <span
+              className="inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold text-white"
+              style={{ backgroundColor: "var(--color-accent)" }}
+            >
+              {advancedActiveCount}
+            </span>
+          )}
+          <span className="text-[9px]" style={{ display: "inline-block", transform: showAdvanced ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+        </button>
+      )}
+
+      {/* 검색 모드 (키워드 통합 / 파일명만) — 고급 옵션. 검색바 드롭다운에서 흡수 */}
+      {onSearchModeChange && showAdvanced && (
+        <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          {SEARCH_MODES.map((m) => {
+            const isActive = searchMode === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => onSearchModeChange(m.value)}
+                className="px-2 py-0.5 text-xs transition-colors"
+                style={{
+                  backgroundColor: isActive ? "var(--color-bg-tertiary)" : "transparent",
+                  color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                  fontWeight: isActive ? 600 : 500,
+                }}
+                title={m.desc}
+                aria-pressed={isActive}
+                aria-label={m.desc}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 키워드 매칭 모드 (AND/OR/EXACT) — 고급 옵션 */}
+      {onKeywordMatchModeChange && searchMode !== "filename" && showAdvanced && (
         <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
           {KEYWORD_MATCH_MODES.map((m) => {
             const isActive = keywordMatchMode === m.value;
@@ -103,10 +168,11 @@ export const SearchFilters = memo(function SearchFilters({
               <button
                 key={m.value}
                 onClick={() => onKeywordMatchModeChange(m.value)}
-                className="px-2 py-0.5 text-xs font-medium transition-colors"
+                className="px-2 py-0.5 text-xs transition-colors"
                 style={{
-                  backgroundColor: isActive ? "var(--color-accent)" : "var(--color-bg-secondary)",
-                  color: isActive ? "white" : "var(--color-text-muted)",
+                  backgroundColor: isActive ? "var(--color-bg-tertiary)" : "transparent",
+                  color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                  fontWeight: isActive ? 600 : 500,
                 }}
                 title={m.desc}
                 aria-pressed={isActive}
@@ -148,7 +214,7 @@ export const SearchFilters = memo(function SearchFilters({
         />
       )}
 
-      {showKeywordOnlyToggle && (
+      {showKeywordOnlyToggle && showAdvanced && (
         <label
           className="flex items-center gap-1 px-2 py-0.5 rounded border cursor-pointer transition-colors"
           style={{
@@ -168,7 +234,7 @@ export const SearchFilters = memo(function SearchFilters({
         </label>
       )}
 
-      {showExcludeFilenameToggle && (
+      {showExcludeFilenameToggle && showAdvanced && (
         <label
           className="flex items-center gap-1 px-2 py-0.5 rounded border cursor-pointer transition-colors"
           style={{
@@ -229,8 +295,8 @@ export const SearchFilters = memo(function SearchFilters({
         </div>
       )}
 
-      {/* 프리셋 */}
-      {onSavePreset && onApplyPreset && (
+      {/* 프리셋 — 고급 옵션 */}
+      {onSavePreset && onApplyPreset && showAdvanced && (
         <PresetDropdown
           presets={presets}
           hasActiveFilters={hasActiveFilters}

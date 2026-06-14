@@ -19,42 +19,45 @@ pnpm tauri:build
 
 ```
 Anything/
-├── src-tauri/              # Rust 백엔드 (Clean Architecture)
+├── src-tauri/              # Rust 백엔드 (commands → application/services → search·indexer·db)
 │   ├── src/
 │   │   ├── main.rs         # 앱 진입점
-│   │   ├── lib.rs          # AppContainer 초기화 + 크래시 핸들러
-│   │   ├── error.rs        # 글로벌 에러 타입
+│   │   ├── lib.rs          # setup/초기화 + 크래시 핸들러 + invoke_handler 등록
+│   │   ├── error.rs        # 글로벌 에러 타입 (ApiError)
 │   │   ├── constants.rs    # 상수 정의
 │   │   ├── model_downloader.rs  # ONNX 모델 다운로드 + SHA-256 검증
-│   │   ├── commands/       # Tauri IPC 커맨드 (search, index, settings, file)
-│   │   ├── application/    # 응용 계층 (container, services, dto)
-│   │   ├── domain/         # 도메인 계층 (entities, repositories, value_objects)
-│   │   ├── infrastructure/ # 인프라 계층 (persistence, embedding, vector)
-│   │   ├── parsers/        # 문서 파서 (hwpx, docx, xlsx, pdf, txt)
-│   │   ├── search/         # 검색 엔진 (fts, vector, hybrid, filename, filename_cache)
-│   │   ├── indexer/        # 인덱싱 (pipeline, manager, vector_worker, background_parser)
+│   │   ├── panic_filter.rs # BENIGN_PANIC_SOURCES 크래시 필터
+│   │   ├── webview2_runtime.rs  # WebView2 fixed-runtime inject (이슈 #24)
+│   │   ├── breadcrumb.rs   # 크래시 진단 브레드크럼
+│   │   ├── commands/       # Tauri IPC 커맨드 (search, index, settings, file, ai, lineage 등)
+│   │   ├── application/    # 응용 계층 (container, services/search_service, dto)
+│   │   ├── parsers/        # 문서 파서 (hwpx, docx, xlsx, pdf, txt, kordoc 사이드카)
+│   │   ├── search/         # 검색 엔진 (fts, vector, hybrid, filename_cache, nl_query, query_syntax)
+│   │   ├── indexer/        # 인덱싱 (pipeline, manager, vector_worker, collector, sync, lineage)
 │   │   ├── embedder/       # ONNX 임베딩 (KoSimCSE, 768차원)
 │   │   ├── tokenizer/      # 한국어 형태소 분석 (Lindera)
 │   │   ├── ocr/            # PaddleOCR ONNX (이미지/스캔 PDF)
 │   │   ├── llm/            # Gemini API (RAG 질의응답)
-│   │   ├── db/             # SQLite + FTS5 스키마
-│   │   └── utils/          # disk_info, idle_detector
+│   │   ├── db/             # SQLite + FTS5 스키마 (mod, migration, pool)
+│   │   └── utils/          # disk_info, network_path, elevation, text_normalize 등
 │   └── Cargo.toml
 ├── src/                    # React 프론트엔드
 │   ├── App.tsx
 │   ├── ErrorBoundary.tsx
 │   ├── components/
 │   │   ├── ui/             # Button, Modal, Toast, Badge, Tooltip, FileIcon 등
-│   │   ├── layout/         # Header, StatusBar, ErrorBanner
-│   │   ├── sidebar/        # Sidebar, FolderTree, RecentSearches
-│   │   ├── search/         # SearchBar, SearchFilters, SearchResultList, ResultContextMenu 등
-│   │   ├── settings/       # SettingsModal, ColorPresetPicker
-│   │   ├── onboarding/     # OnboardingModal, DisclaimerModal
+│   │   ├── layout/         # Header, StatusBar, AutoIndexPrompt, AppModals
+│   │   ├── sidebar/        # Sidebar, FolderTree, SmartFolders, RecentSearches
+│   │   ├── search/         # SearchBar, SearchResultList, PreviewPanel, CommandPalette 등
+│   │   ├── settings/       # SettingsModal + tabs/
+│   │   ├── onboarding/     # tourSteps, DisclaimerModal (투어 기반)
+│   │   ├── updater/        # 업데이트 알림
 │   │   └── help/           # HelpModal
-│   ├── hooks/              # useSearch, useIndexStatus, useToast, useVectorIndexing 등 (14개)
+│   ├── hooks/              # useSearch, useIndexStatus, useSmartFolders 등 (~30개)
+│   ├── contexts/           # SearchContext, UIContext
 │   ├── types/              # api, error, search, settings 타입 정의
-│   ├── utils/              # cleanPath, formatRelativeTime, invokeWithTimeout
-│   └── index.css           # 테마 CSS 변수 (라이트/다크)
+│   ├── utils/              # searchTextUtils, cleanPath, invokeWithTimeout 등
+│   └── styles/             # variables(테마 토큰)/components/animations/utilities
 └── .github/workflows/      # CI (TypeScript 빌드 + Rust check/test/clippy)
 ```
 
@@ -97,15 +100,19 @@ Anything/
 | 기능 | 설명 |
 |------|------|
 | 하이브리드 검색 | 키워드(FTS5) + 시맨틱(벡터) + RRF 병합 |
+| 검색 연산자 (v3.0) | `"구문"` `-제외` `ext:` `path:` `before:/after:` — search/query_syntax.rs |
+| 근접 검색 (v3.0) | `~N` 형태소 인지 FTS5 NEAR (Lindera 명사 추출 + prefix) |
 | 파일명 검색 | Everything 스타일 파일명 검색 (인메모리 캐시) |
-| 실시간 감시 | 폴더 변경 자동 감지 + 증분 인덱싱 |
-| 2단계 인덱싱 | FTS 즉시 완료 → 벡터 백그라운드 처리 |
+| 실시간 감시 | 폴더 변경 자동 감지 + 증분 인덱싱 (mtime+size 무변경 스킵) |
+| 2단계 인덱싱 | FTS 즉시 완료 → 벡터 백그라운드 처리 (배치 저장) |
 | 인덱싱 진행률 | 실시간 진행률 + 취소 버튼 |
 | 즐겨찾기 폴더 | 자주 사용 폴더 핀 고정 |
 | HDD 최적화 | SSD/HDD 자동 감지 + 적응형 스레딩 |
 | 보안 | 압축 폭탄 방어, SHA-256 모델 검증, CSP |
 | 문서 요약 | TextRank 추출적 요약 (TF-IDF 바이그램, 오프라인) |
 | 법령 참조 링크 | 정규식 기반 법령 자동 감지 → law.go.kr 링크 |
+| 미리보기 찾기 (v3.0) | Ctrl+F 인앱 찾기 바 — 매치 카운트 + 이전/다음 |
+| 문서 비교 (v3.0) | 우클릭 '비교 대상으로 선택' → 임의 두 문서 청크 diff |
 
 ## 참고 문서
 

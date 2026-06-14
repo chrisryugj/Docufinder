@@ -251,14 +251,6 @@ pub fn upsert_file(
         |row| row.get(0),
     )?;
 
-    // files_fts 인덱스 갱신 (파일명 검색용)
-    // FTS5는 UPSERT 미지원 → DELETE 후 INSERT
-    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
-    conn.execute(
-        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
-        params![file_id, name],
-    )?;
-
     Ok(file_id)
 }
 
@@ -286,15 +278,7 @@ pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
             params![path],
         )?;
 
-        // 3. files_fts에서 삭제 (파일명 검색 인덱스)
-        conn.execute(
-            "DELETE FROM files_fts WHERE rowid IN (
-                SELECT id FROM files WHERE path = ?
-            )",
-            params![path],
-        )?;
-
-        // 4. files 삭제
+        // 3. files 삭제
         conn.execute("DELETE FROM files WHERE path = ?", params![path])
     })();
 
@@ -400,15 +384,6 @@ pub fn delete_files_in_folder(conn: &Connection, folder_path: &str) -> Result<us
             params![pattern_unix, pattern_win],
         )?;
 
-        // files_fts 삭제 (파일명 검색 인덱스)
-        conn.execute(
-            "DELETE FROM files_fts WHERE rowid IN (
-                SELECT id FROM files
-                WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'
-            )",
-            params![pattern_unix, pattern_win],
-        )?;
-
         // 파일 삭제 (chunks는 CASCADE로 삭제됨)
         conn.execute(
             "DELETE FROM files WHERE path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'",
@@ -433,7 +408,6 @@ pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()
     conn.execute_batch(
         "DROP TABLE IF EXISTS chunks_fts_vocab;
          DROP TABLE IF EXISTS chunks_fts;
-         DROP TABLE IF EXISTS files_fts;
          DROP TABLE IF EXISTS file_tags;
          DROP TABLE IF EXISTS bookmarks;
          DROP TABLE IF EXISTS search_queries;
@@ -456,15 +430,17 @@ pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()
 /// 호출자가 이미 트랜잭션을 관리하는 경우 사용.
 /// 중첩 BEGIN 방지로 배치 인덱싱 시 에러 해소.
 pub fn delete_chunks_for_file_no_tx(conn: &Connection, file_id: i64) -> Result<()> {
+    // 핫패스: prepare_cached로 SQL 재컴파일 방지 (배치 인덱싱 시 파일마다 호출)
     // FTS에서 먼저 삭제
-    conn.execute(
+    conn.prepare_cached(
         "DELETE FROM chunks_fts WHERE rowid IN (
             SELECT id FROM chunks WHERE file_id = ?
         )",
-        params![file_id],
-    )?;
+    )?
+    .execute(params![file_id])?;
 
-    conn.execute("DELETE FROM chunks WHERE file_id = ?", params![file_id])?;
+    conn.prepare_cached("DELETE FROM chunks WHERE file_id = ?")?
+        .execute(params![file_id])?;
     Ok(())
 }
 
@@ -488,20 +464,21 @@ pub fn insert_chunk(
     fts_extra_tokens: Option<&str>,
 ) -> Result<i64> {
     // 청크 메타데이터 + 원본 content 저장
-    conn.execute(
+    // 핫패스: prepare_cached로 SQL 재컴파일 방지 (청크마다 호출)
+    conn.prepare_cached(
         "INSERT INTO chunks (file_id, chunk_index, start_offset, end_offset, page_number, page_end, location_hint, content)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        params![
-            file_id,
-            chunk_index as i64,
-            start_offset as i64,
-            end_offset as i64,
-            page_number.map(|p| p as i64),
-            page_end.map(|p| p as i64),
-            location_hint,
-            content
-        ],
-    )?;
+    )?
+    .execute(params![
+        file_id,
+        chunk_index as i64,
+        start_offset as i64,
+        end_offset as i64,
+        page_number.map(|p| p as i64),
+        page_end.map(|p| p as i64),
+        location_hint,
+        content
+    ])?;
 
     let chunk_id = conn.last_insert_rowid();
 
@@ -510,10 +487,8 @@ pub fn insert_chunk(
         Some(tokens) if !tokens.is_empty() => format!("{} {}", content, tokens),
         _ => content.to_string(),
     };
-    conn.execute(
-        "INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)",
-        params![chunk_id, fts_content],
-    )?;
+    conn.prepare_cached("INSERT INTO chunks_fts (rowid, content) VALUES (?, ?)")?
+        .execute(params![chunk_id, fts_content])?;
 
     Ok(chunk_id)
 }
@@ -864,7 +839,8 @@ pub fn upsert_file_fts_only(
     let now = current_timestamp();
 
     // RETURNING으로 INSERT/UPDATE 모두에서 id를 1회 쿼리로 획득
-    let file_id: i64 = conn.query_row(
+    // 핫패스: prepare_cached로 SQL 재컴파일 방지 (배치 인덱싱 시 파일마다 호출)
+    let mut stmt = conn.prepare_cached(
         "INSERT INTO files (path, name, file_type, size, modified_at, indexed_at, fts_indexed_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
@@ -876,15 +852,10 @@ pub fn upsert_file_fts_only(
            fts_indexed_at = excluded.fts_indexed_at,
            vector_indexed_at = NULL
          RETURNING id",
+    )?;
+    let file_id: i64 = stmt.query_row(
         params![path, name, file_type, size, modified_at, now, now],
         |row| row.get(0),
-    )?;
-
-    // files_fts 인덱스 갱신
-    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
-    conn.execute(
-        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
-        params![file_id, name],
     )?;
 
     Ok(file_id)
@@ -902,7 +873,8 @@ pub fn insert_file_metadata_only(
 ) -> Result<i64> {
     // fts_indexed_at = NULL, vector_indexed_at = NULL (파싱 대기 상태)
     // RETURNING으로 INSERT/UPDATE 모두에서 id를 1회 쿼리로 획득
-    let file_id: i64 = conn.query_row(
+    // 핫패스: prepare_cached로 SQL 재컴파일 방지 (메타데이터 스캔 시 파일마다 호출)
+    let mut stmt = conn.prepare_cached(
         "INSERT INTO files (path, name, file_type, size, modified_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(path) DO UPDATE SET
@@ -911,16 +883,10 @@ pub fn insert_file_metadata_only(
            size = excluded.size,
            modified_at = excluded.modified_at
          RETURNING id",
-        params![path, name, file_type, size, modified_at],
-        |row| row.get(0),
     )?;
-
-    // files_fts 인덱스 갱신 (파일명 검색용)
-    conn.execute("DELETE FROM files_fts WHERE rowid = ?", params![file_id])?;
-    conn.execute(
-        "INSERT INTO files_fts (rowid, name) VALUES (?, ?)",
-        params![file_id, name],
-    )?;
+    let file_id: i64 = stmt.query_row(params![path, name, file_type, size, modified_at], |row| {
+        row.get(0)
+    })?;
 
     Ok(file_id)
 }

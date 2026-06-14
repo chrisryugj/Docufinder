@@ -4,8 +4,7 @@ import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext } from "./searchTextUtils";
-import { formatPathSegments, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, formatPathSegments, stripHtmlTags } from "../../utils/searchTextUtils";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { MatchDensityBar } from "./MatchDensityBar";
 
@@ -78,6 +77,13 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
     [group.chunks, isExpanded, searchQuery]
   );
   const isSingleMatch = group.total_matches === 1;
+
+  // 신뢰도 %는 시맨틱/하이브리드 매칭에서만 노출 (ux-audit-8) — SearchResultItem과 동일 기준.
+  // top_confidence는 청크 최대값이므로 시맨틱/하이브리드 청크가 하나라도 있을 때만 의미가 있다.
+  const hasSemanticMatch = group.chunks.some((c) => {
+    const t = (c.match_type ?? "").toLowerCase();
+    return t === "semantic" || t === "hybrid";
+  });
 
   // 컨텍스트 메뉴 (공용 훅 사용)
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
@@ -157,12 +163,11 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         </div>
 
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-          {/* 액션 버튼 — colored */}
+          {/* 액션 버튼 — muted 단색, hover 시 착색 (btn-icon-hover, ux-audit-8) */}
           <div className="flex items-center gap-1">
             <button
               onClick={handleCopyPath}
               className="p-1.5 rounded transition-colors btn-icon-hover"
-              style={{ color: "var(--color-accent)" }}
               title="경로 복사"
             >
               <ClipboardCopy className="w-4 h-4" />
@@ -171,7 +176,6 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               <button
                 onClick={handleRevealFile}
                 className="p-1.5 rounded transition-colors btn-icon-hover"
-                style={{ color: "var(--color-warning)" }}
                 title="파일 위치 열기 (탐색기에서 선택)"
               >
                 <FolderOpen className="w-4 h-4" />
@@ -179,19 +183,21 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             )}
           </div>
 
-          {/* 신뢰도 — number only */}
-          <span
-            className="text-xs font-semibold tabular-nums"
-            style={{
-              color: group.top_confidence >= 70
-                ? "var(--color-success)"
-                : group.top_confidence >= 40
-                  ? "var(--color-warning)"
-                  : "var(--color-text-muted)",
-            }}
-          >
-            {Math.round(group.top_confidence)}%
-          </span>
+          {/* 신뢰도 — semantic/hybrid 매칭 한정 (number only) */}
+          {hasSemanticMatch && (
+            <span
+              className="text-xs font-semibold tabular-nums"
+              style={{
+                color: group.top_confidence >= 70
+                  ? "var(--color-success)"
+                  : group.top_confidence >= 40
+                    ? "var(--color-warning)"
+                    : "var(--color-text-muted)",
+              }}
+            >
+              {Math.round(group.top_confidence)}%
+            </span>
+          )}
 
           {/* 파일 타입 */}
           <Badge variant={getFileTypeBadgeVariant(group.file_name)}>
@@ -234,6 +240,9 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         {displayChunks.map((chunk, idx) => {
           // 미리보기는 위에서 메모이즈한 chunkPreviews 사용 (displayChunks 와 동일 순서/길이)
           const preview = chunkPreviews[idx];
+          // 청크 신뢰도 % — semantic/hybrid 매칭 한정 (ux-audit-8)
+          const chunkType = (chunk.match_type ?? "").toLowerCase();
+          const showChunkConfidence = chunkType === "semantic" || chunkType === "hybrid";
           return (
           <div
             key={`${chunk.chunk_index}-${idx}`}
@@ -270,19 +279,21 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               </p>
             </div>
 
-            {/* Confidence — number only */}
-            <span
-              className="text-[11px] font-medium tabular-nums flex-shrink-0"
-              style={{
-                color: chunk.confidence >= 70
-                  ? "var(--color-success)"
-                  : chunk.confidence >= 40
-                    ? "var(--color-warning)"
-                    : "var(--color-text-muted)",
-              }}
-            >
-              {Math.round(chunk.confidence)}%
-            </span>
+            {/* Confidence — semantic/hybrid 매칭 한정 (number only) */}
+            {showChunkConfidence && (
+              <span
+                className="text-[11px] font-medium tabular-nums flex-shrink-0"
+                style={{
+                  color: chunk.confidence >= 70
+                    ? "var(--color-success)"
+                    : chunk.confidence >= 40
+                      ? "var(--color-warning)"
+                      : "var(--color-text-muted)",
+                }}
+              >
+                {Math.round(chunk.confidence)}%
+              </span>
+            )}
           </div>
         );
         })}
@@ -317,12 +328,12 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
                     {seg.label}
                   </button>
                 ) : (
-                  <span className="text-xs px-0.5 py-0.5 clr-muted" style={{ opacity: 0.5 }}>
+                  <span className="text-xs px-0.5 py-0.5 clr-muted">
                     {seg.label}
                   </span>
                 )}
                 {i < arr.length - 1 && (
-                  <span className="text-[11px] mx-px clr-muted" style={{ opacity: 0.3 }}>/</span>
+                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
                 )}
               </div>
             ))}

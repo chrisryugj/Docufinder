@@ -19,7 +19,7 @@ pub struct PruneResult {
 /// - Startup sync에서 자동 호출 (init.rs의 spawn_startup_sync_async 말미)
 /// - 설정 > "없는 파일 정리" 버튼에서 수동 호출
 ///
-/// 10만 파일 기준 수초 소요 (stat만). chunks_fts / files_fts / chunks 모두 cascade 삭제.
+/// 10만 파일 기준 수초 소요 (stat만). chunks_fts / chunks 모두 cascade 삭제.
 pub fn prune_missing_files_impl(db_path: &Path) -> ApiResult<PruneResult> {
     let start = std::time::Instant::now();
     let conn = db::get_connection(db_path).map_err(|e| ApiError::IndexingFailed(e.to_string()))?;

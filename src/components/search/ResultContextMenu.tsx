@@ -1,11 +1,52 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FolderOpen, ClipboardCopy, Search } from "lucide-react";
+import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare } from "lucide-react";
+
+// 코드 스플리팅: 비교 모달은 '○○와 비교' 클릭 시에만 로딩 (LineageBadge 패턴)
+const VersionDiffModal = lazy(() =>
+  import("./VersionDiffModal").then((m) => ({ default: m.VersionDiffModal }))
+);
 
 interface ContextMenuState {
   isOpen: boolean;
   x: number;
   y: number;
+}
+
+/* ── 임의 두 문서 비교: '비교 대상으로 선택'된 기준 파일 공유 상태 ──
+ * ResultContextMenu 는 SearchResultItem / GroupedSearchResultItem / FilenameResultItem /
+ * AiAnswerPanel 등 여러 곳에서 독립 인스턴스로 렌더되므로, 기준 파일은 모듈 스코프
+ * store + useSyncExternalStore 로 공유한다 (중간 컴포넌트 prop drilling 회피). */
+interface CompareBase {
+  path: string;
+  name: string;
+}
+
+let compareBaseState: CompareBase | null = null;
+const compareBaseListeners = new Set<() => void>();
+
+function setCompareBase(next: CompareBase | null) {
+  compareBaseState = next;
+  compareBaseListeners.forEach((listener) => listener());
+}
+
+function subscribeCompareBase(listener: () => void) {
+  compareBaseListeners.add(listener);
+  return () => {
+    compareBaseListeners.delete(listener);
+  };
+}
+
+function useCompareBase(): CompareBase | null {
+  return useSyncExternalStore(subscribeCompareBase, () => compareBaseState);
+}
+
+function baseNameOf(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() ?? filePath;
+}
+
+function truncateName(name: string, max = 18): string {
+  return name.length > max ? `${name.slice(0, max)}…` : name;
 }
 
 interface ResultContextMenuProps {
@@ -30,7 +71,7 @@ export function useContextMenu() {
     e.stopPropagation();
 
     const menuWidth = 220;
-    const menuHeight = 170;
+    const menuHeight = 240;
     const padding = 8;
 
     let x = e.clientX;
@@ -68,6 +109,10 @@ export function ResultContextMenu({
   closeContextMenu: () => void;
 }) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  // 임의 두 문서 비교 (D4): 전역 기준 파일 + 이 인스턴스에서 연 비교 모달의 기준
+  const compareBase = useCompareBase();
+  const [diffBase, setDiffBase] = useState<CompareBase | null>(null);
+  const isCompareBase = compareBase?.path === filePath;
 
   // 외부 클릭 시 메뉴 닫기
   useEffect(() => {
@@ -142,9 +187,23 @@ export function ResultContextMenu({
     return () => menu.removeEventListener("keydown", handleKeyDown);
   }, [contextMenu.isOpen, closeContextMenu]);
 
-  if (!contextMenu.isOpen) return null;
+  // 비교 모달은 메뉴가 닫힌 뒤에도 유지되어야 하므로 메뉴 open 여부와 무관하게 렌더
+  const diffModal = diffBase ? (
+    <Suspense fallback={null}>
+      <VersionDiffModal
+        aPath={diffBase.path}
+        aName={diffBase.name}
+        bPath={filePath}
+        bName={baseNameOf(filePath)}
+        title="문서 비교"
+        onClose={() => setDiffBase(null)}
+      />
+    </Suspense>
+  ) : null;
 
-  return createPortal(
+  if (!contextMenu.isOpen) return diffModal;
+
+  const menu = createPortal(
     <div
       ref={contextMenuRef}
       role="menu"
@@ -197,20 +256,62 @@ export function ResultContextMenu({
         <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>
 
-      {onFindSimilar && (
-        <>
-          <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-          <button
-            role="menuitem"
-            onClick={(e) => { e.stopPropagation(); closeContextMenu(); onFindSimilar(filePath); }}
-            className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
-          >
-            <Search className="w-4 h-4 clr-info" />
-            <span className="flex-1">유사 문서 찾기</span>
-          </button>
-        </>
+      <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+      <button
+        role="menuitem"
+        disabled={!onFindSimilar}
+        onClick={(e) => { e.stopPropagation(); closeContextMenu(); onFindSimilar?.(filePath); }}
+        className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+        title={onFindSimilar ? undefined : "시맨틱 검색을 켜면 사용할 수 있어요"}
+      >
+        <Search className="w-4 h-4 clr-info" />
+        <span className="flex-1">유사 문서 찾기</span>
+        {!onFindSimilar && <span className="text-[10px] opacity-60">시맨틱 OFF</span>}
+      </button>
+
+      {/* 임의 두 문서 비교 (D4): 기준 선택 → 다른 파일 우클릭 시 '○○와 비교' */}
+      <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+      {compareBase && !isCompareBase && (
+        <button
+          role="menuitem"
+          onClick={(e) => {
+            e.stopPropagation();
+            closeContextMenu();
+            setDiffBase(compareBase);
+            setCompareBase(null);
+          }}
+          className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          title={`"${compareBase.name}" ↔ "${baseNameOf(filePath)}" 내용 비교`}
+        >
+          <GitCompare className="w-4 h-4 clr-info" />
+          <span className="flex-1 truncate">"{truncateName(compareBase.name)}"와 비교</span>
+        </button>
       )}
+      <button
+        role="menuitem"
+        onClick={(e) => {
+          e.stopPropagation();
+          closeContextMenu();
+          setCompareBase(isCompareBase ? null : { path: filePath, name: baseNameOf(filePath) });
+        }}
+        className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+        title={
+          isCompareBase
+            ? "비교 기준 선택을 해제합니다"
+            : "이 파일을 비교 기준으로 선택한 뒤, 다른 파일을 우클릭하면 '비교' 항목이 나타납니다"
+        }
+      >
+        <GitCompare className="w-4 h-4 clr-warning" />
+        <span className="flex-1">{isCompareBase ? "비교 대상 선택 해제" : "비교 대상으로 선택"}</span>
+      </button>
     </div>,
     document.body
+  );
+
+  return (
+    <>
+      {menu}
+      {diffModal}
+    </>
   );
 }

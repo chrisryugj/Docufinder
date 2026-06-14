@@ -29,8 +29,10 @@ const TABS: { id: SettingsTab; label: string }[] = [
 export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved, onClearData, onAutoIndexAllDrives }: SettingsModalProps) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 자동 저장 성공 시 잠깐 표시되는 조용한 '저장됨' 인디케이터
+  const [savedVisible, setSavedVisible] = useState(false);
+  const savedIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const originalDataRootRef = useRef<string | undefined>(undefined);
 
@@ -40,6 +42,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     const loadSettings = async () => {
       setIsLoading(true);
       setError(null);
+      setSavedVisible(false);
       try {
         const result = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
         originalDataRootRef.current = result.data_root;
@@ -54,32 +57,20 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     loadSettings();
   }, [isOpen]);
 
-  const saveSettings = async () => {
-    if (!settings) return;
-
-    setIsSaving(true);
-    setError(null);
-    try {
-      await invokeWithTimeout("update_settings", { settings }, IPC_TIMEOUT.SETTINGS);
-      onSettingsSaved?.(settings);
-
-      if (settings.data_root !== originalDataRootRef.current) {
-        await ask(
-          "데이터 저장 경로가 변경되었습니다.\n변경 사항을 적용하려면 앱을 재시작해주세요.",
-          { title: "재시작 필요", kind: "info", okLabel: "확인" }
-        );
-      }
-
-      onClose();
-    } catch (err) {
-      setError(`설정 저장에 실패했습니다: ${getErrorMessage(err)}`);
-    } finally {
-      setIsSaving(false);
+  // 닫기 — 모든 변경은 자동 저장으로 이미 반영됨. 데이터 저장 경로가
+  // 바뀐 경우에만 재시작 안내 후 닫는다.
+  const handleClose = async () => {
+    if (settings && settings.data_root !== originalDataRootRef.current) {
+      await ask(
+        "데이터 저장 경로가 변경되었습니다.\n변경 사항을 적용하려면 앱을 재시작해주세요.",
+        { title: "재시작 필요", kind: "info", okLabel: "확인" }
+      );
     }
+    onClose();
   };
 
-  // 토글/입력 즉시 저장 — "저장" 버튼 안 누르고 앱 종료해도 close_to_tray 같은
-  // 시스템 토글이 백엔드에 반영되도록 디바운스 자동 저장 (300ms).
+  // 모든 변경 즉시 적용 모델 — 별도 "저장" 버튼 없이 디바운스 자동 저장 (300ms).
+  // close_to_tray 같은 시스템 토글도 앱 종료 전 백엔드에 반영된다.
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleChange = <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -91,10 +82,17 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = setTimeout(() => {
           invokeWithTimeout("update_settings", { settings: next }, IPC_TIMEOUT.SETTINGS)
-            .then(() => onSettingsSaved?.(next))
+            .then(() => {
+              onSettingsSaved?.(next);
+              setError(null);
+              // 토스트 대신 모달 내 조용한 '저장됨' 인디케이터
+              setSavedVisible(true);
+              if (savedIndicatorTimerRef.current) clearTimeout(savedIndicatorTimerRef.current);
+              savedIndicatorTimerRef.current = setTimeout(() => setSavedVisible(false), 2000);
+            })
             .catch((err) => {
-              // 자동 저장 실패는 조용히 — "저장" 버튼으로 명시 저장 시 다시 시도.
-              console.warn("autosave failed:", err);
+              // 명시 저장 버튼이 없으므로 실패는 모달 에러 배너로 노출
+              setError(`설정 저장에 실패했습니다: ${getErrorMessage(err)}`);
             });
         }, 300);
       }
@@ -106,10 +104,11 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
     }
   };
 
-  // 모달 unmount 시 디바운스 타이머 정리
+  // 모달 unmount 시 디바운스/인디케이터 타이머 정리
   useEffect(() => {
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      if (savedIndicatorTimerRef.current) clearTimeout(savedIndicatorTimerRef.current);
     };
   }, []);
 
@@ -133,7 +132,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="설정"
       size="lg"
       headerExtra={
@@ -159,16 +158,24 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         </div>
       }
       footer={
-        <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onClose}>
-            취소
-          </Button>
-          <Button
-            onClick={saveSettings}
-            isLoading={isSaving}
-            disabled={isSaving}
+        <div className="flex items-center justify-between">
+          {/* 변경 즉시 자동 저장 — 조용한 '저장됨' 인디케이터 */}
+          <div
+            aria-live="polite"
+            className="flex items-center gap-1.5 text-xs"
+            style={{ color: "var(--color-success)" }}
           >
-            저장
+            {savedVisible && (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                저장됨
+              </>
+            )}
+          </div>
+          <Button variant="secondary" onClick={handleClose}>
+            닫기
           </Button>
         </div>
       }

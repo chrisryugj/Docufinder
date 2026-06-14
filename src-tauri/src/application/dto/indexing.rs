@@ -40,34 +40,6 @@ pub struct AddFolderResult {
     pub ocr_image_count: usize,
 }
 
-impl AddFolderResult {
-    /// 성공 결과 생성
-    pub fn success(indexed_count: usize, message: String) -> Self {
-        Self {
-            success: true,
-            indexed_count,
-            failed_count: 0,
-            vectors_count: 0,
-            message,
-            errors: vec![],
-            ocr_image_count: 0,
-        }
-    }
-
-    /// 취소 결과 생성
-    pub fn cancelled() -> Self {
-        Self {
-            success: false,
-            indexed_count: 0,
-            failed_count: 0,
-            vectors_count: 0,
-            message: "인덱싱이 취소되었습니다".to_string(),
-            errors: vec![],
-            ocr_image_count: 0,
-        }
-    }
-}
-
 /// 폴더 통계 DTO
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FolderStats {

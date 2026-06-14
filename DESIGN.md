@@ -182,6 +182,16 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 | xl | `0 10px 15px ... + 0 4px 6px ...` | Modals |
 | card | `0 1px 3px ... + 0 0 0 1px ...` | Static cards |
 | card-hover | `0 4px 12px ... + accent tint` | Interactive cards |
+| **premium** | `0 1px 2px + 0 10px 28px -12px` | v3.0 — interactive surface lift (hero search, result-card hover, main searchbar) |
+| **premium-accent** | `... + 0 12px 28px -10px accent` | v3.0 — primary CTA / focused hero (green-tinted lift) |
+
+### v3.0 Warm-Premium Gradients
+
+| Token | Usage |
+|-------|-------|
+| `--gradient-accent` | Green 3-stop — primary CTA + AI send only (strategic, one per screen) |
+| `--gradient-surface-sheen` | Subtle top sheen on elevated surfaces (hero/search box) |
+| `--radius-card` | 12px — unified card radius (result/chip/panel) |
 
 ### Dark Mode Shadows
 - Stronger opacity (0.3-0.5) with pure black base
@@ -194,7 +204,7 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 ### DO
 - Use colors from the defined palette only
 - Use semantic colors (success/warning/error/info) for feedback
-- Use file-type colors for file-specific UI (badges, left borders)
+- Use file-type colors for file-specific UI (badges, subtle hover tint) — never as left-border stripes
 - Use `--color-accent-ai` (indigo) for AI/semantic features
 - Keep search results in `content-column` (max 820px)
 - Apply staggered fade-in animation to result lists (max 10 items, 30ms delay)
@@ -209,10 +219,11 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 - Don't use more than two typefaces on a single screen
 - Don't center-align body text
 - Don't use animations longer than 400ms (except ambient breathe/float)
-- Don't use gradient backgrounds on buttons (except Anything AI banner)
+- Don't use gradient backgrounds on ordinary buttons. Reserve `--gradient-accent` for the **one primary CTA per screen** (empty-state start button) + AI features (Anything banner/send) — strategic accent, not scattered
 - Don't use opacity for hover states on buttons — use color transitions
 - Don't use left-border accents on result cards — they feel cluttered
 - Don't use virtual scrolling (react-window etc.) — use "show more" pagination
+- Don't use `opacity` to create text/icon hierarchy — use color tokens (`--color-text-muted`, `--color-text-tertiary`). Opacity muddies color; tokens stay clean (v3.0 warm-premium)
 
 ---
 

@@ -57,7 +57,11 @@ import { UpdateModal } from "./components/updater/UpdateModal";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
-import type { SourceRef } from "./types/search";
+import type { SearchResult, SourceRef } from "./types/search";
+
+// excludeFilename 활성 시 매 렌더 새 [] 참조가 생성되어 1,000줄짜리 SearchResultList의
+// memo 비교를 깨는 것 방지 (frontend-debt-13) — 항상 같은 참조를 전달.
+const EMPTY_RESULTS: SearchResult[] = [];
 
 // ── App Shell (Provider 래핑) ──────────────────────────
 
@@ -170,6 +174,28 @@ function AppContent() {
     search.resetAi();
     search.searchInputRef.current?.focus();
   }, [search.setQuery, search.setSelectedIndex, search.setParadigm, search.resetAi, search.searchInputRef]);
+
+  // ── 안정 콜백 (frontend-debt-14) — SearchBar/CompactSearchBar memo가
+  // 인라인 화살표 prop으로 매 렌더(토스트, 인덱싱 progress) 깨지지 않도록 useCallback 래핑 ──
+  const handleCompositionStart = useCallback(() => search.setComposing(true), [search.setComposing]);
+  const handleCompositionEnd = useCallback(
+    (finalValue: string) => search.setComposing(false, finalValue),
+    [search.setComposing]
+  );
+  const handleOpenSettings = useCallback(() => ui.setSettingsOpen(true), [ui.setSettingsOpen]);
+  const handleOpenHelp = useCallback(() => ui.setHelpOpen(true), [ui.setHelpOpen]);
+  const handleOpenUpdate = useCallback(() => setUpdateModalOpen(true), []);
+  const handleSearchScopeChange = useCallback(
+    (scope: string | null) => search.setFilters((prev) => ({ ...prev, searchScope: scope })),
+    [search.setFilters]
+  );
+
+  // ── Sidebar memo 보존 (frontend-debt-12) ──
+  // SearchContext의 handleSaveSmartFolder는 query를 useCallback deps로 가져 키스트로크마다
+  // 참조가 바뀜 → ref로 최신 구현을 읽는 안정 래퍼로 전달 (useFileActions의 P2-2 queryRef 패턴과 동일 취지).
+  const saveSmartFolderRef = useRef(search.handleSaveSmartFolder);
+  useEffect(() => { saveSmartFolderRef.current = search.handleSaveSmartFolder; });
+  const handleSaveSmartFolder = useCallback(() => saveSmartFolderRef.current(), []);
 
   // ── File Actions (cross-cutting) ──
   const {
@@ -326,7 +352,11 @@ function AppContent() {
       },
       onCommandPalette: () => setCommandPaletteOpen((o) => !o),
       onEscape: () => {
-        if (search.selectedIndex >= 0) {
+        // 우선순위: 프리뷰 닫기 → 선택 해제 → 검색어 삭제 (ux-audit-11 — Esc는 가장 위 레이어부터).
+        // 북마크/AI 인용으로 연 프리뷰(selectedIndex=-1)에서 검색어가 날아가는 문제 방지.
+        if (ui.previewFilePath) {
+          handlePreviewClose();
+        } else if (search.selectedIndex >= 0) {
           search.setSelectedIndex(-1);
         } else {
           search.setQuery("");
@@ -350,6 +380,22 @@ function AppContent() {
           handleOpenFile(r.file_path, r.page_number);
         }
       },
+      // 검색 입력 포커스 중 Enter (ux-audit-1): "타이핑 → ↓ 선택 → Enter로 열기" 동선 복원.
+      // - instant 패러다임 한정 — natural/question은 Enter=제출이라 가로채면 안 됨
+      // - 검색 입력(메인/컴팩트)에서만 동작 — 다른 입력(태그, 프리셋 이름 등)의 Enter는 그대로 둠
+      onEnterInInput: () => {
+        if (search.paradigm !== "instant") return false;
+        const active = document.activeElement;
+        if (active !== search.searchInputRef.current && active !== search.compactSearchInputRef.current) {
+          return false;
+        }
+        if (search.selectedIndex >= 0 && search.selectedIndex < search.filteredResults.length) {
+          const r = search.filteredResults[search.selectedIndex];
+          handleOpenFile(r.file_path, r.page_number);
+          return true;
+        }
+        return false;
+      },
       onCopy: () => {
         if (search.selectedIndex >= 0 && search.selectedIndex < search.filteredResults.length) {
           handleCopyPath(search.filteredResults[search.selectedIndex].file_path);
@@ -370,7 +416,7 @@ function AppContent() {
     const wasAutoMode = vectorIndexingMode === "auto";
     applySettings(settings);
     clearSearchCache();
-    ui.showToast("설정이 저장되었습니다", "success", 2000);
+    // 토스트 없음 — 설정 모달이 자체 '저장됨' 인디케이터 표시 (자동저장 토스트 스팸 방지)
     const nowEnabled = settings.semantic_search_enabled ?? false;
     const nowAutoMode = (settings.vector_indexing_mode ?? "manual") === "auto";
     if (idx.isVectorIndexing && (!nowEnabled || !nowAutoMode)) {
@@ -479,8 +525,11 @@ function AppContent() {
         smartFolders={search.smartFolders}
         onApplySmartFolder={search.handleApplySmartFolder}
         onRemoveSmartFolder={search.removeSmartFolder}
-        onSaveSmartFolder={search.handleSaveSmartFolder}
-        currentQuery={search.query}
+        onSaveSmartFolder={handleSaveSmartFolder}
+        // Sidebar는 currentQuery를 truthiness 판정에만 사용(스마트폴더 저장 버튼 노출, Sidebar.tsx:244).
+        // 라이브 쿼리 문자열을 그대로 넘기면 키스트로크마다 Sidebar memo가 깨지므로(frontend-debt-12)
+        // 쿼리 존재 여부만 안정 sentinel 값으로 전달.
+        currentQuery={search.query.trim() ? "*" : ""}
         bookmarks={ui.bookmarks}
         onBookmarkSelect={handleBookmarkSelect}
         onBookmarkRemove={ui.removeBookmark}
@@ -500,8 +549,8 @@ function AppContent() {
               ref={search.compactSearchInputRef}
               query={search.query}
               onQueryChange={search.handleQueryChange}
-              onCompositionStart={() => search.setComposing(true)}
-              onCompositionEnd={(finalValue) => search.setComposing(false, finalValue)}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               searchMode={search.searchMode}
               onSearchModeChange={search.setSearchMode}
               isLoading={search.isLoading}
@@ -509,8 +558,8 @@ function AppContent() {
               resultCount={search.filteredResults.length}
               onExpand={search.handleExpand}
               onAddFolder={handleAddFolder}
-              onOpenSettings={() => ui.setSettingsOpen(true)}
-              onOpenHelp={() => ui.setHelpOpen(true)}
+              onOpenSettings={handleOpenSettings}
+              onOpenHelp={handleOpenHelp}
               isIndexing={idx.isIndexing}
               isSidebarOpen={ui.sidebarOpen}
               filters={search.filters}
@@ -523,9 +572,10 @@ function AppContent() {
               totalResultCount={search.results.length}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
+              semanticEnabled={semanticEnabled}
               onSubmitNatural={handleSubmitQuery}
               updatePhase={updater.state.phase}
-              onOpenUpdate={() => setUpdateModalOpen(true)}
+              onOpenUpdate={handleOpenUpdate}
             />
           </div>
         )}
@@ -556,20 +606,19 @@ function AppContent() {
               ref={search.searchInputRef}
               query={search.query}
               onQueryChange={search.handleQueryChange}
-              onCompositionStart={() => search.setComposing(true)}
-              onCompositionEnd={(finalValue) => search.setComposing(false, finalValue)}
-              searchMode={search.searchMode}
-              onSearchModeChange={search.setSearchMode}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
               isLoading={search.isLoading}
-              status={idx.status}
               resultCount={search.filteredResults.length}
               searchTime={search.searchTime}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
+              hasIndex={(idx.status?.indexed_files ?? 0) > 0}
+              semanticEnabled={semanticEnabled}
               onSubmitNatural={handleSubmitQuery}
               watchedFolders={idx.status?.watched_folders ?? []}
               searchScope={search.filters.searchScope}
-              onSearchScopeChange={(scope) => search.setFilters((prev) => ({ ...prev, searchScope: scope }))}
+              onSearchScopeChange={handleSearchScopeChange}
             />
 
             <VectorIndexingBanner
@@ -616,6 +665,7 @@ function AppContent() {
                 onFiltersChange={search.setFilters}
                 showRefineSearch={search.results.length > 0 || search.filenameResults.length > 0}
                 searchMode={search.searchMode}
+                onSearchModeChange={search.setSearchMode}
                 refineQuery={search.refineQuery}
                 onRefineQueryChange={search.setRefineQuery}
                 onRefineQueryClear={search.clearRefine}
@@ -699,7 +749,7 @@ function AppContent() {
                 ) : (
                   <SearchResultList
                     results={search.filteredResults}
-                    filenameResults={search.filters.excludeFilename ? [] : search.filenameResults}
+                    filenameResults={search.filters.excludeFilename ? EMPTY_RESULTS : search.filenameResults}
                     groupedResults={search.groupedResults}
                     viewMode={search.viewMode}
                     onViewModeChange={search.setViewMode}
@@ -897,12 +947,12 @@ function AppContent() {
         onOpenReleasePage={updater.openReleasePage}
       />
 
-      {/* 기능 투어 — 첫 방문 시 자동 시작, 헬프 메뉴에서 재시작 가능.
-          단 AutoIndexPrompt 가 떠 있는 동안은 자동시작 보류(모달 닫힌 뒤 시작) — 첫 화면 동시 점유 방지 */}
+      {/* 기능 투어 — 온보딩 단일 흐름: AutoIndexPrompt가 닫히고 + 폴더가 실제 추가된 뒤에만 1회 자동 시작.
+          '나중에 할게요'(폴더 0개)면 투어를 띄우지 않아 모달→투어 중복 안내를 제거. 헬프 메뉴에서 재시작 가능. */}
       <OnboardingTour
         steps={DOCUFINDER_TOUR_STEPS}
         storageKey={DOCUFINDER_TOUR_STORAGE_KEY}
-        autoStart={!ui.showAutoIndexPrompt}
+        autoStart={!ui.showAutoIndexPrompt && (idx.status?.watched_folders?.length ?? 0) > 0}
         runKey={tourRunKey}
       />
 

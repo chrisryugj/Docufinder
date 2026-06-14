@@ -11,6 +11,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { TagInput } from "../ui/TagInput";
+import { Tooltip } from "../ui/Tooltip";
 import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 import { cleanPath } from "../../utils/cleanPath";
@@ -88,7 +89,7 @@ function highlightTextWithLegal(
       <button
         key={`legal-${li}`}
         onClick={() => onOpenUrl(ref.url)}
-        className="inline underline decoration-dotted underline-offset-2 cursor-pointer hover:opacity-80 transition-opacity"
+        className="preview-inline-link inline underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: "var(--color-accent)" }}
         title={`${ref.lawName ? ref.lawName + " " : ""}${ref.article || ref.text} — 법제처에서 열기`}
       >
@@ -304,7 +305,7 @@ function createMarkdownComponents(
     a: ({ href, children }) => (
       <button
         onClick={() => href && onOpenUrl(href)}
-        className="inline underline decoration-dotted underline-offset-2 cursor-pointer hover:opacity-80"
+        className="preview-inline-link inline underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: "var(--color-accent)" }}
         title={href}
       >
@@ -519,7 +520,7 @@ const FileQaSection = memo(function FileQaSection({ filePath }: FileQaSectionPro
             <div className="mt-3 pt-2 border-t flex items-center" style={{ borderColor: "var(--color-border)" }}>
               <button
                 onClick={() => { setAnswer(""); setAnalysis(null); setError(null); setQuestion(""); }}
-                className="text-[10px] px-2 py-0.5 rounded transition-colors hover:bg-[var(--color-bg-tertiary)]"
+                className="text-[10px] px-2 py-0.5 rounded-lg transition-colors hover:bg-[var(--color-bg-tertiary)]"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 새 질문
@@ -566,8 +567,9 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 파일 질문 토글
   const [showFileQa, setShowFileQa] = useState(false);
 
-  // 텍스트 내보내기 메뉴 토글
+  // 텍스트 내보내기 메뉴 토글 (복사 버튼 아래 드롭다운 팝오버)
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // 찾기 바 (Ctrl+F) — 문서 내 즉석 찾기
   const panelRef = useRef<HTMLDivElement>(null);
@@ -835,6 +837,18 @@ export const PreviewPanel = memo(function PreviewPanel({
     if (marks.length > 0) marks[findActiveIdx]?.scrollIntoView({ block: "center" });
   }, [findActiveIdx, findCount, activeFindRegex]);
 
+  // 복사/내보내기 드롭다운 — 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (!showExportMenu) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [showExportMenu]);
+
   if (!filePath) return null;
 
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
@@ -842,7 +856,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
 
   return (
-    <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
+    <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="preview-panel flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
       {/* 헤더 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-[var(--color-bg-secondary)]" style={{ borderColor: "var(--color-border)" }}>
         <FileIcon fileName={fileName} size="sm" />
@@ -852,31 +866,56 @@ export const PreviewPanel = memo(function PreviewPanel({
         <Badge variant={getFileTypeBadgeVariant(fileName)}>
           {ext.toUpperCase()}
         </Badge>
-        <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors" title="닫기" aria-label="닫기">
+        <button onClick={onClose} className="p-1 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors" title="닫기" aria-label="닫기">
           <X size={14} />
         </button>
       </div>
 
       {/* 액션 바 — 아이콘 전용, 컴팩트 */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
-        <button onClick={() => onOpenFile?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
+        <button onClick={() => onOpenFile?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
           <ExternalLink size={13} />열기
         </button>
-        <button
-          onClick={() => setShowExportMenu((v) => !v)}
-          className={`p-1.5 rounded transition-colors ${showExportMenu ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-          title="복사 / 내보내기"
-          aria-expanded={showExportMenu}
-        >
-          <Copy size={13} />
-        </button>
-        <button onClick={() => onOpenFolder?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
+        <div className="relative" ref={exportMenuRef}>
+          <Tooltip content="복사 / 내보내기" position="bottom" usePortal>
+            <button
+              onClick={() => setShowExportMenu((v) => !v)}
+              className={`p-1.5 rounded-lg transition-colors ${showExportMenu ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              aria-haspopup="menu"
+              aria-expanded={showExportMenu}
+            >
+              <Copy size={13} />
+            </button>
+          </Tooltip>
+          {showExportMenu && (
+            <div
+              role="menu"
+              className="absolute left-0 top-full mt-1.5 z-20 min-w-[160px] py-1 rounded-lg border overflow-hidden"
+              style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)", boxShadow: "var(--shadow-premium)" }}
+            >
+              {markdown && (
+                <>
+                  <button onClick={handleCopyText} role="menuitem" className="export-dropdown-item" title="파싱된 텍스트를 클립보드에 복사">
+                    <ClipboardCopy size={13} />텍스트 복사
+                  </button>
+                  <button onClick={handleExportMarkdown} role="menuitem" className="export-dropdown-item" title=".md 파일로 저장">
+                    <Save size={13} />Markdown 저장
+                  </button>
+                </>
+              )}
+              <button onClick={() => { setShowExportMenu(false); onCopyPath?.(filePath); }} role="menuitem" className="export-dropdown-item" title="파일 경로를 클립보드에 복사">
+                <Copy size={13} />경로 복사
+              </button>
+            </div>
+          )}
+        </div>
+        <button onClick={() => onOpenFolder?.(filePath)} className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
           <FolderOpen size={13} />위치
         </button>
         {onBookmark && (
           <button
             onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
-            className={`p-1.5 rounded transition-colors ${isBookmarked ? "text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+            className={`p-1.5 rounded-lg transition-colors ${isBookmarked ? "text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
             title={isBookmarked ? "북마크 해제" : "북마크 추가"}
           >
             <Bookmark size={13} fill={isBookmarked ? "currentColor" : "none"} />
@@ -889,7 +928,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           <>
             <button
               onClick={() => setFindOpen((v) => !v)}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
               title="문서 내 찾기 (Ctrl+F)"
               aria-label="문서 내 찾기"
             >
@@ -898,7 +937,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <button
               onClick={() => setShowSummaryMenu((v) => !v)}
               disabled={summaryLoading}
-              className="flex items-center gap-1 px-1.5 py-1 rounded text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
               title="AI 요약"
             >
               {summaryLoading
@@ -909,7 +948,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             </button>
             <button
               onClick={() => setShowFileQa((v) => !v)}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded-lg text-xs transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
               title="이 파일에 대해 질문"
             >
               <MessageSquare size={12} />질문
@@ -924,43 +963,6 @@ export const PreviewPanel = memo(function PreviewPanel({
         )}
       </div>
 
-      {/* 복사 / 내보내기 메뉴 */}
-      {showExportMenu && (
-        <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}>
-          <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">복사 / 내보내기:</span>
-          {markdown && (
-            <>
-              <button
-                onClick={handleCopyText}
-                className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
-                title="파싱된 텍스트를 클립보드에 복사"
-              >
-                <ClipboardCopy size={11} />텍스트 복사
-              </button>
-              <button
-                onClick={handleExportMarkdown}
-                className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
-                title=".md 파일로 저장"
-              >
-                <Save size={11} />Markdown 저장
-              </button>
-            </>
-          )}
-          <button
-            onClick={() => { setShowExportMenu(false); onCopyPath?.(filePath); }}
-            className="export-menu-btn flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-colors whitespace-nowrap"
-            title="파일 경로를 클립보드에 복사"
-          >
-            <Copy size={11} />경로 복사
-          </button>
-          {markdown && (
-            <span className="ml-auto text-[10px] text-[var(--color-text-muted)] tabular-nums">
-              {markdown.length.toLocaleString()}자
-            </span>
-          )}
-        </div>
-      )}
-
       {/* 요약 유형 선택 메뉴 */}
       {showSummaryMenu && (
         <div className="flex items-center gap-1.5 px-3 py-2 border-b" style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}>
@@ -969,7 +971,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <button
               key={type}
               onClick={() => { setShowSummaryMenu(false); handleGenerateSummary(type); }}
-              className="px-2 py-0.5 rounded text-[11px] transition-colors"
+              className="px-2 py-0.5 rounded-lg text-[11px] transition-colors"
               style={{
                 backgroundColor: summaryType === type && aiSummary ? "var(--color-accent-light)" : "var(--color-bg-tertiary)",
                 color: summaryType === type && aiSummary ? "var(--color-accent)" : "var(--color-text-secondary)",
@@ -979,7 +981,7 @@ export const PreviewPanel = memo(function PreviewPanel({
               {SUMMARY_TYPE_LABELS[type]}
             </button>
           ))}
-          <button onClick={() => setShowSummaryMenu(false)} className="ml-auto text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] p-0.5 rounded">
+          <button onClick={() => setShowSummaryMenu(false)} className="ml-auto text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] p-0.5 rounded-lg">
             <X size={12} />
           </button>
         </div>
@@ -999,7 +1001,7 @@ export const PreviewPanel = memo(function PreviewPanel({
 
       {/* AI 섹션 (요약 + 파일 질문) — 스크롤 밖 고정 영역 */}
       {hasAiContent && (
-        <div className="border-b overflow-hidden ai-section-enter shrink-0" style={{ borderColor: "var(--color-accent)", backgroundColor: "var(--color-accent-light)" }}>
+        <div className="preview-ai-section border-b overflow-hidden ai-section-enter shrink-0" style={{ borderColor: "var(--color-accent-border)" }}>
 
           {/* 요약 로딩 */}
           {summaryLoading && (
@@ -1097,7 +1099,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           <button
             onClick={() => handleFindNav(-1)}
             disabled={findCount === 0}
-            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
+            className="p-1 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
             title="이전 매치 (Shift+Enter)"
             aria-label="이전 매치"
           >
@@ -1106,7 +1108,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           <button
             onClick={() => handleFindNav(1)}
             disabled={findCount === 0}
-            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
+            className="p-1 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] disabled:opacity-40 transition-colors"
             title="다음 매치 (Enter)"
             aria-label="다음 매치"
           >
@@ -1114,7 +1116,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           </button>
           <button
             onClick={closeFind}
-            className="p-1 rounded hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors"
+            className="p-1 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)] transition-colors"
             title="찾기 닫기 (Esc)"
             aria-label="찾기 닫기"
           >

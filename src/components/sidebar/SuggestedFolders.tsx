@@ -25,7 +25,8 @@ interface ContextMenuState {
 }
 
 export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFoldersProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  // 인덱싱된 폴더가 없는 첫 사용자에겐 추천 폴더를 펼쳐 바로 시작하도록 유도
+  const [isExpanded, setIsExpanded] = useState(() => watchedFolders.length === 0);
   const [folders, setFolders] = useState<SuggestedFolder[]>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
