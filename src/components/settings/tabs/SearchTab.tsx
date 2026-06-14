@@ -382,58 +382,74 @@ export function SearchTab({ settings, onChange }: TabProps) {
           checked={settings.group_versions ?? true}
           onChange={(v) => onChange("group_versions", v)}
         />
-        <div className="mt-2 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleRebuildLineage}
-              disabled={rebuilding}
-              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
-              style={{
-                backgroundColor: "var(--color-bg-secondary)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
+        {/* 유지보수 도구 — 평소엔 접어 두고 필요 시에만 노출 (progressive disclosure) */}
+        <details className="mt-2 group">
+          <summary
+            className="cursor-pointer text-xs select-none transition-colors hover:text-[var(--color-text-secondary)] list-none flex items-center gap-1"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <svg
+              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              className="transition-transform duration-150 group-open:rotate-90"
             >
-              {rebuilding ? "재계산 중..." : "버전 그룹 재계산"}
-            </button>
-            <button
-              type="button"
-              onClick={handleCheckHealth}
-              disabled={rebuilding}
-              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
-              style={{
-                backgroundColor: "var(--color-bg-secondary)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              건강도 확인
-            </button>
-            <button
-              type="button"
-              onClick={handlePruneMissing}
-              disabled={rebuilding || pruning}
-              title="디스크에 없는 파일의 DB 잔재 레코드를 삭제합니다"
-              className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
-              style={{
-                backgroundColor: "var(--color-bg-secondary)",
-                color: "var(--color-text-secondary)",
-                border: "1px solid var(--color-border)",
-              }}
-            >
-              {pruning ? "정리 중..." : "없는 파일 정리"}
-            </button>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+            고급 유지보수 도구
+          </summary>
+          <div className="mt-2 flex flex-col gap-2 pl-1">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRebuildLineage}
+                disabled={rebuilding}
+                className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{
+                  backgroundColor: "var(--color-bg-secondary)",
+                  color: "var(--color-text-secondary)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {rebuilding ? "재계산 중..." : "버전 그룹 재계산"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCheckHealth}
+                disabled={rebuilding}
+                className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{
+                  backgroundColor: "var(--color-bg-secondary)",
+                  color: "var(--color-text-secondary)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                건강도 확인
+              </button>
+              <button
+                type="button"
+                onClick={handlePruneMissing}
+                disabled={rebuilding || pruning}
+                title="디스크에 없는 파일의 DB 잔재 레코드를 삭제합니다"
+                className="px-2.5 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{
+                  backgroundColor: "var(--color-bg-secondary)",
+                  color: "var(--color-text-secondary)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                {pruning ? "정리 중..." : "없는 파일 정리"}
+              </button>
+            </div>
+            {rebuildResult && (
+              <pre
+                className="text-[11px] whitespace-pre-wrap font-sans"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                {rebuildResult}
+              </pre>
+            )}
           </div>
-          {rebuildResult && (
-            <pre
-              className="text-[11px] whitespace-pre-wrap font-sans"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              {rebuildResult}
-            </pre>
-          )}
-        </div>
+        </details>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import type { TourStep } from "./OnboardingTour";
 import { isMac } from "../../utils/platform";
 
 /**
- * Docufinder 기능 투어 스텝 정의
+ * Anything 기능 투어 스텝 정의
  *
  * 각 단계는 앱의 핵심 기능을 **친절한 어투**로 안내한다.
  * data-tour 속성으로 타겟을 명시하며, 해당 요소가 DOM에 없으면
@@ -11,11 +11,11 @@ import { isMac } from "../../utils/platform";
 export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
   {
     selector: null,
-    title: "Docufinder에 오신 것을 환영합니다 👋",
+    title: "Anything에 오신 것을 환영합니다 👋",
     body: (
       <div className="space-y-2">
         <p>
-          Docufinder는 내 컴퓨터 안의 문서를 <strong>단어 하나만 넣어도</strong> 찾아주는
+          Anything은 내 컴퓨터 안의 문서를 <strong>단어 하나만 넣어도</strong> 찾아주는
           검색기입니다.
         </p>
         <p className="text-[12px] opacity-80">
@@ -83,8 +83,26 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
     placement: "bottom",
   },
   {
+    selector: null,
+    title: "4. 결과를 클릭하면 바로 미리보기",
+    body: (
+      <div className="space-y-2">
+        <p>
+          검색 결과를 클릭하면 오른쪽에 <strong>미리보기 패널</strong>이 열려
+          파일을 직접 열지 않고도 내용을 확인할 수 있어요.
+        </p>
+        <p className="text-[12px] opacity-80">
+          미리보기 위쪽 버튼으로 <strong>찾기</strong>(<kbd>Ctrl</kbd>+<kbd>F</kbd>로
+          문서 안 단어 검색)·<strong>요약</strong>·<strong>질문</strong>을 쓸 수 있고,
+          결과를 우클릭하면 두 문서를 <strong>비교</strong>할 수도 있습니다.
+        </p>
+      </div>
+    ),
+    placement: "auto",
+  },
+  {
     selector: '[data-tour="help-button"]',
-    title: "4. 투어는 언제든 다시 볼 수 있어요",
+    title: "5. 투어는 언제든 다시 볼 수 있어요",
     body: (
       <div className="space-y-2">
         <p>
