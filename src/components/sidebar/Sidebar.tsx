@@ -90,23 +90,15 @@ export const Sidebar = memo(function Sidebar({
         aria-label="사이드바"
       >
         {/* Header */}
-        <div className="flex items-center justify-between shrink-0" style={{ height: "44px", padding: isOpen ? "0 12px 0 16px" : "0 8px" }}>
+        <div className="flex items-center justify-end shrink-0" style={{ height: "44px", padding: isOpen ? "0 8px 0 12px" : "0 8px" }}>
           {isOpen ? (
-            <>
-              <span
-                className="text-xs font-bold tracking-[0.1em] uppercase"
-                style={{ color: "var(--color-sidebar-section)" }}
-              >
-                메뉴
-              </span>
-              <button
-                onClick={onToggle}
-                className="p-1.5 rounded-md btn-icon-hover"
-                aria-label="사이드바 축소"
-              >
-                <ChevronLeft className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
-              </button>
-            </>
+            <button
+              onClick={onToggle}
+              className="p-1.5 rounded-md btn-icon-hover"
+              aria-label="사이드바 축소"
+            >
+              <ChevronLeft className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
+            </button>
           ) : (
             <button
               onClick={onToggle}
@@ -178,12 +170,11 @@ export const Sidebar = memo(function Sidebar({
               {/* Section: Folders */}
               <section className="pb-3" data-tour="sidebar-folders">
                 <div
-                  className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
-                  style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+                  className="flex items-center justify-between px-1 pb-1 mb-1"
                 >
                   <button
                     onClick={() => setIsFoldersExpanded(!isFoldersExpanded)}
-                    className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
+                    className="flex items-center gap-1.5 text-xs font-semibold hover-sidebar-section"
                     aria-expanded={isFoldersExpanded}
                   >
                     <ChevronRight
@@ -242,12 +233,11 @@ export const Sidebar = memo(function Sidebar({
               {hasFolders && (<>
               <section className="pt-1 pb-3">
                 <div
-                  className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
-                  style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+                  className="flex items-center justify-between px-1 pb-1 mb-1"
                 >
                   <button
                     onClick={() => setIsSmartFoldersExpanded(!isSmartFoldersExpanded)}
-                    className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
+                    className="flex items-center gap-1.5 text-xs font-semibold hover-sidebar-section"
                     aria-expanded={isSmartFoldersExpanded}
                   >
                     <ChevronRight
@@ -282,12 +272,11 @@ export const Sidebar = memo(function Sidebar({
               {/* Section: Recent Searches */}
               <section className="pt-1 pb-3">
                 <div
-                  className="flex items-center justify-between px-1 pb-1.5 mb-1.5"
-                  style={{ borderBottom: "1px solid var(--color-sidebar-border)" }}
+                  className="flex items-center justify-between px-1 pb-1 mb-1"
                 >
                   <button
                     onClick={() => setIsSearchesExpanded(!isSearchesExpanded)}
-                    className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.06em] hover-sidebar-section"
+                    className="flex items-center gap-1.5 text-xs font-semibold hover-sidebar-section"
                     aria-expanded={isSearchesExpanded}
                   >
                     <ChevronRight
@@ -330,11 +319,12 @@ export const Sidebar = memo(function Sidebar({
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer — 우측 StatusBar(50px)와 높이 정합 */}
             <div
-              className="px-3 py-2 shrink-0 flex items-center justify-center"
+              className="px-3 shrink-0 flex items-center justify-center"
               style={{
                 borderTop: "1px solid var(--color-sidebar-border)",
+                height: "50px",
               }}
             >
               <Tooltip
@@ -375,9 +365,6 @@ export const Sidebar = memo(function Sidebar({
                   >
                     @chris_gomdori
                   </a>
-                  <p className="text-[9.5px] tracking-tight whitespace-nowrap opacity-80">
-                    AI.Do <span className="opacity-60">·</span> 서울특별시 광진구청
-                  </p>
                 </div>
               </Tooltip>
             </div>

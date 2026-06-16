@@ -143,7 +143,7 @@ export const SearchResultItem = memo(function SearchResultItem({
       className={`search-result-item result-card ${getStripeClass(result.file_name)}`}
       style={{
         "--item-index": index,
-        padding: isCompact ? "0.5rem 0.625rem" : "0.75rem 0.875rem",
+        padding: isCompact ? "0.5rem 0.625rem" : "1rem 0.625rem",
         ...(isSelected && {
           backgroundColor: "var(--color-accent-light)",
           outline: "1.5px solid var(--color-accent)",
@@ -174,8 +174,8 @@ export const SearchResultItem = memo(function SearchResultItem({
         >
           <FileIcon fileName={result.file_name} size="sm" />
           <span
-            className="truncate ts-base"
-            style={{ fontWeight: 600, letterSpacing: "-0.01em" }}
+            className="truncate ts-lg"
+            style={{ fontWeight: 600, letterSpacing: "-0.015em" }}
           >
             <HighlightedFilename filename={result.file_name} query={query} />
           </span>
