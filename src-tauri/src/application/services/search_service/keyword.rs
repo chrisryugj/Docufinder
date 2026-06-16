@@ -460,17 +460,26 @@ mod operator_search_integration {
         let n = names(&search("\"budget plan\"").await);
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
         assert!(n.contains(&"budget_draft.pdf".to_string()), "{n:?}");
-        assert!(!n.contains(&"budget_old.hwpx".to_string()), "역순 오검출: {n:?}");
+        assert!(
+            !n.contains(&"budget_old.hwpx".to_string()),
+            "역순 오검출: {n:?}"
+        );
 
         // 2) 제외어: monthly 포함 문서 탈락
         let n = names(&search("budget -monthly").await);
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
-        assert!(!n.contains(&"budget_draft.pdf".to_string()), "제외 실패: {n:?}");
+        assert!(
+            !n.contains(&"budget_draft.pdf".to_string()),
+            "제외 실패: {n:?}"
+        );
 
         // 3) ext: 레거시 그룹 확장 (hwp → hwp+hwpx)
         let n = names(&search("budget ext:hwp").await);
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
-        assert!(n.contains(&"budget_old.hwpx".to_string()), "그룹 확장 누락: {n:?}");
+        assert!(
+            n.contains(&"budget_old.hwpx".to_string()),
+            "그룹 확장 누락: {n:?}"
+        );
         assert!(!n.iter().any(|x| x.ends_with(".pdf")), "pdf 오검출: {n:?}");
 
         // 4) path: 경로 부분 일치
@@ -480,16 +489,25 @@ mod operator_search_integration {
         // 5) after: 최근 1년 — 오래된 문서 제외
         let n = names(&search("budget after:2025").await);
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
-        assert!(!n.contains(&"budget_old.hwpx".to_string()), "날짜 필터 실패: {n:?}");
+        assert!(
+            !n.contains(&"budget_old.hwpx".to_string()),
+            "날짜 필터 실패: {n:?}"
+        );
 
         // 6) ~N 근접 검색: 인접 문서만 매칭, 거리 확대 시 둘 다
         let n = names(&search("alpha beta ~3").await);
         assert!(n.contains(&"near_close.txt".to_string()), "{n:?}");
-        assert!(!n.contains(&"near_far.txt".to_string()), "NEAR 거리 초과 오검출: {n:?}");
+        assert!(
+            !n.contains(&"near_far.txt".to_string()),
+            "NEAR 거리 초과 오검출: {n:?}"
+        );
 
         let n = names(&search("alpha beta ~20").await);
         assert!(n.contains(&"near_close.txt".to_string()), "{n:?}");
-        assert!(n.contains(&"near_far.txt".to_string()), "NEAR 거리 내 누락: {n:?}");
+        assert!(
+            n.contains(&"near_far.txt".to_string()),
+            "NEAR 거리 내 누락: {n:?}"
+        );
 
         // 7) 필터 전용 질의: 검색어 없이 ext: 만 → 메타 브라우즈
         let n = names(&search("ext:pdf").await);

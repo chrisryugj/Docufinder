@@ -884,9 +884,10 @@ pub fn insert_file_metadata_only(
            modified_at = excluded.modified_at
          RETURNING id",
     )?;
-    let file_id: i64 = stmt.query_row(params![path, name, file_type, size, modified_at], |row| {
-        row.get(0)
-    })?;
+    let file_id: i64 = stmt
+        .query_row(params![path, name, file_type, size, modified_at], |row| {
+            row.get(0)
+        })?;
 
     Ok(file_id)
 }

@@ -292,9 +292,7 @@ pub fn compose_fts_match(
 
     let terms = op.terms.trim();
     if !terms.is_empty() {
-        let near_expr = op
-            .near
-            .and_then(|n| compose_near_expr(terms, tokenizer, n));
+        let near_expr = op.near.and_then(|n| compose_near_expr(terms, tokenizer, n));
         match near_expr {
             Some(e) => positives.push(e),
             None => {

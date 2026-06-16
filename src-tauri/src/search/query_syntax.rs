@@ -93,7 +93,9 @@ pub fn parse_operators(raw: &str) -> OperatorQuery {
                 }
             }
             QueryToken::Word(w) => {
-                if let Some(rest) = strip_prefix_ci(&w, "ext:").or_else(|| strip_prefix_ci(&w, "type:")) {
+                if let Some(rest) =
+                    strip_prefix_ci(&w, "ext:").or_else(|| strip_prefix_ci(&w, "type:"))
+                {
                     for ext in rest.split(',') {
                         let ext = ext.trim().trim_start_matches('.').to_lowercase();
                         if !ext.is_empty() {

@@ -10,10 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 /// 벡터 전용 히트는 SQL 메타 필터를 거치지 않으므로 연산자 조건을 후처리로 적용
-fn vector_chunk_passes_operators(
-    chunk: &db::ChunkInfo,
-    op: &query_syntax::OperatorQuery,
-) -> bool {
+fn vector_chunk_passes_operators(chunk: &db::ChunkInfo, op: &query_syntax::OperatorQuery) -> bool {
     if !op.ext_filters.is_empty() {
         let name = chunk.file_name.to_lowercase();
         if !op
