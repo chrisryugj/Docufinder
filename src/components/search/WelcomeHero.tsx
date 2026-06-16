@@ -131,18 +131,15 @@ export const WelcomeHero = memo(function WelcomeHero({
               <button
                 key={s.query}
                 onClick={() => onSelectSearch?.(s.query)}
-                className="group px-3 py-1.5 ts-sm rounded-lg border transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] flex items-center gap-1.5"
+                className="group px-2.5 py-1 ts-sm rounded-md transition-colors duration-150 flex items-center gap-1.5"
                 style={{
-                  backgroundColor: "var(--color-bg-secondary)",
-                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-bg-tertiary)",
                   color: "var(--color-text-secondary)",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-accent)";
                   e.currentTarget.style.color = "var(--color-accent)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-border)";
                   e.currentTarget.style.color = "var(--color-text-secondary)";
                 }}
               >
@@ -181,16 +178,15 @@ export const WelcomeHero = memo(function WelcomeHero({
                 key={doc.path}
                 onClick={() => onOpenFile?.(doc.path)}
                 title={doc.path}
-                className="group flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] text-left min-w-0"
+                className="group flex items-center gap-2 px-2.5 py-2 rounded-md transition-colors duration-150 text-left min-w-0"
                 style={{
-                  backgroundColor: "var(--color-bg-secondary)",
-                  borderColor: "var(--color-border)",
+                  backgroundColor: "transparent",
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-accent)";
+                  e.currentTarget.style.backgroundColor = "var(--color-bg-secondary)";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-border)";
+                  e.currentTarget.style.backgroundColor = "transparent";
                 }}
               >
                 <FileIcon fileName={doc.name} size="sm" />

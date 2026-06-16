@@ -34,21 +34,19 @@
   animation: slideDown 0.2s ease-out;
 }
 
-/* Result Row — subtle border, premium elevation on hover */
+/* Result Row — 에디토리얼: 카드 테두리 제거, 구분선(아래 result-list-divided)으로 위계.
+   hover 는 박스 lift 대신 옅은 배경 틴트만 (차분). */
 .result-card {
   background-color: transparent;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-card);
+  border: none;
+  border-radius: var(--radius-md);
   box-shadow: none;
-  transition: background-color var(--transition-fast), box-shadow var(--transition-normal), border-color var(--transition-fast);
+  transition: background-color var(--transition-fast);
   position: relative;
-  overflow: hidden;
 }
 
 .result-card:hover {
   background-color: var(--color-bg-secondary);
-  border-color: var(--color-border-hover);
-  box-shadow: var(--shadow-premium);
 }
 
 /* 프리뷰 패널 - 복사/내보내기 드롭다운 메뉴 아이템 (세로 팝오버) */
@@ -82,8 +80,7 @@
    "AI 기능엔 gradient 허용"(DESIGN.md) 명분을 가장 강하게 받는 표면. */
 .preview-ai-section {
   background-color: var(--color-accent-light);
-  background-image: var(--gradient-surface-sheen), var(--gradient-accent-soft);
-  box-shadow: var(--shadow-premium);
+  background-image: var(--gradient-accent-soft);
 }
 
 /* 인라인 참조 링크(법령/외부 URL) — opacity hover(DESIGN.md 금지) 대신 색 전환 */
@@ -423,7 +420,7 @@ mark.hl-find-active {
 
 /* 헤딩 — 크기 차이 최소화, 주로 font-weight + 색상 + 여백 + 구분선으로 위계 표현 */
 .doc-h1 {
-  font-size: 1.05em;
+  font-size: 1.3em;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 1.1em 0 0.4em;
@@ -432,7 +429,7 @@ mark.hl-find-active {
   line-height: 1.4;
 }
 .doc-h2 {
-  font-size: 1em;
+  font-size: 1.15em;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 0.9em 0 0.35em;
@@ -441,7 +438,7 @@ mark.hl-find-active {
   line-height: 1.4;
 }
 .doc-h3 {
-  font-size: 1em;
+  font-size: 1.05em;
   font-weight: 650;
   color: var(--color-text-primary);
   margin: 0.8em 0 0.25em;

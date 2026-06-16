@@ -161,15 +161,12 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
         {/* ── 검색바 (3모드 통일 레이아웃) ── */}
         <div className="group/search">
         <div
-          className="flex items-center px-3 rounded-xl transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--color-accent)] focus-within:ring-offset-1"
+          className="flex items-center px-3.5 rounded-lg transition-all duration-200 focus-within:ring-1 focus-within:ring-[var(--color-accent)]"
           style={{
-            backgroundImage: "var(--gradient-surface-sheen)",
             backgroundColor: "var(--color-bg-secondary)",
             border: `1px solid ${needsEnterToSubmit ? "var(--color-accent)" : "var(--color-border)"}`,
-            boxShadow: needsEnterToSubmit
-              ? "var(--shadow-md), 0 0 0 3px var(--color-accent-subtle)"
-              : "var(--shadow-md)",
-            minHeight: "44px",
+            boxShadow: needsEnterToSubmit ? "0 0 0 3px var(--color-accent-subtle)" : "none",
+            minHeight: "46px",
           }}
         >
           {/* 모드별 아이콘 */}
@@ -217,7 +214,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               className="flex-1 bg-transparent border-none focus:outline-none resize-none overflow-hidden py-2.5"
               style={{
                 color: "var(--color-text-primary)",
-                fontSize: "var(--text-md)",
+                fontSize: "var(--text-lg)",
                 fontWeight: 500,
                 lineHeight: "1.5",
                 minHeight: "24px",
@@ -239,7 +236,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               className="flex-1 bg-transparent border-none focus:outline-none h-[24px]"
               style={{
                 color: "var(--color-text-primary)",
-                fontSize: "var(--text-md)",
+                fontSize: "var(--text-lg)",
                 fontWeight: 500,
                 letterSpacing: "0.01em",
               }}
