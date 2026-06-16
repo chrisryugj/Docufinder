@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-2.5.7-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version" /></a>
   <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri-2.10-24C8D8.svg" alt="Tauri 2" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
 </p>
@@ -161,6 +161,17 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | 파일명 | Everything 스타일 파일명 검색 |
 
 > 하이브리드/시맨틱 모드는 설정에서 시맨틱 검색을 활성화해야 사용할 수 있습니다.
+
+**검색 연산자** (키워드·하이브리드 모드) — 검색창에서 바로 조합:
+
+| 연산자 | 예 | 동작 |
+|--------|-----|------|
+| `"구문"` | `"예산 삭감"` | 정확한 구문(인접 순서) |
+| `-제외` | `예산 -초안` | 해당 단어 제외 |
+| `ext:` | `ext:hwp,pdf` | 확장자 필터 (레거시 그룹 자동 확장) |
+| `path:` | `path:인사` | 폴더 경로 필터 |
+| `after:` `before:` | `after:2024-06` | 수정일 범위 |
+| `~N` | `예산 삭감 ~10` | 형태소 인지 근접 검색 (N토큰 이내) |
 
 ---
 

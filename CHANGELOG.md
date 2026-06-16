@@ -1,6 +1,6 @@
 # Changelog
 
-## [3.0.0] - 2026-06-13
+## [3.0.0] - 2026-06-16
 
 **메이저 릴리즈 — 검색 연산자·형태소 근접검색 신설 + 성능 대수술 + UX 환골탈태**
 
@@ -38,13 +38,17 @@
 - **다크모드 기능색 보정** — success/warning/error/info가 다크에서 저대비로 가라앉던 것 보정. 미정의 CSS 변수(--color-accent-muted, --color-danger) 정의로 조용히 무효였던 호버 링/위험색 복원.
 - **브랜드 통일** — 온보딩 투어의 구 명칭 'Docufinder' → 'Anything'.
 - **리렌더 수술** — 키스트로크마다 Sidebar/SearchBar/SearchResultList(1,003줄) memo를 무력화하던 불안정 prop 6종 제거.
+- **에디토리얼 디자인 언어로 전면 통일** — 결과·사이드바·검색바·홈·프리뷰를 하나의 차분한 미학으로 정리. 결과 카드를 밑줄형으로(테두리·radius·hover lift 제거, 제목 타이포·여백↑), 사이드바 구분선·uppercase 제거(여백으로 위계 + "메뉴" 헤더 삭제), 검색바 sheen·그림자 제거+큰 폰트, 홈 최근검색·최근문서 카드 박스 제거, 프리뷰 본문 제목 위계 강화.
+- **프리뷰 툴바 정리** — 액션 버튼 7종을 아이콘 전용 + 호버 툴팁으로 통일, 복사/내보내기를 드롭다운 팝오버로, 글자수를 하단 경로줄로 이동.
 
 ### 🐛 수정
 
+- **미리보기 표 태그 노출** — 셀 안에 중첩 `<table>`이 있으면 변환이 실패해 `</td></tr>…</table>` raw 태그가 본문에 그대로 노출되던 것 후처리로 방어.
 - **드라이브 일괄 인덱싱의 SMB/매핑드라이브 회귀(#29 잔존)** — `start_indexing_batch`가 add_folder와 달리 raw canonicalize를 사용해, 일부 SMB 서버에서 폴더 추가는 되는데 일괄 인덱싱은 거부되던 분기 통일 (canonicalize_best_effort + probe_network_path, 2곳).
 
 ### 🧹 내부
 
+- **kordoc 사이드카 v3.0.0 → v3.1.1** — HWP5 바이너리 서식 보존(patchHwp) + 문단 통째 교체 시 들여쓰기 보존 반영, 릴리즈 번들 ref SHA 갱신.
 - 데드코드 청산 2차: 죽은 통합 검색 진입점(SearchService::search 계열 ~118줄), WatchPauseHandle soft-pause API, idle_detector/model_downloader 잔여물, 블랭킷 `#![allow(dead_code)]` 2곳 제거, 죽은 CSS 222줄, 미사용 의존성(ndarray, async-trait, ort tls-native), 프론트 데드 파일 3개, searchTextUtils 중복 2벌 통합.
 - **의존성 보안 업그레이드** — rusqlite 0.32→0.37(bundled SQLite 3.46.0→**3.50.2**, CVE-2025-29087 `concat_ws()` 정수 오버플로우 OOB write 해소), calamine 0.26→0.35. 앱 코드 변경 없이 clippy 무경고·테스트 통과. (rusqlite 0.40은 libsqlite3-sys 0.38이 unstable `cfg_select!`를 써 stable 빌드 불가 → 0.37 채택)
 - `\\?\` prefix 처리 4중 구현 → `network_path::simplify` 통일 (UNC 경로가 에러 메시지에 깨져 노출되던 것 수정).
