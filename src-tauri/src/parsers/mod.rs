@@ -1,4 +1,5 @@
 pub mod docx;
+pub mod eml;
 pub mod hwpx;
 pub mod image_ocr;
 pub mod kordoc;
@@ -178,6 +179,7 @@ fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocume
 
     match extension.as_str() {
         "txt" | "md" => txt::parse(path),
+        "eml" => eml::parse(path),
         // HWP5 바이너리: kordoc 전용 (Rust 파서 없음). kordoc 실제 에러를 그대로 반환해
         // 사용자가 "kordoc 필요"라는 잘못된 안내 대신 진짜 원인 (구버전 HWP3, 비표준 변종 등)을
         // 볼 수 있도록 한다 — 이슈 #22 진단 가시성 개선.

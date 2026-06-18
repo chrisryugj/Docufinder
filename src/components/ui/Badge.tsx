@@ -143,6 +143,7 @@ export function getFileTypeBadgeVariant(fileName: string): BadgeVariant {
       return "pdf";
     case "txt":
     case "md":
+    case "eml":
       return "txt";
     default:
       return "default";

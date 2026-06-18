@@ -55,6 +55,7 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 | PDF | `.pdf` | 스캔 PDF는 OCR 자동 적용 |
 | 이미지 | `.jpg` `.png` `.bmp` `.tiff` | OCR로 텍스트 추출 |
 | 텍스트 | `.txt` `.md` | EUC-KR/CP949 자동 감지 |
+| 메일 | `.eml` | 제목·보낸사람·받는사람·본문 검색 (charset 자동 디코딩) |
 
 ---
 

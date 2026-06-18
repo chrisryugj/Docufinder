@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.0.0"
+version = "3.0.1"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -41,6 +41,8 @@ pdf-extract = "0.7"  # PDF
 lopdf = "0.34"  # PDF 임베디드 이미지 추출 (스캔 PDF OCR용, pdf-extract와 버전 일치)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "tiff"] }
 flate2 = "1"  # PDF 이미지 스트림 디코딩 (FlateDecode)
+# .eml 메일 (이슈 #29) — RFC822 MIME 파싱. full_encoding: EUC-KR/CP949 등 한국 메일 charset 디코딩
+mail-parser = { version = "0.11", default-features = false, features = ["full_encoding"] }
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process"] }

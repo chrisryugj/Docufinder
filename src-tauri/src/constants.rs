@@ -17,7 +17,7 @@ pub fn is_allow_system_folders() -> bool {
 /// 지원하는 파일 확장자 목록
 /// 참고: "hwp"는 파서 미지원 (파싱 실패 시 변환 대상으로 수집됨, pipeline.rs 참조)
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "txt", "md", "hwpx", "hwp", "docx", "pptx", "xlsx", "xls", "pdf",
+    "txt", "md", "hwpx", "hwp", "docx", "pptx", "xlsx", "xls", "pdf", "eml",
 ];
 
 /// OCR 대상 이미지 확장자 (ocr_enabled 설정 시에만 인덱싱)
