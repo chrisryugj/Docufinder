@@ -74,6 +74,8 @@ export function getFileTypeLabel(fileName: string): string {
       return "텍스트";
     case "md":
       return "마크다운";
+    case "eml":
+      return "메일";
     default:
       return ext?.toUpperCase() || "파일";
   }
