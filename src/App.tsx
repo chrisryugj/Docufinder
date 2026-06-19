@@ -572,7 +572,6 @@ function AppContent() {
               totalResultCount={search.results.length}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
-              semanticEnabled={semanticEnabled}
               onSubmitNatural={handleSubmitQuery}
               updatePhase={updater.state.phase}
               onOpenUpdate={handleOpenUpdate}
@@ -614,7 +613,6 @@ function AppContent() {
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
               hasIndex={(idx.status?.indexed_files ?? 0) > 0}
-              semanticEnabled={semanticEnabled}
               onSubmitNatural={handleSubmitQuery}
               watchedFolders={idx.status?.watched_folders ?? []}
               searchScope={search.filters.searchScope}

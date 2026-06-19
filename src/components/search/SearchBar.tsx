@@ -19,8 +19,6 @@ interface SearchBarProps {
   onParadigmChange?: (p: SearchParadigm) => void;
   /** 인덱싱된 문서 존재 여부 — 첫 실행 시 패러다임 토글 숨김용 */
   hasIndex?: boolean;
-  /** 시맨틱 검색 활성 여부 — 스마트/Anything 모드 노출 조건 */
-  semanticEnabled?: boolean;
   /** 자연어/질문 실행 */
   onSubmitNatural?: () => void;
   /** AI 검색 범위 */
@@ -53,7 +51,6 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       paradigm = "instant",
       onParadigmChange,
       hasIndex = false,
-      semanticEnabled = false,
       onSubmitNatural,
       watchedFolders = [],
       searchScope,
@@ -61,9 +58,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     },
     ref
   ) => {
-    // 패러다임 토글은 인덱싱 1회 완료 + 시맨틱 활성일 때만 노출.
-    // 첫 실행/시맨틱 OFF 상태에선 '키워드' 단일 모드로 고정해 첫 화면 인지부하를 낮춘다.
-    const canUseParadigms = hasIndex && semanticEnabled;
+    // 패러다임 토글은 인덱싱이 1회라도 완료된 뒤 노출 (progressive disclosure).
+    // 첫 실행(인덱스 0)에선 '키워드' 단일 모드로 고정해 첫 화면 인지부하를 낮춘다.
+    // 스마트·Anything 모드는 시맨틱 OFF에서도 FTS 폴백으로 동작하므로 시맨틱 설정과 무관 (이슈 #32).
+    const canUseParadigms = hasIndex;
 
     // 토글이 숨겨졌는데 이전 세션의 paradigm이 instant가 아니면 instant로 되돌린다
     // (localStorage 복원 또는 시맨틱 OFF 전환으로 비활성 모드가 남는 경우 방지).
@@ -151,7 +149,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
 
     return (
       <div className="w-full relative" data-tour="search-bar">
-        {/* Paradigm Toggle — 인덱싱 완료 + 시맨틱 활성 시에만 노출 (progressive disclosure) */}
+        {/* Paradigm Toggle — 인덱싱 1회 완료 시 노출 (progressive disclosure) */}
         {onParadigmChange && canUseParadigms && (
           <div className="mb-1">
             <SearchParadigmToggle paradigm={paradigm} onChange={onParadigmChange} />
