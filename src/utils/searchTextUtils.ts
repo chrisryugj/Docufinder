@@ -12,13 +12,31 @@ const DEFAULT_CONTEXT_AFTER = 200;
 
 // ── HTML 태그 처리 유틸 ──────────────────────────────
 
-/** HTML 태그 제거 (텍스트 콘텐츠만 유지, [[HL]] 마커 보존) */
+/**
+ * HTML 태그 제거 (텍스트 콘텐츠만 유지, [[HL]] 마커 보존).
+ *
+ * kordoc 이 병합셀 표를 HTML `<table>` 로 내보내 인덱스에 태그가 박힌 기존 문서 방어용.
+ * 신규/재인덱싱 문서는 백엔드(kordoc parse)에서 이미 plain text 로 정규화되지만,
+ * FTS5 토큰화 과정에서 `< > = "` 구분자가 떨어져 나가 `td colspan4tdtr` 처럼 깨진 잔재는
+ * 표시 시점에 한 번 더 정리한다. 표 전용 토큰(td/tr/th/colspan/rowspan)만 좁게 겨냥해
+ * 일반 본문 오삭제를 피한다.
+ */
 export function stripHtmlTags(text: string): string {
   return text
-    .replace(/<\/?[a-zA-Z][^>]*>/g, " ")                    // Full tags: <td>, </tr>, <th colspan="4">
-    .replace(/\w+="[^"]*"(?:\s+\w+="[^"]*")*\s*>/g, "")     // Partial attrs: colspan="4">
-    .replace(/\b(?:t[dhr]|table|thead|tbody|tfoot|\/t[dhr]|\/table|\/thead|\/tbody)>/gi, "") // Bare tag names: td>, /tr>
-    .replace(/\b(?:rowspan|colspan)="[^"]*"/gi, "")          // Stray attributes: rowspan="3"
+    // 표준 HTML 태그 (꺾쇠 바로 뒤 영문): <td>, </tr>, <th colspan="4">
+    .replace(/<\/?[a-zA-Z][^<>]*>/g, " ")
+    // 공백이 끼어 깨진 태그는 '표' 태그명으로 한정 — 본문의 < 영문 > (a < b, template<T>) 오삭제 방지
+    .replace(/<\s*\/?\s*(?:t[dhr]|table|thead|tbody|tfoot|col(?:group|span)?|rowspan)\b[^<>]*>/gi, " ")
+    // colspan/rowspan 속성 잔재 (구분자 날아가 숫자가 붙은 colspan4 형태까지 — 끝 \b 없음)
+    .replace(/\b(?:col|row)span\s*=?\s*"?\d*"?/gi, " ")
+    // 토큰화로 구분자가 사라져 붙어버린 표 셀/행 태그 시퀀스: tdtr, trtd, tdtd (2개 이상만)
+    .replace(/(?:t[dhr]){2,}/gi, " ")
+    // 잔여 닫는/여는 표 태그명: td>, /tr>, table>
+    .replace(/\b(?:t[dhr]|table|thead|tbody|tfoot|colgroup)\b\s*>/gi, " ")
+    // 정규식이 못 잡은 깨진 닫는 꺾쇠(</ 뒤가 한글 등 비영문)
+    .replace(/<\s*\/\s*(?![a-zA-Z])/g, " ")
+    // 따옴표 동반 깨진 꺾쇠 잔재 ("> =" 등) — 단독 부등호는 보존
+    .replace(/["']\s*[<>=/]+|[<>=/]+\s*["']/g, " ")
     .replace(/\s{2,}/g, " ");
 }
 

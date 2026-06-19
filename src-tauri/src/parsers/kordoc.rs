@@ -216,10 +216,15 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         page_count: meta.page_count,
     };
 
-    let chunks = chunk_text(&markdown, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
+    // kordoc 은 colspan/rowspan 병합셀 표를 GFM 으로 표현하지 못해 HTML <table> 로 반환한다.
+    // 그대로 인덱싱하면 검색 결과 스니펫에 td/tr/colspan 태그가 노출되므로(FTS5 토큰화 과정에서
+    // 깨진 잔재까지 섞여 표시 레이어 정규식만으로는 못 막음) 검색용 content/chunks 에선 표를
+    // plain text 로 직렬화한다. 미리보기 패널은 get_markdown 원본을 써 GFM 렌더가 유지된다.
+    let content = html_tables_to_text(&markdown);
+    let chunks = chunk_text(&content, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
 
     Ok(ParsedDocument {
-        content: markdown,
+        content,
         metadata,
         chunks,
     })
@@ -553,4 +558,129 @@ fn parse_iso_timestamp(s: &str) -> Option<i64> {
         return d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc().timestamp());
     }
     None
+}
+
+/// kordoc 마크다운의 HTML 표(`<table>…</table>`)를 검색 인덱스용 plain text 로 변환한다.
+///
+/// 행은 줄바꿈, 셀은 공백으로 직렬화하고 변환되지 못한(중첩 표 등) 잔여 표/줄바꿈 태그를
+/// 제거한다. 표가 없으면 입력을 그대로 돌려준다(정규식 매칭 0 → 사실상 무비용).
+/// 미리보기 패널은 `get_markdown` 원본(HTML 표 유지)을 쓰므로 GFM 렌더에는 영향이 없다.
+fn html_tables_to_text(md: &str) -> String {
+    use std::sync::OnceLock;
+    static TABLE_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static ROW_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static CELL_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static INNER_TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static LEFTOVER_RE: OnceLock<regex::Regex> = OnceLock::new();
+
+    let table_re =
+        TABLE_RE.get_or_init(|| regex::Regex::new(r"(?is)<table[^>]*>.*?</table>").unwrap());
+    let row_re = ROW_RE.get_or_init(|| regex::Regex::new(r"(?is)<tr[^>]*>(.*?)</tr>").unwrap());
+    let cell_re =
+        CELL_RE.get_or_init(|| regex::Regex::new(r"(?is)<t[dh][^>]*>(.*?)</t[dh]>").unwrap());
+    let inner_tag_re = INNER_TAG_RE.get_or_init(|| regex::Regex::new(r"(?is)<[^>]+>").unwrap());
+    let leftover_re = LEFTOVER_RE.get_or_init(|| {
+        regex::Regex::new(r"(?is)</?(?:table|thead|tbody|tfoot|tr|td|th|col|colgroup|br)[^>]*>")
+            .unwrap()
+    });
+
+    let replaced = table_re.replace_all(md, |caps: &regex::Captures| {
+        let table = &caps[0];
+        let mut rows: Vec<String> = Vec::new();
+        for row in row_re.captures_iter(table) {
+            let mut cells: Vec<String> = Vec::new();
+            for cell in cell_re.captures_iter(&row[1]) {
+                let stripped = inner_tag_re.replace_all(&cell[1], " ");
+                let cell_text = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
+                if !cell_text.is_empty() {
+                    cells.push(cell_text);
+                }
+            }
+            if !cells.is_empty() {
+                rows.push(cells.join(" "));
+            }
+        }
+        if rows.is_empty() {
+            String::new()
+        } else {
+            format!("\n{}\n", rows.join("\n"))
+        }
+    });
+
+    // 중첩 표 등으로 위 변환을 빠져나간 잔여 표/줄바꿈 태그 제거 (정규식은 중첩을 셀 수 없음).
+    leftover_re.replace_all(&replaced, " ").into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_table_serialized_to_plain_text() {
+        let md = "앞\n<table><tr><td>A</td><td colspan=\"2\">B</td></tr>\
+                  <tr><td>C</td><td>D</td></tr></table>\n뒤";
+        let out = html_tables_to_text(md);
+        assert!(out.contains("A B"), "행1 셀이 공백 결합돼야: {out:?}");
+        assert!(out.contains("C D"), "행2 셀이 공백 결합돼야: {out:?}");
+        assert!(!out.contains("<td"), "td 태그 잔존: {out:?}");
+        assert!(!out.contains("colspan"), "colspan 잔존: {out:?}");
+        assert!(out.contains("앞") && out.contains("뒤"), "표 바깥 본문 보존: {out:?}");
+    }
+
+    #[test]
+    fn no_table_is_noop() {
+        let md = "# 제목\n본문 텍스트 — GFM 표 아님 | 열1 | 열2";
+        assert_eq!(html_tables_to_text(md), md);
+    }
+
+    #[test]
+    fn leftover_table_tags_removed() {
+        // 닫는 </table> 가 없어 표 단위 변환에 실패해도 잔여 태그는 정리된다.
+        let md = "<tr><td>x</td><td>y</td>";
+        let out = html_tables_to_text(md);
+        assert!(!out.contains("<td") && !out.contains("<tr"), "잔여 태그 정리 실패: {out:?}");
+        assert!(out.contains('x') && out.contains('y'), "셀 텍스트 보존: {out:?}");
+    }
+
+    #[test]
+    fn th_header_and_inline_tags() {
+        // <th> 헤더 셀 + 셀 내부 인라인 태그(<b>)도 텍스트만 남는다.
+        let md = "<table><tr><th>구분</th><th>값</th></tr>\
+                  <tr><td><b>합계</b></td><td>100</td></tr></table>";
+        let out = html_tables_to_text(md);
+        assert!(out.contains("구분 값"), "헤더 행: {out:?}");
+        assert!(out.contains("합계 100"), "본문 행 + 인라인 태그 제거: {out:?}");
+        assert!(!out.contains('<'), "꺾쇠 잔존: {out:?}");
+    }
+
+    #[test]
+    fn multiple_tables_with_br_and_between_text() {
+        let md = "<table><tr><td>a</td></tr></table>중간<table><tr><td>b<br>c</td></tr></table>";
+        let out = html_tables_to_text(md);
+        assert!(
+            out.contains('a') && out.contains('b') && out.contains('c') && out.contains("중간"),
+            "내용 보존: {out:?}"
+        );
+        assert!(!out.contains("<br") && !out.contains("<td"), "태그 잔존: {out:?}");
+    }
+
+    #[test]
+    fn nested_table_leaves_no_tags() {
+        // 셀 안 중첩 표는 non-greedy 매칭이 안쪽 </table> 에서 멈춰 바깥 잔여가 생기지만,
+        // leftover 정리로 태그가 본문에 노출되지 않는다 (스니펫 노출 방어가 목적).
+        let md = "<table><tr><td><table><tr><td>안</td></tr></table></td></tr></table>";
+        let out = html_tables_to_text(md);
+        assert!(out.contains('안'), "내부 셀 텍스트 보존: {out:?}");
+        assert!(
+            !out.contains("<table") && !out.contains("<td") && !out.contains("</"),
+            "태그 잔존: {out:?}"
+        );
+    }
+
+    #[test]
+    fn empty_cells_skipped() {
+        let md = "<table><tr><td></td><td>값</td><td>   </td></tr></table>";
+        let out = html_tables_to_text(md);
+        assert_eq!(out.trim(), "값", "빈 셀은 스킵: {out:?}");
+    }
 }
