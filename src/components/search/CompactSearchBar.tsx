@@ -43,8 +43,6 @@ interface CompactSearchBarProps {
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
   onParadigmChange?: (p: SearchParadigm) => void;
-  /** 시맨틱 검색 활성 여부 — 스마트/Anything 모드 노출 조건 */
-  semanticEnabled?: boolean;
   /** 자연어 검색 실행 */
   onSubmitNatural?: () => void;
   /** 업데이트 배지 */
@@ -79,15 +77,14 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       onCompositionEnd,
       paradigm = "instant",
       onParadigmChange,
-      semanticEnabled = false,
       onSubmitNatural,
       updatePhase,
       onOpenUpdate,
     },
     ref
   ) => {
-    // SearchBar와 동일 조건: 인덱싱 완료 + 시맨틱 활성 시에만 패러다임 토글 노출
-    const canUseParadigms = (status?.indexed_files ?? 0) > 0 && semanticEnabled;
+    // SearchBar와 동일: 인덱싱 1회 완료 시 패러다임 토글 노출 (이슈 #32 — 시맨틱 게이트 제거)
+    const canUseParadigms = (status?.indexed_files ?? 0) > 0;
     const updateVisible =
       updatePhase === "available" ||
       updatePhase === "downloading" ||
