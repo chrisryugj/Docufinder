@@ -624,7 +624,10 @@ mod tests {
         assert!(out.contains("C D"), "행2 셀이 공백 결합돼야: {out:?}");
         assert!(!out.contains("<td"), "td 태그 잔존: {out:?}");
         assert!(!out.contains("colspan"), "colspan 잔존: {out:?}");
-        assert!(out.contains("앞") && out.contains("뒤"), "표 바깥 본문 보존: {out:?}");
+        assert!(
+            out.contains("앞") && out.contains("뒤"),
+            "표 바깥 본문 보존: {out:?}"
+        );
     }
 
     #[test]
@@ -638,8 +641,14 @@ mod tests {
         // 닫는 </table> 가 없어 표 단위 변환에 실패해도 잔여 태그는 정리된다.
         let md = "<tr><td>x</td><td>y</td>";
         let out = html_tables_to_text(md);
-        assert!(!out.contains("<td") && !out.contains("<tr"), "잔여 태그 정리 실패: {out:?}");
-        assert!(out.contains('x') && out.contains('y'), "셀 텍스트 보존: {out:?}");
+        assert!(
+            !out.contains("<td") && !out.contains("<tr"),
+            "잔여 태그 정리 실패: {out:?}"
+        );
+        assert!(
+            out.contains('x') && out.contains('y'),
+            "셀 텍스트 보존: {out:?}"
+        );
     }
 
     #[test]
@@ -649,7 +658,10 @@ mod tests {
                   <tr><td><b>합계</b></td><td>100</td></tr></table>";
         let out = html_tables_to_text(md);
         assert!(out.contains("구분 값"), "헤더 행: {out:?}");
-        assert!(out.contains("합계 100"), "본문 행 + 인라인 태그 제거: {out:?}");
+        assert!(
+            out.contains("합계 100"),
+            "본문 행 + 인라인 태그 제거: {out:?}"
+        );
         assert!(!out.contains('<'), "꺾쇠 잔존: {out:?}");
     }
 
@@ -661,7 +673,10 @@ mod tests {
             out.contains('a') && out.contains('b') && out.contains('c') && out.contains("중간"),
             "내용 보존: {out:?}"
         );
-        assert!(!out.contains("<br") && !out.contains("<td"), "태그 잔존: {out:?}");
+        assert!(
+            !out.contains("<br") && !out.contains("<td"),
+            "태그 잔존: {out:?}"
+        );
     }
 
     #[test]
