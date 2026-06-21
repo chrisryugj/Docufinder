@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.4] - 2026-06-21
+
+**Gemini 모델 현행화 — 셧다운된 기본 모델로 인한 404 차단**
+
+### 🐛 수정
+
+- **기본 AI 모델이 셧다운된 `gemini-3.1-flash-lite-preview`라 AI 질의응답이 404로 죽던 문제** — Google이 해당 preview ID를 GA(`gemini-3.1-flash-lite`)로 승격하며 구 preview를 종료해, 기본값을 쓰던 사용자는 "모델을 찾을 수 없습니다" 404를 맞았다. 기본 모델을 GA `gemini-3.1-flash-lite`로 교체하고, 저장된 구 ID는 앱 시작 시 자동 마이그레이션한다. (`settings.rs`)
+
+### ✨ 개선
+
+- **Gemini 모델 라인업 최신화 (2026-06 기준)** — 설정 드롭다운을 현행 모델로 갱신: `gemini-3.1-flash-lite`(빠름/저렴·기본) · `gemini-3.5-flash`(표준/최고지능) · `gemini-2.5-flash`(균형) · `gemini-3.1-pro-preview`(고품질). 신규 GA 플래그십 `gemini-3.5-flash` 추가, 단종된 `gemini-3-flash-preview`·`gemini-2.0-flash` 계열은 최신 GA로 자동 마이그레이션. (`types.ts`, `AiTab.tsx`, `settings.rs`)
+
 ## [3.0.3] - 2026-06-19
 
 **AI검색(Anything) 패러다임 토글 사라진 회귀 수정 (이슈 #32)**
