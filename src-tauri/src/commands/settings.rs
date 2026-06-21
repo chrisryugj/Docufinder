@@ -71,7 +71,7 @@ pub struct Settings {
     /// API 키 (provider 공통)
     #[serde(default)]
     pub ai_api_key: Option<String>,
-    /// AI 모델 ID — provider 별 (Gemini: gemini-3.1-flash-lite-preview,
+    /// AI 모델 ID — provider 별 (Gemini: gemini-3.1-flash-lite,
     /// OpenAI 호환: qwen3-35b 등 사용자 입력)
     #[serde(default = "default_ai_model")]
     pub ai_model: String,
@@ -140,7 +140,7 @@ fn default_results_per_page() -> usize {
 }
 
 fn default_ai_model() -> String {
-    "gemini-3.1-flash-lite-preview".to_string()
+    "gemini-3.1-flash-lite".to_string()
 }
 
 fn default_ai_temperature() -> f32 {
@@ -439,10 +439,17 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     // API 키는 credentials.json에서 로드
     settings.ai_api_key = load_api_key(app_data_dir);
 
-    // 단종/잘못된 모델 ID 자동 마이그레이션 (Gemini API에 실존하지 않아 404 유발하던 값들)
+    // 단종/구버전 모델 ID → 최신 GA 자동 마이그레이션 (Gemini API에 실존하지 않거나
+    // preview→GA 승격으로 셧다운돼 404 를 유발하던 값들)
     let migrated_model = match settings.ai_model.as_str() {
-        // 오타: Gemini 실제 ID는 하이픈 + preview 접미사 (gemini-3-flash-preview)
-        "gemini-3.0-flash" => Some("gemini-3-flash-preview".to_string()),
+        // 오타: Gemini 실제 ID는 하이픈 표기
+        "gemini-3.0-flash" => Some("gemini-3.5-flash".to_string()),
+        // preview → GA 승격 후 구 preview ID 셧다운 (2026-06)
+        "gemini-3.1-flash-lite-preview" => Some("gemini-3.1-flash-lite".to_string()),
+        "gemini-3-flash-preview" => Some("gemini-3.5-flash".to_string()),
+        "gemini-3-pro-preview" => Some("gemini-3.1-pro-preview".to_string()),
+        // 2.0 계열 단종 → 2.5 GA
+        "gemini-2.0-flash" | "gemini-2.0-flash-lite" => Some("gemini-2.5-flash".to_string()),
         _ => None,
     };
     if let Some(m) = migrated_model {

@@ -7,7 +7,7 @@ import { AI_MODEL_OPTIONS, AI_PROVIDER_OPTIONS } from "./types";
 
 /** Gemini 공식 모델 ID 는 모두 `gemini-` 로 시작 — provider mismatch 감지용. */
 const GEMINI_MODEL_PREFIX = "gemini-";
-const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite-preview";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 export function AiTab({ settings, onChange }: TabProps) {
   const [showApiKey, setShowApiKey] = useState(false);
@@ -23,7 +23,7 @@ export function AiTab({ settings, onChange }: TabProps) {
    * Gemini → OpenAi: 기존 모델이 `gemini-*` 면 빈 값 (사용자가 사내 LLM 모델 ID 입력해야 함).
    * OpenAi → Gemini: 기존 모델이 `gemini-*` 아니면 기본 Gemini 모델로 복귀.
    *
-   * 사용자가 provider 만 바꾸고 모델 ID 를 그대로 두면 `gemini-3.1-flash-lite-preview`
+   * 사용자가 provider 만 바꾸고 모델 ID 를 그대로 두면 `gemini-3.1-flash-lite`
    * 가 사내 qwen 서버로 그대로 가서 404 "model not found" 가 나는 사고 방지.
    */
   const handleProviderChange = (newProvider: "gemini" | "open_ai") => {
