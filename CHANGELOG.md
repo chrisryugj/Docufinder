@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.0.5] - 2026-06-22
+
+**트레이 종료 후 Node 사이드카 프로세스 잔존 수정 (이슈 #33)**
+
+### 🐛 수정
+
+- **앱 종료 후에도 `node` 프로세스가 살아남아 CPU를 점유하던 문제 (이슈 #33)** — 인덱싱 중 HWP/PDF 변환을 위해 띄우는 kordoc Node 사이드카 자식 프로세스가 어디에도 추적되지 않아, 트레이 "종료"(`graceful_shutdown`이 3초 watchdog 후 `process::exit`로 강제 종료)나 네이티브 크래시로 앱이 죽으면 in-flight `node.exe`들이 고아로 남았다. `std::process::Child`는 Drop에서 kill하지 않고 Windows는 부모 종료 시 자식을 자동 정리하지 않아, 인덱싱 중 종료하면 워커 수(SSD 기준 최대 4개)만큼의 node가 살아남아 CPU를 계속 먹었다.
+  - **Windows Job Object로 자식 생명주기를 앱에 묶음** — 전역 Job Object(`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)에 모든 kordoc/formula node 자식을 등록. 앱 프로세스가 종료되는 순간(정상 종료·`process::exit`·네이티브 크래시 **모두**) Job 핸들이 닫히며 OS가 묶인 자식을 강제 종료한다. 정리 코드가 실행되지 못하는 비정상 종료 경로까지 커버하는 게 핵심. (`utils/process_job.rs`, `parsers/kordoc.rs`, `commands/formula.rs`)
+
 ## [3.0.4] - 2026-06-21
 
 **Gemini 모델 현행화 — 셧다운된 기본 모델로 인한 404 차단**

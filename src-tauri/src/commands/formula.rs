@@ -120,6 +120,9 @@ fn run_download(app: AppHandle) -> ApiResult<()> {
         .spawn()
         .map_err(|e| ApiError::CommandFailed(format!("kordoc 실행 실패: {}", e)))?;
 
+    // 이슈 #33: 앱 종료/크래시 시 이 node 자식이 고아로 남지 않도록 Job Object 에 묶는다.
+    crate::utils::process_job::track_child(&child);
+
     let stderr = child.stderr.take().unwrap();
     let reader = BufReader::new(stderr);
     // 진행률 파싱 + emit. 완료 시 loop 종료.
