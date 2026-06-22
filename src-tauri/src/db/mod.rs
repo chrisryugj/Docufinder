@@ -1,6 +1,9 @@
 pub mod migration;
 pub mod pool;
 
+#[cfg(test)]
+mod pool_race_tests;
+
 pub use migration::*;
 pub use pool::*;
 
