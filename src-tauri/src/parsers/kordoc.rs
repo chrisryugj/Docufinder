@@ -413,6 +413,9 @@ fn call_kordoc_sync(
         .spawn()
         .map_err(|e| ParseError::ParseError(format!("kordoc 프로세스 시작 실패: {e}")))?;
 
+    // 이슈 #33: 앱 종료/크래시 시 이 node 자식이 고아로 남지 않도록 Job Object 에 묶는다.
+    crate::utils::process_job::track_child(&child);
+
     let file_display = file_path.display().to_string();
     let timeout_secs = if opts.formula_ocr {
         KORDOC_FORMULA_TIMEOUT_SECS

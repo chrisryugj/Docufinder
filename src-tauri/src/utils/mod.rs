@@ -6,6 +6,7 @@ pub mod filename_normalize;
 pub mod folder_scope;
 pub mod idle_detector;
 pub mod network_path;
+pub mod process_job;
 pub mod text_normalize;
 
 pub use text_normalize::normalize_text;
