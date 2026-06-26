@@ -282,25 +282,44 @@ fn index_folder_fts_impl(
 
     // skip_indexed: 이미 인덱싱된 파일 제외 (resume 용)
     if skip_indexed {
-        let already_indexed =
-            crate::db::get_fts_indexed_paths_in_folder(conn, &folder_str).unwrap_or_default();
-        if !already_indexed.is_empty() {
-            // 경로 표현 차이(대소문자·슬래시 방향·`\\?\` prefix)로 skip 매칭이 실패하면
-            // resume 시 이미 인덱싱된 파일까지 처음부터 다시 처리된다(이슈 #31).
-            // Windows 경로는 case-insensitive 이므로 양쪽을 정규화한 뒤 비교한다.
-            let norm = |s: &str| -> String {
-                s.strip_prefix(r"\\?\")
-                    .unwrap_or(s)
-                    .replace('/', "\\")
-                    .trim_end_matches('\\')
-                    .to_ascii_lowercase()
-            };
-            let normalized: std::collections::HashSet<String> =
-                already_indexed.iter().map(|p| norm(p)).collect();
+        // 경로 표현 차이로 skip 매칭이 실패하면 resume 가 이미 인덱싱된 파일까지
+        // 처음부터 다시 처리한다. 단순 대소문자·슬래시 차이뿐 아니라(이슈 #31), 같은
+        // 네트워크 폴더가 세션마다 매핑드라이브(`Z:\`) ↔ UNC(`\\srv\share`)로 흔들리면
+        // 폴더 prefix LIKE 조회 자체가 0건이 되어 전체 재인덱싱으로 빠진다(이슈 #34).
+        // → 인덱싱 완료 경로를 전량 가져와, 매핑드라이브를 UNC 로 수렴시키는
+        //   normalize_for_compare 로 표현을 통일한 뒤 폴더 소속 + 일치를 판정한다.
+        let drive_map = crate::utils::network_path::network_drive_map();
+        let folder_key = crate::utils::network_path::normalize_for_compare(folder_path, &drive_map);
+        let folder_prefix = format!("{folder_key}\\");
+        let already_indexed = crate::db::get_all_fts_indexed_paths(conn).unwrap_or_default();
+        let normalized: std::collections::HashSet<String> = already_indexed
+            .iter()
+            .map(|p| {
+                crate::utils::network_path::normalize_for_compare(
+                    std::path::Path::new(p),
+                    &drive_map,
+                )
+            })
+            .filter(|n| *n == folder_key || n.starts_with(&folder_prefix))
+            .collect();
+        if !normalized.is_empty() {
             let before = file_paths.len();
-            file_paths.retain(|p| !normalized.contains(&norm(&p.to_string_lossy())));
+            file_paths.retain(|p| {
+                !normalized.contains(&crate::utils::network_path::normalize_for_compare(
+                    p, &drive_map,
+                ))
+            });
             let skipped = before - file_paths.len();
-            tracing::info!("[FTS Resume] Skipping {} already-indexed files", skipped);
+            tracing::info!(
+                "[FTS Resume] Skipping {} already-indexed files (matched {} in folder)",
+                skipped,
+                normalized.len()
+            );
+        } else {
+            tracing::info!(
+                "[FTS Resume] No already-indexed files matched for {}",
+                folder_key
+            );
         }
     }
 
