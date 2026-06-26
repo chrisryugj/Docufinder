@@ -200,30 +200,16 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
     )
 }
 
-/// 폴더 내 이미 FTS 인덱싱 완료된 파일 경로 조회 (resume 시 스킵용)
-pub fn get_fts_indexed_paths_in_folder(
-    conn: &Connection,
-    folder_path: &str,
-) -> Result<std::collections::HashSet<String>> {
-    let folder_path = folder_path.trim_end_matches(['/', '\\']);
-    let escaped_unix = escape_like_pattern(&folder_path.replace('\\', "/"));
-    let escaped_win = escape_like_pattern(&folder_path.replace('/', "\\"));
-    let pattern_unix = format!("{}/%", escaped_unix);
-    let pattern_win = format!("{}\\\\%", escaped_win);
-
-    let mut stmt = conn.prepare(
-        "SELECT path FROM files WHERE fts_indexed_at IS NOT NULL AND (path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\')"
-    )?;
-
-    let rows = stmt.query_map(params![pattern_unix, pattern_win], |row| {
-        row.get::<_, String>(0)
-    })?;
-
-    let mut set = std::collections::HashSet::new();
-    for path in rows.flatten() {
-        set.insert(path);
-    }
-    Ok(set)
+/// FTS 인덱싱이 완료된(`fts_indexed_at IS NOT NULL`) 모든 파일 경로 조회.
+///
+/// 폴더 prefix `LIKE` 매칭은 네트워크 경로 표현(매핑드라이브 ↔ UNC ↔ `\\?\`)이 흔들리면
+/// 0건을 반환해 resume 가 전체 재인덱싱으로 빠진다(이슈 #34). 그 한계를 피하기 위해
+/// 폴더 필터 없이 전량을 가져와, 호출부가 `network_path::normalize_for_compare` 로
+/// 표현을 통일한 뒤 폴더 소속을 판정하도록 한다.
+pub fn get_all_fts_indexed_paths(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT path FROM files WHERE fts_indexed_at IS NOT NULL")?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect()
 }
 
 // ==================== 파일 ====================

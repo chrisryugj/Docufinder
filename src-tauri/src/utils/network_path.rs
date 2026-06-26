@@ -52,6 +52,57 @@ pub fn canonicalize_best_effort(path: &Path) -> PathBuf {
     }
 }
 
+/// 현재 사용자 세션에 매핑된 네트워크 드라이브 전체를 `(드라이브문자, UNC base)` 로 수집.
+/// resume skip 비교에서 드라이브 표현과 UNC 표현을 통일하기 위한 변환 테이블이다(이슈 #34).
+/// 비-Windows 에서는 항상 빈 목록.
+#[cfg(windows)]
+pub fn network_drive_map() -> Vec<(char, String)> {
+    ('A'..='Z')
+        .filter_map(|c| mapped_drive_unc_base(c).map(|base| (c, base)))
+        .collect()
+}
+
+#[cfg(not(windows))]
+pub fn network_drive_map() -> Vec<(char, String)> {
+    Vec::new()
+}
+
+/// 경로를 "비교용 정규형" 문자열로 변환한다(이슈 #34).
+///
+/// 같은 네트워크 폴더라도 세션/시점에 따라 매핑드라이브(`Z:\docs`)·UNC(`\\srv\share\docs`)·
+/// `\\?\` prefix 변형으로 표현이 흔들려 resume skip 매칭이 실패(→ 전체 재인덱싱)하는 문제를
+/// 막기 위해, 모든 표현을 하나로 수렴시킨다:
+///   1. `\\?\` / `\\?\UNC\` extended-length prefix 제거(`simplify`)
+///   2. `/` → `\` 통일
+///   3. 매핑 네트워크 드라이브면 `drive_map` 으로 UNC base 치환(`Z:\docs` → `\\srv\share\docs`)
+///   4. trailing separator 제거 + 소문자화(Windows 경로는 case-insensitive)
+pub fn normalize_for_compare(path: &Path, drive_map: &[(char, String)]) -> String {
+    let simplified = simplify(path);
+    let s = simplified.to_string_lossy().replace('/', "\\");
+    let bytes = s.as_bytes();
+    let mut out = if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let letter = (bytes[0] as char).to_ascii_uppercase();
+        match drive_map.iter().find(|(c, _)| *c == letter) {
+            Some((_, base)) => {
+                let rest = s[2..].trim_start_matches('\\');
+                let base = base.trim_end_matches('\\');
+                if rest.is_empty() {
+                    base.to_string()
+                } else {
+                    format!("{base}\\{rest}")
+                }
+            }
+            None => s,
+        }
+    } else {
+        s
+    };
+    while out.ends_with('\\') {
+        out.pop();
+    }
+    out.to_ascii_lowercase()
+}
+
 /// 경로가 UNC(`\\server\share\...`) 인지 검사.
 /// 매핑드라이브(예: `Z:\...`) 는 OS 가 추상화하므로 여기서는 false 로 두고,
 /// 호출자가 필요하면 `GetDriveTypeW` 로 별도 판정한다.
@@ -237,5 +288,44 @@ mod tests {
     #[test]
     fn resolve_noop_off_windows() {
         assert_eq!(resolve_mapped_drive_to_unc(Path::new(r"Y:\foo")), None);
+    }
+
+    // normalize_for_compare 는 drive_map 을 인자로 받으므로 OS 무관하게 검증 가능(이슈 #34).
+    #[test]
+    fn normalize_unifies_mapped_drive_and_unc() {
+        let map = vec![('Z', r"\\srv\share".to_string())];
+        // 매핑드라이브와 UNC 가 같은 비교 키로 수렴해야 resume skip 이 매칭된다.
+        assert_eq!(
+            normalize_for_compare(Path::new(r"Z:\docs\a.pdf"), &map),
+            normalize_for_compare(Path::new(r"\\srv\share\docs\a.pdf"), &map),
+        );
+        assert_eq!(
+            normalize_for_compare(Path::new(r"Z:\docs\a.pdf"), &map),
+            r"\\srv\share\docs\a.pdf"
+        );
+    }
+
+    #[test]
+    fn normalize_slash_case_trailing() {
+        let map: Vec<(char, String)> = Vec::new();
+        // 슬래시 방향·대소문자·trailing separator 차이를 흡수.
+        assert_eq!(
+            normalize_for_compare(Path::new(r"C:\Foo\Bar\"), &map),
+            r"c:\foo\bar"
+        );
+        assert_eq!(
+            normalize_for_compare(Path::new("C:/Foo/Bar"), &map),
+            r"c:\foo\bar"
+        );
+    }
+
+    #[test]
+    fn normalize_unmapped_drive_untouched() {
+        // drive_map 에 없는 드라이브(로컬 등)는 UNC 변환 없이 표현만 정규화.
+        let map = vec![('Z', r"\\srv\share".to_string())];
+        assert_eq!(
+            normalize_for_compare(Path::new(r"D:\data\x.txt"), &map),
+            r"d:\data\x.txt"
+        );
     }
 }
