@@ -65,9 +65,40 @@ fn run_check_status_only() -> ApiResult<FormulaModelsStatus> {
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
 
-    let output = cmd
-        .output()
+    let mut child = cmd
+        .spawn()
         .map_err(|e| ApiError::CommandFailed(format!("kordoc 실행 실패: {}", e)))?;
+
+    // 이슈 #33: .output() 은 Child 를 노출하지 않아 Job Object 등록이 불가능했다 —
+    // 상태 체크 중 트레이 종료/크래시 시 node 가 고아로 잔존. spawn + track 으로 봉합.
+    crate::utils::process_job::track_child(&child);
+
+    // node 행 시 spawn_blocking 스레드가 영구 점유되지 않도록 폴링 타임아웃
+    // (kordoc 본경로와 동일 패턴). 상태 체크는 수 초면 충분 — 30s 는 여유치.
+    // stdout 은 작은 JSON 이라 파이프 버퍼(64KB) 내에서 블로킹 없이 폴링 가능.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(ApiError::CommandFailed(
+                        "kordoc 상태 확인 타임아웃 (30s)".to_string(),
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                return Err(ApiError::CommandFailed(format!("kordoc 대기 실패: {}", e)));
+            }
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| ApiError::CommandFailed(format!("kordoc 출력 수집 실패: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
