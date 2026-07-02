@@ -53,10 +53,17 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
   useEffect(() => {
     if (!isClearing) return;
     let unlisten: (() => void) | null = null;
+    let cancelled = false;
     listen<string>("clear-data-progress", (event) => {
       setClearStep(event.payload);
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); setClearStep(null); };
+    })
+      .then((fn) => {
+        // 등록 완료 전 unmount/토글 변경 시 즉시 해제 (고아 리스너 방지)
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {});
+    return () => { cancelled = true; unlisten?.(); setClearStep(null); };
   }, [isClearing]);
 
   return (

@@ -419,6 +419,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
   // instant 로 전환 시 아래 debounce effect(deps에 paradigm 포함)가 보존된 쿼리로 자동 재검색하고,
   // natural/question 은 Enter 제출 대기 상태가 된다.
   const setParadigm = useCallback((p: SearchParadigm) => {
+    // in-flight 검색 무효화 — ID를 올리지 않으면 IPC 응답 대기 중이던 이전 모드의
+    // 결과가 시퀀스 가드를 통과해, 방금 비운 화면 위에 stale 결과가 되살아난다
+    searchIdRef.current++;
     setParadigmInternal(p);
     try { localStorage.setItem("docufinder_paradigm", p); } catch {}
     setParsedQuery(null);
@@ -431,6 +434,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       setSearchTime(null);
     });
     setError(null);
+    setIsLoading(false);
   }, []);
 
   // 자연어 검색 실행 (Enter 키)
@@ -680,6 +684,10 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     if (query.trim()) {
       executeSearch(query, searchMode);
     } else {
+      // 빈 쿼리 분기도 in-flight 응답이 초기화를 덮지 않도록 무효화 (setParadigm과 동일).
+      // 무효화된 검색은 가드에서 조기 리턴해 isLoading을 못 끄므로 여기서 해제.
+      searchIdRef.current++;
+      setIsLoading(false);
       startTransition(() => {
         setSearchedQuery("");
         setResults([]);

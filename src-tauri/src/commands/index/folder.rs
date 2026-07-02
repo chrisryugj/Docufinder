@@ -146,6 +146,7 @@ pub async fn add_folder(
             if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path, "failed");
             }
+            emit_error_progress(&app_handle, &path, &e.to_string());
             resume_watching(&state, &ctx.db_path); // pause 해제 후 에러 반환
             return Err(ApiError::from(e));
         }
@@ -480,6 +481,7 @@ pub async fn resume_indexing(
             if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
                 let _ = crate::db::set_folder_indexing_status(&conn, &path_str, "failed");
             }
+            emit_error_progress(&app_handle, &path_str, &e.to_string());
             resume_watching(&state, &ctx.db_path);
             return Err(ApiError::from(e));
         }
