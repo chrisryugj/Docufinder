@@ -54,6 +54,15 @@ pub fn sync_folder_fts(
 ) -> Result<SyncResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
+    // 경로 표현 수렴 (이슈 #34): DB에 다른 표현(매핑드라이브 ↔ UNC)으로 저장된
+    // rows를 canonical로 먼저 이관해야 아래 exact-비교 diff가 전 파일을 "신규"로
+    // 오판(→ 전체 재파싱 + 중복 row)하지 않는다. 이후 걷기도 canonical로 수행.
+    let folder_path = &crate::indexer::path_reconcile::reconcile_folder_representation(
+        conn,
+        folder_path,
+        vector_index.as_deref(),
+    );
+
     let folder_str = folder_path.to_string_lossy().to_string();
 
     let max_file_size_bytes = if max_file_size_mb > 0 {

@@ -165,6 +165,15 @@ fn index_folder_fts_impl(
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
+    // 경로 표현 수렴 (이슈 #34): 옛 표현으로 저장된 rows를 canonical로 이관.
+    // resume(skip_indexed)의 스킵 판정은 normalize 비교라 표현이 달라도 동작하지만,
+    // 저장 표현이 수렴돼야 이후 sync diff·삭제 감지·폴더 상태 갱신이 어긋나지 않는다.
+    let folder_path = &crate::indexer::path_reconcile::reconcile_folder_representation(
+        conn,
+        folder_path,
+        vector_index.as_deref(),
+    );
+
     let folder_str = folder_path.to_string_lossy().to_string();
 
     // 실제 디스크 타입에 맞춘 스레드 수 조정 (HDD: 2, SSD: 4)
