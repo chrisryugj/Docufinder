@@ -751,6 +751,13 @@ pub fn get_lineage_info_by_file_paths(
     Ok(out)
 }
 
+/// 파일 ID로 chunk ID들 조회 (벡터 인덱스 삭제용 — 재인덱싱 경로)
+pub fn get_chunk_ids_for_file(conn: &Connection, file_id: i64) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare("SELECT id FROM chunks WHERE file_id = ?")?;
+    let rows = stmt.query_map(params![file_id], |row| row.get(0))?;
+    rows.collect()
+}
+
 /// 파일 경로로 chunk ID들 조회 (벡터 인덱스 삭제용)
 pub fn get_chunk_ids_for_path(conn: &Connection, path: &str) -> Result<Vec<i64>> {
     let mut stmt = conn.prepare(

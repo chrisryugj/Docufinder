@@ -67,6 +67,7 @@ impl IndexService {
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
         let ocr_engine = self.ocr_engine.clone();
+        let vector_index = self.vector_index.clone();
 
         // blocking 작업으로 실행
         let result = tokio::task::spawn_blocking(move || {
@@ -79,6 +80,7 @@ impl IndexService {
                 max_file_size_mb,
                 &excluded_dirs,
                 ocr_engine,
+                vector_index,
             )
         })
         .await
@@ -104,6 +106,7 @@ impl IndexService {
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
         let ocr_engine = self.ocr_engine.clone();
+        let vector_index = self.vector_index.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             pipeline::resume_folder_fts(
@@ -115,6 +118,7 @@ impl IndexService {
                 max_file_size_mb,
                 &excluded_dirs,
                 ocr_engine,
+                vector_index,
             )
         })
         .await
@@ -140,6 +144,7 @@ impl IndexService {
         let path_buf = path.to_path_buf();
         let cancel_flag = self.cancel_flag.clone();
         let ocr_engine = self.ocr_engine.clone();
+        let vector_index = self.vector_index.clone();
 
         let result = tokio::task::spawn_blocking(move || {
             pipeline::sync_folder_fts(
@@ -151,6 +156,7 @@ impl IndexService {
                 max_file_size_mb,
                 &excluded_dirs,
                 ocr_engine,
+                vector_index,
             )
         })
         .await

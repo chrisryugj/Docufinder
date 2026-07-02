@@ -50,6 +50,7 @@ pub fn sync_folder_fts(
     max_file_size_mb: u64,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
+    vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<SyncResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -262,6 +263,17 @@ pub fn sync_folder_fts(
         if cancel_flag.load(Ordering::Acquire) {
             break;
         }
+        // 벡터를 먼저 제거 — watcher 삭제 경로(manager.rs)와 동일. 안 하면 유령 벡터가
+        // 남고, 해제된 chunks.id가 재사용될 때 타 파일 임베딩으로 오귀속된다(이슈 #34 후속).
+        if let Some(vi) = vector_index.as_deref() {
+            if let Ok(chunk_ids) = db::get_chunk_ids_for_path(conn, path) {
+                for chunk_id in chunk_ids {
+                    if let Err(e) = vi.remove(chunk_id) {
+                        tracing::debug!("Failed to remove vector {}: {}", chunk_id, e);
+                    }
+                }
+            }
+        }
         if let Err(e) = db::delete_file(conn, path) {
             tracing::warn!("Failed to delete stale file {}: {}", path, e);
         } else {
@@ -435,6 +447,7 @@ pub fn sync_folder_fts(
                             &path,
                             document,
                             FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+                            vector_index.as_deref(),
                         ) {
                             Ok(_) => indexed += 1,
                             Err(e) => {
