@@ -7,7 +7,7 @@ mod pool_race_tests;
 pub use migration::*;
 pub use pool::*;
 
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -71,14 +71,9 @@ fn current_timestamp() -> i64 {
         .unwrap_or(0)
 }
 
-/// 감시 폴더가 이미 등록되어 있는지 확인
+/// 감시 폴더가 이미 등록되어 있는지 확인 (경로 표현 불일치 허용 — 이슈 #34)
 pub fn is_folder_watched(conn: &Connection, path: &str) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM watched_folders WHERE path = ?",
-        params![path],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
+    Ok(find_watched_folder_id(conn, path)?.is_some())
 }
 
 /// 감시 폴더 추가
@@ -130,25 +125,29 @@ pub fn remap_drive_prefix(
     Ok((files, folders))
 }
 
-/// 감시 폴더 삭제
+/// 감시 폴더 삭제 (경로 표현 불일치 허용 — 이슈 #34, 과거 이슈 #22 "폴더 삭제 안 됨" 계열)
 pub fn remove_watched_folder(conn: &Connection, path: &str) -> Result<usize> {
-    conn.execute("DELETE FROM watched_folders WHERE path = ?", params![path])
+    match find_watched_folder_id(conn, path)? {
+        Some(id) => conn.execute("DELETE FROM watched_folders WHERE id = ?", params![id]),
+        None => Ok(0),
+    }
 }
 
-/// 즐겨찾기 토글
+/// 즐겨찾기 토글 (경로 표현 불일치 허용 — 이슈 #34)
 pub fn toggle_favorite(conn: &Connection, path: &str) -> Result<bool> {
-    // 현재 상태 확인
+    let id = find_watched_folder_id(conn, path)?.ok_or(rusqlite::Error::QueryReturnedNoRows)?;
+
     let current: i32 = conn.query_row(
-        "SELECT COALESCE(is_favorite, 0) FROM watched_folders WHERE path = ?",
-        params![path],
+        "SELECT COALESCE(is_favorite, 0) FROM watched_folders WHERE id = ?",
+        params![id],
         |row| row.get(0),
     )?;
 
     let new_value = if current == 0 { 1 } else { 0 };
 
     conn.execute(
-        "UPDATE watched_folders SET is_favorite = ? WHERE path = ?",
-        params![new_value, path],
+        "UPDATE watched_folders SET is_favorite = ? WHERE id = ?",
+        params![new_value, id],
     )?;
 
     Ok(new_value == 1)
@@ -183,21 +182,65 @@ pub fn get_watched_folders_with_info(conn: &Connection) -> Result<Vec<WatchedFol
     rows.collect()
 }
 
-/// 폴더 인덱싱 상태 업데이트
-pub fn set_folder_indexing_status(conn: &Connection, path: &str, status: &str) -> Result<usize> {
-    conn.execute(
-        "UPDATE watched_folders SET indexing_status = ? WHERE path = ?",
-        params![status, path],
-    )
+/// 경로 표현이 달라도 같은 watched_folders row를 찾는다 (이슈 #34).
+///
+/// 호출자마다 UI(=DB 저장 표현)와 canonicalize된 표현(매핑드라이브 ↔ UNC)이 섞여
+/// 들어오는데, `WHERE path = ?` exact 매치는 0 rows로 **침묵 no-op**이 되어 폴더
+/// 상태가 'indexing'에 고착되고 "이어서 인덱싱" 프롬프트가 무한 재등장한다.
+/// exact 매치 실패 시에만 normalize_for_compare로 전 폴더를 대조한다
+/// (watched_folders는 수십 건 규모라 전량 스캔 비용 무시 가능).
+fn find_watched_folder_id(conn: &Connection, path: &str) -> Result<Option<i64>> {
+    let exact: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM watched_folders WHERE path = ?",
+            params![path],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if exact.is_some() {
+        return Ok(exact);
+    }
+
+    use crate::utils::network_path;
+    let drive_map = network_path::network_drive_map();
+    let target = network_path::normalize_for_compare(std::path::Path::new(path), &drive_map);
+
+    let mut stmt = conn.prepare("SELECT id, path FROM watched_folders")?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (id, folder_path) = row?;
+        let key =
+            network_path::normalize_for_compare(std::path::Path::new(&folder_path), &drive_map);
+        if key == target {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
 }
 
-/// 폴더 마지막 동기화 시각 업데이트
+/// 폴더 인덱싱 상태 업데이트 (경로 표현 불일치 허용 — 이슈 #34)
+pub fn set_folder_indexing_status(conn: &Connection, path: &str, status: &str) -> Result<usize> {
+    match find_watched_folder_id(conn, path)? {
+        Some(id) => conn.execute(
+            "UPDATE watched_folders SET indexing_status = ? WHERE id = ?",
+            params![status, id],
+        ),
+        None => Ok(0),
+    }
+}
+
+/// 폴더 마지막 동기화 시각 업데이트 (경로 표현 불일치 허용 — 이슈 #34)
 pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
     let now = current_timestamp();
-    conn.execute(
-        "UPDATE watched_folders SET last_synced_at = ? WHERE path = ?",
-        params![now, path],
-    )
+    match find_watched_folder_id(conn, path)? {
+        Some(id) => conn.execute(
+            "UPDATE watched_folders SET last_synced_at = ? WHERE id = ?",
+            params![now, id],
+        ),
+        None => Ok(0),
+    }
 }
 
 /// FTS 인덱싱이 완료된(`fts_indexed_at IS NOT NULL`) 모든 파일 경로 조회.
@@ -1156,4 +1199,44 @@ pub fn reset_all_vector_indexed(conn: &Connection) -> Result<usize> {
         [],
     )?;
     Ok(affected)
+}
+
+#[cfg(test)]
+mod folder_status_tests {
+    use super::*;
+
+    fn test_db() -> (tempfile::TempDir, Connection) {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("t.db");
+        let conn = Connection::open(&db_path).unwrap();
+        migrate_schema(&conn, &db_path).unwrap();
+        (dir, conn)
+    }
+
+    /// 이슈 #34: UI가 넘긴 경로 표현(구분자/대소문자/trailing)이 DB 저장 표현과
+    /// 달라도 폴더 상태 UPDATE가 no-op으로 새지 않아야 한다
+    #[test]
+    fn status_update_matches_across_representations() {
+        let (_dir, conn) = test_db();
+        conn.execute(
+            "INSERT INTO watched_folders (path, indexing_status) VALUES (?, 'indexing')",
+            params![r"C:\Docs\업무"],
+        )
+        .unwrap();
+
+        // 슬래시 방향 + 대소문자 + trailing 이 다른 표현으로 완료 마킹
+        let n = set_folder_indexing_status(&conn, r"c:/docs/업무/", "completed").unwrap();
+        assert_eq!(n, 1, "표현이 달라도 같은 폴더 row가 갱신돼야 함");
+
+        let status: String = conn
+            .query_row("SELECT indexing_status FROM watched_folders", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(status, "completed");
+
+        // 존재하지 않는 폴더는 0 rows (에러 아님)
+        let n = set_folder_indexing_status(&conn, r"D:\없는폴더", "failed").unwrap();
+        assert_eq!(n, 0);
+    }
 }
