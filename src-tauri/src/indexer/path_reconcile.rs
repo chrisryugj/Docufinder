@@ -53,16 +53,23 @@ pub fn reconcile_with_canonical(
     canonical: &Path,
     vector_index: Option<&VectorIndex>,
 ) -> rusqlite::Result<()> {
-    let canonical_str = unify_separators(&canonical.to_string_lossy());
+    // canonical/변형은 **원문 그대로** 보관한다 — unify(`/`→`\`)한 문자열을 DB에
+    // 기록하면 macOS의 POSIX 경로가 백슬래시로 오염된다. 구분자 통일은 비교
+    // 연산에만 쓴다.
+    let canonical_str = canonical.to_string_lossy().to_string();
+    let canonical_cmp = unify_separators(&canonical_str);
     let drive_map = network_path::network_drive_map();
     let target_key = network_path::normalize_for_compare(canonical, &drive_map);
 
     // ── 변형 수집: 호출 인자 + watched_folders에서 같은 폴더의 다른 표현 ──
     let mut variants: Vec<String> = Vec::new();
-    let folder_str = unify_separators(&folder_path.to_string_lossy());
-    if folder_str != canonical_str
-        && network_path::normalize_for_compare(folder_path, &drive_map) == target_key
-    {
+    let folder_str = folder_path.to_string_lossy().to_string();
+    // 호출 인자 표현은 normalize 키가 canonical과 달라도 수렴 대상이다:
+    // canonical은 "그 인자 자체"를 OS가 해소한 결과라 같은 폴더임이 구성상
+    // 보장된다. 키 일치를 요구하면 drive_map 밖 divergence(심볼릭링크·junction·
+    // subst·DFS)에서 no-op이 되는데, sync 걷기 루트는 canonical로 바뀌므로
+    // 구표현 rows가 diff에서 전부 "신규" 오판 + 영구 잔존한다.
+    if unify_separators(&folder_str) != canonical_cmp {
         variants.push(folder_str);
     }
 
@@ -70,12 +77,15 @@ pub fn reconcile_with_canonical(
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
     for row in rows {
         let stored = row?;
-        let stored_unified = unify_separators(&stored);
-        if stored_unified == canonical_str || variants.contains(&stored_unified) {
+        let stored_cmp = unify_separators(&stored);
+        if stored_cmp == canonical_cmp || variants.iter().any(|v| unify_separators(v) == stored_cmp)
+        {
             continue;
         }
+        // 등록된 다른 폴더 row는 유도 관계가 없으므로 normalize 키 일치(구분자·
+        // 대소문자·매핑드라이브↔UNC)로만 같은 폴더 판정 — 오매칭 방지.
         if network_path::normalize_for_compare(Path::new(&stored), &drive_map) == target_key {
-            variants.push(stored_unified);
+            variants.push(stored);
         }
     }
     drop(stmt);
@@ -96,11 +106,26 @@ pub fn reconcile_with_canonical(
         let mut moved = 0usize;
         let mut merged = 0usize;
 
+        // 조인 경계용 stem: 후행 구분자 제거. 변형에 후행 구분자가 있거나(`Z:\docs\`)
+        // 드라이브 루트(`C:\`)일 때 suffix가 항상 구분자로 시작하도록 보장해
+        // `Z:\docsa.txt`/`C:\\a.txt` 류 조인 오염을 막는다.
+        let canonical_stem = canonical_str.trim_end_matches(['\\', '/']);
+
         for variant in &variants {
-            // 1. files: 변형 프리픽스 rows 수집 (경로는 stored 원문으로 다시 조회 —
-            //    unify 전 원문과 다를 수 있어 LIKE는 양 구분자 패턴으로 건다)
-            let escaped_unix = db::escape_like_pattern(&variant.replace('\\', "/"));
-            let escaped_win = db::escape_like_pattern(variant);
+            // 1. files: 변형 프리픽스 rows 수집. 변형은 원문이라 구분자가 혼합될 수
+            //    있으므로 win/unix 양 형태를 만들어 exact + LIKE 네 arm으로 건다.
+            //    (두 형태는 바이트 길이가 같아 suffix 슬라이스에 안전)
+            let variant_stem = variant.trim_end_matches(['\\', '/']);
+            if variant_stem.is_empty() {
+                // 루트("/" 등)가 변형으로 들어오면 LIKE가 전 rows를 잡는다 — 스킵
+                continue;
+            }
+            let stem_win = variant_stem.replace('/', "\\");
+            let stem_unix = variant_stem.replace('\\', "/");
+            let variant_win = variant.replace('/', "\\");
+            let variant_unix = variant.replace('\\', "/");
+            let escaped_win = db::escape_like_pattern(&stem_win);
+            let escaped_unix = db::escape_like_pattern(&stem_unix);
             let files: Vec<(i64, String, Option<i64>)> = {
                 let mut stmt = conn.prepare(
                     "SELECT id, path, fts_indexed_at FROM files \
@@ -109,8 +134,8 @@ pub fn reconcile_with_canonical(
                 )?;
                 let rows = stmt.query_map(
                     params![
-                        variant,
-                        variant.replace('\\', "/"),
+                        stem_win,
+                        stem_unix,
                         // 구분자 `\`는 ESCAPE 문자 자체라 `\\`로 이스케이프해야
                         // `%`가 와일드카드로 동작한다 (get_file_and_chunk_ids_in_folder와 동일)
                         format!("{}\\\\%", escaped_win),
@@ -122,8 +147,19 @@ pub fn reconcile_with_canonical(
             };
 
             for (file_id, old_path, old_fts_at) in files {
-                let suffix = unify_separators(&old_path)[variant.len()..].to_string();
-                let new_path = format!("{}{}", canonical_str, suffix);
+                // 양 구분자 형태는 바이트 길이가 같아(구분자 1바이트) 어느 arm이
+                // 매치됐든 raw old_path의 stem 길이 지점이 suffix 경계다 (stem 뒤는
+                // 항상 구분자 또는 문자열 끝). suffix는 원문에서 취해 구분자를 보존한다.
+                let suffix_raw = &old_path[variant_stem.len()..];
+                // Windows 표현(canonical에 `\` 포함)이면 suffix의 `/`도 `\`로 통일
+                // (Windows 파일명엔 `/`가 올 수 없어 안전). POSIX면 원문 유지 —
+                // `\`는 macOS에서 파일명 문자일 수 있어 치환 금지.
+                let suffix = if canonical_str.contains('\\') {
+                    suffix_raw.replace('/', "\\")
+                } else {
+                    suffix_raw.to_string()
+                };
+                let new_path = format!("{}{}", canonical_stem, suffix);
 
                 // SQLite LIKE는 ASCII 대소문자 무시라 이미 canonical인 row도 매치된다
                 // — 재작성 결과가 원본과 같으면 스킵 (자기 자신과의 충돌 병합 방지)
@@ -181,12 +217,12 @@ pub fn reconcile_with_canonical(
             if canonical_exists.is_some() {
                 conn.execute(
                     "DELETE FROM watched_folders WHERE path = ? OR path = ?",
-                    params![variant, variant.replace('\\', "/")],
+                    params![variant_win, variant_unix],
                 )?;
             } else {
                 conn.execute(
                     "UPDATE watched_folders SET path = ?1 WHERE path = ?2 OR path = ?3",
-                    params![canonical_str, variant, variant.replace('\\', "/")],
+                    params![canonical_str, variant_win, variant_unix],
                 )?;
             }
         }
@@ -379,6 +415,64 @@ mod tests {
             )
             .unwrap();
         assert_eq!(orphan_chunks, 0);
+    }
+
+    /// 심볼릭링크/junction divergence: 등록 표현과 canonical은 normalize 키도
+    /// 다르지만 canonical이 인자 자체의 OS 해소 결과이므로 수렴돼야 한다.
+    /// (안 하면 sync 걷기 루트만 canonical로 바뀌어 구표현 rows가 영구 중복 —
+    /// fresh-context 검증에서 발견된 회귀)
+    #[test]
+    fn migrates_symlink_divergent_registration() {
+        let (_dir, conn) = test_db();
+        conn.execute(
+            "INSERT INTO watched_folders (path) VALUES (?)",
+            params!["/tmp/x"],
+        )
+        .unwrap();
+        let fid = insert_file(&conn, "/tmp/x/notes/a.txt", Some(1));
+
+        reconcile_with_canonical(
+            &conn,
+            Path::new("/tmp/x"),
+            Path::new("/private/tmp/x"),
+            None,
+        )
+        .unwrap();
+
+        let p: String = conn
+            .query_row("SELECT path FROM files WHERE id = ?", [fid], |r| r.get(0))
+            .unwrap();
+        // POSIX 구분자 보존 — 백슬래시 오염 없어야 함
+        assert_eq!(p, "/private/tmp/x/notes/a.txt");
+        let wf: String = conn
+            .query_row("SELECT path FROM watched_folders", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(wf, "/private/tmp/x");
+    }
+
+    /// 후행 구분자 변형(`Z:\docs\`)에서 suffix 조인이 오염되지 않아야 한다
+    /// (`Z:\docsa.txt` 방지). 이미 canonical인 rows는 no-op.
+    #[test]
+    fn trailing_separator_variant_joins_cleanly() {
+        let (_dir, conn) = test_db();
+        conn.execute(
+            "INSERT INTO watched_folders (path) VALUES (?)",
+            params![r"Z:\docs\"],
+        )
+        .unwrap();
+        let fid = insert_file(&conn, r"Z:\docs\a.txt", Some(1));
+
+        reconcile_with_canonical(&conn, Path::new(r"Z:\docs\"), Path::new(r"Z:\docs"), None)
+            .unwrap();
+
+        let p: String = conn
+            .query_row("SELECT path FROM files WHERE id = ?", [fid], |r| r.get(0))
+            .unwrap();
+        assert_eq!(p, r"Z:\docs\a.txt", "이미 canonical 표현인 row는 불변");
+        let wf: String = conn
+            .query_row("SELECT path FROM watched_folders", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(wf, r"Z:\docs", "폴더 row는 canonical로 교체");
     }
 
     /// 하위 폴더 suffix + 구분자 혼용(`/`)도 프리픽스 스왑이 보존한다
