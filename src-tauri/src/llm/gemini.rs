@@ -59,11 +59,17 @@ impl GeminiClient {
             if let Some(err) = json["error"]["message"].as_str() {
                 return Err(err.to_string());
             }
+            if let Some(block) = json["promptFeedback"]["blockReason"].as_str() {
+                return Err(format!("프롬프트가 차단되었습니다 ({})", block));
+            }
             if let Some(reason) = json["candidates"][0]["finishReason"].as_str() {
                 if reason == "SAFETY" {
                     return Err("안전 필터에 의해 응답이 차단되었습니다".to_string());
                 }
             }
+            // 에러도 차단 사유도 없는 빈 응답 — 스트리밍 경로·openai.rs와 동일하게
+            // "조용한 빈 요약" 으로 새지 않도록 명시적 에러.
+            return Err("응답이 생성되지 않았습니다".to_string());
         }
 
         let prompt_tokens = json["usageMetadata"]["promptTokenCount"]
@@ -236,5 +242,56 @@ impl LlmProvider for GeminiClient {
             prompt_tokens,
             completion_tokens,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_response_normal_text() {
+        let json = serde_json::json!({
+            "candidates": [{"content": {"parts": [{"text": "요약 결과"}]}}],
+            "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5}
+        });
+        let r = GeminiClient::parse_response(&json).unwrap();
+        assert_eq!(r.text, "요약 결과");
+        assert_eq!(r.prompt_tokens, Some(10));
+        assert_eq!(r.completion_tokens, Some(5));
+    }
+
+    #[test]
+    fn parse_response_error_message() {
+        let json = serde_json::json!({"error": {"message": "quota exceeded"}});
+        assert_eq!(
+            GeminiClient::parse_response(&json).unwrap_err(),
+            "quota exceeded"
+        );
+    }
+
+    #[test]
+    fn parse_response_prompt_blocked() {
+        // 프롬프트 차단 시 candidates 자체가 없고 promptFeedback만 옴
+        let json = serde_json::json!({"promptFeedback": {"blockReason": "SAFETY"}});
+        let err = GeminiClient::parse_response(&json).unwrap_err();
+        assert!(err.contains("차단"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_response_finish_safety() {
+        let json = serde_json::json!({
+            "candidates": [{"finishReason": "SAFETY"}]
+        });
+        let err = GeminiClient::parse_response(&json).unwrap_err();
+        assert!(err.contains("안전 필터"), "got: {err}");
+    }
+
+    #[test]
+    fn parse_response_empty_without_reason_is_error() {
+        // 무증상 빈 응답이 Ok("")로 새면 UI에 빈 요약이 조용히 표시된다
+        let json = serde_json::json!({"candidates": []});
+        let err = GeminiClient::parse_response(&json).unwrap_err();
+        assert!(err.contains("생성되지"), "got: {err}");
     }
 }

@@ -14,6 +14,7 @@ pub struct GenerateConfig {
 }
 
 /// LLM 응답
+#[derive(Debug)]
 pub struct LlmResponse {
     pub text: String,
     pub prompt_tokens: Option<u32>,
