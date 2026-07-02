@@ -107,6 +107,7 @@ pub fn index_folder_fts_only(
     max_file_size_mb: u64,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
+    vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -118,6 +119,7 @@ pub fn index_folder_fts_only(
         false,
         excluded_dirs,
         ocr_engine,
+        vector_index,
     )
 }
 
@@ -132,6 +134,7 @@ pub fn resume_folder_fts(
     max_file_size_mb: u64,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
+    vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
         conn,
@@ -143,6 +146,7 @@ pub fn resume_folder_fts(
         true,
         excluded_dirs,
         ocr_engine,
+        vector_index,
     )
 }
 
@@ -157,6 +161,7 @@ fn index_folder_fts_impl(
     skip_indexed: bool,
     excluded_dirs: &[String],
     ocr_engine: Option<Arc<OcrEngine>>,
+    vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
 
@@ -464,6 +469,7 @@ fn index_folder_fts_impl(
                                     &path,
                                     document,
                                     FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+                                    vector_index.as_deref(),
                                 )
                             }));
 
@@ -622,6 +628,7 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
     path: &Path,
     document: ParsedDocument,
     tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
 ) -> Result<usize, IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -658,6 +665,25 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
         Some(modified_at),
     ) {
         tracing::warn!("lineage assign failed for {}: {}", path_str, e);
+    }
+
+    // 재인덱싱 시 구 청크의 벡터를 먼저 제거 (이슈 #34 후속).
+    // chunks.id(rowid)는 AUTOINCREMENT가 아니라 삭제된 id가 재사용될 수 있는데,
+    // 벡터를 남겨두면 vector_worker의 contains_chunk 스킵이 옛 내용의 임베딩을
+    // 새 청크에 오귀속시킨다. 재사용이 안 되어도 고아 벡터가 usearch에 누적된다.
+    // (제거가 커밋 전이라 강제종료+롤백 교차 시 벡터 누락 가능성이 있으나,
+    //  이는 다음 재인덱싱에서 회복되는 "누락"이지 "오답"이 아니다.)
+    if let Some(vi) = vector_index {
+        match db::get_chunk_ids_for_file(conn, file_id) {
+            Ok(old_chunk_ids) => {
+                for chunk_id in old_chunk_ids {
+                    if let Err(e) = vi.remove(chunk_id) {
+                        tracing::debug!("stale vector remove failed {}: {}", chunk_id, e);
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("stale vector 조회 실패 {}: {}", path_str, e),
+        }
     }
 
     // _no_tx 버전 사용: 호출자(index_folder_fts_only)가 이미 트랜잭션을 관리하므로
@@ -924,6 +950,7 @@ pub(crate) fn index_file_fts_only_no_tx(
     conn: &Connection,
     path: &Path,
     ocr_engine: Option<&OcrEngine>,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
 ) -> Result<IndexResult, IndexError> {
     let document = match parse_file(path, ocr_engine) {
         Ok(doc) => doc,
@@ -946,6 +973,7 @@ pub(crate) fn index_file_fts_only_no_tx(
         path,
         document,
         FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+        vector_index,
     )?;
 
     Ok(IndexResult {
@@ -993,4 +1021,79 @@ pub enum IndexError {
     EmbeddingError(String),
     #[error("Vector error: {0}")]
     VectorError(String),
+}
+
+#[cfg(test)]
+mod stale_vector_tests {
+    use super::*;
+    use crate::parsers::{DocumentChunk, DocumentMetadata, ParsedDocument};
+    use crate::search::vector::VectorIndex;
+
+    fn doc(text: &str) -> ParsedDocument {
+        ParsedDocument {
+            content: text.to_string(),
+            metadata: DocumentMetadata {
+                title: None,
+                author: None,
+                created_at: None,
+                page_count: None,
+            },
+            chunks: vec![DocumentChunk {
+                content: text.to_string(),
+                start_offset: 0,
+                end_offset: text.len(),
+                page_number: None,
+                page_end: None,
+                location_hint: None,
+            }],
+        }
+    }
+
+    /// 이슈 #34 후속: 재저장(재인덱싱) 시 구 청크의 벡터를 제거하지 않으면
+    /// chunks.id(rowid) 재사용 시 옛 임베딩이 새 내용에 오귀속된다.
+    #[test]
+    fn resave_removes_stale_chunk_vectors() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("t.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        crate::db::migrate_schema(&conn, &db_path).unwrap();
+
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "v1 내용").unwrap();
+
+        // 1차 저장 (벡터 인덱스 없이) → 청크 id 확보
+        save_document_to_db_fts_only_no_tx(&conn, &file, doc("v1 내용"), None, None).unwrap();
+        let file_id: i64 = conn
+            .query_row(
+                "SELECT id FROM files WHERE path = ?",
+                [file.to_string_lossy()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let old_ids = crate::db::get_chunk_ids_for_file(&conn, file_id).unwrap();
+        assert!(!old_ids.is_empty());
+
+        // 구 청크 임베딩 등록
+        let vi = VectorIndex::new(&dir.path().join("vec.usearch")).unwrap();
+        let emb = vec![0.1_f32; crate::embedder::EMBEDDING_DIM];
+        for id in &old_ids {
+            vi.add(*id, &emb).unwrap();
+        }
+        assert!(old_ids.iter().all(|id| vi.contains_chunk(*id)));
+
+        // 2차 저장 (재인덱싱) — 구 벡터가 제거되어야 rowid 재사용 시 오귀속이 없다
+        std::fs::write(&file, "v2 완전히 다른 내용").unwrap();
+        save_document_to_db_fts_only_no_tx(
+            &conn,
+            &file,
+            doc("v2 완전히 다른 내용"),
+            None,
+            Some(&vi),
+        )
+        .unwrap();
+        assert!(
+            old_ids.iter().all(|id| !vi.contains_chunk(*id)),
+            "재저장 후 구 청크 벡터가 남아있음"
+        );
+    }
 }

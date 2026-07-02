@@ -540,7 +540,8 @@ impl WatchManager {
                         continue;
                     }
                     let ocr_ref = ctx.ocr_engine.as_deref();
-                    match pipeline::index_file_fts_only_no_tx(&conn, path, ocr_ref) {
+                    let vi_ref = ctx.vector_index.get().map(|a| a.as_ref());
+                    match pipeline::index_file_fts_only_no_tx(&conn, path, ocr_ref, vi_ref) {
                         Ok(result) => {
                             indexed_paths.push(result.file_path.clone());
                             tracing::info!(
