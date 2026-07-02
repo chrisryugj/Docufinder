@@ -86,12 +86,20 @@ export function SearchTab({ settings, onChange }: TabProps) {
 
   useEffect(() => {
     let unlisten: UnlistenFn | undefined;
+    let cancelled = false;
     listen<string>("formula-model-progress", (ev) => {
       setFormulaProgress(ev.payload);
     })
-      .then((fn) => { unlisten = fn; })
+      .then((fn) => {
+        // 등록 완료 전 unmount(설정 탭 전환)면 cleanup이 no-op — 즉시 해제해 고아 방지
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
       .catch(() => {});
-    return () => { if (unlisten) unlisten(); };
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
   }, []);
 
   const handleDownloadFormula = useCallback(async () => {

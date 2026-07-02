@@ -757,6 +757,30 @@ export const PreviewPanel = memo(function PreviewPanel({
     [searchRegex, activeFindRegex, handleOpenUrl],
   );
 
+  // 본문 전처리 캐시 — stripHtmlForMarkdown은 전문 대상 정규식 다중 패스라
+  // 렌더마다 실행하면 대형 문서에서 키 입력마다 수십~수백 ms를 태운다
+  const processedMarkdown = useMemo(
+    () => (markdown ? stripHtmlForMarkdown(markdown) : null),
+    [markdown],
+  );
+
+  // 본문 파싱 캐시 — react-markdown은 memo가 아니라 부모 리렌더마다 remark/katex
+  // 전체를 재파싱한다. 찾기 입력(디바운스 전 키스트로크)·매치 이동·메뉴 토글 등
+  // 무관한 상태 변화에 수만 줄 문서를 재파싱하지 않도록, 내용과 하이라이트
+  // 확정값(searchRegex/activeFindRegex)이 바뀔 때만 재구성한다.
+  const previewMarkdownNode = useMemo(() => {
+    if (processedMarkdown === null) return null;
+    return (
+      <ReactMarkdown
+        remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={previewMarkdownComponents}
+      >
+        {processedMarkdown}
+      </ReactMarkdown>
+    );
+  }, [processedMarkdown, previewMarkdownComponents]);
+
   // ── 찾기 바 동작 ──
 
   const closeFind = useCallback(() => {
@@ -1149,15 +1173,7 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {/* 마크다운 렌더링 */}
         {!loading && !error && markdown && (
-          <div className="doc-preview px-6 py-5">
-            <ReactMarkdown
-              remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={previewMarkdownComponents}
-            >
-              {stripHtmlForMarkdown(markdown)}
-            </ReactMarkdown>
-          </div>
+          <div className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
         )}
       </div>
 

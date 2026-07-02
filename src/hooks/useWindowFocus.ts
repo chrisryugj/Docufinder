@@ -62,15 +62,21 @@ export function useWindowFocus(
       });
     };
 
+    let cancelled = false;
     const setup = async () => {
       const window = getCurrentWindow();
       try {
-        unlisten = await window.onFocusChanged(({ payload }) => {
+        const fn = await window.onFocusChanged(({ payload }) => {
           if (payload) {
             resetSearchFocus();
             maybeTriggerSync();
           }
         });
+        // 이 effect는 settingsOpen 변경마다 재등록된다 — 등록 완료 전에 cleanup이
+        // 먼저 지나가면(설정 빠른 개폐) 고아 리스너가 누적돼 포커스 리셋/sync가
+        // 중복 실행된다. 등록 직후 취소 여부 확인.
+        if (cancelled) fn();
+        else unlisten = fn;
       } catch (err) {
         logToBackend("warn", "Failed to register focus handler", String(err), "App");
       }
@@ -79,6 +85,7 @@ export function useWindowFocus(
     setup();
 
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [settingsOpen, searchInputRef]);

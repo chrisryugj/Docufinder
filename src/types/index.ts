@@ -39,7 +39,7 @@ export interface WatchedFolderInfo {
 /** 인덱싱 진행률 이벤트 (1단계: FTS) */
 export interface IndexingProgress {
   /** 현재 진행 단계 */
-  phase: "preparing" | "scanning" | "parsing" | "indexing" | "completed" | "cancelled";
+  phase: "preparing" | "scanning" | "parsing" | "indexing" | "completed" | "cancelled" | "error";
   /** 전체 파일 수 */
   total_files: number;
   /** 처리된 파일 수 */

@@ -132,14 +132,23 @@ export function useIndexStatus(): UseIndexStatusReturn {
   // 진행률 이벤트 리스너
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    // 종단(completed/cancelled/error) 후 진행률 지연 초기화 타이머.
+    // 취소하지 않으면 폴더 A 완료 2초 뒤 타이머가 발화해 이미 시작된
+    // 폴더 B의 진행률을 지워 상태바가 유휴로 잘못 표시된다 (다중 폴더 추가).
+    let clearTimer: ReturnType<typeof setTimeout> | null = null;
 
     const setupListener = async () => {
       try {
-        unlisten = await listen<IndexingProgress>("indexing-progress", (event) => {
+        const fn = await listen<IndexingProgress>("indexing-progress", (event) => {
           const p = event.payload;
           // 배치 인덱싱 중에는 단일 progress 무시 (DriveIndexingPanel이 담당)
           if (autoIndexingRef.current) {
             return;
+          }
+          if (clearTimer) {
+            clearTimeout(clearTimer);
+            clearTimer = null;
           }
           setProgress(p);
 
@@ -149,13 +158,19 @@ export function useIndexStatus(): UseIndexStatusReturn {
             setCancelledFolderPath(null);
           }
 
-          // 완료/취소 시 인덱싱 상태 업데이트
-          if (p.phase === "completed" || p.phase === "cancelled") {
+          // 완료/취소/에러 시 인덱싱 상태 업데이트
+          if (p.phase === "completed" || p.phase === "cancelled" || p.phase === "error") {
             setIsIndexing(false);
             // 잠시 후 진행률 초기화
-            setTimeout(() => setProgress(null), 2000);
+            clearTimer = setTimeout(() => setProgress(null), 2000);
           }
         });
+        // 등록 완료 전 unmount됐으면 즉시 해제 (고아 리스너 방지)
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
       } catch {
         // 리스너 등록 실패 — 진행률 표시 안 됨 (기능 저하)
       }
@@ -164,6 +179,8 @@ export function useIndexStatus(): UseIndexStatusReturn {
     setupListener();
 
     return () => {
+      cancelled = true;
+      if (clearTimer) clearTimeout(clearTimer);
       if (unlisten) unlisten();
     };
   }, []);
@@ -250,6 +267,9 @@ export function useIndexStatus(): UseIndexStatusReturn {
           const result = await indexSingleFolder(path);
           results.push(result);
         } catch (err) {
+          // 백엔드가 종단 이벤트 없이 reject하면 마지막 진행률(phase=scanning 등)이
+          // 남아 상태바가 "인덱싱 중"에 고착된다 — 실패 시 진행률도 초기화
+          setProgress(null);
           results.push({
             success: false,
             indexed_count: 0,
@@ -267,6 +287,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     } catch (err) {
       setError(`폴더 추가 실패: ${getErrorMessage(err)}`);
       setIsIndexing(false);
+      setProgress(null);
       return null;
     }
   }, [refreshStatus, indexSingleFolder]);
@@ -300,6 +321,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
     } catch (err) {
       setError(`폴더 추가 실패: ${getErrorMessage(err)}`);
       setIsIndexing(false);
+      setProgress(null);
       return null;
     }
   }, [refreshStatus, indexSingleFolder]);

@@ -150,6 +150,23 @@ pub(super) struct IndexingProgress {
 // FTS Progress Callback Helper
 // ============================================
 
+/// 인덱싱 실패 시 종단 진행률 이벤트.
+/// 파이프라인이 종단 이벤트("completed"/"cancelled") 없이 Err로 끝나면 프론트
+/// 상태바가 마지막 phase("scanning" 등)에 고착된다 — 명시적 "error" phase로 닫는다.
+pub(super) fn emit_error_progress(app_handle: &AppHandle, folder_path: &str, error: &str) {
+    let _ = app_handle.emit(
+        "indexing-progress",
+        &IndexingProgress {
+            phase: "error".to_string(),
+            total_files: 0,
+            processed_files: 0,
+            current_file: None,
+            folder_path: folder_path.to_string(),
+            error: Some(error.to_string()),
+        },
+    );
+}
+
 pub(super) fn create_fts_progress_callback(
     app_handle: AppHandle,
 ) -> Box<dyn Fn(FtsIndexingProgress) + Send + Sync> {

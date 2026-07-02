@@ -27,7 +27,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   const isBatchRunning = batch?.is_running ?? false;
-  const isIndexing = !isBatchRunning && progress && progress.phase !== "completed" && progress.phase !== "cancelled";
+  const isIndexing = !isBatchRunning && progress && progress.phase !== "completed" && progress.phase !== "cancelled" && progress.phase !== "error";
   const percent = progress && progress.total_files > 0
     ? Math.round((progress.processed_files / progress.total_files) * 100)
     : 0;
