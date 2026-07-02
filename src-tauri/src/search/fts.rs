@@ -541,8 +541,10 @@ fn search_like_fallback(
     filter: &MetaFilter,
 ) -> Result<Vec<FtsResult>, rusqlite::Error> {
     // 인덱싱 content(정규화됨)와 매칭되도록 쿼리도 동일 정규화 (sanitize_fts_query 와 동일 기준).
+    // 사용자 입력의 %/_ 는 와일드카드가 아니라 리터럴로 — `_` 검색이 전 청크에
+    // 매칭되는 오탐 방지. ESCAPE 절은 아래 SQL의 `LIKE ? ESCAPE '\'`.
     let normalized = crate::utils::normalize_text(query);
-    let like_pattern = format!("%{}%", normalized.trim());
+    let like_pattern = format!("%{}%", crate::db::escape_like_pattern(normalized.trim()));
 
     let (scope_clause, scope_pattern) =
         match crate::utils::folder_scope::scope_like_pattern(folder_scope.unwrap_or("")) {
@@ -563,7 +565,7 @@ fn search_like_fallback(
             '' as snippet, f.modified_at
          FROM chunks c
          JOIN files f ON f.id = c.file_id
-         WHERE c.content LIKE ?
+         WHERE c.content LIKE ? ESCAPE '\\'
          {scope}{meta}
          ORDER BY f.modified_at DESC
          LIMIT ?",

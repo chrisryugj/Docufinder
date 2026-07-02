@@ -534,10 +534,15 @@ fn call_kordoc_sync(
         .find('{')
         .ok_or_else(|| ParseError::ParseError("kordoc 출력에 JSON이 없습니다".to_string()))?;
     if json_start > 0 {
+        // 200번째 바이트가 멀티바이트 문자 중간이면 slice가 panic — 문자 경계로 내림
+        let mut preview_end = json_start.min(200);
+        while !output.is_char_boundary(preview_end) {
+            preview_end -= 1;
+        }
         debug!(
             "kordoc stdout에 JSON 앞 {}바이트 garbage 제거: {:?}",
             json_start,
-            &output[..json_start.min(200)]
+            &output[..preview_end]
         );
     }
     Ok(output[json_start..].to_string())

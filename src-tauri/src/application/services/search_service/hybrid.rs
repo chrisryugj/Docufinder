@@ -342,6 +342,10 @@ impl SearchService {
             });
         }
 
+        // RRF 융합은 FTS top-N ∪ 벡터 top-N 이라 최대 2×max_results까지 부풀 수 있다
+        // — 요청 상한으로 절단 (RRF 정렬 후이므로 상위권 유지). enrichment 비용도 절감.
+        results.truncate(max_results);
+
         // 시맨틱 enrichment
         if let Some(qe) = query_embedding.as_ref() {
             if let Err(e) = self.enrich_semantic_results(&mut results, qe) {

@@ -381,7 +381,13 @@ pub fn date_filter_range(filter: &DateFilter) -> (i64, i64) {
             (s, e)
         }
         DateFilter::Month(m) => {
-            let year = today.year();
+            // "12월 회의록"을 1월에 검색하면 의도는 직전 12월 — 미래 월이면 작년으로.
+            // (미래 월 범위는 파일이 존재할 수 없어 항상 0건이 됐다)
+            let year = if *m > today.month() {
+                today.year() - 1
+            } else {
+                today.year()
+            };
             let first = chrono::NaiveDate::from_ymd_opt(year, *m, 1);
             let last = if *m == 12 {
                 chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1).map(|d| d - Duration::days(1))

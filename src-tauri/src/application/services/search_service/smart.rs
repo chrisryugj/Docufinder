@@ -29,15 +29,18 @@ impl SearchService {
         let mut where_clauses: Vec<String> = vec!["f.modified_at IS NOT NULL".to_string()];
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-        // 폴더 스코프
+        // 폴더 스코프 — FTS 경로(fts.rs)와 동일한 공용 패턴 사용.
+        // 자체 prefix LIKE는 segment 경계가 없어 `2024` 스코프가 `2024-archive`까지
+        // 포함(sibling 누수)하고, 구분자 정규화가 없어 `/` 표기 스코프가
+        // Windows `\` 저장 경로와 불일치해 0건이 되는 문제가 있었다.
         if let Some(s) = folder_scope {
-            let escaped = s
-                .to_lowercase()
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            params.push(Box::new(format!("{}%", escaped)));
-            where_clauses.push(format!("LOWER(f.path) LIKE ?{} ESCAPE '\\'", params.len()));
+            if let Some(pat) = crate::utils::folder_scope::scope_like_pattern(s) {
+                params.push(Box::new(pat));
+                where_clauses.push(format!(
+                    "REPLACE(LOWER(f.path), '\\', '/') LIKE ?{} ESCAPE '\\'",
+                    params.len()
+                ));
+            }
         }
 
         // 날짜 필터 → modified_at 범위 (후처리와 동일 경계 공유)
