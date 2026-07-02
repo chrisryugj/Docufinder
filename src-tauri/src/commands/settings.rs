@@ -428,10 +428,27 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
     let settings_path = get_settings_path(app_data_dir);
 
     let mut settings: Settings = if settings_path.exists() {
-        let content = fs::read_to_string(&settings_path).ok();
-        content
-            .and_then(|c| serde_json::from_str(&c).ok())
-            .unwrap_or_default()
+        match fs::read_to_string(&settings_path).map(|c| serde_json::from_str::<Settings>(&c)) {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                // 손상 파일을 기본값으로 조용히 대체하면 다음 저장에서 사용자 설정이
+                // 통째로 기본값으로 덮여 영구 소실된다 — 백업을 남기고 경고.
+                let backup = settings_path.with_extension("json.corrupt");
+                match fs::copy(&settings_path, &backup) {
+                    Ok(_) => {
+                        tracing::warn!("settings.json 파싱 실패({}), 손상본 백업: {:?}", e, backup)
+                    }
+                    Err(be) => {
+                        tracing::warn!("settings.json 파싱 실패({}), 백업도 실패: {}", e, be)
+                    }
+                }
+                Settings::default()
+            }
+            Err(e) => {
+                tracing::warn!("settings.json 읽기 실패({}), 기본값 사용", e);
+                Settings::default()
+            }
+        }
     } else {
         Settings::default()
     };
@@ -591,11 +608,6 @@ pub async fn update_settings(
         Some(k) => Some(k.to_string()),
     };
 
-    // API 키를 credentials.json에 분리 저장
-    let api_key_for_cache = effective_key.clone();
-    save_api_key(&app_data_dir, effective_key.as_deref())
-        .map_err(|e| ApiError::SettingsSave(format!("credentials save failed: {}", e)))?;
-
     // settings.json에는 API 키 없이 저장
     let mut settings_for_file = settings.clone();
     settings_for_file.ai_api_key = None;
@@ -607,6 +619,13 @@ pub async fn update_settings(
     let tmp_path = settings_path.with_extension("json.tmp");
     fs::write(&tmp_path, &content).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
     fs::rename(&tmp_path, &settings_path).map_err(|e| ApiError::SettingsSave(e.to_string()))?;
+
+    // API 키는 settings.json 커밋 성공 후 저장 — 역순이면 settings 실패 시
+    // "디스크=새 키 / 메모리=옛 키 / 설정=옛 값" 3-way 불일치로 재시작 전까지
+    // LLM이 옛 키로 호출된다. 이 순서에선 실패해도 키만 옛 상태(재시도로 회복).
+    let api_key_for_cache = effective_key.clone();
+    save_api_key(&app_data_dir, effective_key.as_deref())
+        .map_err(|e| ApiError::SettingsSave(format!("credentials save failed: {}", e)))?;
 
     // 인메모리 캐시 갱신 (API 키 포함)
     settings.ai_api_key = api_key_for_cache;

@@ -360,30 +360,35 @@ pub async fn check_github_release(repo: String) -> Result<GithubReleaseInfo, Str
     }
 
     let url = format!("https://api.github.com/repos/{}/releases/latest", repo);
-    let config = ureq::Agent::config_builder()
-        .timeout_connect(Some(std::time::Duration::from_secs(5)))
-        .timeout_recv_body(Some(std::time::Duration::from_secs(10)))
-        .build();
-    let agent = ureq::Agent::new_with_config(config);
 
-    let mut response = agent
-        .get(&url)
-        // GitHub API 는 User-Agent 가 없으면 403. 식별자에 버전 포함.
-        .header("User-Agent", "Docufinder-Updater")
-        .header("Accept", "application/vnd.github+json")
-        .call()
-        .map_err(|e| match e {
-            ureq::Error::StatusCode(404) => "릴리즈 정보를 찾을 수 없습니다.".to_string(),
-            ureq::Error::StatusCode(s) => format!("GitHub API 오류 (HTTP {})", s),
-            _ => "GitHub API 연결 실패 (네트워크 확인)".to_string(),
-        })?;
+    // ureq는 동기 HTTP — async 커맨드에서 직접 부르면 DNS 지연/응답 스톨 동안
+    // tokio worker를 점유해 다른 IPC가 밀린다. telemetry.rs와 동일하게 spawn_blocking.
+    tokio::task::spawn_blocking(move || {
+        let config = ureq::Agent::config_builder()
+            .timeout_connect(Some(std::time::Duration::from_secs(5)))
+            .timeout_recv_body(Some(std::time::Duration::from_secs(10)))
+            .build();
+        let agent = ureq::Agent::new_with_config(config);
 
-    let info: GithubReleaseInfo = response
-        .body_mut()
-        .read_json()
-        .map_err(|e| format!("GitHub API 응답 파싱 실패: {}", e))?;
+        let mut response = agent
+            .get(&url)
+            // GitHub API 는 User-Agent 가 없으면 403. 식별자에 버전 포함.
+            .header("User-Agent", "Docufinder-Updater")
+            .header("Accept", "application/vnd.github+json")
+            .call()
+            .map_err(|e| match e {
+                ureq::Error::StatusCode(404) => "릴리즈 정보를 찾을 수 없습니다.".to_string(),
+                ureq::Error::StatusCode(s) => format!("GitHub API 오류 (HTTP {})", s),
+                _ => "GitHub API 연결 실패 (네트워크 확인)".to_string(),
+            })?;
 
-    Ok(info)
+        response
+            .body_mut()
+            .read_json::<GithubReleaseInfo>()
+            .map_err(|e| format!("GitHub API 응답 파싱 실패: {}", e))
+    })
+    .await
+    .map_err(|e| format!("태스크 실패: {}", e))?
 }
 
 /// 프론트엔드 에러를 Rust 로그 파일에 기록
