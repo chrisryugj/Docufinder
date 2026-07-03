@@ -14,6 +14,7 @@ import { TagInput } from "../ui/TagInput";
 import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 import { cleanPath } from "../../utils/cleanPath";
+import { MOD_KEY } from "../../utils/platform";
 import { useUIContext } from "../../contexts/UIContext";
 
 // ─── Types ─────────────────────────────────────────────
@@ -835,15 +836,15 @@ export const PreviewPanel = memo(function PreviewPanel({
     return () => clearTimeout(timer);
   }, [findInput]);
 
-  // Ctrl+F 토글 — 패널이 열려 있고 포커스/호버 컨텍스트일 때만 (전역 Ctrl+F 충돌 방지)
+  // Ctrl/Cmd+F 토글 — 미리보기가 열려 있으면 포커스 위치와 무관하게 동작.
+  // (이전엔 패널 포커스/호버를 요구해 결과 리스트에 마우스를 둔 채 누르면
+  //  무반응이라 "안 먹는" 것으로 보였다. 앱 내 다른 Ctrl+F 소비자가 없고
+  //  Tauri WebView 에는 브라우저 기본 찾기도 없어 충돌 대상이 없다.)
   useEffect(() => {
     if (!filePath) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
       if (e.key.toLowerCase() !== "f" && e.code !== "KeyF") return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (!panel.contains(document.activeElement) && !panel.matches(":hover")) return;
       e.preventDefault();
       setFindOpen((v) => !v);
     };
@@ -995,7 +996,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             <button
               onClick={() => setFindOpen((v) => !v)}
               className={`p-1.5 rounded-lg transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-              title="문서 내 찾기 (Ctrl+F)"
+              title={`문서 내 찾기 (${MOD_KEY}+F)`}
               aria-label="문서 내 찾기"
             >
               <Search size={14} />

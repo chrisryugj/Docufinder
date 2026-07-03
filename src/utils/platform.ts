@@ -8,6 +8,9 @@ const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
 export const isMac = /Mac/i.test(ua);
 export const isWindows = !isMac && /Win/i.test(ua);
 
+/** 단축키 modifier 표기 — 코드는 ctrlKey/metaKey 둘 다 받지만 표기는 OS 관례를 따른다 */
+export const MOD_KEY = isMac ? "⌘" : "Ctrl";
+
 /** 파일 매니저 이름 (탐색기 / Finder) */
 export const FILE_MANAGER_NAME = isMac ? "Finder" : "탐색기";
 
