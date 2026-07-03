@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Folder, HardDrive } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { Tooltip } from "../ui/Tooltip";
@@ -198,7 +199,8 @@ function FolderItem({
   onAdd: (path: string) => void;
   onContextMenu: (e: React.MouseEvent, path: string) => void;
 }) {
-  const icon = folder.category === "drive" ? "\uD83D\uDCBE" : "\uD83D\uDCC1";
+  // 이모지(폴더/디스켓)는 OS가 3D 스타일로 렌더해 플랫 라인 아이콘 체계와 어긋난다
+  const Icon = folder.category === "drive" ? HardDrive : Folder;
 
   return (
     <Tooltip content="클릭하여 이 폴더를 검색 대상에 추가합니다" position="right" delay={400} usePortal>
@@ -209,7 +211,7 @@ function FolderItem({
         style={{ color: "var(--color-sidebar-muted)", opacity: 0.75 }}
         data-context-menu
       >
-        <span className="text-[13px]">{icon}</span>
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.75} />
         <span className="truncate flex-1 text-left">{folder.label}</span>
         <svg
           className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"

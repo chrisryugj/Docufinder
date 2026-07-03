@@ -17,8 +17,8 @@ export const SmartFolders = memo(function SmartFolders({
   if (folders.length === 0) {
     return (
       <div
-        className="flex items-start gap-2 text-xs py-2 px-3 leading-relaxed"
-        style={{ color: "var(--color-sidebar-muted)" }}
+        className="flex items-start gap-2 text-[11px] py-2 px-3 leading-relaxed"
+        style={{ color: "var(--color-sidebar-section)" }}
       >
         <FolderSearch className="flex-shrink-0 w-3.5 h-3.5 mt-0.5" aria-hidden="true" />
         <span>자주 쓰는 검색 조건을 저장하면 여기서 한 번에 다시 실행할 수 있어요</span>

@@ -181,7 +181,7 @@ export const Sidebar = memo(function Sidebar({
                       className={`w-3.5 h-3.5 transition-transform duration-150 ${isFoldersExpanded ? "rotate-90" : ""}`}
                     />
                     인덱싱된 폴더
-                    <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
+                    <span className="font-normal opacity-60">
                       ({watchedFolders.length})
                     </span>
                   </button>
@@ -244,7 +244,7 @@ export const Sidebar = memo(function Sidebar({
                       className={`w-3.5 h-3.5 transition-transform duration-150 ${isSmartFoldersExpanded ? "rotate-90" : ""}`}
                     />
                     스마트 폴더
-                    <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
+                    <span className="font-normal opacity-60">
                       ({smartFolders.length})
                     </span>
                   </button>
@@ -283,7 +283,7 @@ export const Sidebar = memo(function Sidebar({
                       className={`w-3.5 h-3.5 transition-transform duration-150 ${isSearchesExpanded ? "rotate-90" : ""}`}
                     />
                     최근 검색
-                    <span className="font-normal" style={{ color: "var(--color-sidebar-muted)" }}>
+                    <span className="font-normal opacity-60">
                       ({recentSearches.length})
                     </span>
                   </button>

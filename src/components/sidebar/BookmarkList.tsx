@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Bookmark, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Trash2, ChevronRight } from "lucide-react";
 import { FileIcon } from "../ui/FileIcon";
 import type { BookmarkInfo } from "../../hooks/useBookmarks";
 
@@ -18,22 +18,25 @@ export const BookmarkList = memo(function BookmarkList({
 
   return (
     <section className="pt-1 pb-3">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold tracking-wider uppercase text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-      >
-        {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <Bookmark size={12} />
-        <span>북마크</span>
-        {bookmarks.length > 0 && (
-          <span className="ml-auto text-[10px] opacity-60">{bookmarks.length}</span>
-        )}
-      </button>
+      {/* 다른 섹션(인덱싱된 폴더·스마트 폴더·최근 검색) 헤더와 동일한 시각 언어 */}
+      <div className="flex items-center justify-between px-1 pb-1 mb-1">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 text-xs font-semibold hover-sidebar-section"
+          aria-expanded={expanded}
+        >
+          <ChevronRight
+            className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          />
+          북마크
+          <span className="font-normal opacity-60">({bookmarks.length})</span>
+        </button>
+      </div>
 
       {expanded && (
         <div className="mt-1">
           {bookmarks.length === 0 ? (
-            <p className="px-4 py-2 text-[11px] text-[var(--color-text-muted)]">
+            <p className="px-3 py-2 text-[11px]" style={{ color: "var(--color-sidebar-section)" }}>
               북마크가 없습니다
             </p>
           ) : (
