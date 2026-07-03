@@ -283,20 +283,24 @@ fn find_similar_duplicates(
         return Ok(vec![]);
     }
 
-    // 문서별 임베딩 생성 (첫 번째 청크 기반)
-    let mut doc_embeddings: Vec<(usize, Vec<f32>)> = Vec::new();
+    // 문서별 임베딩 생성 (첫 번째 청크 기반) — 단건 embed 를 문서 수만큼 반복하는
+    // 대신 일괄 embed_batch (T1-6). embed() 내부의 normalize_text 를 동일 적용한다.
     // 최대 200개 문서만 검사 (성능)
     let check_limit = docs.len().min(200);
-    for (i, doc) in docs.iter().take(check_limit).enumerate() {
-        let text = &doc.6;
-        if text.len() < 20 {
-            continue; // 너무 짧은 문서 스킵
+    let eligible: Vec<usize> = (0..check_limit)
+        .filter(|&i| docs[i].6.len() >= 20) // 너무 짧은 문서 스킵
+        .collect();
+    let texts: Vec<String> = eligible
+        .iter()
+        .map(|&i| crate::utils::normalize_text(&docs[i].6))
+        .collect();
+    let doc_embeddings: Vec<(usize, Vec<f32>)> = match embedder.embed_batch(&texts) {
+        Ok(embeddings) => eligible.into_iter().zip(embeddings).collect(),
+        Err(e) => {
+            tracing::warn!("중복 검사 임베딩 실패: {}", e);
+            Vec::new()
         }
-        match embedder.embed(text, false) {
-            Ok(embedding) => doc_embeddings.push((i, embedding)),
-            Err(_) => continue,
-        }
-    }
+    };
 
     // 각 문서의 임베딩으로 벡터 검색 → 유사 문서 그룹 생성
     let mut processed: std::collections::HashSet<usize> = std::collections::HashSet::new();

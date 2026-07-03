@@ -267,18 +267,30 @@ pub async fn get_lineage_diff(
             });
         }
 
-        // 임베딩 (배치 가능하면 효율적, 없으면 개별)
+        // 임베딩 — 청크별 단건 embed 대신 파일당 일괄 embed_batch (T1-6).
+        // embed() 내부의 normalize_text 를 동일 적용. 짧은 청크(<20자)는 기존대로
+        // None 슬롯 유지, 배치 실패 시 전 슬롯 None (단건 시절의 전역 실패와 동일).
         let embed_chunks = |chunks: &[ChunkRow]| -> Vec<Option<Vec<f32>>> {
-            chunks
+            let mut out: Vec<Option<Vec<f32>>> = vec![None; chunks.len()];
+            let eligible: Vec<usize> = (0..chunks.len())
+                .filter(|&i| chunks[i].1.len() >= 20)
+                .collect();
+            if eligible.is_empty() {
+                return out;
+            }
+            let texts: Vec<String> = eligible
                 .iter()
-                .map(|(_, content, _, _)| {
-                    if content.len() < 20 {
-                        None
-                    } else {
-                        embedder.embed(content, false).ok()
+                .map(|&i| crate::utils::normalize_text(&chunks[i].1))
+                .collect();
+            match embedder.embed_batch(&texts) {
+                Ok(embeddings) => {
+                    for (&i, e) in eligible.iter().zip(embeddings) {
+                        out[i] = Some(e);
                     }
-                })
-                .collect()
+                }
+                Err(e) => tracing::warn!("버전 비교 임베딩 실패: {}", e),
+            }
+            out
         };
 
         let a_emb = embed_chunks(&a_chunks);
