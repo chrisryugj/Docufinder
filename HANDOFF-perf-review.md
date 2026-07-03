@@ -2,6 +2,59 @@
 
 작성: 2026-07-03 (맥미니) → **2026-07-03 맥북에서 전 항목 완료, v3.0.9 릴리스.**
 → **7차(실검증+UI/UX)도 2026-07-03 맥북에서 완료, v3.0.10 릴리스** — 아래 "✅ 7차 세션 결과 로그".
+→ **8차(SVG 레이아웃 미리보기)도 2026-07-04 맥북에서 완료** — 아래 "✅ 8차 세션 결과 로그". kordoc v3.14.0.
+
+---
+
+## 🔖 다음 세션(9차: 레이아웃 미리보기 심화 — docufinder + kordoc 동시) 프롬프트 — 이거 붙여넣고 시작
+
+```
+docufinder 9차 세션: 레이아웃 미리보기(레이아웃 보기 SVG) 심화 개선 — docufinder와
+kordoc 두 레포를 함께 수정한다. HANDOFF-perf-review.md 의 "✅ 8차 세션 결과 로그"와
+"🎨 8차 설계 노트" 먼저 읽기. 8차에서 "레이아웃 보기" 토글은 완성됐고(마크다운↔원본
+조판 SVG), kordoc v3.14.0 에서 로고 크롭·형광펜 정렬·다페이지·슬롯 정합까지 수정됨.
+
+목표: 원본 대비 렌더 충실도와 뷰어 사용성을 한 단계 더. 아래 후보를 검토·실측해
+공수(S/M/L)·효과와 함께 목록화하고, 구현 전 사용자에게 우선순위를 확정받는다
+(임의 대공사 금지). "둘다 같이" 이므로 kordoc(렌더 엔진)과 docufinder(뷰어)를
+짝지어 개선한다.
+
+[kordoc 렌더 충실도 후보]
+- 그리기 도형(rect/ellipse/line/polygon/arc/curv) 렌더 — 현재 경고 후 생략. 공문서
+  박스·화살표·조직도가 빠져 "원본과 다름"의 큰 원인. svg-render.ts drawObject 확장.
+- 수식(equation) 렌더 — 현재 생략. equation.ts 의 HULK→LaTeX 를 재사용해 텍스트/이미지로.
+- 페이지 걸친 표 분할 — 현재 시작 페이지에서 잘림(조판 캐시에 분할점 없음). 행 단위로
+  다음 페이지 이어 그리기 검토.
+- 다중 구역(section1+) — 현재 첫 구역만. 여러 section 이어붙이기.
+- charPr 경계 걸친 형광펜 매치 착색(현재 세그먼트가 스타일 단위라 미착색).
+
+[docufinder 뷰어 UX 후보]
+- 줌/팬 — fit-width ↔ fit-page ↔ 확대. 현재 width 100% 고정.
+- 페이지 네비게이션 — 다페이지 스택에서 페이지 점프/썸네일(data-page 속성 활용).
+- 레이아웃 뷰 내 찾기 — SVG 에 형광펜은 되나 매치 이동(이전/다음) 없음. 백엔드
+  render_layout_svg 가 highlight_query 로 rect 를 굽는 구조라, 활성 매치 강조는 프론트
+  재렌더 or SVG 내 nav 설계 필요.
+- 레이아웃 뷰 기본 선호 기억(설정), 마크다운↔레이아웃 스크롤 동기화.
+
+[성능]
+- kordoc persistent worker(T3-2 백로그) — 파일당 Node 콜드스타트(~0.1~0.3s) 제거.
+  별도 레포 큰 작업이라 이번엔 범위 밖일 수 있음(사용자 판단).
+
+진행: 후보 실측·스코핑 → 사용자 확정 → kordoc 먼저 수정·빌드 → 번들 재복사 →
+docufinder 뷰어 → 실 HWPX 데모로 CLI 래스터+앱 실물 검증.
+
+공통·함정(반드시):
+- ★kordoc 원격 main 은 맥미니가 병행 작업해 빠르게 앞선다(8차에 3.10→3.13 발산 겪음).
+  작업 시작 전 kordoc `git fetch` + rebase 필수, 버전은 원격 최신+1 로 재조정.
+- 번들 `src-tauri/resources/kordoc/` 는 gitignore(로컬만) — kordoc 수정 후 `npm run build`
+  하고 dist 를 번들로 재복사해야 앱에 반영(package.json 유지, .map/.cts/index.d.ts 제외).
+- 커밋은 두 레포 각각 main 직접, 커밋 전 cargo fmt --check(docufinder CI fmt 게이트).
+- 스크롤 로직 절대 불변. DESIGN.md 토큰 준수. 세션 끝에 HANDOFF 기록.
+- 검증: kordoc 은 CLI render → SVG 를 python 으로 페이지 추출 → qlmanage 래스터 → 눈 확인.
+  앱은 창이 트레이로 숨으면 `./target/debug/docufinder` 재실행(single-instance)으로 복귀,
+  검색창은 CGEvent 클릭+ASCII keystroke 는 되나 ⌘조합키·한글 붙여넣기는 안 먹음(숫자
+  "2026" 등 ASCII 로 검색해 결과 카드 클릭 → 미리보기, 창 넓히면 우측 패널로 뜸).
+```
 
 ---
 
