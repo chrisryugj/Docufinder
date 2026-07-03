@@ -316,16 +316,24 @@ pub fn reunite_cross_folder(
             continue;
         }
 
-        // 3. 각 rep의 임베딩
-        let embeddings: Vec<(String, Vec<f32>)> = reps
+        // 3. 각 rep의 임베딩 — 단건 embed 반복 대신 일괄 embed_batch (T1-6).
+        // embed() 내부의 normalize_text 를 동일 적용. 배치 실패 시 이 stem 은 스킵
+        // (기존 단건 실패도 결과적으로 len<2 스킵으로 수렴하던 경로).
+        let texts: Vec<String> = reps
             .iter()
-            .filter_map(|(lid, _, content)| {
-                embedder
-                    .embed(content, false)
-                    .ok()
-                    .map(|e| (lid.clone(), e))
-            })
+            .map(|(_, _, content)| crate::utils::normalize_text(content))
             .collect();
+        let embeddings: Vec<(String, Vec<f32>)> = match embedder.embed_batch(&texts) {
+            Ok(embs) => reps
+                .iter()
+                .map(|(lid, _, _)| lid.clone())
+                .zip(embs)
+                .collect(),
+            Err(e) => {
+                tracing::debug!("[Lineage] reunite 임베딩 실패: {}", e);
+                Vec::new()
+            }
+        };
         if embeddings.len() < 2 {
             continue;
         }
@@ -518,11 +526,21 @@ pub fn refine_with_vector(conn: &Connection, embedder: &Arc<Embedder>) -> rusqli
             continue;
         }
 
-        // 임베딩 생성 (실패 시 skip)
-        let embeddings: Vec<(i64, Vec<f32>)> = members
+        // 임베딩 생성 — 일괄 embed_batch (T1-6, 실패 시 이 lineage 스킵).
+        // embed() 내부의 normalize_text 동일 적용. 단건 시절엔 개별 실패로 base
+        // (canonical)가 빠진 채 다른 멤버가 기준이 될 수 있었는데, 배치는 전원
+        // 성공/전원 스킵이라 기준이 흔들리지 않는다.
+        let texts: Vec<String> = members
             .iter()
-            .filter_map(|m| embedder.embed(&m.2, false).ok().map(|e| (m.0, e)))
+            .map(|m| crate::utils::normalize_text(&m.2))
             .collect();
+        let embeddings: Vec<(i64, Vec<f32>)> = match embedder.embed_batch(&texts) {
+            Ok(embs) => members.iter().map(|m| m.0).zip(embs).collect(),
+            Err(e) => {
+                tracing::debug!("[Lineage] verify 임베딩 실패: {}", e);
+                Vec::new()
+            }
+        };
         if embeddings.len() < 2 {
             continue;
         }
