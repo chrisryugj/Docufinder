@@ -243,16 +243,20 @@ pub fn update_last_synced_at(conn: &Connection, path: &str) -> Result<usize> {
     }
 }
 
-/// FTS 인덱싱이 완료된(`fts_indexed_at IS NOT NULL`) 모든 파일 경로 조회.
+/// FTS 인덱싱이 완료된(`fts_indexed_at IS NOT NULL`) 파일 경로를 행 단위로 순회.
 ///
 /// 폴더 prefix `LIKE` 매칭은 네트워크 경로 표현(매핑드라이브 ↔ UNC ↔ `\\?\`)이 흔들리면
 /// 0건을 반환해 resume 가 전체 재인덱싱으로 빠진다(이슈 #34). 그 한계를 피하기 위해
-/// 폴더 필터 없이 전량을 가져와, 호출부가 `network_path::normalize_for_compare` 로
-/// 표현을 통일한 뒤 폴더 소속을 판정하도록 한다.
-pub fn get_all_fts_indexed_paths(conn: &Connection) -> Result<Vec<String>> {
+/// SQL 필터 없이 전량을 순회시키되, 전체 경로를 `Vec` 으로 물질화하지 않고 호출부가
+/// 행마다 `network_path::normalize_for_compare` 로 표현을 통일해 폴더 소속을 판정하고
+/// 필요한 경로만 남기게 한다 (대형 DB resume 피크 메모리 절감).
+pub fn for_each_fts_indexed_path(conn: &Connection, mut f: impl FnMut(&str)) -> Result<()> {
     let mut stmt = conn.prepare("SELECT path FROM files WHERE fts_indexed_at IS NOT NULL")?;
-    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
-    rows.collect()
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        f(row.get_ref(0)?.as_str()?);
+    }
+    Ok(())
 }
 
 // ==================== 파일 ====================
@@ -1238,5 +1242,22 @@ mod folder_status_tests {
         // 존재하지 않는 폴더는 0 rows (에러 아님)
         let n = set_folder_indexing_status(&conn, r"D:\없는폴더", "failed").unwrap();
         assert_eq!(n, 0);
+    }
+
+    /// resume 스트리밍(T2-3): fts_indexed_at 이 있는 경로만 행 단위로 방문해야 한다
+    #[test]
+    fn for_each_fts_indexed_path_visits_only_indexed() {
+        let (_dir, conn) = test_db();
+        let a = upsert_file(&conn, r"C:\Docs\a.txt", "a.txt", "txt", 1, 1).unwrap();
+        upsert_file(&conn, r"C:\Docs\b.txt", "b.txt", "txt", 1, 1).unwrap();
+        conn.execute(
+            "UPDATE files SET fts_indexed_at = 1 WHERE id = ?",
+            params![a],
+        )
+        .unwrap();
+
+        let mut seen = Vec::new();
+        for_each_fts_indexed_path(&conn, |p| seen.push(p.to_string())).unwrap();
+        assert_eq!(seen, vec![r"C:\Docs\a.txt".to_string()]);
     }
 }
