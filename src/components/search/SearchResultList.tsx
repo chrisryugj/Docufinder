@@ -72,6 +72,18 @@ interface SearchResultListProps {
   parsedQuery?: ParsedQueryInfo | null;
   /** Anything(AI) 모드 전환 콜백 */
   onSwitchToAnything?: () => void;
+  /** 인덱싱 진행 중 여부 — 0건일 때 "아직 읽는 중" 안내 분기 */
+  isIndexing?: boolean;
+  /** 인덱싱 진행 수치 (0건 안내에 표시) */
+  indexProgress?: { processed_files: number; total_files: number } | null;
+  /** 현재 검색 모드 (0건 제안 칩 노출 판단) */
+  searchMode?: string;
+  /** 0건 제안: 자연어 필터 조건 없이 재검색 */
+  onRetryWithoutFilters?: () => void;
+  /** 0건 제안: 검색창 포커스 */
+  onFocusSearch?: () => void;
+  /** 0건 제안: 파일명 검색으로 전환 */
+  onSwitchToFilenameSearch?: () => void;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
@@ -116,6 +128,12 @@ export const SearchResultList = memo(function SearchResultList({
   nlSubmitted = false,
   parsedQuery,
   onSwitchToAnything,
+  isIndexing = false,
+  indexProgress,
+  searchMode,
+  onRetryWithoutFilters,
+  onFocusSearch,
+  onSwitchToFilenameSearch,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -516,6 +534,37 @@ export const SearchResultList = memo(function SearchResultList({
     );
   }
 
+  // 인덱싱 진행 중 0건 — "결과 없음"이 아니라 "아직 문서를 읽는 중"임을 안내
+  // (인덱싱 완료 전 검색한 사용자가 검색어 탓으로 오해하는 것을 방지)
+  if (query.trim() && !isLoading && isIndexing) {
+    const truncatedQuery = query.length > 30 ? query.slice(0, 30) + "..." : query;
+    return (
+      <div className="text-center py-16" role="status" aria-live="polite">
+        <div
+          className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+          style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        >
+          <FileSearch
+            className="w-10 h-10 opacity-60"
+            style={{ color: "var(--color-text-muted)" }}
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+        </div>
+        <h3 className="text-lg font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>
+          아직 문서를 읽는 중입니다
+        </h3>
+        <p style={{ color: "var(--color-text-muted)" }}>
+          "<span style={{ color: "var(--color-accent)" }}>{truncatedQuery}</span>"의 결과가
+          인덱싱이 끝나면 나타날 수 있어요
+          {indexProgress && indexProgress.total_files > 0 && (
+            <span> ({indexProgress.processed_files}/{indexProgress.total_files} 파일 처리됨)</span>
+          )}
+        </p>
+      </div>
+    );
+  }
+
   // 검색어가 있지만 결과 없음 - 맥락 있는 피드백
   if (query.trim() && !isLoading) {
     const truncatedQuery = query.length > 30 ? query.slice(0, 30) + "..." : query;
@@ -567,21 +616,39 @@ export const SearchResultList = memo(function SearchResultList({
         <div className="space-y-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
           <p>다음을 시도해보세요:</p>
           <div className="flex flex-wrap justify-center gap-2 mt-3">
-            {hasNlFilters && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
+            {hasNlFilters && onRetryWithoutFilters && (
+              <button
+                onClick={onRetryWithoutFilters}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border btn-outline-accent-hover"
+              >
                 <Filter className="w-3.5 h-3.5" />
                 날짜/파일타입 조건 없이 검색
-              </span>
+              </button>
             )}
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <PenLine className="w-3.5 h-3.5" />
-              다른 검색어 입력
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ backgroundColor: "var(--color-bg-tertiary)", border: "1px solid var(--color-border)" }}>
-              <ArrowLeftRight className="w-3.5 h-3.5" />
-              검색 모드 변경
-            </span>
+            {onFocusSearch && (
+              <button
+                onClick={onFocusSearch}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border btn-outline-accent-hover"
+              >
+                <PenLine className="w-3.5 h-3.5" />
+                다른 검색어 입력
+              </button>
+            )}
+            {paradigm === "instant" && searchMode !== "filename" && onSwitchToFilenameSearch && (
+              <button
+                onClick={onSwitchToFilenameSearch}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border btn-outline-accent-hover"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                파일명으로 검색
+              </button>
+            )}
           </div>
+          {paradigm === "instant" && (
+            <p className="text-xs pt-3" style={{ opacity: 0.75 }}>
+              연산자로 좁힐 수도 있어요: {'"구문"'} · -제외 · ext:hwp · path:경로 · after:2026-01 · ~10
+            </p>
+          )}
         </div>
       </div>
     );
@@ -758,7 +825,7 @@ function ResultsToolbar({
             {minConfidence > 0 && (
               <Badge variant="primary">{minConfidence}%↑</Badge>
             )}
-            {import.meta.env.DEV && searchTime !== null && searchTime !== undefined && (
+            {searchTime !== null && searchTime !== undefined && (
               <Badge variant="secondary">{searchTime}ms</Badge>
             )}
           </div>

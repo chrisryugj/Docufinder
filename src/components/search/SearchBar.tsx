@@ -229,7 +229,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               onKeyDown={handleKeyDown}
               placeholder={isNatural
                 ? "자연어로 검색 조건을 입력하세요..."
-                : "키워드로 문서 검색..."
+                : '키워드로 문서 검색…  ("구문" · -제외 · ext:pdf)'
               }
               className="flex-1 bg-transparent border-none focus:outline-none h-[24px]"
               style={{

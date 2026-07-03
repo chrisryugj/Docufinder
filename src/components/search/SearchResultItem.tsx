@@ -169,7 +169,11 @@ export const SearchResultItem = memo(function SearchResultItem({
       <div className="flex items-center justify-between mb-1.5">
         <div
           className="flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text gap-2"
-          onClick={() => onOpenFile(result.file_path, result.page_number)}
+          onClick={(e) => {
+            // 카드 래퍼(미리보기 선택)로 버블되면 외부 열기와 미리보기가 동시에 일어난다
+            e.stopPropagation();
+            onOpenFile(result.file_path, result.page_number);
+          }}
           title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
         >
           <FileIcon fileName={result.file_name} size="sm" />
