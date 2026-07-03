@@ -460,6 +460,25 @@ pub async fn get_recently_opened_documents(
     .await?
 }
 
+/// "최근 작업한 문서" 목록에서 항목 제거 (last_opened_at 클리어).
+#[tauri::command]
+pub async fn remove_recently_opened_document(
+    path: String,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<()> {
+    let db_path = {
+        let container = state.read()?;
+        container.db_path.clone()
+    };
+
+    tokio::task::spawn_blocking(move || -> ApiResult<()> {
+        let conn = crate::db::get_connection(&db_path)?;
+        crate::db::clear_last_opened(&conn, &path)?;
+        Ok(())
+    })
+    .await?
+}
+
 /// 통계 항목
 #[derive(Debug, serde::Serialize)]
 pub struct StatEntry {
