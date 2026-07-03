@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
-import { SYSTEM_FOLDERS_HINT, HAS_DRIVES } from "../../utils/platform";
+import { SYSTEM_FOLDERS_HINT, HAS_DRIVES, MOD_KEY } from "../../utils/platform";
 
 export type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
 
@@ -311,13 +311,13 @@ function ShortcutsSection() {
       </Paragraph>
 
       <div className="space-y-0">
-        <ShortcutRow keys="Ctrl + K" description="명령 팔레트 열기" />
+        <ShortcutRow keys={`${MOD_KEY} + K`} description="명령 팔레트 열기" />
         <ShortcutRow keys="/" description="검색창으로 이동" />
-        <ShortcutRow keys="Ctrl + B" description="사이드바 열기/닫기" />
+        <ShortcutRow keys={`${MOD_KEY} + B`} description="사이드바 열기/닫기" />
         <ShortcutRow keys="↑ / ↓" description="결과 목록 이동" />
         <ShortcutRow keys="Enter" description="선택한 파일 열기" />
-        <ShortcutRow keys="Ctrl + F" description="미리보기에서 문서 내 찾기" />
-        <ShortcutRow keys="Ctrl + Shift + C" description="선택한 파일 경로 복사" />
+        <ShortcutRow keys={`${MOD_KEY} + F`} description="미리보기에서 문서 내 찾기" />
+        <ShortcutRow keys={`${MOD_KEY} + Shift + C`} description="선택한 파일 경로 복사" />
         <ShortcutRow keys="Esc" description="선택 해제 / 검색어 지우기" />
       </div>
 
