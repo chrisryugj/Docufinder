@@ -399,8 +399,13 @@ fn run_vector_indexing(
                         s.pending_chunks = total_chunks.saturating_sub(base_processed + processed);
                     }
 
-                    // 주기적 저장 + 완료 파일 일괄 마킹
-                    if processed - last_save >= SAVE_INTERVAL {
+                    // 주기적 저장 + 완료 파일 일괄 마킹.
+                    // 저장 간격을 인덱스 크기에 비례해 넓힌다: save()는 인덱스 전체를
+                    // 재기록하므로 고정 1000청크마다 저장하면 대량 빌드에서 누적 쓰기가
+                    // O(N²/1000)로 커진다. max(1000, size/20)으로 ~O(20·N)까지 억제
+                    // (시간 기준 SAVE_INTERVAL_SECS가 백스톱이라 간격이 넓어도 안전).
+                    let save_interval = SAVE_INTERVAL.max(vector_index.chunk_count() / 20);
+                    if processed - last_save >= save_interval {
                         flush_save_and_mark(&conn, vector_index, &mut pending_mark_file_ids);
                         last_save = processed;
                         last_save_time = Instant::now();

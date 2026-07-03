@@ -186,15 +186,16 @@ pub(super) fn extract_paragraphs_from_section(
                 if is_page_break {
                     if in_paragraph && !current_paragraph.is_empty() {
                         let para_text = std::mem::take(&mut current_paragraph);
+                        let para_chars = para_text.chars().count();
                         paragraphs.push(ParagraphNode {
-                            text: para_text.clone(),
+                            text: para_text,
                             char_offset: total_char_offset,
                             has_page_break_before: pending_page_break,
                             style_id: current_style_id.clone(),
                             object_height: para_object_height,
                             line_segs: std::mem::take(&mut current_linesegs),
                         });
-                        total_char_offset += para_text.chars().count() + 1;
+                        total_char_offset += para_chars + 1;
                         split_paragraph = true;
                         para_object_height = 0.0;
                     }
@@ -243,15 +244,16 @@ pub(super) fn extract_paragraphs_from_section(
                         // 표 종료: 행들을 줄바꿈으로 합쳐서 하나의 문단으로 추가
                         if !table_rows.is_empty() {
                             let table_text = table_rows.join("\n");
+                            let table_chars = table_text.chars().count();
                             paragraphs.push(ParagraphNode {
-                                text: table_text.clone(),
+                                text: table_text,
                                 char_offset: total_char_offset,
                                 has_page_break_before: pending_page_break,
                                 style_id: current_style_id.clone(),
                                 object_height: current_object_height,
                                 line_segs: Vec::new(),
                             });
-                            total_char_offset += table_text.chars().count() + 1;
+                            total_char_offset += table_chars + 1;
                             pending_page_break = false;
                         }
                         para_object_height += current_object_height;
@@ -300,9 +302,10 @@ pub(super) fn extract_paragraphs_from_section(
                         }
                     } else if !current_paragraph.is_empty() || !split_paragraph {
                         let para_text = std::mem::take(&mut current_paragraph);
+                        let para_chars = para_text.chars().count();
 
                         paragraphs.push(ParagraphNode {
-                            text: para_text.clone(),
+                            text: para_text,
                             char_offset: total_char_offset,
                             has_page_break_before: pending_page_break,
                             style_id: current_style_id.clone(),
@@ -311,7 +314,7 @@ pub(super) fn extract_paragraphs_from_section(
                         });
 
                         // 오프셋 업데이트 (문단 텍스트 + 줄바꿈)
-                        total_char_offset += para_text.chars().count() + 1;
+                        total_char_offset += para_chars + 1;
                         pending_page_break = false;
                     } else {
                         current_paragraph.clear();

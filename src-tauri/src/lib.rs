@@ -15,6 +15,9 @@ mod search;
 mod tokenizer; // 한국어 형태소 분석 (Phase 5)
 mod utils; // 유틸리티 (idle_detector, disk_info)
 
+#[cfg(test)]
+mod perf_bench; // 성능 계측 하니스 (릴리스 미포함, cargo test --release perf_)
+
 // Windows: fixed-version WebView2 Runtime detection + environment injection
 // (이슈 #24 LTSC 1809 + admin 없음 + GPO 차단 환경 대응)
 #[cfg(target_os = "windows")]
