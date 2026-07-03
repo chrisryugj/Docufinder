@@ -170,23 +170,18 @@ mark.hl-filename {
   border-bottom: 2px solid var(--color-highlight-filename-border);
 }
 
-/* Preview find-in-page (Ctrl+F) — 검색어 하이라이트(황색 hl-search)와 구분되는 액센트 톤 */
-mark.hl-find {
-  border-radius: 3px;
-  padding: 1px 2px;
-  margin: 0 -1px;
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
+/* Preview find-in-page (Ctrl+F) — 검색어 하이라이트(황색 hl-search)와 구분되는 액센트 톤.
+   CSS Custom Highlight API (T3-6): DOM 을 감싸지 않고 Range 에 칠한다.
+   ::highlight 는 background/color/text-decoration 계열만 지원 — 보더 대신 밑줄. */
+::highlight(docufinder-find) {
   background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
-  color: inherit;
-  border-bottom: 2px solid var(--color-accent-muted);
-  transition: background-color 0.15s ease;
+  text-decoration: underline 2px var(--color-accent-muted);
 }
 
-mark.hl-find-active {
+::highlight(docufinder-find-active) {
   background-color: var(--color-accent);
   color: #fff;
-  border-bottom-color: var(--color-accent-active);
+  text-decoration: underline 2px var(--color-accent-active);
 }
 
 /* Citation chip — AI 답변 본문 인라인 [출처N] 클릭 버튼 */

@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, useRef, useCallback, useMemo, Fragment, type ComponentProps } from "react";
+import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search } from "lucide-react";
@@ -105,31 +105,44 @@ function highlightTextWithLegal(
   return <>{segments}</>;
 }
 
-// ─── 찾기 바(Ctrl+F) 하이라이트 ───────────────────────
-// 찾기 매치를 먼저 mark.hl-find 로 분리하고, 나머지 구간에는 기존
-// 검색어/법령 하이라이트(highlightTextWithLegal)를 그대로 적용한다.
-function highlightWithFind(
-  text: string,
-  searchRegex: RegExp | null,
-  findRegex: RegExp | null,
-  onOpenUrl: (url: string) => void,
-): React.ReactNode {
-  if (!findRegex || !text) return highlightTextWithLegal(text, searchRegex, onOpenUrl);
-  const parts = text.split(new RegExp(`(${findRegex.source})`, "gi"));
-  if (parts.length === 1) return highlightTextWithLegal(text, searchRegex, onOpenUrl);
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={`find-${i}`} className="hl-find">{part}</mark>
-        ) : (
-          <Fragment key={`seg-${i}`}>
-            {highlightTextWithLegal(part, searchRegex, onOpenUrl)}
-          </Fragment>
-        ),
-      )}
-    </>
-  );
+// ─── 찾기 바(Ctrl+F) 하이라이트 — CSS Custom Highlight API (T3-6) ──
+// 이전에는 찾기 정규식이 markdown components 를 갈아끼워 확정 검색어마다
+// remark/katex 전체 재파싱을 유발했다. 이제 커밋된 DOM 텍스트 노드를
+// TreeWalker 로 순회해 Range 를 만들고 CSS.highlights 에 등록만 한다 —
+// DOM 을 바꾸지 않으므로 React 재조정과 충돌하지 않고, 재파싱도 없다.
+
+const FIND_HIGHLIGHT = "docufinder-find";
+const FIND_ACTIVE_HIGHLIGHT = "docufinder-find-active";
+
+/** CSS Custom Highlight API 지원 여부 (WebView2/Safari 17.2+ — 미지원 시 카운트/이동만 동작) */
+const cssHighlightsSupported = (): boolean =>
+  typeof CSS !== "undefined" && "highlights" in CSS;
+
+/** 본문 텍스트 노드를 순회하며 찾기 매치 Range 수집 (문서 순서 보장) */
+function collectFindRanges(root: HTMLElement, regex: RegExp): Range[] {
+  const ranges: Range[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    // KaTeX 는 시각용 HTML 과 보조기기용 트리에 같은 텍스트가 중복되어
+    // 이중 카운트를 유발하므로 제외
+    acceptNode: (node) =>
+      node.parentElement?.closest(".katex")
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.nodeValue;
+    if (!text) continue;
+    regex.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(text)) !== null) {
+      if (m[0].length === 0) break; // 빈 매치 무한루프 방어
+      const r = document.createRange();
+      r.setStart(node, m.index);
+      r.setEnd(node, m.index + m[0].length);
+      ranges.push(r);
+    }
+  }
+  return ranges;
 }
 
 // ─── 인용 점프: 앵커 텍스트 → 미리보기 DOM 위치 탐색 ──
@@ -269,13 +282,13 @@ function firstTextOf(children: React.ReactNode): string {
 
 function createMarkdownComponents(
   searchRegex: RegExp | null,
-  findRegex: RegExp | null,
   onOpenUrl: (url: string) => void,
 ): ComponentProps<typeof ReactMarkdown>["components"] {
-  // 텍스트 노드에 하이라이트 적용하는 래퍼
+  // 텍스트 노드에 하이라이트 적용하는 래퍼 (찾기 하이라이트는 렌더 후
+  // CSS Custom Highlight 로 별도 적용 — 여기서는 검색어/법령만)
   const TextWrapper = ({ children }: { children: React.ReactNode }) => {
     if (typeof children === "string") {
-      return <>{highlightWithFind(children, searchRegex, findRegex, onOpenUrl)}</>;
+      return <>{highlightTextWithLegal(children, searchRegex, onOpenUrl)}</>;
     }
     return <>{children}</>;
   };
@@ -562,6 +575,9 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // 찾기(Ctrl+F) 대상은 문서 본문 한정 — AI 요약·질문답변 영역 제외용 전용 ref
+  const previewBodyRef = useRef<HTMLDivElement>(null);
+  const findRangesRef = useRef<Range[]>([]);
 
   // AI 요약 상태
   const [aiSummary, setAiSummary] = useState<AiAnalysis | null>(null);
@@ -745,16 +761,11 @@ export const PreviewPanel = memo(function PreviewPanel({
   }, [findTerm]);
   const activeFindRegex = findOpen ? findRegex : null;
 
-  // AI 요약용 — 찾기 하이라이트 미적용 (찾기는 문서 본문 한정)
+  // 본문·AI 요약 공용 — 찾기(Ctrl+F) 하이라이트는 렌더 후 CSS Custom Highlight
+  // 로 적용되므로 (T3-6) components 는 찾기 상태와 무관하다
   const markdownComponents = useMemo(
-    () => createMarkdownComponents(searchRegex, null, handleOpenUrl),
+    () => createMarkdownComponents(searchRegex, handleOpenUrl),
     [searchRegex, handleOpenUrl],
-  );
-
-  // 문서 본문용 — 찾기(Ctrl+F) 하이라이트 포함
-  const previewMarkdownComponents = useMemo(
-    () => createMarkdownComponents(searchRegex, activeFindRegex, handleOpenUrl),
-    [searchRegex, activeFindRegex, handleOpenUrl],
   );
 
   // 본문 전처리 캐시 — stripHtmlForMarkdown은 전문 대상 정규식 다중 패스라
@@ -765,21 +776,21 @@ export const PreviewPanel = memo(function PreviewPanel({
   );
 
   // 본문 파싱 캐시 — react-markdown은 memo가 아니라 부모 리렌더마다 remark/katex
-  // 전체를 재파싱한다. 찾기 입력(디바운스 전 키스트로크)·매치 이동·메뉴 토글 등
-  // 무관한 상태 변화에 수만 줄 문서를 재파싱하지 않도록, 내용과 하이라이트
-  // 확정값(searchRegex/activeFindRegex)이 바뀔 때만 재구성한다.
+  // 전체를 재파싱한다. 매치 이동·메뉴 토글 등 무관한 상태 변화에 수만 줄 문서를
+  // 재파싱하지 않도록 내용과 검색어 확정값(searchRegex)이 바뀔 때만 재구성한다.
+  // 찾기(Ctrl+F)는 DOM Range 하이라이트라 여기 관여하지 않는다 (T3-6).
   const previewMarkdownNode = useMemo(() => {
     if (processedMarkdown === null) return null;
     return (
       <ReactMarkdown
         remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
         rehypePlugins={[rehypeKatex]}
-        components={previewMarkdownComponents}
+        components={markdownComponents}
       >
         {processedMarkdown}
       </ReactMarkdown>
     );
-  }, [processedMarkdown, previewMarkdownComponents]);
+  }, [processedMarkdown, markdownComponents]);
 
   // ── 찾기 바 동작 ──
 
@@ -848,26 +859,50 @@ export const PreviewPanel = memo(function PreviewPanel({
     }
   }, [findOpen]);
 
-  // 매치 수집 — ReactMarkdown 커밋 후 DOM에서 mark.hl-find 질의 (렌더 순서 = 문서 순서)
+  // 매치 수집 + 하이라이트 등록 — 커밋된 본문 DOM 에 Range 만 등록, 재파싱 없음 (T3-6).
+  // previewMarkdownNode 의존: 본문 서브트리가 재커밋되면(내용·검색어 변경) 이전
+  // Range 가 분리된 노드를 가리키므로 새 DOM 에서 재수집해야 한다.
   useEffect(() => {
-    const root = contentRef.current;
-    if (!activeFindRegex || loading || !markdown || !root) {
+    const body = previewBodyRef.current;
+    findRangesRef.current = [];
+    if (cssHighlightsSupported()) {
+      CSS.highlights.delete(FIND_HIGHLIGHT);
+      CSS.highlights.delete(FIND_ACTIVE_HIGHLIGHT);
+    }
+    if (!activeFindRegex || loading || !markdown || !body) {
       setFindCount(0);
       setFindActiveIdx(0);
       return;
     }
-    setFindCount(root.querySelectorAll("mark.hl-find").length);
+    const ranges = collectFindRanges(body, activeFindRegex);
+    findRangesRef.current = ranges;
+    if (cssHighlightsSupported() && ranges.length > 0) {
+      CSS.highlights.set(FIND_HIGHLIGHT, new Highlight(...ranges));
+    }
+    setFindCount(ranges.length);
     setFindActiveIdx(0);
-  }, [activeFindRegex, markdown, loading]);
+    return () => {
+      // 패널 언마운트 시 전역 레지스트리 잔류 방지
+      if (cssHighlightsSupported()) {
+        CSS.highlights.delete(FIND_HIGHLIGHT);
+        CSS.highlights.delete(FIND_ACTIVE_HIGHLIGHT);
+      }
+    };
+  }, [activeFindRegex, markdown, loading, previewMarkdownNode]);
 
-  // 활성 매치 강조 + 스크롤 — DOM class 직접 토글 (마크다운 전체 재렌더 회피)
+  // 활성 매치 강조 + 스크롤 — Highlight 레지스트리 엔트리만 교체 (재렌더 없음)
   useEffect(() => {
-    const root = contentRef.current;
-    if (!root) return;
-    const marks = root.querySelectorAll<HTMLElement>("mark.hl-find");
-    marks.forEach((m, i) => m.classList.toggle("hl-find-active", i === findActiveIdx));
-    if (marks.length > 0) marks[findActiveIdx]?.scrollIntoView({ block: "center" });
-  }, [findActiveIdx, findCount, activeFindRegex]);
+    const active = findRangesRef.current[findActiveIdx];
+    if (!active) {
+      if (cssHighlightsSupported()) CSS.highlights.delete(FIND_ACTIVE_HIGHLIGHT);
+      return;
+    }
+    if (cssHighlightsSupported()) {
+      CSS.highlights.set(FIND_ACTIVE_HIGHLIGHT, new Highlight(active));
+    }
+    // Range 자체는 scrollIntoView 가 없어 매치가 속한 요소 기준으로 스크롤
+    active.startContainer.parentElement?.scrollIntoView({ block: "center" });
+  }, [findActiveIdx, findCount, activeFindRegex, previewMarkdownNode]);
 
   // 복사/내보내기 드롭다운 — 바깥 클릭 시 닫기
   useEffect(() => {
@@ -1173,7 +1208,7 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {/* 마크다운 렌더링 */}
         {!loading && !error && markdown && (
-          <div className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
+          <div ref={previewBodyRef} className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
         )}
       </div>
 
