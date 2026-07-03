@@ -1,10 +1,67 @@
-# Docufinder 성능 프로덕션 리뷰 (6차) — 완료 (v3.0.9)
+# Docufinder 성능 프로덕션 리뷰 (6차) — 완료 (v3.0.9) / 7차 실검증+UI/UX — 완료
 
 작성: 2026-07-03 (맥미니) → **2026-07-03 맥북에서 전 항목 완료, v3.0.9 릴리스.**
+→ **7차(실검증+UI/UX)도 2026-07-03 맥북에서 완료** — 아래 "✅ 7차 세션 결과 로그".
 
 ---
 
-## 🔖 다음 세션(7차: 실검증 + UI/UX) 프롬프트 — 이거 붙여넣고 시작
+## ✅ 7차 세션 결과 로그 (맥북, 2026-07-03)
+
+### (A) 실검증 체크리스트 결과
+
+1. **스모크 ✅** — v3.0.6 설치본이 자동시작으로 돌고 있어 dmg 로 v3.0.9 교체 설치.
+   v17 마이그레이션 로그 정상(`idx_files_last_opened`/`idx_files_size` 생성 확인),
+   periodic_sync·파일와처 정상, ERROR/panic 0 (WARN 2종은 모델 미설치 안내 + benign
+   `resume_with_folders called but was not paused`). 검색→미리보기 dev 실기동 확인.
+2. **T3-6 Ctrl+F ✅(코드)+실물 일부** — `cssHighlightsSupported()` 가드 확인, macOS 26.6
+   WKWebView 는 지원 범위. **색칠 실물 확인만 잔여** (WebView2 는 윈도우에서).
+3. **T1-2 스크롤 — 실물 잔여** (자동 조작이 사용자 화면과 겹쳐 중단).
+4. **임베딩 실측 ✅** — `perf_embed_real_model` 신설(커밋 `da61bcd`,
+   `DOCUFINDER_BENCH_DB`+`DOCUFINDER_BENCH_MODELS`+`ORT_DYLIB_PATH` opt-in). M칩 실측:
+   Embedder 로드 683ms / 쿼리 embed 1.7~2.5ms / **벡터 인덱싱 52.1 chunks/s**(803청크
+   15.4s, 쓰로틀 제외 — Balanced 실사용 ≈40/s) / hybrid e2e '보고서' 2.2ms,
+   '예산 집행 계획' ~117ms(벡터 전용 히트의 문장 enrich_semantic_results 비용 — 의도된
+   기능, T2-2 병렬 배관은 건강. 손 안 댐).
+5. **T3-1 — 실물 잔여** (더보기 수백 개 스크롤 체감. 버벅임 실측 전 손대지 않음 유지).
+
+### 🔴 최대 성과 — macOS 배포본 시맨틱/OCR 즉사 버그 수정 (`4e7c5b0`)
+
+- 증상: 임베더/OCR 로드(ORT dylib dlopen) 순간 dyld **SIGKILL(CODESIGNING, Invalid
+  Page)** → 앱 즉사. 시맨틱·OCR 이 기본 off 라 실사용자가 아직 못 밟았을 뿐.
+- 원인 체인: `setup-macos-resources.sh` 의 `install_name_tool -id` 가 MS linker-signed
+  서명을 무효화 → tauri build 가 invalid dylib 품은 채 .app+dmg 동시 생성 →
+  publish.yml 재서명 스텝(v2.6.10)은 bundle/macos/.app 만 고침 — **업로드되는 dmg 에
+  반영된 적 없음**.
+- 수정: 스크립트에서 번들 투입 전 `codesign --force --sign -` + verify (근원).
+  publish.yml 은 주석 정정만. **다음 릴리스(v3.0.10)부터 유효** — 이 맥 설치본·앱데이터
+  dylib 은 수동 재서명해둠.
+- 재현·검증: 재서명 전 벤치 EXIT 137(SIGKILL) ↔ 재서명 후 완주 EXIT 0. 회귀 227 passed.
+
+### (B) UI/UX 트랙 — 10건 확정·반영 (`cfb17c6`)
+
+사용자 확정: "전부 반영, 시맨틱은 현 엔진에서 불필요"(재노출 안 함 — ca0bc2d 방침 유지).
+반영: ①도움말↔실UI 불일치 정정(하이브리드/시맨틱 설명 삭제) ②연산자 발견성(placeholder
+예시+0건 힌트) ③0건 제안 칩 실동작 버튼화 ④파일명 클릭 버블 수정(flat `SearchResultItem`
++grouped `GroupedSearchResultItem` — grouped 는 외곽 래퍼 selectForPreview 버블이 원인)
+⑤인덱싱 중 0건 "아직 읽는 중" 분기(진행 수치) ⑥실패 리포트 StatusBar "실패 N건" 재열람
+⑦검색 소요시간 배지 프로덕션 노출 ⑧시맨틱 비노출 유지 ⑨결과 클릭→미리보기 청크 점프
+(citationJump 배관 재사용, 다중 오프셋 앵커, 실패 시 기존 동작) ⑩투어 6단계 문구 정정.
+검증: tsc 0·vite build OK·dev 실기동 스크린샷(placeholder/0건 버튼·힌트/21ms 배지/미리보기
+연동). **⑨ 점프 스크롤의 실물 확증과 ⑤⑥ 재현 확인은 잔여**(사용자 화면 사용 중이라
+자동 조작 중단).
+
+### 잔여 (다음 기회, 대부분 실물 눈 확인 2~3분)
+
+- T1-2 카드 확장/축소 스크롤 앵커, T3-6 Ctrl+F 색칠(맥+윈도우), T3-1 더보기 수백 개 체감.
+- ⑨ 점프 실물(중간 청크 카드 클릭 → 미리보기 해당 위치+cite-flash), ⑤ 인덱싱 중 0건 화면,
+  ⑥ 실패 N건 버튼(실패 파일 있는 폴더 추가로 재현).
+- **v3.0.10 릴리스** 하면 dylib 수정+UX 10건이 배포본에 들어감 (`./scripts/release.sh 3.0.10`).
+- UI/UX 관찰만 기록(미반영): 벡터 배너↔StatusBar 이원화(시맨틱 재노출 시에만 유의미),
+  Ctrl+F 발견성(툴바 버튼 존재로 낮은 우선), 설정 전용 단축키 없음.
+
+---
+
+## 🔖 (완료됨) 7차 세션 프롬프트 — 기록용
 
 ```
 docufinder 7차 세션: v3.0.9 실검증 + 사용성(UI/UX) 리뷰. HANDOFF-perf-review.md 의
