@@ -99,6 +99,13 @@ else
     install_name_tool -id "@rpath/libonnxruntime.dylib" "$DYLIB_DEST" 2>/dev/null || true
     echo "  -> $(du -h "$DYLIB_DEST" | cut -f1)"
 fi
+# install_name_tool 이 Mach-O 를 수정해 MS linker-signed 서명이 invalid 가 된다.
+# invalid 서명 dylib 은 dyld 가 로드 시점에 SIGKILL(CODESIGNING, Invalid Page) 로 죽이므로
+# ad-hoc 재서명으로 봉인. publish.yml 의 .app 재서명은 tauri build 가 이미 만든 dmg 에
+# 반영되지 않으므로 (dmg 안 앱은 빌드 시점 상태) 반드시 여기 — 번들에 들어가기 전 — 서명한다.
+# skip 경로(기존 파일)도 멱등 재서명해 과거에 받아둔 invalid 파일을 복구한다.
+codesign --force --sign - "$DYLIB_DEST"
+codesign --verify "$DYLIB_DEST" || { echo "ERROR: dylib 서명 검증 실패" >&2; exit 1; }
 
 echo ""
 echo "=== 완료 ==="
