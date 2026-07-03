@@ -979,7 +979,9 @@ pub(crate) fn index_file_fts_only_no_tx(
         }
         Err(e) => return Err(IndexError::ParseError(e.to_string())),
     };
-    let total_chars = document.content.len();
+    // parse_file 이 전문 content 를 비우므로(T2-5) 청크 길이합으로 집계
+    // (청크 overlap 만큼 과대집계되나 이 필드는 통계 메타데이터일 뿐이다)
+    let total_chars = document.chunks.iter().map(|c| c.content.len()).sum();
 
     let chunks_count = save_document_to_db_fts_only_no_tx(
         conn,

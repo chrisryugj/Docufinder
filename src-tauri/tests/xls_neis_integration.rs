@@ -41,13 +41,12 @@ fn neis_xls_parse_no_panic_no_password_false_positive() {
         };
 
         // 3) 본문 추출 검증 — NEIS "근무상황부" 키워드 또는 시트 헤더가 포함되어야 함.
+        //    parse_file 은 전문 content 를 비우므로(T2-5, 인덱싱은 chunks 만 소비)
+        //    청크를 이어붙여 검증한다.
+        let joined: String = doc.chunks.iter().map(|c| c.content.as_str()).collect();
+        assert!(!joined.is_empty(), "본문이 비어있음: {}", path.display());
         assert!(
-            !doc.content.is_empty(),
-            "본문이 비어있음: {}",
-            path.display()
-        );
-        assert!(
-            doc.content.contains("근") && doc.content.contains("무"),
+            joined.contains("근") && joined.contains("무"),
             "본문에 '근무' 누락: {}",
             path.display()
         );
@@ -70,7 +69,7 @@ fn neis_xls_parse_no_panic_no_password_false_positive() {
         eprintln!(
             "[OK] {} — {} chars, {} chunks",
             path.display(),
-            doc.content.len(),
+            joined.len(),
             doc.chunks.len()
         );
     }
