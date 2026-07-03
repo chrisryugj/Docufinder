@@ -231,7 +231,7 @@ export const Sidebar = memo(function Sidebar({
 
               {/* Section: Smart Folders / Recent — 폴더 있을 때만 (첫 사용자 빈 섹션 노이즈 제거) */}
               {hasFolders && (<>
-              <section className="pt-1 pb-3">
+              <section className="pt-2.5 pb-3 mt-1 border-t" style={{ borderColor: "var(--color-sidebar-border)" }}>
                 <div
                   className="flex items-center justify-between px-1 pb-1 mb-1"
                 >
@@ -270,7 +270,7 @@ export const Sidebar = memo(function Sidebar({
               </section>
 
               {/* Section: Recent Searches */}
-              <section className="pt-1 pb-3">
+              <section className="pt-2.5 pb-3 mt-1 border-t" style={{ borderColor: "var(--color-sidebar-border)" }}>
                 <div
                   className="flex items-center justify-between px-1 pb-1 mb-1"
                 >
