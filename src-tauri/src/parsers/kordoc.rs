@@ -2,6 +2,7 @@
 //!
 //! `node kordoc/dist/cli.js <path> --format json --silent` 호출 후
 //! JSON 응답을 ParsedDocument로 변환한다.
+//! `render` 서브커맨드로 HWPX 첫 페이지를 조판 보존 SVG 로 렌더한다 (레이아웃 미리보기).
 
 use super::{
     chunk_text, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,
@@ -16,6 +17,10 @@ use tracing::{debug, warn};
 const KORDOC_TIMEOUT_SECS: u64 = 60;
 /// 수식 OCR 활성화 시 타임아웃 (초) — 모델 로드 + 페이지별 MFD/MFR 추론으로 시간이 늘어남.
 const KORDOC_FORMULA_TIMEOUT_SECS: u64 = 600;
+/// 레이아웃 SVG 응답 상한 — 문서 내 이미지가 base64 로 임베드되어 다페이지 사진
+/// 문서는 수십 MB 가 될 수 있다 (실측: 24MB 보도자료 HWPX → 30.4MB SVG).
+/// 이를 넘기면 IPC/data URI 렌더 부담이 커서 거절한다.
+const RENDER_MAX_SVG_SIZE: u64 = 50 * 1024 * 1024;
 
 /// 번들/시스템 node 실행 파일 이름 (Windows: node.exe / 그 외: node)
 #[cfg(target_os = "windows")]
@@ -275,6 +280,99 @@ pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<Str
         .ok_or_else(|| ParseError::ParseError("kordoc: 추출된 텍스트 없음".to_string()))
 }
 
+/// kordoc render — 한컴 저장 HWPX 의 조판 캐시를 전체 페이지 세로 스택 SVG 로 렌더
+/// (레이아웃 미리보기용). `highlights` 는 검색어 형광펜 (kordoc `--highlight`).
+///
+/// HWPX 전용 — HWP·조판 캐시 없는 파일은 kordoc 이 exit≠0 + stderr 로 거절한다.
+/// render 는 stdout 출력을 지원하지 않아 임시 파일(-o)로 받아 읽은 뒤 삭제한다.
+pub fn render_svg(path: &Path, highlights: &[String]) -> Result<String, ParseError> {
+    validate_file_size(path)?;
+
+    let cli_path = find_kordoc_cli()
+        .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
+
+    let file_owned = crate::utils::network_path::simplify(path);
+    let file_str = file_owned.to_string_lossy();
+
+    // 유니크 임시 경로만 만들고 파일 생성은 kordoc 에 맡긴다 — 미리 열어두면
+    // Windows 파일 공유 잠금과 충돌할 수 있다.
+    let out_path = std::env::temp_dir().join(format!(
+        "docufinder-render-{}-{}.svg",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    ));
+
+    debug!("kordoc render: {} -o {}", file_str, out_path.display());
+
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "render".into(),
+        file_str.as_ref().into(),
+        "-o".into(),
+        out_path.clone().into(),
+        "--silent".into(),
+    ];
+    // kordoc 은 쉼표 구분 목록을 받으므로 검색어 내 쉼표는 공백으로 정규화
+    let terms: Vec<String> = highlights
+        .iter()
+        .map(|t| t.replace(',', " ").trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if !terms.is_empty() {
+        args.push("--highlight".into());
+        args.push(terms.join(",").into());
+    }
+
+    let result = (|| {
+        let out = run_kordoc_process(
+            &cli_path,
+            &args,
+            KORDOC_TIMEOUT_SECS,
+            &path.display().to_string(),
+        )?;
+
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            warn!("kordoc render failed (exit {}): {}", out.status, stderr);
+            let snippet = stderr_snippet(&stderr);
+            return Err(ParseError::ParseError(if snippet.is_empty() {
+                format!("kordoc render 실패 (exit {})", out.status)
+            } else {
+                // "[kordoc] 오류:" 는 CLI 로그 프리픽스 — 사용자 노출 메시지에서 제거
+                snippet
+                    .trim_start_matches("[kordoc] 오류:")
+                    .trim()
+                    .to_string()
+            }));
+        }
+
+        // exit 0 이어도 출력 파일 존재/크기로 최종 판정 (조판 캐시 이상 등 방어)
+        let size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+        if size == 0 {
+            return Err(ParseError::ParseError(
+                "kordoc render: SVG 출력이 생성되지 않았습니다".to_string(),
+            ));
+        }
+        if size > RENDER_MAX_SVG_SIZE {
+            return Err(ParseError::ParseError(format!(
+                "레이아웃 SVG 크기 초과: {}MB (최대 {}MB)",
+                size / 1_048_576,
+                RENDER_MAX_SVG_SIZE / 1_048_576
+            )));
+        }
+
+        std::fs::read_to_string(&out_path)
+            .map_err(|e| ParseError::ParseError(format!("SVG 읽기 실패: {e}")))
+    })();
+
+    // 성공/실패 무관 임시 파일 정리 (없으면 무시)
+    let _ = std::fs::remove_file(&out_path);
+
+    result
+}
+
 /// kordoc 사용 가능 여부
 pub fn is_available() -> bool {
     find_kordoc_cli().is_some() && which_node().is_some()
@@ -352,17 +450,26 @@ fn validate_file_size(path: &Path) -> Result<(), ParseError> {
     Ok(())
 }
 
-/// kordoc CLI 동기 호출 (blocking thread에서 사용, 60초 타임아웃)
+/// kordoc 프로세스 실행 결과 — 성공/실패 판정과 출력 해석은 호출자 몫
+/// (파싱은 stdout JSON, 렌더는 exit code + 출력 파일).
+struct KordocOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+/// kordoc CLI 공용 러너 (blocking thread에서 사용)
 ///
-/// 타임아웃 관리:
-/// - stdout/stderr를 별도 스레드에서 drain하여 파이프 블록 방지
-/// - 메인 스레드는 try_wait 폴링 (std::process::Child는 Drop에서 kill하지 않으므로
-///   타임아웃 시 명시적 child.kill() 호출 필수)
-fn call_kordoc_sync(
+/// spawn → Job Object 등록(이슈 #33: 고아 node 방지) → stdout/stderr drain 스레드
+/// (파이프 블록 방지) → try_wait 폴링 타임아웃까지의 프로세스 안전장치를 모든
+/// kordoc 서브커맨드가 공유한다 (std::process::Child는 Drop에서 kill하지 않으므로
+/// 타임아웃 시 명시적 child.kill() 호출 필수).
+fn run_kordoc_process(
     cli_path: &Path,
-    file_path: &Path,
-    opts: KordocOptions,
-) -> Result<String, ParseError> {
+    args: &[std::ffi::OsString],
+    timeout_secs: u64,
+    file_display: &str,
+) -> Result<KordocOutput, ParseError> {
     use std::io::Read;
     use std::sync::mpsc;
     use std::thread;
@@ -371,37 +478,12 @@ fn call_kordoc_sync(
     let node = which_node()
         .ok_or_else(|| ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string()))?;
 
-    // Windows extended-length / UNC prefix 제거 (Node.js/kordoc가 처리하지 못함).
-    // 단순 strip("\\?\\") 만 하면 \\?\UNC\server\share\... 가 UNC\server\... 로 깨지므로
-    // dunce::simplified 로 \\srv\share\... 형태까지 정확히 복원한다.
-    let file_owned = crate::utils::network_path::simplify(file_path);
-    let file_str = file_owned.to_string_lossy();
-    let cli_str = cli_path.to_string_lossy();
-
-    debug!(
-        "kordoc: {} {} --format json --silent{}",
-        cli_str,
-        file_str,
-        if opts.formula_ocr {
-            " --formula-ocr"
-        } else {
-            ""
-        }
-    );
-
     let mut cmd = std::process::Command::new(node);
-    cmd.arg(cli_str.as_ref())
-        .arg(file_str.as_ref())
-        .arg("--format")
-        .arg("json")
-        .arg("--silent")
+    cmd.arg(cli_path.to_string_lossy().as_ref())
+        .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-
-    if opts.formula_ocr {
-        cmd.arg("--formula-ocr");
-    }
 
     #[cfg(windows)]
     {
@@ -416,12 +498,6 @@ fn call_kordoc_sync(
     // 이슈 #33: 앱 종료/크래시 시 이 node 자식이 고아로 남지 않도록 Job Object 에 묶는다.
     crate::utils::process_job::track_child(&child);
 
-    let file_display = file_path.display().to_string();
-    let timeout_secs = if opts.formula_ocr {
-        KORDOC_FORMULA_TIMEOUT_SECS
-    } else {
-        KORDOC_TIMEOUT_SECS
-    };
     let timeout = Duration::from_secs(timeout_secs);
 
     // stdout/stderr drain 스레드 (파이프 블록 방지)
@@ -481,51 +557,107 @@ fn call_kordoc_sync(
 
     // 프로세스 종료 후 파이프 drain 결과 수거 (짧은 타임아웃 — 이미 프로세스 끝났으면 즉시 EOF)
     let drain_timeout = Duration::from_secs(2);
-    let stdout_buf = stdout_rx.recv_timeout(drain_timeout).unwrap_or_default();
-    let stderr_buf = stderr_rx.recv_timeout(drain_timeout).unwrap_or_default();
+    let stdout = stdout_rx.recv_timeout(drain_timeout).unwrap_or_default();
+    let stderr = stderr_rx.recv_timeout(drain_timeout).unwrap_or_default();
 
-    if !status.success() {
-        let stderr = String::from_utf8_lossy(&stderr_buf);
-        warn!("kordoc failed (exit {}): {}", status, stderr);
+    Ok(KordocOutput {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// stderr 의 비어있지 않은 라인 전부를 " | " 로 합쳐 사용자 가시 에러 스니펫으로 (최대 300자).
+/// 첫 줄만 잡으면 "FAIL" 같은 헤더에 진짜 진단 메시지가 묻힌다 (이슈 #22) —
+/// 마지막 라인 부근에 가장 구체적인 에러가 나오는 경향이 있어 모두 보존한다.
+fn stderr_snippet(stderr: &str) -> String {
+    stderr
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" | ")
+        .chars()
+        .take(300)
+        .collect()
+}
+
+/// kordoc CLI 동기 호출 — 파싱 경로 (`--format json --silent`), stdout 의 JSON 을 반환.
+fn call_kordoc_sync(
+    cli_path: &Path,
+    file_path: &Path,
+    opts: KordocOptions,
+) -> Result<String, ParseError> {
+    // Windows extended-length / UNC prefix 제거 (Node.js/kordoc가 처리하지 못함).
+    // 단순 strip("\\?\\") 만 하면 \\?\UNC\server\share\... 가 UNC\server\... 로 깨지므로
+    // dunce::simplified 로 \\srv\share\... 형태까지 정확히 복원한다.
+    let file_owned = crate::utils::network_path::simplify(file_path);
+    let file_str = file_owned.to_string_lossy();
+
+    debug!(
+        "kordoc: {} {} --format json --silent{}",
+        cli_path.display(),
+        file_str,
+        if opts.formula_ocr {
+            " --formula-ocr"
+        } else {
+            ""
+        }
+    );
+
+    let mut args: Vec<std::ffi::OsString> = vec![
+        file_str.as_ref().into(),
+        "--format".into(),
+        "json".into(),
+        "--silent".into(),
+    ];
+    if opts.formula_ocr {
+        args.push("--formula-ocr".into());
+    }
+
+    let timeout_secs = if opts.formula_ocr {
+        KORDOC_FORMULA_TIMEOUT_SECS
+    } else {
+        KORDOC_TIMEOUT_SECS
+    };
+
+    let out = run_kordoc_process(
+        cli_path,
+        &args,
+        timeout_secs,
+        &file_path.display().to_string(),
+    )?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        warn!("kordoc failed (exit {}): {}", out.status, stderr);
         // "이미지 기반 PDF"는 kordoc이 본문 없는 스캔 PDF를 만났을 때 내는 마커.
         // parse_file 이 OCR 여부 보고 Rust 재시도를 건너뛸 수 있게 에러 문자열에 태그 유지.
         if stderr.contains("이미지 기반 PDF") {
             return Err(ParseError::ParseError(format!(
-                "kordoc: 이미지 기반 PDF (exit {status})"
+                "kordoc: 이미지 기반 PDF (exit {})",
+                out.status
             )));
         }
-        // stderr 의 모든 비어있지 않은 라인을 합쳐서 사용자 가시 에러에 노출.
-        // 이전 구현은 첫 줄("FAIL" 같은 헤더)만 잡아서 진짜 진단 메시지가 묻혔다 (이슈 #22):
-        //   stderr line 1: "FAIL"
-        //   stderr line 2: "  → 지원하지 않는 파일 형식입니다."
-        // 마지막 라인 부근에 가장 구체적인 에러가 나오는 경향이 있어 모두 보존한다.
-        let snippet: String = stderr
-            .lines()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect::<Vec<_>>()
-            .join(" | ")
-            .chars()
-            .take(300)
-            .collect();
+        let snippet = stderr_snippet(&stderr);
         return Err(ParseError::ParseError(if snippet.is_empty() {
-            format!("kordoc 실행 실패 (exit {status})")
+            format!("kordoc 실행 실패 (exit {})", out.status)
         } else {
-            format!("kordoc 실행 실패 (exit {status}): {snippet}")
+            format!("kordoc 실행 실패 (exit {}): {snippet}", out.status)
         }));
     }
 
     // kordoc 출력 크기 제한 (100MB — OOM 방지)
     const MAX_OUTPUT_SIZE: usize = 100 * 1024 * 1024;
-    if stdout_buf.len() > MAX_OUTPUT_SIZE {
+    if out.stdout.len() > MAX_OUTPUT_SIZE {
         return Err(ParseError::ParseError(format!(
             "kordoc 출력 크기 초과: {}MB (최대 {}MB)",
-            stdout_buf.len() / 1_048_576,
+            out.stdout.len() / 1_048_576,
             MAX_OUTPUT_SIZE / 1_048_576
         )));
     }
 
-    let output = String::from_utf8(stdout_buf)
+    let output = String::from_utf8(out.stdout)
         .map_err(|_| ParseError::ParseError("kordoc 출력이 유효한 UTF-8이 아닙니다".to_string()))?;
 
     // pdfjs-dist 등 외부 라이브러리가 stdout에 경고를 출력하는 경우

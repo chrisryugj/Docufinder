@@ -254,6 +254,44 @@ pub async fn load_markdown_preview(
     }
 }
 
+// ======================== 레이아웃 미리보기 (SVG) ========================
+
+/// kordoc render 로 HWPX 전체 페이지를 원본 조판 그대로의 SVG 로 렌더 (레이아웃 보기 토글).
+/// `highlight_query` 는 공백 구분 검색어 — SVG 안에 형광펜 rect 로 칠해진다.
+///
+/// 한컴 저장 HWPX 전용 — HWP·조판 캐시 없는 파일은 kordoc 이 stderr 로 거절하며,
+/// 프론트는 에러 토스트 후 마크다운 뷰를 유지한다.
+#[tauri::command]
+pub async fn render_layout_svg(
+    file_path: String,
+    highlight_query: Option<String>,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<String> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+
+    // 경로 검증: canonicalize + 감시 폴더 화이트리스트 (마크다운 미리보기와 동일)
+    let fp = validate_preview_path(&file_path, &state)?;
+
+    let highlights: Vec<String> = highlight_query
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+
+    tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        crate::parsers::kordoc::render_svg(std::path::Path::new(&fp), &highlights).map_err(|e| {
+            match e {
+                // ParseError Display 의 "Parse error:" 프리픽스 없이 진단 메시지만 토스트로
+                crate::parsers::ParseError::ParseError(msg) => ApiError::CommandFailed(msg),
+                other => ApiError::CommandFailed(other.to_string()),
+            }
+        })
+    })
+    .await?
+}
+
 /// DB 청크를 병합해 마크다운 본문 생성 (스캔 PDF OCR 결과 복원용)
 async fn fetch_db_markdown(
     file_path: &str,

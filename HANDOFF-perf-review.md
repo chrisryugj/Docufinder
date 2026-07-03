@@ -53,6 +53,55 @@ docufinder 8차 세션: SVG 레이아웃 미리보기 기능 추가. HANDOFF-per
 
 ---
 
+## ✅ 8차 세션 결과 로그 (맥북, 2026-07-04) — SVG 레이아웃 미리보기 완성
+
+**결과**: "레이아웃 보기" 토글 구현 + 실사용 중 발견한 kordoc 렌더 버그 2건 근본 수정.
+데모 문서로 앱 실물 검증 완료(광진구 로고 정상·형광펜 정확·2페이지 스택).
+
+### (A) docufinder 구현 — 커밋됨
+
+- **백엔드** `parsers/kordoc.rs`: 사이드카 프로세스 실행부를 `run_kordoc_process()` 공용
+  러너로 추출(타임아웃·drain 스레드·Job Object 고아방지 재사용). `render_svg(path,
+  &highlights)` 신설 — `render` 서브커맨드 호출, 임시파일(-o) 후 읽고 삭제, exit code +
+  출력파일 존재/크기(≤50MB)로 판정. `call_kordoc_sync`는 러너 호출로 슬림화(동작 불변).
+- **커맨드** `commands/preview.rs`: `render_layout_svg(file_path, highlight_query)` tauri
+  커맨드 + `lib.rs` invoke_handler 등록. 경로검증은 마크다운 미리보기와 동일 화이트리스트.
+- **프론트** `PreviewPanel.tsx`: 툴바 "레이아웃 보기" 토글(HWPX만 노출), SVG는 `<img
+  data:>` 격리 삽입, 파일당 1회 렌더 후 캐시. 검색어 바뀌면 캐시 무효화+재렌더(형광펜이
+  SVG에 구워짐). 인용점프·찾기(⌘F)는 레이아웃 뷰에서 마크다운 뷰로 자동 복귀. 캡션은
+  `data-page` 수로 "N페이지" 표기. **스크롤 로직 불변**.
+
+### (B) kordoc 렌더 버그 2건 근본 수정 (kordoc 레포, v3.14.0)
+
+실사용 피드백("레이아웃 깨짐·형광펜 빗나감·원본과 다름")을 데모 문서 실측으로 진단·수정:
+
+1. **이미지 크롭 오판(로고 깨짐)** `render/svg-render.ts:drawPic` — `imgClip`을 `orgSz`(최초
+   삽입 크기) 기준으로 해석해, 삽입 후 리사이즈된 로고(dim<org)를 좌상단 24% 코너로 잘못
+   잘랐다(중기부 로고 5개·대전환의길 로고 전멸). **`imgClip`은 `imgDim`(내용 상자) 기준**임을
+   반영 — 실측: 데모 pic 267개 중 clip==dim(크롭없음) 254개, 실제 크롭 8개도 dim 기준 정상.
+2. **형광펜 정렬 이탈** — `measureTextWidth` 추정 offset vs `textLength` 렌더의 불일치로
+   매치 박스가 좌측 이탈. **조각을 매치 경계로 분할**해 각 세그먼트를 자체 `textLength`로
+   그리고 매치 세그먼트에만 rect를 emit(글자·rect 동일 폭·위치 계산) → 정확 정렬.
+
+**다페이지·슬롯 정합·형광펜은 이번 세션 신규**(위 CHANGELOG 3.14.0). 검증: fire 문서
+seoul 로고·회귀 무영향, 24MB 에볼라 0.29s/7페이지, 앱 실물 광진구/중기부 문서 정상.
+
+### ⚠️ 릴리스 주의 — kordoc 번들 재생성 필요
+
+`src-tauri/resources/kordoc/`는 **gitignore**(로컬만). 이 세션 수정은 kordoc 레포 소스에만
+커밋됨. **배포본에 반영하려면 릴리스 전 kordoc `npm run build` 후 번들 재복사 필수**:
+- Win: `scripts/bundle-kordoc.ps1` (KORDOC_DIR→dist 복사)
+- Mac: `scripts/setup-macos-resources.sh` 또는 수동 `cp kordoc/dist/* resources/kordoc/`
+  (package.json 유지, .map/.cts/index.d.ts 제외). 이 맥 로컬 번들은 이미 3.14.0 반영해둠.
+- **kordoc npm 미배포**(3.14.0 로컬 빌드만) — 배포 시 kordoc도 publish 검토.
+
+### 잔여 (kordoc 렌더 한계, 백로그)
+
+- charPr 경계에 걸친 형광펜 매치는 미착색(세그먼트가 스타일 단위라). 수식·그리기도형 미지원(경고).
+- 페이지 걸친 표는 시작 페이지에서 잘림(조판 캐시에 분할점 없음). 다중 구역(section1+)은 첫 구역만.
+
+---
+
 ## ✅ 7차 세션 결과 로그 (맥북, 2026-07-03)
 
 ### (A) 실검증 체크리스트 결과
