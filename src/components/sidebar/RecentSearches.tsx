@@ -20,8 +20,8 @@ export const RecentSearches = memo(function RecentSearches({
   if (searches.length === 0) {
     return (
       <div
-        className="text-sm py-2 px-3"
-        style={{ color: "var(--color-sidebar-muted)" }}
+        className="text-[11px] py-2 px-3"
+        style={{ color: "var(--color-sidebar-section)" }}
       >
         최근 검색 기록이 없습니다
       </div>
