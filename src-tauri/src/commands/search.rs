@@ -283,16 +283,16 @@ pub async fn find_similar_documents(
     .await?
 }
 
-/// 문서 카테고리 분류
+/// 문서 카테고리 일괄 분류 (T2-6)
+///
+/// 검색결과 카드 N개를 프론트가 파일당 개별 IPC 로 분류하던 것을 한 번에 처리
+/// — IPC·spawn_blocking·커넥션 획득이 배치당 1회가 된다. 개별 파일의 조회
+/// 실패는 응답에서 빠질 뿐 배치 전체를 실패시키지 않는다(프론트가 재시도).
 #[tauri::command]
-pub async fn classify_document(
-    file_path: String,
+pub async fn classify_documents(
+    file_paths: Vec<String>,
     state: State<'_, RwLock<AppContainer>>,
-) -> ApiResult<String> {
-    if file_path.trim().is_empty() {
-        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
-    }
-
+) -> ApiResult<std::collections::HashMap<String, String>> {
     let (service, db_path) = {
         let container = state.read()?;
         (
@@ -301,31 +301,49 @@ pub async fn classify_document(
         )
     };
 
-    // 파일의 첫 번째 청크 텍스트 가져오기
-    let text = tokio::task::spawn_blocking(move || -> ApiResult<String> {
-        let conn = crate::db::get_connection(std::path::Path::new(&db_path))?;
-        let chunk_ids = crate::db::get_chunk_ids_for_path(&conn, &file_path)
-            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+    tokio::task::spawn_blocking(
+        move || -> ApiResult<std::collections::HashMap<String, String>> {
+            let conn = crate::db::get_connection(std::path::Path::new(&db_path))?;
+            let mut categories = std::collections::HashMap::with_capacity(file_paths.len());
 
-        if chunk_ids.is_empty() {
-            return Ok(String::new());
-        }
+            for file_path in file_paths {
+                if file_path.trim().is_empty() {
+                    continue;
+                }
+                // 파일의 첫 번째 청크 텍스트로 키워드 분류
+                let first_chunk_text = match crate::db::get_chunk_ids_for_path(&conn, &file_path)
+                {
+                    Ok(chunk_ids) if !chunk_ids.is_empty() => {
+                        match crate::db::get_chunks_by_ids(&conn, &[chunk_ids[0]]) {
+                            Ok(chunks) => chunks
+                                .first()
+                                .map(|c| c.content.clone())
+                                .unwrap_or_default(),
+                            Err(e) => {
+                                tracing::debug!("classify chunk 조회 실패 {}: {}", file_path, e);
+                                continue;
+                            }
+                        }
+                    }
+                    Ok(_) => String::new(),
+                    Err(e) => {
+                        tracing::debug!("classify chunk id 조회 실패 {}: {}", file_path, e);
+                        continue;
+                    }
+                };
 
-        let chunks = crate::db::get_chunks_by_ids(&conn, &[chunk_ids[0]])
-            .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
+                let category = if first_chunk_text.is_empty() {
+                    "기타".to_string()
+                } else {
+                    service.classify_document(&first_chunk_text)?
+                };
+                categories.insert(file_path, category);
+            }
 
-        Ok(chunks
-            .first()
-            .map(|c| c.content.clone())
-            .unwrap_or_default())
-    })
-    .await??;
-
-    if text.is_empty() {
-        return Ok("기타".to_string());
-    }
-
-    service.classify_document(&text).map_err(ApiError::from)
+            Ok(categories)
+        },
+    )
+    .await?
 }
 
 // ==================== 검색어 히스토리 저장 ====================
