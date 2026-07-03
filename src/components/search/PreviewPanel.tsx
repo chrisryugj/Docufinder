@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, LayoutTemplate } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -606,6 +606,13 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [findCount, setFindCount] = useState(0);
   const [findActiveIdx, setFindActiveIdx] = useState(0);
 
+  // 레이아웃 뷰 (kordoc render SVG) — HWPX 전용, 파일당 1회 렌더 후 캐시.
+  // kordoc 은 조판 캐시 기반 첫 페이지만 렌더한다 — UI 라벨도 "첫 페이지"로 정직하게.
+  const [viewMode, setViewMode] = useState<"markdown" | "layout">("markdown");
+  const [layoutSvg, setLayoutSvg] = useState<string | null>(null);
+  const [layoutLoading, setLayoutLoading] = useState(false);
+  const layoutReqRef = useRef(0); // 파일 전환 시 in-flight 렌더 응답 무효화
+
   const { showToast, updateToast } = useUIContext();
 
   // 파싱된 텍스트 복사
@@ -664,6 +671,10 @@ export const PreviewPanel = memo(function PreviewPanel({
     setFindInput("");
     setFindTerm("");
     setFindActiveIdx(0);
+    layoutReqRef.current++;
+    setViewMode("markdown");
+    setLayoutSvg(null);
+    setLayoutLoading(false);
 
     let cancelled = false;
     setLoading(true);
@@ -696,6 +707,12 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     if (!jumpTarget || loading || !markdown) return;
     if (jumpDoneRef.current === jumpTarget.token) return; // 같은 점프 중복 방지
+    if (viewMode === "layout") {
+      // 레이아웃 뷰에선 본문 DOM 이 없어 점프 불가 — 마크다운 뷰로 복귀만 하고
+      // done 마킹 없이 반환, viewMode 가 바뀐 재실행에서 점프한다.
+      setViewMode("markdown");
+      return;
+    }
     const root = contentRef.current;
     if (!root) return;
 
@@ -711,7 +728,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [jumpTarget, loading, markdown]);
+  }, [jumpTarget, loading, markdown, viewMode]);
 
   // AI 요약 생성
   const handleGenerateSummary = useCallback((type: SummaryType) => {
@@ -793,12 +810,93 @@ export const PreviewPanel = memo(function PreviewPanel({
     );
   }, [processedMarkdown, markdownComponents]);
 
+  // SVG 를 <img data:> 로 격리 삽입 — img 컨텍스트에선 스크립트 실행·외부 리소스
+  // 로드가 차단된다 (kordoc 이 통제된 소스라도 방어적으로). CSP img-src 에 data: 허용됨.
+  const layoutSvgUri = useMemo(
+    () => (layoutSvg ? `data:image/svg+xml,${encodeURIComponent(layoutSvg)}` : null),
+    [layoutSvg],
+  );
+
+  // 페이지 수 — kordoc 스택 SVG 의 페이지 그룹(data-page) 수로 캡션 표기
+  const layoutPageCount = useMemo(
+    () => (layoutSvg ? (layoutSvg.match(/data-page="/g) ?? []).length : 0),
+    [layoutSvg],
+  );
+
   // ── 찾기 바 동작 ──
 
   const closeFind = useCallback(() => {
     setFindOpen(false);
     setFindActiveIdx(0);
   }, []);
+
+  // 찾기 토글 — 레이아웃 뷰에선 본문 DOM 이 없어 찾기가 무의미하므로
+  // 마크다운 뷰로 복귀하면서 찾기 바를 연다 (버튼·Ctrl+F 공용).
+  const handleFindToggle = useCallback(() => {
+    if (viewMode === "layout") {
+      setViewMode("markdown");
+      setFindOpen(true);
+      return;
+    }
+    setFindOpen((v) => !v);
+  }, [viewMode]);
+
+  // ── 레이아웃 뷰 (kordoc render SVG) ──
+
+  // 레이아웃 렌더 요청 — 성공 시 레이아웃 뷰 전환. 검색어(highlightQuery)는 SVG 안에
+  // 형광펜 rect 로 구워져 온다. silent 는 검색어 변경 자동 재렌더용 (실패 토스트 억제).
+  const requestLayoutRender = useCallback((silent = false) => {
+    if (!filePath) return;
+    const req = ++layoutReqRef.current;
+    setLayoutLoading(true);
+    invoke<string>("render_layout_svg", { filePath, highlightQuery: highlightQuery?.trim() || null })
+      .then((svg) => {
+        if (layoutReqRef.current !== req) return; // 파일 전환됨 — 늦은 응답 폐기
+        setLayoutSvg(svg);
+        setViewMode("layout");
+      })
+      .catch((e) => {
+        if (layoutReqRef.current !== req) return;
+        setViewMode("markdown");
+        if (!silent) {
+          const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "레이아웃 렌더 실패");
+          showToast(`레이아웃 렌더 실패: ${msg}`, "error");
+        }
+      })
+      .finally(() => {
+        if (layoutReqRef.current === req) setLayoutLoading(false);
+      });
+  }, [filePath, highlightQuery, showToast]);
+
+  // 토글 ON: 캐시 있으면 즉시 전환, 없으면 렌더 후 전환. 실패(HWP·조판 캐시 없음 등)
+  // 시 에러 토스트만 띄우고 마크다운 뷰 유지 — 버튼은 남겨 재시도 가능.
+  const handleToggleLayout = useCallback(() => {
+    if (viewMode === "layout") {
+      setViewMode("markdown");
+      return;
+    }
+    closeFind();
+    if (layoutSvg) {
+      setViewMode("layout");
+      return;
+    }
+    if (layoutLoading) return;
+    requestLayoutRender();
+  }, [viewMode, layoutSvg, layoutLoading, closeFind, requestLayoutRender]);
+
+  // 검색어가 바뀌면 캐시 무효화 (형광펜이 SVG 에 박제돼 있음) — 레이아웃 뷰 열람 중이면 재렌더
+  const prevHlRef = useRef(highlightQuery);
+  useEffect(() => {
+    if (prevHlRef.current === highlightQuery) return;
+    prevHlRef.current = highlightQuery;
+    setLayoutSvg(null);
+    if (viewMode === "layout") requestLayoutRender(true);
+  }, [highlightQuery, viewMode, requestLayoutRender]);
+
+  // 레이아웃 뷰 진입 시 스크롤 초기화 (이전 뷰의 스크롤 위치 잔상 방지)
+  useEffect(() => {
+    if (viewMode === "layout") contentRef.current?.scrollTo(0, 0);
+  }, [viewMode]);
 
   const handleFindNav = useCallback((dir: 1 | -1) => {
     setFindActiveIdx((prev) => (findCount > 0 ? (prev + dir + findCount) % findCount : 0));
@@ -846,11 +944,11 @@ export const PreviewPanel = memo(function PreviewPanel({
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
       if (e.key.toLowerCase() !== "f" && e.code !== "KeyF") return;
       e.preventDefault();
-      setFindOpen((v) => !v);
+      handleFindToggle();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [filePath]);
+  }, [filePath, handleFindToggle]);
 
   // 열릴 때 입력 포커스 (기존 검색어 유지 시 전체 선택)
   useEffect(() => {
@@ -922,6 +1020,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
+  // 레이아웃 렌더(kordoc render)는 한컴 저장 HWPX 전용 — HWP 등은 버튼 자체를 숨긴다
+  const isHwpx = ext === "hwpx";
 
   return (
     <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="preview-panel flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
@@ -993,8 +1093,23 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {markdown && (
           <>
+            {isHwpx && (
+              <button
+                onClick={handleToggleLayout}
+                disabled={layoutLoading}
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === "layout" ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+                title={viewMode === "layout" ? "마크다운 보기" : "원본 레이아웃 보기"}
+                aria-label="원본 레이아웃 보기"
+                aria-pressed={viewMode === "layout"}
+              >
+                {layoutLoading
+                  ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                  : <LayoutTemplate size={14} />
+                }
+              </button>
+            )}
             <button
-              onClick={() => setFindOpen((v) => !v)}
+              onClick={handleFindToggle}
               className={`p-1.5 rounded-lg transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
               title={`문서 내 찾기 (${MOD_KEY}+F)`}
               aria-label="문서 내 찾기"
@@ -1208,8 +1323,24 @@ export const PreviewPanel = memo(function PreviewPanel({
         )}
 
         {/* 마크다운 렌더링 */}
-        {!loading && !error && markdown && (
+        {!loading && !error && markdown && viewMode === "markdown" && (
           <div ref={previewBodyRef} className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
+        )}
+
+        {/* 레이아웃(SVG) 렌더링 — 격리된 <img data:>, 스크립트 실행/외부 요청 차단.
+            종이 흰 배경·페이지 경계선은 SVG 가 자체 포함(다크모드에서도 원본 대비 유지) */}
+        {!loading && !error && viewMode === "layout" && layoutSvgUri && (
+          <div className="px-4 py-3" style={{ backgroundColor: "var(--color-bg-tertiary)", minHeight: "100%" }}>
+            <div className="text-[11px] mb-2 text-center" style={{ color: "var(--color-text-muted)" }}>
+              {layoutPageCount > 0 ? `원본 레이아웃 — ${layoutPageCount}페이지` : "원본 레이아웃"}
+            </div>
+            <img
+              src={layoutSvgUri}
+              alt="원본 레이아웃"
+              className="w-full h-auto"
+              draggable={false}
+            />
+          </div>
         )}
       </div>
 

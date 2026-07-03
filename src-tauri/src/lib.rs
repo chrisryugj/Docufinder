@@ -1359,6 +1359,7 @@ pub fn run() {
             commands::file::open_log_dir,
             commands::system::get_suggested_folders,
             commands::preview::load_markdown_preview,
+            commands::preview::render_layout_svg,
             commands::preview::add_bookmark,
             commands::preview::remove_bookmark,
             commands::preview::update_bookmark_note,
