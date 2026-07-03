@@ -134,4 +134,107 @@ mod perf {
             });
         }
     }
+
+    /// 실모델 임베딩 벤치 — `DOCUFINDER_BENCH_DB` + `DOCUFINDER_BENCH_MODELS` 로 opt-in.
+    ///
+    /// ort 는 load-dynamic 이므로 실행 전 `ORT_DYLIB_PATH` 를 models 디렉토리의
+    /// ONNX Runtime dylib 로 지정해야 한다. 측정 항목:
+    /// ① 쿼리 embed 단건 — T2-2 병렬화에서 FTS 를 뒤에 숨기는 지배 항
+    /// ② embed_batch(32) 처리량 — T2-4 스트림 배칭 경로의 순수 임베딩 속도
+    ///    (실사용 처리량은 여기에 파싱과 인덱싱 강도 쓰로틀이 더해진다)
+    /// ③ 실DB 청크로 빌드한 usearch 인덱스 위 하이브리드 e2e — 임베더 포함 총 지연
+    #[test]
+    fn perf_embed_real_model() {
+        let Ok(db_src) = std::env::var("DOCUFINDER_BENCH_DB") else {
+            eprintln!("[perf] DOCUFINDER_BENCH_DB 미설정 — 실모델 임베딩 벤치 스킵");
+            return;
+        };
+        let Ok(models_dir) = std::env::var("DOCUFINDER_BENCH_MODELS") else {
+            eprintln!("[perf] DOCUFINDER_BENCH_MODELS 미설정 — 실모델 임베딩 벤치 스킵");
+            return;
+        };
+        let models_dir = std::path::PathBuf::from(models_dir);
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db_path = tmp.path().join("bench.db");
+        std::fs::copy(&db_src, &db_path).expect("실DB 복사");
+        let _ = std::fs::copy(format!("{db_src}-wal"), tmp.path().join("bench.db-wal"));
+
+        let t0 = Instant::now();
+        let emb = std::sync::Arc::new(
+            crate::embedder::Embedder::new(
+                &models_dir.join("model_int8.onnx"),
+                &models_dir.join("tokenizer.json"),
+            )
+            .expect("Embedder 로드 (ORT_DYLIB_PATH 확인)"),
+        );
+        eprintln!(
+            "[perf] Embedder 로드                     {:>9.1}ms",
+            t0.elapsed().as_secs_f64() * 1e3
+        );
+
+        // ① 쿼리 embed 단건 latency
+        for q in ["예산", "예산 집행 계획 및 안전 점검 결과 보고"] {
+            measure(
+                &format!("embed 쿼리({}자)", q.chars().count()),
+                3,
+                20,
+                || {
+                    black_box(emb.embed(black_box(q), true).expect("embed"));
+                },
+            );
+        }
+
+        // ② 실DB 청크 전체 embed_batch(32) — 순수 임베딩 처리량 (+③용 인덱스 빌드)
+        let conn = crate::db::get_connection(&db_path).expect("conn");
+        let mut stmt = conn
+            .prepare("SELECT id, content FROM chunks WHERE content IS NOT NULL")
+            .expect("prepare");
+        let chunks: Vec<(i64, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .expect("query")
+            .filter_map(Result::ok)
+            .collect();
+        drop(stmt);
+        drop(conn);
+
+        let vi = std::sync::Arc::new(
+            crate::search::vector::VectorIndex::new(&tmp.path().join("bench.usearch"))
+                .expect("VectorIndex"),
+        );
+        let total_chars: usize = chunks.iter().map(|(_, c)| c.chars().count()).sum();
+        let t0 = Instant::now();
+        for batch in chunks.chunks(32) {
+            let contents: Vec<String> = batch.iter().map(|(_, c)| c.clone()).collect();
+            let embeddings = emb.embed_batch(&contents).expect("embed_batch");
+            for ((id, _), e) in batch.iter().zip(embeddings.iter()) {
+                vi.add(*id, e).expect("vector add");
+            }
+        }
+        let secs = t0.elapsed().as_secs_f64();
+        eprintln!(
+            "[perf] 벡터 인덱싱 {}청크/{}만자          {:>7.1}s = {:.1} chunks/s, {:.0} chars/s (쓰로틀 제외)",
+            chunks.len(),
+            total_chars / 10_000,
+            secs,
+            chunks.len() as f64 / secs,
+            total_chars as f64 / secs,
+        );
+
+        // ③ 하이브리드 e2e (FTS ∥ embed+vec → RRF → enrich 전 구간 — T2-2 실측)
+        let tok: std::sync::Arc<dyn TextTokenizer> =
+            std::sync::Arc::new(LinderaKoTokenizer::new().expect("tokenizer init"));
+        let svc = crate::application::services::SearchService::new(
+            db_path,
+            Some(emb),
+            Some(vi),
+            Some(tok),
+            None,
+        );
+        for q in ["보고서", "예산 집행 계획"] {
+            measure(&format!("hybrid e2e(실모델) '{q}'"), 3, 20, || {
+                black_box(svc.search_hybrid(black_box(q), 50, None).expect("hybrid"));
+            });
+        }
+    }
 }
