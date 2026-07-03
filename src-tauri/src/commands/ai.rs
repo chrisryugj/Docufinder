@@ -616,8 +616,8 @@ pub async fn ask_ai(
             return;
         }
 
-        let search_result = service
-            .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref());
+        let search_result =
+            service.search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref());
 
         let results = match search_result {
             Ok(resp) => resp.results,
@@ -657,9 +657,11 @@ pub async fn ask_ai(
                     results.len(),
                     fallback_query
                 );
-                if let Ok(fallback_resp) = service
-                    .search_hybrid(&fallback_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
-                {
+                if let Ok(fallback_resp) = service.search_hybrid(
+                    &fallback_query,
+                    RAG_RETRIEVE_LIMIT,
+                    folder_scope.as_deref(),
+                ) {
                     let existing: std::collections::HashSet<(String, i64)> = results
                         .iter()
                         .map(|r| (r.file_path.clone(), r.chunk_index))
@@ -690,8 +692,8 @@ pub async fn ask_ai(
                 .max_by_key(|w| w.chars().count())
             {
                 tracing::debug!("RAG 0건 폴백: 최장 단어 '{}' 재시도", longest);
-                if let Ok(resp) = service
-                    .search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
+                if let Ok(resp) =
+                    service.search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
                 {
                     results = resp
                         .results

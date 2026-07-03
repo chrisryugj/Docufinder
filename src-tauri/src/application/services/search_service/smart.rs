@@ -188,8 +188,7 @@ impl SearchService {
                     folder_scope,
                     KeywordMode::And,
                     &fts_filter,
-                )
-                ?
+                )?
             } else {
                 self.search_keyword_with_mode(
                     &parsed.keywords,
@@ -197,8 +196,7 @@ impl SearchService {
                     folder_scope,
                     KeywordMode::And,
                     &fts_filter,
-                )
-                ?
+                )?
             }
         } else if has_filename {
             // 키워드 없고 파일명 필터만 → 파일명 검색 엔진 활용 (전체 인덱스 대상)
@@ -206,8 +204,7 @@ impl SearchService {
                 parsed.filename_filter.as_deref().unwrap_or(""),
                 over_fetch,
                 folder_scope,
-            )
-            ?
+            )?
         } else {
             // 키워드도 파일명도 없고 다른 필터만 → 필터 조건으로 직접 브라우즈
             self.browse_recent_files(
@@ -215,8 +212,7 @@ impl SearchService {
                 folder_scope,
                 &parsed.date_filter,
                 &parsed.file_type,
-            )
-            ?
+            )?
         };
 
         let now = chrono::Utc::now().timestamp();
@@ -460,9 +456,7 @@ mod filter_search_integration {
         );
 
         // 4) "지난달 한글 파일" → 지난달 .hwp (한글=hwp 그룹)
-        let r = svc
-            .search_smart("지난달 한글 파일", 50, None)
-            .unwrap();
+        let r = svc.search_smart("지난달 한글 파일", 50, None).unwrap();
         let n = names(&r);
         assert!(
             n.contains(&"지난달기안.hwp".to_string()),

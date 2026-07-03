@@ -499,4 +499,3 @@ impl AppContainer {
             .map_err(|e| ApiError::DatabaseQuery(format!("Failed to load filename cache: {}", e)))
     }
 }
-
