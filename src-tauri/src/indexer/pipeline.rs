@@ -39,6 +39,48 @@ pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> =
         }
     });
 
+thread_local! {
+    /// 파싱 풀 스레드 전용 토크나이저 (T3-3). LinderaKoTokenizer 는 내부 Mutex 로
+    /// 동시 tokenize 가 직렬화되므로 전역 FTS_TOKENIZER 공유로는 병렬 이득이 없다.
+    /// 인스턴스당 추가 메모리는 dict.da 오토마톤 복사 ~23MB (사전의 큰 페이로드는
+    /// embedded static 이라 프로세스 공유). 파이프라인의 rayon 풀은 인덱싱 런 동안만
+    /// 살아 있는 전용 풀이라 스레드 종료 시 회수된다.
+    static PARSE_POOL_TOKENIZER: Option<LinderaKoTokenizer> = match LinderaKoTokenizer::new() {
+        Ok(t) => Some(t),
+        Err(e) => {
+            tracing::warn!("파싱 풀 토크나이저 초기화 실패 (컨슈머 인라인 폴백): {}", e);
+            None
+        }
+    };
+}
+
+/// 청크 형태소 토큰을 파싱 풀에서 선계산 (T3-3).
+///
+/// 단일 컨슈머(DB 저장) 스레드가 파일마다 lindera tokenize 로 직렬화되던 병목을
+/// 병렬 파싱 단계로 옮긴다. 반환 `None` = 이 스레드에 토크나이저가 없어 미계산
+/// (컨슈머가 기존처럼 인라인 처리). `Some(vec)` 의 `None` 항목 = tokenize panic
+/// (해당 청크는 형태소 없이 인덱싱 — 기존 consumer 측 catch_unwind 와 동일 의미).
+pub(crate) fn tokenize_chunks_in_parse_pool(
+    document: &ParsedDocument,
+) -> Option<Vec<Option<String>>> {
+    PARSE_POOL_TOKENIZER.with(|tok| {
+        let tok = tok.as_ref()?;
+        Some(
+            document
+                .chunks
+                .iter()
+                .map(|chunk| {
+                    let content = &chunk.content;
+                    match catch_unwind(AssertUnwindSafe(|| tok.tokenize(content))) {
+                        Ok(morphemes) => Some(morphemes.join(" ")),
+                        Err(_) => None,
+                    }
+                })
+                .collect(),
+        )
+    })
+}
+
 /// 스트리밍 파이프라인 채널 버퍼 크기
 /// 16: 파서 스레드가 HDD 2 / SSD 4 로 제한되므로 16도 충분한 여유. 32 대비 메모리 피크 절반
 /// 으로, 저사양 PC (8GB RAM) + Downloads 폴더 같은 부적합 타깃에서 OOM 방어.
@@ -68,6 +110,9 @@ pub(crate) enum ParseResult {
     Success {
         path: PathBuf,
         document: ParsedDocument,
+        /// 파싱 풀에서 선계산한 청크별 형태소 토큰 (T3-3).
+        /// `None` = 미계산(컨슈머 인라인 폴백), 항목 `None` = tokenize panic.
+        chunk_tokens: Option<Vec<Option<String>>>,
     },
     Failure {
         path: PathBuf,
@@ -397,10 +442,16 @@ fn index_folder_fts_impl(
                 let ocr_deref = ocr_ref.map(|e| e.as_ref());
                 let result =
                     match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
-                        Ok(Ok(doc)) => ParseResult::Success {
-                            path: path.clone(),
-                            document: doc,
-                        },
+                        Ok(Ok(doc)) => {
+                            // T3-3: 형태소 토큰을 파싱 풀에서 선계산 — 단일 컨슈머의
+                            // tokenize 직렬화 병목을 병렬 단계로 이동
+                            let chunk_tokens = tokenize_chunks_in_parse_pool(&doc);
+                            ParseResult::Success {
+                                path: path.clone(),
+                                document: doc,
+                                chunk_tokens,
+                            }
+                        }
                         Ok(Err(crate::parsers::ParseError::CloudPlaceholder(_))) => {
                             ParseResult::CloudSkipped { path: path.clone() }
                         }
@@ -461,7 +512,11 @@ fn index_folder_fts_impl(
                     batch_count += 1;
 
                     match result {
-                        ParseResult::Success { path, document } => {
+                        ParseResult::Success {
+                            path,
+                            document,
+                            chunk_tokens,
+                        } => {
                             let file_name = path
                                 .file_name()
                                 .and_then(|n| n.to_str())
@@ -483,6 +538,7 @@ fn index_folder_fts_impl(
                                     document,
                                     FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
                                     vector_index.as_deref(),
+                                    chunk_tokens,
                                 )
                             }));
 
@@ -636,12 +692,15 @@ fn index_folder_fts_impl(
 ///
 /// `tokenizer`: 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 인덱싱.
 /// unicode61 토크나이저의 한국어 토큰화 한계를 보완하여 검색 재현율 향상.
+/// `precomputed_tokens`: 파싱 풀이 선계산한 청크별 형태소 토큰 (T3-3).
+/// `Some` 이면 인라인 tokenize 를 건너뛴다 (배치 파이프라인 경로).
 pub(crate) fn save_document_to_db_fts_only_no_tx(
     conn: &Connection,
     path: &Path,
     document: ParsedDocument,
     tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
     vector_index: Option<&crate::search::vector::VectorIndex>,
+    precomputed_tokens: Option<Vec<Option<String>>>,
 ) -> Result<usize, IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
@@ -706,22 +765,35 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
 
     let chunks_count = document.chunks.len();
     let mut tokenize_panics: usize = 0;
+    let mut precomputed_tokens = precomputed_tokens;
 
     for (idx, chunk) in document.chunks.into_iter().enumerate() {
         // 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 저장.
-        // lindera 가 특정 입력에서 panic 하는 사례 (BENIGN_PANIC_SOURCES 에 등재)에 대비해
-        // 청크 단위로 catch_unwind. panic 시 형태소 토큰 없이 진행 — 검색 재현율은 살짝
-        // 낮아지지만 인덱싱 자체는 성공 (강제종료 회피가 우선).
-        let extra_tokens = tokenizer.and_then(|tok| {
-            let content = &chunk.content;
-            match catch_unwind(AssertUnwindSafe(|| tok.tokenize(content))) {
-                Ok(morphemes) => Some(morphemes.join(" ")),
-                Err(_) => {
+        // 배치 경로는 파싱 풀 선계산분(precomputed_tokens)을 사용 (T3-3) —
+        // 항목 None = 파싱 풀에서의 tokenize panic (형태소 없이 인덱싱).
+        // 그 외 경로(감시자 단건 등)는 기존처럼 인라인 tokenize 하되, lindera 가
+        // 특정 입력에서 panic 하는 사례 (BENIGN_PANIC_SOURCES 에 등재)에 대비해
+        // 청크 단위로 catch_unwind. panic 시 형태소 토큰 없이 진행 — 검색 재현율은
+        // 살짝 낮아지지만 인덱싱 자체는 성공 (강제종료 회피가 우선).
+        let extra_tokens = match precomputed_tokens.as_mut() {
+            Some(tokens) => {
+                let t = tokens.get_mut(idx).and_then(Option::take);
+                if t.is_none() {
                     tokenize_panics += 1;
-                    None
                 }
+                t
             }
-        });
+            None => tokenizer.and_then(|tok| {
+                let content = &chunk.content;
+                match catch_unwind(AssertUnwindSafe(|| tok.tokenize(content))) {
+                    Ok(morphemes) => Some(morphemes.join(" ")),
+                    Err(_) => {
+                        tokenize_panics += 1;
+                        None
+                    }
+                }
+            }),
+        };
 
         db::insert_chunk(
             conn,
@@ -989,6 +1061,7 @@ pub(crate) fn index_file_fts_only_no_tx(
         document,
         FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
         vector_index,
+        None, // 단건 경로 — 인라인 tokenize (파싱 풀 없음)
     )?;
 
     Ok(IndexResult {
@@ -1077,7 +1150,7 @@ mod stale_vector_tests {
         std::fs::write(&file, "v1 내용").unwrap();
 
         // 1차 저장 (벡터 인덱스 없이) → 청크 id 확보
-        save_document_to_db_fts_only_no_tx(&conn, &file, doc("v1 내용"), None, None).unwrap();
+        save_document_to_db_fts_only_no_tx(&conn, &file, doc("v1 내용"), None, None, None).unwrap();
         let file_id: i64 = conn
             .query_row(
                 "SELECT id FROM files WHERE path = ?",
@@ -1104,6 +1177,7 @@ mod stale_vector_tests {
             doc("v2 완전히 다른 내용"),
             None,
             Some(&vi),
+            None,
         )
         .unwrap();
         assert!(
