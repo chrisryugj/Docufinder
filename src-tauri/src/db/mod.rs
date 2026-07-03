@@ -1142,6 +1142,15 @@ pub fn get_recently_opened_files(
     rows.collect()
 }
 
+/// "최근 작업한 문서" 목록에서 제거 — last_opened_at 만 지운다.
+/// open_count 등 다른 열람 신호와 파일/인덱스는 건드리지 않는다.
+pub fn clear_last_opened(conn: &Connection, path: &str) -> Result<usize> {
+    conn.execute(
+        "UPDATE files SET last_opened_at = NULL WHERE path = ?1",
+        params![path],
+    )
+}
+
 /// 가장 큰 문서 Top N
 pub fn get_largest_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
     let mut stmt = conn.prepare(

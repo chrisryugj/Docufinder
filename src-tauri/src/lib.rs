@@ -1329,6 +1329,7 @@ pub fn run() {
             commands::search::save_search_query,
             commands::search::get_document_statistics,
             commands::search::get_recently_opened_documents,
+            commands::search::remove_recently_opened_document,
             commands::index::add_folder,
             commands::index::classify_folder,
             commands::index::remove_folder,

@@ -821,6 +821,7 @@ function AppContent() {
                     indexedFolders={idx.status?.watched_folders?.length ?? 0}
                     recentSearches={search.recentSearches}
                     onSelectSearch={search.handleSelectSearch}
+                    onRemoveSearch={search.removeSearch}
                     semanticEnabled={semanticEnabled}
                     onAddFolder={handleAddFolder}
                     onSelectResult={handleSelectResult}

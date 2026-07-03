@@ -54,6 +54,8 @@ interface SearchResultListProps {
   recentSearches?: RecentSearch[];
   /** 웰컴 화면: 최근 검색 클릭 */
   onSelectSearch?: (query: string) => void;
+  /** 웰컴 화면: 최근 검색 삭제 (우클릭 메뉴) */
+  onRemoveSearch?: (query: string) => void;
   /** 시맨틱 검색 활성 여부 */
   semanticEnabled?: boolean;
   /** 결과 선택 시 콜백 (미리보기 연동) */
@@ -119,6 +121,7 @@ export const SearchResultList = memo(function SearchResultList({
   indexedFolders,
   recentSearches,
   onSelectSearch,
+  onRemoveSearch,
   semanticEnabled,
   onSelectResult,
   onFindSimilar,
@@ -666,6 +669,7 @@ export const SearchResultList = memo(function SearchResultList({
       indexedFolders={indexedFolders}
       recentSearches={recentSearches}
       onSelectSearch={onSelectSearch}
+      onRemoveSearch={onRemoveSearch}
       semanticEnabled={semanticEnabled}
       onAddFolder={onAddFolder}
       onOpenFile={onOpenFile}
