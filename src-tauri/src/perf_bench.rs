@@ -77,4 +77,61 @@ mod perf {
             black_box(tok.extract_nouns(black_box(&doc)));
         });
     }
+
+    /// 실 DB 하이브리드 검색 벤치 — `DOCUFINDER_BENCH_DB=<실DB경로>` 로 opt-in.
+    ///
+    /// T2-2(FTS∥임베딩 rayon 병렬)의 이득 = min(t_fts, t_embed+t_vec) 이므로,
+    /// embed 지배 가정하에 FTS 질의 실측치가 곧 병렬화로 숨겨지는 시간이다.
+    /// embedder=None 이라 벡터 클로저는 즉시 반환하지만 rayon::join 배관·RRF·
+    /// enrich 까지 실 코드 경로 전체를 탄다. DB 는 임시 디렉토리로 복사해
+    /// 실행 중인 앱·원본과 격리한다.
+    #[test]
+    fn perf_hybrid_fts_real_db() {
+        let Ok(src) = std::env::var("DOCUFINDER_BENCH_DB") else {
+            eprintln!("[perf] DOCUFINDER_BENCH_DB 미설정 — 실DB 하이브리드 벤치 스킵");
+            return;
+        };
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let db_path = tmp.path().join("bench.db");
+        std::fs::copy(&src, &db_path).expect("실DB 복사");
+        // WAL 잔여분까지 복사 (없으면 무시)
+        let _ = std::fs::copy(format!("{src}-wal"), tmp.path().join("bench.db-wal"));
+
+        let tok: std::sync::Arc<dyn TextTokenizer> =
+            std::sync::Arc::new(LinderaKoTokenizer::new().expect("tokenizer init"));
+        let svc = crate::application::services::SearchService::new(
+            db_path.clone(),
+            None, // embedder 없음 → 벡터 클로저 즉시 반환 (FTS 경로 실측)
+            None,
+            Some(tok.clone()),
+            None,
+        );
+
+        // (1) FTS 질의 단독 — rayon 병렬화가 embed 뒤에 숨기는 구간 그 자체
+        let filter = crate::search::fts::MetaFilter::default();
+        for q in ["보고서", "예산 집행 계획", "안전 점검 결과"] {
+            let conn = crate::db::get_connection(&db_path).expect("conn");
+            measure(&format!("fts 질의 '{q}'"), 5, 50, || {
+                black_box(
+                    crate::search::fts::search_with_tokenizer(
+                        &conn,
+                        black_box(q),
+                        50,
+                        tok.as_ref(),
+                        None,
+                        crate::search::KeywordMode::And,
+                        &filter,
+                    )
+                    .expect("fts search"),
+                );
+            });
+        }
+
+        // (2) 하이브리드 end-to-end (FTS+rayon+RRF+enrich) — 경로 전체 건강도
+        for q in ["보고서", "예산 집행 계획"] {
+            measure(&format!("hybrid e2e(FTS-only) '{q}'"), 5, 50, || {
+                black_box(svc.search_hybrid(black_box(q), 50, None).expect("hybrid"));
+            });
+        }
+    }
 }
