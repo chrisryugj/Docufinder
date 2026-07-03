@@ -326,8 +326,7 @@ fn run_vector_indexing(
                     // 완료 판정되어 마킹 버퍼로 (기존의 즉시 마킹 → flush 경유로 통일:
                     // 해당 청크는 이미 저장된 인덱스에 있으므로 crash 시에도 안전).
                     st.processed += skipped_in_file;
-                    if let Some(done) = st.tracker.record(prefetched.file_id, skipped_in_file, 0)
-                    {
+                    if let Some(done) = st.tracker.record(prefetched.file_id, skipped_in_file, 0) {
                         route_completion(done, &mut st.pending_mark_file_ids);
                     }
                 }

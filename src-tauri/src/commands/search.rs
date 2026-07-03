@@ -311,8 +311,7 @@ pub async fn classify_documents(
                     continue;
                 }
                 // 파일의 첫 번째 청크 텍스트로 키워드 분류
-                let first_chunk_text = match crate::db::get_chunk_ids_for_path(&conn, &file_path)
-                {
+                let first_chunk_text = match crate::db::get_chunk_ids_for_path(&conn, &file_path) {
                     Ok(chunk_ids) if !chunk_ids.is_empty() => {
                         match crate::db::get_chunks_by_ids(&conn, &[chunk_ids[0]]) {
                             Ok(chunks) => chunks

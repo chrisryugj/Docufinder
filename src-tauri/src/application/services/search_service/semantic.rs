@@ -208,11 +208,7 @@ impl SearchService {
     }
 
     /// 주어진 파일과 유사한 문서를 벡터 검색으로 찾기
-    pub fn find_similar(
-        &self,
-        file_path: &str,
-        max_results: usize,
-    ) -> AppResult<SearchResponse> {
+    pub fn find_similar(&self, file_path: &str, max_results: usize) -> AppResult<SearchResponse> {
         let start = Instant::now();
 
         let embedder = self
