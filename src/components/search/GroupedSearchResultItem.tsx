@@ -153,7 +153,11 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       >
         <div
           className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text ${isCompact ? "gap-2" : "gap-2.5"}`}
-          onClick={() => onOpenFile(group.file_path)}
+          onClick={(e) => {
+            // 외곽 래퍼(selectForPreview)로 버블되면 외부 열기와 미리보기가 동시에 일어난다
+            e.stopPropagation();
+            onOpenFile(group.file_path);
+          }}
           title="파일 열기 (우클릭: 더 많은 옵션)"
         >
           <FileIcon fileName={group.file_name} size={isCompact ? "sm" : "md"} />

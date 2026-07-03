@@ -216,10 +216,20 @@ function AppContent() {
   });
 
   // ── Report helper ──
+  // 결과(ui.reportResults)는 닫아도 유지 — StatusBar "실패 N건"으로 재열람 가능
+  const [reportOpen, setReportOpen] = useState(false);
   const showReportIfNeeded = useCallback((results: AddFolderResult[]) => {
     const hasFailed = results.some((r) => r.failed_count > 0);
-    if (hasFailed) ui.setReportResults(results);
+    if (hasFailed) {
+      ui.setReportResults(results);
+      setReportOpen(true);
+    }
   }, [ui.setReportResults]);
+  const reportFailedCount = useMemo(
+    () => ui.reportResults.reduce((sum, r) => sum + r.failed_count, 0),
+    [ui.reportResults],
+  );
+  const handleShowReport = useCallback(() => setReportOpen(true), []);
 
   const handleAddFolder = useCallback(async () => {
     const results = await rawHandleAddFolder();
@@ -336,6 +346,46 @@ function AppContent() {
     setCitationJump(null);
     ui.handlePreviewClose();
   }, [ui.handlePreviewClose]);
+
+  // 검색 결과 카드 클릭 → 미리보기를 해당 청크 위치로 점프 (인용 점프와 같은 배관).
+  // content_preview 는 청크 앞부분 원문이라 findJumpTarget 의 텍스트 앵커로 쓸 수 있다.
+  // 청크 시작부가 표/헤딩 경계에 걸려 렌더 텍스트와 어긋날 수 있어 뒤쪽 오프셋도
+  // 앵커로 추가한다 (findJumpTarget 이 순서대로 재시도).
+  const handleSelectResult = useCallback((index: number) => {
+    search.setSelectedIndex(index);
+    const r = search.filteredResults[index];
+    const preview = r?.content_preview;
+    if (preview) {
+      citeTokenRef.current += 1;
+      setCitationJump({
+        filePath: r.file_path,
+        anchors: [preview, preview.slice(40), preview.slice(80)].filter((s) => s.length >= 6),
+        page: r.page_number,
+        token: citeTokenRef.current,
+      });
+    }
+  }, [search.setSelectedIndex, search.filteredResults]);
+
+  // ── 0건 제안 칩 콜백 ──
+  // 자연어 필터(날짜/파일타입/제외)를 떼고 파싱된 키워드만 즉시 모드로 재검색
+  const handleRetryWithoutFilters = useCallback(() => {
+    const kw = search.parsedQuery?.keywords?.trim();
+    if (!kw) return;
+    search.setParadigm("instant");
+    search.handleSelectSearch(kw);
+  }, [search.parsedQuery, search.setParadigm, search.handleSelectSearch]);
+
+  const handleFocusSearch = useCallback(() => {
+    const el = search.searchInputRef.current;
+    el?.focus();
+    el?.select();
+  }, [search.searchInputRef]);
+
+  // 내용 검색 0건 → 파일명 검색으로 전환 (searchMode 변경이 디바운스 재검색을 트리거)
+  const handleSwitchToFilenameSearch = useCallback(() => {
+    search.setParadigm("instant");
+    search.setSearchMode("filename");
+  }, [search.setParadigm, search.setSearchMode]);
 
   // ── Keyboard Shortcuts ──
   useKeyboardShortcuts(
@@ -773,13 +823,19 @@ function AppContent() {
                     onSelectSearch={search.handleSelectSearch}
                     semanticEnabled={semanticEnabled}
                     onAddFolder={handleAddFolder}
-                    onSelectResult={search.setSelectedIndex}
+                    onSelectResult={handleSelectResult}
                     onFindSimilar={semanticEnabled ? search.handleFindSimilar : undefined}
                     categories={categories}
                     paradigm={search.paradigm}
                     nlSubmitted={search.nlSubmitted}
                     parsedQuery={search.parsedQuery}
                     onSwitchToAnything={handleSwitchToAnything}
+                    isIndexing={idx.isIndexing}
+                    indexProgress={idx.progress}
+                    searchMode={search.searchMode}
+                    onRetryWithoutFilters={handleRetryWithoutFilters}
+                    onFocusSearch={handleFocusSearch}
+                    onSwitchToFilenameSearch={handleSwitchToFilenameSearch}
                   />
                 )}
               </div>
@@ -858,6 +914,8 @@ function AppContent() {
           onCancelBatch={idx.cancelBatch}
           onResumeIndexing={handleResumeIndexing}
           hasCancelledFolders={!!idx.cancelledFolderPath}
+          failedCount={reportFailedCount}
+          onShowReport={handleShowReport}
         />
       </div>
 
@@ -884,8 +942,8 @@ function AppContent() {
       </LazyMount>
       <ToastContainer toasts={ui.toasts} onDismiss={ui.dismissToast} />
       <IndexingReportModal
-        isOpen={ui.reportResults.length > 0}
-        onClose={() => ui.setReportResults([])}
+        isOpen={reportOpen && ui.reportResults.length > 0}
+        onClose={() => setReportOpen(false)}
         results={ui.reportResults}
       />
 

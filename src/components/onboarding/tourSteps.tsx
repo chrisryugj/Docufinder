@@ -106,8 +106,8 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
     body: (
       <div className="space-y-2">
         <p>
-          도움말 버튼을 누르면 단축키 목록과 <strong>"기능 투어 다시 보기"</strong>
-          옵션을 찾을 수 있습니다.
+          이 메뉴(⋯)에서 <strong>도움말</strong>을 열면 단축키 목록과{" "}
+          <strong>"기능 투어 다시 보기"</strong> 옵션을 찾을 수 있습니다.
         </p>
         <p className="text-[12px] opacity-80">
           이제 첫 번째 폴더를 추가하고 검색을 시작해보세요! 🚀

@@ -211,20 +211,12 @@ function SearchSection() {
     <div>
       <SectionTitle>검색 모드</SectionTitle>
       <Paragraph>
-        검색바 우측의 드롭다운에서 상황에 맞는 검색 모드를 선택하세요.
+        기본 검색 모드는 설정 → 일반에서 바꿀 수 있어요. 결과 화면의 '옵션'에서도 전환됩니다.
       </Paragraph>
 
       <FeatureBox
         title="키워드 (기본)"
         description="입력한 단어가 정확히 포함된 문서를 찾아요. '계약서'를 검색하면 '계약서'가 들어간 문서만 나와요."
-      />
-      <FeatureBox
-        title="하이브리드 (추천)"
-        description="키워드 + 의미 검색을 함께 사용해요. 가장 정확한 결과를 얻을 수 있어요. 시맨틱 검색 활성화 + 모델 다운로드가 필요해요."
-      />
-      <FeatureBox
-        title="시맨틱"
-        description="비슷한 의미의 내용도 찾아줘요. '휴가'를 검색하면 '연차', '휴식' 관련 문서도 함께 나와요."
       />
       <FeatureBox
         title="파일명"
@@ -248,9 +240,9 @@ function SearchSection() {
         연산자는 조합할 수 있어요. 예: ext:hwp "감사 결과" -초안 path:2024 — 키워드 모드에서만 동작해요.
       </InfoBox>
 
-      <SubTitle>자연어 검색</SubTitle>
+      <SubTitle>자연어 검색 (스마트)</SubTitle>
       <Paragraph>
-        검색바 상단의 패러다임 토글에서 '자연어' 모드로 전환하면 일상 언어로 검색할 수 있어요. "지난주 예산 관련 한글 문서 찾아줘"처럼 입력하고 Enter를 누르면, 검색어·파일 형식·날짜 범위를 자동으로 분석해서 결과를 보여줘요.
+        검색바 상단의 토글에서 '스마트' 모드로 전환하면 일상 언어로 검색할 수 있어요. "지난주 예산 관련 한글 문서 찾아줘"처럼 입력하고 Enter를 누르면, 검색어·파일 형식·날짜 범위를 자동으로 분석해서 결과를 보여줘요.
       </Paragraph>
 
       <SubTitle>검색어 자동완성</SubTitle>

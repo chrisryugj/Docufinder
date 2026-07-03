@@ -11,6 +11,10 @@ interface StatusBarProps {
   onCancelBatch?: () => void;
   onResumeIndexing?: () => void;
   hasCancelledFolders?: boolean;
+  /** 마지막 인덱싱 리포트의 실패 파일 수 (재열람 진입점) */
+  failedCount?: number;
+  /** 실패 리포트 다시 열기 */
+  onShowReport?: () => void;
 }
 
 const phaseInfo: Record<string, { label: string; desc: string }> = {
@@ -22,7 +26,7 @@ const phaseInfo: Record<string, { label: string; desc: string }> = {
   cancelled: { label: "취소됨", desc: "" },
 };
 
-export const StatusBar = memo(function StatusBar({ status, progress, batch, onCancelIndexing, onCancelBatch, onResumeIndexing, hasCancelledFolders }: StatusBarProps) {
+export const StatusBar = memo(function StatusBar({ status, progress, batch, onCancelIndexing, onCancelBatch, onResumeIndexing, hasCancelledFolders, failedCount = 0, onShowReport }: StatusBarProps) {
   const [appVersion, setAppVersion] = useState("");
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
@@ -177,6 +181,16 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
               >
                 · 파일명 캐시 초과
               </span>
+            )}
+            {failedCount > 0 && onShowReport && (
+              <button
+                onClick={onShowReport}
+                className="px-1.5 py-0.5 text-[11px] rounded font-medium transition-opacity hover:opacity-80"
+                style={{ color: "var(--color-warning, #f59e0b)" }}
+                title="마지막 인덱싱에서 실패한 파일 목록을 다시 봅니다"
+              >
+                실패 {failedCount}건
+              </button>
             )}
           </div>
           <div className="flex items-center gap-2">
