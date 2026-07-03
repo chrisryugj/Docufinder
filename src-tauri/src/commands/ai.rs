@@ -617,8 +617,7 @@ pub async fn ask_ai(
         }
 
         let search_result = service
-            .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
-            .await;
+            .search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref());
 
         let results = match search_result {
             Ok(resp) => resp.results,
@@ -660,7 +659,6 @@ pub async fn ask_ai(
                 );
                 if let Ok(fallback_resp) = service
                     .search_hybrid(&fallback_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
-                    .await
                 {
                     let existing: std::collections::HashSet<(String, i64)> = results
                         .iter()
@@ -694,7 +692,6 @@ pub async fn ask_ai(
                 tracing::debug!("RAG 0건 폴백: 최장 단어 '{}' 재시도", longest);
                 if let Ok(resp) = service
                     .search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
-                    .await
                 {
                     results = resp
                         .results
@@ -899,7 +896,6 @@ pub async fn ask_ai_file(
         // 떨어진다. 처음부터 `f.path = ?` 로 좁혀 파일 내부 BM25 상위 청크를 뽑는다.
         let targeted_results = service
             .search_hybrid_in_file(&search_query, RAG_RETRIEVE_LIMIT, &file_path_clone)
-            .await
             .map(|resp| resp.results)
             .unwrap_or_default();
 

@@ -76,10 +76,12 @@ pub async fn search_keyword(
         (container.search_service(), s.max_results, s.group_versions)
     };
 
-    let response = service
-        .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
-        .await
-        .map_err(ApiError::from)?;
+    let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+        service
+            .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
+            .map_err(ApiError::from)
+    })
+    .await??;
     Ok(apply_lineage_collapse(response, group_versions))
 }
 
@@ -108,10 +110,12 @@ pub async fn search_filename(
 
     // 파일명 매치는 Everything 스타일 — lineage collapse 적용 안 함.
     // 같은 파일명의 다른 경로 복사본을 모두 노출한다 (사용자 UX 요구).
-    let response = service
-        .search_filename(&query, max_results, folder_scope.as_deref())
-        .await
-        .map_err(ApiError::from)?;
+    let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+        service
+            .search_filename(&query, max_results, folder_scope.as_deref())
+            .map_err(ApiError::from)
+    })
+    .await??;
     Ok(response)
 }
 
@@ -147,10 +151,12 @@ pub async fn search_semantic(
         return Err(ApiError::SemanticSearchDisabled);
     }
 
-    let response = service
-        .search_semantic(&query, max_results, folder_scope.as_deref())
-        .await
-        .map_err(ApiError::from)?;
+    let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+        service
+            .search_semantic(&query, max_results, folder_scope.as_deref())
+            .map_err(ApiError::from)
+    })
+    .await??;
     Ok(apply_lineage_collapse(response, group_versions))
 }
 
@@ -188,17 +194,21 @@ pub async fn search_hybrid(
 
     // 시맨틱 비활성화 시 키워드 검색으로 폴백
     if !semantic_enabled {
-        let response = service
-            .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
-            .await
-            .map_err(ApiError::from)?;
+        let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+            service
+                .search_keyword_with_operators(&query, max_results, folder_scope.as_deref(), mode)
+                .map_err(ApiError::from)
+        })
+        .await??;
         return Ok(apply_lineage_collapse(response, group_versions));
     }
 
-    let response = service
-        .search_hybrid_with_operators(&query, max_results, folder_scope.as_deref(), mode)
-        .await
-        .map_err(ApiError::from)?;
+    let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+        service
+            .search_hybrid_with_operators(&query, max_results, folder_scope.as_deref(), mode)
+            .map_err(ApiError::from)
+    })
+    .await??;
     Ok(apply_lineage_collapse(response, group_versions))
 }
 
@@ -226,10 +236,14 @@ pub async fn search_smart(
         (container.search_service(), s.max_results, s.group_versions)
     };
 
-    let mut response = service
-        .search_smart(&query, max_results, folder_scope.as_deref())
-        .await
-        .map_err(ApiError::from)?;
+    let mut response = tokio::task::spawn_blocking(
+        move || -> ApiResult<crate::application::dto::search::SmartSearchResponse> {
+            service
+                .search_smart(&query, max_results, folder_scope.as_deref())
+                .map_err(ApiError::from)
+        },
+    )
+    .await??;
     if group_versions {
         let before = response.results.len();
         response.results = collapse_by_lineage(response.results);
@@ -261,10 +275,12 @@ pub async fn find_similar_documents(
         (container.search_service(), max_results)
     };
 
-    service
-        .find_similar(&file_path, max_results.min(20)) // 유사문서는 최대 20개
-        .await
-        .map_err(ApiError::from)
+    tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
+        service
+            .find_similar(&file_path, max_results.min(20)) // 유사문서는 최대 20개
+            .map_err(ApiError::from)
+    })
+    .await?
 }
 
 /// 문서 카테고리 분류

@@ -14,7 +14,7 @@ const SEMANTIC_ENRICH_MAX_RESULTS: usize = 5;
 
 impl SearchService {
     /// 시맨틱 검색 (벡터)
-    pub async fn search_semantic(
+    pub fn search_semantic(
         &self,
         query: &str,
         max_results: usize,
@@ -208,7 +208,7 @@ impl SearchService {
     }
 
     /// 주어진 파일과 유사한 문서를 벡터 검색으로 찾기
-    pub async fn find_similar(
+    pub fn find_similar(
         &self,
         file_path: &str,
         max_results: usize,

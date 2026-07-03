@@ -48,7 +48,7 @@ fn vector_chunk_passes_operators(chunk: &db::ChunkInfo, op: &query_syntax::Opera
 
 impl SearchService {
     /// 하이브리드 검색 (FTS5 키워드 + usearch 벡터 + RRF 병합)
-    pub async fn search_hybrid(
+    pub fn search_hybrid(
         &self,
         query: &str,
         max_results: usize,
@@ -61,7 +61,6 @@ impl SearchService {
             KeywordMode::And,
             &fts::MetaFilter::default(),
         )
-        .await
     }
 
     /// 하이브리드 검색 — 검색 모드 + 메타 필터 지정
@@ -69,7 +68,7 @@ impl SearchService {
     /// 메타 필터(날짜·파일타입)는 FTS 단계에 SQL 로 적용해 키워드+필터 질의가
     /// BM25 상위 N 밖으로 밀려 누락되는 것을 막는다. 벡터 검색은 메타 후처리를
     /// `search_smart` 의 최종 필터에 위임한다(FTS 가 타깃을 이미 보장).
-    pub async fn search_hybrid_with_mode(
+    pub fn search_hybrid_with_mode(
         &self,
         query: &str,
         max_results: usize,
@@ -78,7 +77,6 @@ impl SearchService {
         filter: &fts::MetaFilter,
     ) -> AppResult<SearchResponse> {
         self.search_hybrid_impl(query, None, max_results, folder_scope, mode, filter)
-            .await
     }
 
     /// 하이브리드 검색 — 인라인 연산자 지원 (v3.0.0)
@@ -86,7 +84,7 @@ impl SearchService {
     /// FTS 측은 연산자 합성 MATCH + SQL 메타 필터, 벡터 측은 연산자를 제거한
     /// 텍스트로 임베딩하고 메타/제외 조건을 후처리로 적용한다.
     /// 연산자가 없으면 기존 경로와 완전 동일.
-    pub async fn search_hybrid_with_operators(
+    pub fn search_hybrid_with_operators(
         &self,
         query: &str,
         max_results: usize,
@@ -95,16 +93,14 @@ impl SearchService {
     ) -> AppResult<SearchResponse> {
         let op = query_syntax::parse_operators(query);
         if !op.has_operators() {
-            return self
-                .search_hybrid_impl(
-                    query,
-                    None,
-                    max_results,
-                    folder_scope,
-                    mode,
-                    &fts::MetaFilter::default(),
-                )
-                .await;
+            return self.search_hybrid_impl(
+                query,
+                None,
+                max_results,
+                folder_scope,
+                mode,
+                &fts::MetaFilter::default(),
+            );
         }
 
         let filter = fts::MetaFilter {
@@ -113,10 +109,9 @@ impl SearchService {
             path_contains: op.path_filters.clone(),
         };
         self.search_hybrid_impl(query, Some(&op), max_results, folder_scope, mode, &filter)
-            .await
     }
 
-    async fn search_hybrid_impl(
+    fn search_hybrid_impl(
         &self,
         query: &str,
         op: Option<&query_syntax::OperatorQuery>,
@@ -383,7 +378,7 @@ impl SearchService {
     /// 벡터 검색은 단일 파일 문맥에서는 파일 내 모든 청크가 이미 주제적으로 관련되어
     /// 있고, chunk_index 기반 순차 보충이 맥락 연속성을 보장하므로 여기선 사용하지
     /// 않는다 (vector_index 는 전역 top-N 만 반환하여 file-scoped recall 을 보장하지 못함).
-    pub async fn search_hybrid_in_file(
+    pub fn search_hybrid_in_file(
         &self,
         query: &str,
         max_results: usize,

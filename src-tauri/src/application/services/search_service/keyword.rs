@@ -11,7 +11,7 @@ use std::time::Instant;
 
 impl SearchService {
     /// 키워드 검색 (FTS5) — 검색 모드 + 메타 필터 지정
-    pub async fn search_keyword_with_mode(
+    pub fn search_keyword_with_mode(
         &self,
         query: &str,
         max_results: usize,
@@ -51,7 +51,7 @@ impl SearchService {
     ///
     /// `"구문"` / `-제외` / `ext:` / `path:` / `before:`·`after:` / `~N` 을 파싱해
     /// FTS MATCH 식과 메타 필터로 합성한다. 연산자가 없으면 기존 경로와 완전 동일.
-    pub async fn search_keyword_with_operators(
+    pub fn search_keyword_with_operators(
         &self,
         query: &str,
         max_results: usize,
@@ -60,15 +60,13 @@ impl SearchService {
     ) -> AppResult<SearchResponse> {
         let op = query_syntax::parse_operators(query);
         if !op.has_operators() {
-            return self
-                .search_keyword_with_mode(
-                    query,
-                    max_results,
-                    folder_scope,
-                    mode,
-                    &fts::MetaFilter::default(),
-                )
-                .await;
+            return self.search_keyword_with_mode(
+                query,
+                max_results,
+                folder_scope,
+                mode,
+                &fts::MetaFilter::default(),
+            );
         }
 
         let filter = fts::MetaFilter {
@@ -175,7 +173,7 @@ impl SearchService {
     }
 
     /// 파일명 검색 (캐시 우선, fallback: LIKE 검색)
-    pub async fn search_filename(
+    pub fn search_filename(
         &self,
         query: &str,
         max_results: usize,
@@ -380,8 +378,8 @@ mod operator_search_integration {
     use super::*;
     use crate::db;
 
-    #[tokio::test]
-    async fn operator_search_end_to_end() {
+    #[test]
+    fn operator_search_end_to_end() {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("ops.db");
         db::init_database(&db_path).unwrap();
@@ -448,16 +446,12 @@ mod operator_search_integration {
             r.results.iter().map(|x| x.file_name.clone()).collect()
         };
         let search = |q: &'static str| {
-            let svc = &svc;
-            async move {
-                svc.search_keyword_with_operators(q, 50, None, KeywordMode::And)
-                    .await
-                    .unwrap()
-            }
+            svc.search_keyword_with_operators(q, 50, None, KeywordMode::And)
+                .unwrap()
         };
 
         // 1) 구문 검색: "budget plan" 인접 순서 — 역순 문서 제외
-        let n = names(&search("\"budget plan\"").await);
+        let n = names(&search("\"budget plan\""));
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
         assert!(n.contains(&"budget_draft.pdf".to_string()), "{n:?}");
         assert!(
@@ -466,7 +460,7 @@ mod operator_search_integration {
         );
 
         // 2) 제외어: monthly 포함 문서 탈락
-        let n = names(&search("budget -monthly").await);
+        let n = names(&search("budget -monthly"));
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
         assert!(
             !n.contains(&"budget_draft.pdf".to_string()),
@@ -474,7 +468,7 @@ mod operator_search_integration {
         );
 
         // 3) ext: 레거시 그룹 확장 (hwp → hwp+hwpx)
-        let n = names(&search("budget ext:hwp").await);
+        let n = names(&search("budget ext:hwp"));
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
         assert!(
             n.contains(&"budget_old.hwpx".to_string()),
@@ -483,11 +477,11 @@ mod operator_search_integration {
         assert!(!n.iter().any(|x| x.ends_with(".pdf")), "pdf 오검출: {n:?}");
 
         // 4) path: 경로 부분 일치
-        let n = names(&search("budget path:archive").await);
+        let n = names(&search("budget path:archive"));
         assert_eq!(n, vec!["budget_old.hwpx".to_string()], "{n:?}");
 
         // 5) after: 최근 1년 — 오래된 문서 제외
-        let n = names(&search("budget after:2025").await);
+        let n = names(&search("budget after:2025"));
         assert!(n.contains(&"budget_final.hwp".to_string()), "{n:?}");
         assert!(
             !n.contains(&"budget_old.hwpx".to_string()),
@@ -495,14 +489,14 @@ mod operator_search_integration {
         );
 
         // 6) ~N 근접 검색: 인접 문서만 매칭, 거리 확대 시 둘 다
-        let n = names(&search("alpha beta ~3").await);
+        let n = names(&search("alpha beta ~3"));
         assert!(n.contains(&"near_close.txt".to_string()), "{n:?}");
         assert!(
             !n.contains(&"near_far.txt".to_string()),
             "NEAR 거리 초과 오검출: {n:?}"
         );
 
-        let n = names(&search("alpha beta ~20").await);
+        let n = names(&search("alpha beta ~20"));
         assert!(n.contains(&"near_close.txt".to_string()), "{n:?}");
         assert!(
             n.contains(&"near_far.txt".to_string()),
@@ -510,11 +504,11 @@ mod operator_search_integration {
         );
 
         // 7) 필터 전용 질의: 검색어 없이 ext: 만 → 메타 브라우즈
-        let n = names(&search("ext:pdf").await);
+        let n = names(&search("ext:pdf"));
         assert_eq!(n, vec!["budget_draft.pdf".to_string()], "{n:?}");
 
         // 8) 연산자 없는 일반 질의는 기존 경로 (회귀 가드)
-        let n = names(&search("budget").await);
+        let n = names(&search("budget"));
         assert!(n.len() >= 3, "일반 검색 회귀: {n:?}");
     }
 }
