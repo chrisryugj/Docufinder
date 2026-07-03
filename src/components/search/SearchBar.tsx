@@ -25,6 +25,8 @@ interface SearchBarProps {
   watchedFolders?: string[];
   searchScope?: string | null;
   onSearchScopeChange?: (scope: string | null) => void;
+  /** 검색 연산자 도움말 열기 (키워드 모드 ? 버튼) */
+  onOpenSearchHelp?: () => void;
 }
 
 // ── 아이콘 ──────────────────────────────────────────────
@@ -55,6 +57,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       watchedFolders = [],
       searchScope,
       onSearchScopeChange,
+      onOpenSearchHelp,
     },
     ref
   ) => {
@@ -229,7 +232,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               onKeyDown={handleKeyDown}
               placeholder={isNatural
                 ? "자연어로 검색 조건을 입력하세요..."
-                : '키워드로 문서 검색…  ("구문" · -제외 · ext:pdf)'
+                : "키워드로 문서 검색..."
               }
               className="flex-1 bg-transparent border-none focus:outline-none h-[24px]"
               style={{
@@ -241,6 +244,23 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               aria-label="검색어 입력"
               autoComplete="off"
             />
+          )}
+
+          {/* 검색 연산자 도움말 (키워드 모드) — 궁금한 사람만 클릭하는 조용한 진입점 */}
+          {isInstant && onOpenSearchHelp && (
+            <button
+              onClick={onOpenSearchHelp}
+              className="shrink-0 ml-2 p-1 rounded-md transition-colors opacity-40 hover:opacity-100"
+              style={{ color: "var(--color-text-muted)" }}
+              title='검색 연산자 도움말 — "구문", -제외, ext:hwp 등'
+              aria-label="검색 연산자 도움말"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+            </button>
           )}
 
           {/* Enter 힌트 (스마트 모드) */}

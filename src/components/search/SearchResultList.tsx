@@ -647,11 +647,6 @@ export const SearchResultList = memo(function SearchResultList({
               </button>
             )}
           </div>
-          {paradigm === "instant" && (
-            <p className="text-xs pt-3" style={{ opacity: 0.75 }}>
-              연산자로 좁힐 수도 있어요: {'"구문"'} · -제외 · ext:hwp · path:경로 · after:2026-01 · ~10
-            </p>
-          )}
         </div>
       </div>
     );
