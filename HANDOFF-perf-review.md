@@ -1,21 +1,68 @@
-# Docufinder 성능 프로덕션 리뷰 (6차) — 맥북프로 이관 핸드오프
+# Docufinder 성능 프로덕션 리뷰 (6차) — 완료 (v3.0.9)
 
-작성: 2026-07-03 (맥미니). **맥북프로에서 이어가기 위한 컨텍스트.** T2-2부터는 임베딩 모델이
-로컬에 있어야 검증되므로 모델 seed된 맥북에서 진행한다.
+작성: 2026-07-03 (맥미니) → **2026-07-03 맥북에서 전 항목 완료, v3.0.9 릴리스.**
+
+---
+
+## ✅ 6차 리뷰 최종 로그 (맥북, 2026-07-03) — 전 항목 완료
+
+계획된 Tier 2·3 전체 + 릴리스까지 완료. 커밋(전부 main 푸시됨):
+
+- `8fdefa2` T2-2 FTS∥임베딩 rayon 병렬 + 실DB gated 벤치(perf_bench.rs).
+  실DB(803청크) FTS 질의 0.17~0.33ms 실측 — 이득 = min(t_fts, t_embed+t_vec), 코퍼스 비례.
+- `5af9625` T2-3 resume 경로 스트리밍(visitor). **SQL LIKE 금지** — 이슈 #34 회귀라 normalize
+  판정을 행 콜백으로 이동만.
+- `6581350` T2-5 parse_file 전문 content 미적재 (NEIS 통합테스트 청크 기준으로 조정).
+- `d3dcd70` T2-6 classify_documents 배치 커맨드 (단건 커맨드 제거).
+- `1441a45` T2-4 vector_worker 파일경계 제거(CompletionTracker+유닛테스트4) / T1-6 embed_batch
+  전환 4곳(normalize_text 동일적용 — embed()가 내부에서 하던 것). fresh-context 검증 PASS.
+- `cb54055` T3-3 형태소 토큰화 파싱 풀 이동 (thread_local Lindera, 인스턴스당 dict.da ~23MB,
+  런 전용 풀이라 종료 시 회수. 토크나이저 초기화 실패 시 컨슈머 인라인 폴백).
+- `16c031d` T3-4 스키마 v17 부분인덱스(last_opened_at/size) / T3-5 SSD 파서 스레드 RAM 16GB↑
+  min(8) (total_memory_mb 유틸 container→utils/disk_info 이동).
+- `d03687a` T3-6 Ctrl+F를 CSS Custom Highlight API 로 (재파싱 0, React 재조정과 무충돌).
+  ::highlight 는 border 미지원이라 밑줄로 이식.
+- `014e6d0` style: cargo fmt (릴리스 게이트 선행).
+
+**의도적 스킵**: T3-1(리스트 렌더 — 실측 후 조건부, 스크롤 로직 불변 지시),
+T3-2(kordoc persistent worker — 별도 레포 큰 작업).
+
+**남은 실측 숙제 (다음 기회에)**:
+- T1-2 프론트 스크롤 실테스트 (`pnpm tauri:dev` 카드 확장/축소 앵커 확인) — 여전히 미완.
+- 임베딩 실 latency (T2-2 벡터경로 / T2-4 배칭 이득) — 모델 seed 된 머신(윈도우 개발기)에서.
+  이 맥북은 모델 未seed. FTS-only 벤치는 `DOCUFINDER_BENCH_DB=<실DB경로>` 로 실행 가능.
+- T3-6 실사용 확인 — WebView2 에서 찾기 하이라이트/이동/카운트 동작 (지원 API 라 이론상 OK).
 
 ---
 
-## 🔖 맥북에서 이어가기 프롬프트 (이거 붙여넣고 시작)
+## 🆕 6차 진행 로그 (맥북, 2026-07-03) — T2-2 코드완료·미커밋
 
-```
-docufinder 성능 프로덕션 리뷰 6차 이어가기. HANDOFF-perf-review.md 읽고 시작.
-맥미니에서 Phase 0(계측)·Phase 1(Tier1)·T2-1(검색 spawn_blocking)까지 커밋·푸시 완료.
-지금 맥북(임베딩 모델 있음)이라 T2-2(FTS∥임베딩 rayon 병렬)부터 실검증하며 진행.
-먼저 git pull 하고, HANDOFF의 "다음=T2-2" 설계대로 hybrid.rs 구현 → FTS-only 회귀 +
-실검색 latency before/after 측정. 이후 T2-3~6, T1-6, T3, Phase4(릴리스 v3.0.9) 순.
-```
+**T2-2 (FTS∥임베딩 rayon 병렬) 구현 완료.** `hybrid.rs:search_hybrid_impl` — 순차 FTS→벡터를
+설계대로 `rayon::join` 두 클로저로 병렬화. 각 클로저가 풀에서 conn 따로 획득(Connection !Sync),
+join 이후 RRF·enrich 용 conn 재획득. `display_query` 는 join 후 262행에서 재사용하므로 벡터
+클로저가 **빌려** 씀(move 금지). `KeywordMode: Copy` 확인, 두 클로저 non-move.
+- **검증 완료**: `cargo check` OK, `cargo clippy --lib -- -D warnings` **0**, 회귀 **222 passed 0 failed**
+  (test 바이너리 직접 실행). rayon::join **배관은 222테스트가 이미 실행** — FTS-only 경로에서 두
+  클로저 다 돌고(벡터는 embedder=None → `_ => Ok((vec![],None))`), RRF 병합까지 탐.
+- **결과 동일성은 구조적 보장**: FTS·벡터 로직 그대로, 정렬은 완료순서 아닌 RRF 점수순(결정적).
+  이 변경이 **새로 도입하는 임베더 스레드 위험 없음** — embed 는 검색당 1회, 이미 spawn_blocking
+  워커서 호출돼 옴(Arc<Embedder> 동시검색 공유). 진짜 새 동작은 conn 2개 동시 체크아웃뿐(풀16 무해).
+- **상태**: `git status` = `M hybrid.rs` **미커밋**(사용자 "멈춰"로 중단, 커밋 요청 없었음).
+  /model 전환은 같은 작업트리라 이 수정 그대로 유지됨.
 
----
+**⚠️ 이 맥북 실태 (핸드오프 가정과 다름 — 중요)**:
+- 임베딩 모델 `model_int8.onnx` **未seed** — `~/Library/Application Support/com.anything.app/models/
+  kosimcse-roberta-multitask/` 에 `libonnxruntime.dylib`(33M)만, onnx·tokenizer.json 없음.
+- 벡터인덱스 **부재** — `data_dir/vectors.usearch`(+`.map`) 파일 없음(앱이 이 맥서 완전구동된 적 없음).
+- 실 DB 는 있음 — `docufinder.db` 4.9M, **chunks 803개, FTS 테이블 완비**(FTS 경로는 실측 가능).
+- 모델 확보법: HF `chrisryugj/kosimcse-roberta-multitask-onnx` 의 `model_int8.onnx`+`tokenizer.json`
+  다운로드(URL·SHA256 은 `model_downloader.rs:41-64`). ort 는 load-dynamic → `ORT_DYLIB_PATH` 를
+  위 dylib 로 set 하면 test 서 Embedder::new 로드 가능. 벡터인덱스는 803청크 embed 해서 새로 빌드 필요.
+- **판단**: 실 벡터 latency 측정은 모델DL+인덱스빌드 필요(중간 비용). embed 지배 가정상 병렬이득
+  ≈ t_fts(FTS 가 embed 뒤에 숨음). t_fts 실측만으로도 이득 정량화 가능 —
+  `SearchService::new(db, None,None, Some(Lindera), None)` 로 embedder=None 하이브리드를 실DB에
+  돌리면 실 FTS·RRF·enrich·rayon 다 타는 end-to-end 측정됨(env `DOCUFINDER_BENCH_DB` gated perf test
+  로 만들면 committable). 다음 세션서 비용 대비 판단해 진행.
 
 ## ✅ 완료 (커밋·푸시됨, main)
 
