@@ -17,7 +17,7 @@ export const BookmarkList = memo(function BookmarkList({
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <section className="pt-1 pb-3">
+    <section className="pt-2.5 pb-3 mt-1 border-t" style={{ borderColor: "var(--color-sidebar-border)" }}>
       {/* 다른 섹션(인덱싱된 폴더·스마트 폴더·최근 검색) 헤더와 동일한 시각 언어 */}
       <div className="flex items-center justify-between px-1 pb-1 mb-1">
         <button

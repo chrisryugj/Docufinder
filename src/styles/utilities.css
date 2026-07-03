@@ -39,7 +39,8 @@
 }
 
 .hover-sidebar-section {
-  color: var(--color-sidebar-section);
+  /* 헤더는 muted — 안내문(sidebar-section)보다 한 단계 진하게 층을 만든다 */
+  color: var(--color-sidebar-muted);
   transition: color 0.15s;
 }
 .hover-sidebar-section:hover {
