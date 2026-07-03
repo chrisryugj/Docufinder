@@ -391,10 +391,15 @@ pub fn sync_folder_fts(
                 let ocr_deref = ocr_ref.map(|e| e.as_ref());
                 let result =
                     match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
-                        Ok(Ok(doc)) => ParseResult::Success {
-                            path: path.clone(),
-                            document: doc,
-                        },
+                        Ok(Ok(doc)) => {
+                            // T3-3: 형태소 토큰 선계산 (배치 파이프라인과 동일)
+                            let chunk_tokens = super::pipeline::tokenize_chunks_in_parse_pool(&doc);
+                            ParseResult::Success {
+                                path: path.clone(),
+                                document: doc,
+                                chunk_tokens,
+                            }
+                        }
                         Ok(Err(crate::parsers::ParseError::CloudPlaceholder(_))) => {
                             ParseResult::CloudSkipped { path: path.clone() }
                         }
@@ -445,7 +450,11 @@ pub fn sync_folder_fts(
                 batch_count += 1;
 
                 match result {
-                    ParseResult::Success { path, document } => {
+                    ParseResult::Success {
+                        path,
+                        document,
+                        chunk_tokens,
+                    } => {
                         let file_name = path
                             .file_name()
                             .and_then(|n| n.to_str())
@@ -457,6 +466,7 @@ pub fn sync_folder_fts(
                             document,
                             FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
                             vector_index.as_deref(),
+                            chunk_tokens,
                         ) {
                             Ok(_) => indexed += 1,
                             Err(e) => {
