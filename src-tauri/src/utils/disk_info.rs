@@ -170,7 +170,7 @@ impl DiskSettings {
         match disk_type {
             DiskType::Ssd => Self {
                 throttle_ms: 0,
-                parallel_threads: num_cpus::get().min(4),
+                parallel_threads: recommended_parser_threads(),
             },
             DiskType::Hdd | DiskType::Unknown => Self {
                 throttle_ms: 10,     // HDD 부하 최소화 (50ms → 10ms)
@@ -178,6 +178,36 @@ impl DiskSettings {
             },
         }
     }
+}
+
+/// SSD 병렬 파싱 스레드 수 — 코어 수와 RAM 을 함께 본다 (T3-5).
+///
+/// 파서 스레드는 문서 원문+청크를 동시에 들고 있어(대형 HWPX/PDF 수십 MB)
+/// 저사양(8GB)에서 8스레드는 메모리 압박이 된다. 16GB 이상에서만 상한을
+/// 8 로 올리고, 그 외(조회 실패 0 포함)는 기존 상한 4 를 유지한다.
+fn recommended_parser_threads() -> usize {
+    let cap = if total_memory_mb() >= 16 * 1024 { 8 } else { 4 };
+    num_cpus::get().min(cap)
+}
+
+/// 시스템 총 메모리 조회 (MB 단위, 실패 시 0)
+#[cfg(windows)]
+pub(crate) fn total_memory_mb() -> u64 {
+    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
+    unsafe {
+        let mut mem = std::mem::zeroed::<MEMORYSTATUSEX>();
+        mem.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if GlobalMemoryStatusEx(&mut mem) != 0 {
+            mem.ullTotalPhys / 1_048_576
+        } else {
+            0
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn total_memory_mb() -> u64 {
+    0
 }
 
 /// CPU 코어 수 반환 (num_cpus 없으면 기본값)

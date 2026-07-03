@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 16;
+const CURRENT_SCHEMA_VERSION: i32 = 17;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -424,6 +424,26 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         conn.execute("DROP TABLE IF EXISTS files_fts", [])?;
         set_schema_version(conn, 16)?;
         tracing::info!("Schema migrated to v16 (drop unused files_fts)");
+    }
+
+    // === v17: 홈 통계 질의 인덱스 (last_opened_at / size) — T3-4 ===
+    // get_recently_opened_files / get_largest_files 가 `WHERE … IS NOT NULL
+    // ORDER BY … DESC LIMIT N` 인데 인덱스가 없어 파일 수만큼 풀스캔+정렬했다.
+    // 질의 술어와 동일한 부분 인덱스로 스캔을 LIMIT N 워크로 줄인다
+    // (last_opened_at 은 사용자가 연 파일에만 기록되므로 부분 인덱스가 특히 작다).
+    if get_schema_version(conn) == 16 {
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_last_opened
+             ON files(last_opened_at DESC) WHERE last_opened_at IS NOT NULL",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_files_size
+             ON files(size DESC) WHERE size IS NOT NULL",
+            [],
+        )?;
+        set_schema_version(conn, 17)?;
+        tracing::info!("Schema migrated to v17 (last_opened_at/size partial indexes)");
     }
 
     tracing::info!(
