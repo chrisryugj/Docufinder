@@ -39,11 +39,16 @@ impl LinderaKoTokenizer {
     /// FTS 검색 시 원본 텍스트와 형태소 모두 검색 가능하도록 합니다.
     fn tokenize_with_original(&self, text: &str) -> Vec<String> {
         let mut result = Vec::new();
+        // 형태소 중복 판정용 집합. `result.contains`(Vec 선형탐색)를 형태소마다 돌면
+        // 토큰 수 제곱이라 큰 청크에서 병목 → HashSet 으로 O(1) 판정한다.
+        let mut seen = std::collections::HashSet::new();
 
-        // 원본 단어들 추가 (공백 기준 분리)
+        // 원본 단어들 추가 (공백 기준 분리) — 원본 어절은 중복을 유지하되 seen 에 등록해
+        // 뒤따르는 형태소가 원본과 겹칠 때 걸러지도록 한다(기존 동작 보존).
         for word in text.split_whitespace() {
             let clean = Self::clean_token(word);
             if !clean.is_empty() {
+                seen.insert(clean.clone());
                 result.push(clean);
             }
         }
@@ -54,7 +59,7 @@ impl LinderaKoTokenizer {
                 for token in tokens {
                     let surface = token.surface.as_ref().to_string();
                     // 2글자 이상이고, 아직 없는 토큰만 추가 (chars().count()로 한글 정확 처리)
-                    if surface.chars().count() >= 2 && !result.contains(&surface) {
+                    if surface.chars().count() >= 2 && seen.insert(surface.clone()) {
                         result.push(surface);
                     }
                 }
@@ -134,6 +139,9 @@ const NOUN_STOPWORDS: &[&str] = &[
 impl TextTokenizer for LinderaKoTokenizer {
     fn extract_nouns(&self, text: &str) -> Vec<String> {
         let mut nouns = Vec::new();
+        // 중복 판정용 집합. `nouns.contains`(Vec 선형탐색)를 명사마다 돌면 O(n^2)이라
+        // 문서 전체를 대상으로 할 때 병목 → HashSet 으로 O(1) 판정한다.
+        let mut seen = std::collections::HashSet::new();
 
         if let Ok(tokenizer) = self.tokenizer.lock() {
             if let Ok(mut tokens) = tokenizer.tokenize(text) {
@@ -149,7 +157,7 @@ impl TextTokenizer for LinderaKoTokenizer {
                         // 1글자 명사 제외 + 불용어 제외
                         if surface.chars().count() >= 2
                             && !NOUN_STOPWORDS.contains(&surface.as_str())
-                            && !nouns.contains(&surface)
+                            && seen.insert(surface.clone())
                         {
                             nouns.push(surface);
                         }
@@ -160,7 +168,7 @@ impl TextTokenizer for LinderaKoTokenizer {
 
         // 숫자+한글 복합어도 보존 (예: "1종", "2차", "3분기")
         for token in Self::extract_number_korean_tokens(text) {
-            if !nouns.contains(&token) {
+            if seen.insert(token.clone()) {
                 nouns.push(token);
             }
         }
@@ -177,11 +185,11 @@ impl TextTokenizer for LinderaKoTokenizer {
             }
             for suffix in &common_suffixes {
                 if let Some(stem) = clean.strip_suffix(suffix) {
-                    if stem.chars().count() >= 2
-                        && !nouns.contains(&stem.to_string())
-                        && !NOUN_STOPWORDS.contains(&stem)
-                    {
-                        nouns.push(stem.to_string());
+                    if stem.chars().count() >= 2 && !NOUN_STOPWORDS.contains(&stem) {
+                        let stem_s = stem.to_string();
+                        if seen.insert(stem_s.clone()) {
+                            nouns.push(stem_s);
+                        }
                     }
                     break; // 가장 긴 매칭만
                 }

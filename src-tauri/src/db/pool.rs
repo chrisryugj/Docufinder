@@ -17,9 +17,9 @@ use std::sync::Mutex;
 /// 분리해 상호 간섭을 제거한다. 앱은 단일 DB 경로만 쓰므로 동작/오버헤드는 동일하다.
 static CONN_POOL: Lazy<Mutex<HashMap<String, Vec<Connection>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-/// 풀 크기: Repository 2개(into_inner 영구 점유) + pipeline/vector_worker/prefetch/
-/// watch event_loop + 다수 IPC 커맨드 동시 실행을 흡수.
-/// 6은 Repository 2 고정 점유 후 4개만 남아 폭주 상황에서 부족 → 16으로 상향.
+/// 풀 크기: pipeline/vector_worker/prefetch/watch event_loop + 다수 IPC 커맨드가
+/// 동시에 커넥션을 빌리는 상황을 흡수한다. 서비스(Search/Folder/Index)는 db_path만
+/// 보유하고 커넥션은 연산 단위로 빌렸다 반납하므로 영구 점유분은 없다(폭주 흡수용 여유).
 const MAX_POOL_SIZE: usize = 16;
 
 /// 풀에서 관리되는 DB 커넥션 래퍼

@@ -211,6 +211,14 @@ export const SearchResultList = memo(function SearchResultList({
     setExpandedIndex((prev) => (prev === index ? null : index));
   }, [captureScrollAnchor]);
 
+  // index 기반 안정 그룹 토글: 아이템에 인라인 화살표를 내리지 않아 memo 를 유지한다.
+  // 스크롤 앵커/토글 로직(handleToggleGroupExpand)은 그대로라 동작은 불변.
+  const handleToggleGroupByIndex = useCallback((index: number) => {
+    const group = groupedResults[index];
+    if (!group) return;
+    handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`);
+  }, [groupedResults, handleToggleGroupExpand]);
+
   useLayoutEffect(() => {
     const pendingAnchor = pendingScrollAnchorRef.current;
     if (!pendingAnchor) return;
@@ -306,7 +314,7 @@ export const SearchResultList = memo(function SearchResultList({
                           index={index}
                           isExpanded={expandedGroups.has(group.file_path)}
                           isCompact={isCompact}
-                          onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
+                          onToggleExpand={handleToggleGroupByIndex}
                           onOpenFile={onOpenFile}
                           onCopyPath={onCopyPath}
                           onOpenFolder={onOpenFolder}
@@ -339,7 +347,8 @@ export const SearchResultList = memo(function SearchResultList({
                         isCompact={isCompact}
                         searchQuery={highlightQuery}
                         isExpanded={expandedGroups.has(group.file_path)}
-                        onToggleExpand={() => handleToggleGroupExpand(group.file_path, `grouped-search-result-${index}`)}
+                        onToggleExpand={handleToggleGroupByIndex}
+                        index={index}
                       />
                     </div>
                   );
@@ -376,7 +385,7 @@ export const SearchResultList = memo(function SearchResultList({
                       isExpanded={expandedIndex === index}
                       isSelected={selectedIndex === index}
                       isCompact={isCompact}
-                      onToggleExpand={() => handleToggleExpand(index)}
+                      onToggleExpand={handleToggleExpand}
                       onOpenFile={onOpenFile}
                       onCopyPath={onCopyPath}
                       onOpenFolder={onOpenFolder}

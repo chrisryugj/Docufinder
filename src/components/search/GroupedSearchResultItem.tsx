@@ -19,8 +19,10 @@ interface GroupedSearchResultItemProps {
   searchQuery?: string;
   /** 펼침 상태 (부모에서 관리) */
   isExpanded?: boolean;
-  /** 펼침 토글 콜백 */
-  onToggleExpand?: () => void;
+  /** 펼침 토글 콜백 (아이템 index 를 넘겨 부모가 안정 콜백을 유지하도록 함) */
+  onToggleExpand?: (index: number) => void;
+  /** 리스트 내 index — onToggleExpand 인자로 전달 (기본 0) */
+  index?: number;
 }
 
 /**
@@ -40,6 +42,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   searchQuery,
   isExpanded = false,
   onToggleExpand,
+  index = 0,
 }: GroupedSearchResultItemProps) {
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -209,7 +212,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleExpand();
+                onToggleExpand(index);
               }}
               className="p-1 rounded transition-colors btn-icon-hover"
               style={{ color: "var(--color-accent)" }}
@@ -229,7 +232,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             chunks={group.chunks}
             compact={isCompact}
             onJump={() => {
-              if (!isExpanded) onToggleExpand?.();
+              if (!isExpanded) onToggleExpand?.(index);
             }}
           />
         </div>
@@ -247,7 +250,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
           <div
             key={`${chunk.chunk_index}-${idx}`}
             className={`flex rounded cursor-pointer result-item-hover ${isCompact ? "gap-1.5 p-1" : "gap-2 p-1.5"}`}
-            onClick={() => { if (hasMore) onToggleExpand?.(); }}
+            onClick={() => { if (hasMore) onToggleExpand?.(index); }}
             title={hasMore ? (isExpanded ? "클릭: 접기" : "클릭: 모든 매칭 펼치기") : "파일명 클릭: 외부 실행"}
           >
             {/* Location */}
@@ -301,7 +304,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         {/* 더보기/접기 */}
         {hasMore && onToggleExpand && (
           <button
-            onClick={onToggleExpand}
+            onClick={() => onToggleExpand?.(index)}
             className={`w-full text-xs rounded-md result-item-hover ${isCompact ? "py-1" : "py-1.5"}`}
             style={{ color: "var(--color-accent)" }}
           >

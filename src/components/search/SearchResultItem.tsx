@@ -17,7 +17,7 @@ interface SearchResultItemProps {
   isExpanded: boolean;
   isSelected?: boolean;
   isCompact?: boolean;
-  onToggleExpand: () => void;
+  onToggleExpand: (index: number) => void;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
@@ -246,7 +246,7 @@ export const SearchResultItem = memo(function SearchResultItem({
       {/* Row 2: Content preview (pl-6 = FileIcon 16px + gap 8px 정렬) */}
       <div
         className="cursor-pointer rounded flex gap-1.5 -mx-1.5 px-1.5 py-1 pl-6"
-        onClick={onToggleExpand}
+        onClick={() => onToggleExpand(index)}
         aria-expanded={isExpanded}
         role="button"
         aria-label={isExpanded ? "미리보기 접기" : "미리보기 펼치기"}
