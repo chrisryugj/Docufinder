@@ -17,7 +17,7 @@ impl SearchService {
     /// 날짜·파일타입을 SQL WHERE로 직접 적용해 전체 인덱스를 대상으로 거른다.
     /// (예전에는 최근 N건만 가져와 후처리로 걸러서, 과거 파일이나 드문 타입은
     ///  최근 목록 범위 밖이면 0건이 되는 버그가 있었다.)
-    pub(super) async fn browse_recent_files(
+    pub(super) fn browse_recent_files(
         &self,
         max_results: usize,
         folder_scope: Option<&str>,
@@ -128,7 +128,7 @@ impl SearchService {
     }
 
     /// 자연어 검색: NL 파서 → 하이브리드 검색 위임 → 후처리 필터
-    pub async fn search_smart(
+    pub fn search_smart(
         &self,
         query: &str,
         max_results: usize,
@@ -189,7 +189,7 @@ impl SearchService {
                     KeywordMode::And,
                     &fts_filter,
                 )
-                .await?
+                ?
             } else {
                 self.search_keyword_with_mode(
                     &parsed.keywords,
@@ -198,7 +198,7 @@ impl SearchService {
                     KeywordMode::And,
                     &fts_filter,
                 )
-                .await?
+                ?
             }
         } else if has_filename {
             // 키워드 없고 파일명 필터만 → 파일명 검색 엔진 활용 (전체 인덱스 대상)
@@ -207,7 +207,7 @@ impl SearchService {
                 over_fetch,
                 folder_scope,
             )
-            .await?
+            ?
         } else {
             // 키워드도 파일명도 없고 다른 필터만 → 필터 조건으로 직접 브라우즈
             self.browse_recent_files(
@@ -216,7 +216,7 @@ impl SearchService {
                 &parsed.date_filter,
                 &parsed.file_type,
             )
-            .await?
+            ?
         };
 
         let now = chrono::Utc::now().timestamp();
@@ -382,8 +382,8 @@ mod filter_search_integration {
     use crate::application::services::search_service::helpers::date_filter_range;
     use crate::db;
 
-    #[tokio::test]
-    async fn filter_only_smart_search_end_to_end() {
+    #[test]
+    fn filter_only_smart_search_end_to_end() {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("test.db");
         db::init_database(&db_path).unwrap();
@@ -424,7 +424,7 @@ mod filter_search_integration {
         };
 
         // 1) "xlsx" → .xls + .xlsx 둘 다, 최근 txt 노이즈에 안 밀림
-        let r = svc.search_smart("xlsx", 5, None).await.unwrap();
+        let r = svc.search_smart("xlsx", 5, None).unwrap();
         let n = names(&r);
         assert!(n.contains(&"예산.xlsx".to_string()), "xlsx 누락: {n:?}");
         assert!(
@@ -434,7 +434,7 @@ mod filter_search_integration {
         assert!(n.iter().all(|x| !x.ends_with(".txt")), "txt 오검출: {n:?}");
 
         // 2) "작년 hwp" → 작년 .hwp + .hwpx, 지난달/타입 불일치 제외
-        let r = svc.search_smart("작년 hwp", 50, None).await.unwrap();
+        let r = svc.search_smart("작년 hwp", 50, None).unwrap();
         let n = names(&r);
         assert!(
             n.contains(&"작년보고서.hwp".to_string()),
@@ -451,7 +451,7 @@ mod filter_search_integration {
         assert!(!n.contains(&"예산.xlsx".to_string()), "xlsx 오검출: {n:?}");
 
         // 3) "지난달 pdf" → 지난달 .pdf만
-        let r = svc.search_smart("지난달 pdf", 50, None).await.unwrap();
+        let r = svc.search_smart("지난달 pdf", 50, None).unwrap();
         let n = names(&r);
         assert_eq!(
             n,
@@ -462,7 +462,6 @@ mod filter_search_integration {
         // 4) "지난달 한글 파일" → 지난달 .hwp (한글=hwp 그룹)
         let r = svc
             .search_smart("지난달 한글 파일", 50, None)
-            .await
             .unwrap();
         let n = names(&r);
         assert!(
@@ -475,14 +474,14 @@ mod filter_search_integration {
         );
 
         // 키워드+필터(FTS push) 경로도 동일 격리 컨텍스트에서 순차 검증
-        keyword_with_filter_scenario().await;
+        keyword_with_filter_scenario();
     }
 
     /// 키워드 + 날짜/파일타입 조합("budget 작년 hwp")이 FTS 단계에서 필터되어,
     /// 노이즈가 BM25 상위를 점령해도 타깃이 누락되지 않음을 검증.
     /// (content 는 FTS5 한글 토큰화 의존을 피하려 영문 "budget" 사용)
     /// 단일 #[tokio::test] 에서 순차 호출되어 전역 pool(db_path) race 를 피한다.
-    async fn keyword_with_filter_scenario() {
+    fn keyword_with_filter_scenario() {
         let tmp = tempfile::tempdir().unwrap();
         let db_path = tmp.path().join("kw.db");
         db::init_database(&db_path).unwrap();
@@ -527,7 +526,7 @@ mod filter_search_integration {
         }
 
         let svc = SearchService::new(db_path, None, None, None, None);
-        let r = svc.search_smart("budget 작년 hwp", 5, None).await.unwrap();
+        let r = svc.search_smart("budget 작년 hwp", 5, None).unwrap();
         let names: Vec<String> = r.results.iter().map(|x| x.file_name.clone()).collect();
 
         assert!(
