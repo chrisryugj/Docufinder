@@ -48,8 +48,9 @@ fi
 echo "  source: $KORDOC_SRC"
 
 if [[ ! -d "$KORDOC_SRC/dist" ]]; then
-    echo "  building kordoc dist (pnpm install + build)…"
-    (cd "$KORDOC_SRC" && pnpm install --frozen-lockfile=false && pnpm run build)
+    # kordoc 은 npm 레포(package-lock.json) — pnpm 은 출력 없이 실패한다 (2026-07-03 실측)
+    echo "  building kordoc dist (npm ci + build)…"
+    (cd "$KORDOC_SRC" && npm ci --loglevel=error && npm run build)
 fi
 
 rm -rf "$KORDOC_DEST"
