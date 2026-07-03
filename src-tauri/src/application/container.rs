@@ -323,7 +323,7 @@ impl AppContainer {
                 // (멀티스레드 환경에서 unsafe set_var 호출 방지)
 
                 // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
-                let sys_mem = sysinfo_total_memory_mb();
+                let sys_mem = crate::utils::disk_info::total_memory_mb();
                 if sys_mem > 0 && sys_mem <= 8192 {
                     tracing::warn!(
                         "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
@@ -500,22 +500,3 @@ impl AppContainer {
     }
 }
 
-/// 시스템 총 메모리 조회 (MB 단위, 실패 시 0)
-#[cfg(windows)]
-fn sysinfo_total_memory_mb() -> u64 {
-    use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
-    unsafe {
-        let mut mem = std::mem::zeroed::<MEMORYSTATUSEX>();
-        mem.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
-        if GlobalMemoryStatusEx(&mut mem) != 0 {
-            mem.ullTotalPhys / 1_048_576
-        } else {
-            0
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn sysinfo_total_memory_mb() -> u64 {
-    0
-}
