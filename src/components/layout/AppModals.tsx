@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { SettingsModal } from "../settings/SettingsModal";
-import { HelpModal } from "../help/HelpModal";
+import { HelpModal, type HelpSection } from "../help/HelpModal";
 import type { Settings } from "../../types/settings";
 import type { Theme } from "../../hooks/useTheme";
 
@@ -15,6 +15,7 @@ interface AppModalsProps {
   helpOpen: boolean;
   onHelpClose: () => void;
   onRestartTour?: () => void;
+  helpInitialSection?: HelpSection;
 }
 
 export const AppModals = memo(function AppModals(props: AppModalsProps) {
@@ -28,7 +29,12 @@ export const AppModals = memo(function AppModals(props: AppModalsProps) {
         onClearData={props.onClearData}
         onAutoIndexAllDrives={props.onAutoIndexAllDrives}
       />
-      <HelpModal isOpen={props.helpOpen} onClose={props.onHelpClose} onRestartTour={props.onRestartTour} />
+      <HelpModal
+        isOpen={props.helpOpen}
+        onClose={props.onHelpClose}
+        onRestartTour={props.onRestartTour}
+        initialSection={props.helpInitialSection}
+      />
     </>
   );
 });

@@ -44,6 +44,7 @@ const PreviewPanel = lazy(() =>
 const AppModals = lazy(() =>
   import("./components/layout/AppModals").then((m) => ({ default: m.AppModals }))
 );
+import type { HelpSection } from "./components/help/HelpModal";
 const StatisticsModal = lazy(() =>
   import("./components/search/StatisticsModal").then((m) => ({ default: m.StatisticsModal }))
 );
@@ -183,6 +184,18 @@ function AppContent() {
     [search.setComposing]
   );
   const handleOpenSettings = useCallback(() => ui.setSettingsOpen(true), [ui.setSettingsOpen]);
+  // 도움말 초기 탭 — 검색창 ? 버튼은 "search"(연산자 표)로 바로 연다.
+  // 닫을 때 "start"로 리셋해 일반 경로(메뉴·팔레트)는 기존 동작 유지.
+  const [helpSection, setHelpSection] = useState<HelpSection>("start");
+  const handleOpenSearchHelp = useCallback(() => {
+    setHelpSection("search");
+    ui.setHelpOpen(true);
+  }, [ui.setHelpOpen]);
+  const handleHelpClose = useCallback(() => {
+    ui.setHelpOpen(false);
+    setHelpSection("start");
+  }, [ui.setHelpOpen]);
+
   const handleOpenHelp = useCallback(() => ui.setHelpOpen(true), [ui.setHelpOpen]);
   const handleOpenUpdate = useCallback(() => setUpdateModalOpen(true), []);
   const handleSearchScopeChange = useCallback(
@@ -667,6 +680,7 @@ function AppContent() {
               watchedFolders={idx.status?.watched_folders ?? []}
               searchScope={search.filters.searchScope}
               onSearchScopeChange={handleSearchScopeChange}
+              onOpenSearchHelp={handleOpenSearchHelp}
             />
 
             <VectorIndexingBanner
@@ -937,8 +951,9 @@ function AppContent() {
           onClearData={handleClearData}
           onAutoIndexAllDrives={idx.autoIndexAllDrives}
           helpOpen={ui.helpOpen}
-          onHelpClose={() => ui.setHelpOpen(false)}
+          onHelpClose={handleHelpClose}
           onRestartTour={restartTour}
+          helpInitialSection={helpSection}
         />
       </LazyMount>
       <ToastContainer toasts={ui.toasts} onDismiss={ui.dismissToast} />

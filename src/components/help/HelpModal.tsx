@@ -1,18 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { SYSTEM_FOLDERS_HINT, HAS_DRIVES } from "../../utils/platform";
+
+export type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
 
 interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
   onRestartTour?: () => void;
+  /** 열릴 때 표시할 탭 (예: 검색창 ? 버튼 → "search") */
+  initialSection?: HelpSection;
 }
 
-type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
+export function HelpModal({ isOpen, onClose, onRestartTour, initialSection = "start" }: HelpModalProps) {
+  const [activeSection, setActiveSection] = useState<HelpSection>(initialSection);
 
-export function HelpModal({ isOpen, onClose, onRestartTour }: HelpModalProps) {
-  const [activeSection, setActiveSection] = useState<HelpSection>("start");
+  // 열릴 때마다 요청된 탭으로 — 닫힌 상태에서 initialSection이 바뀌어도 반영되도록
+  useEffect(() => {
+    if (isOpen) setActiveSection(initialSection);
+  }, [isOpen, initialSection]);
 
   const sections: { id: HelpSection; label: string }[] = [
     { id: "start", label: "시작하기" },
