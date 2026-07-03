@@ -250,6 +250,12 @@ jobs:
       # 해결: Hardened Runtime 자체를 끄면 Library Validation 강제가 없어진다.
       # ad-hoc + no hardened runtime → dlopen 정상.
       # inside-out 서명 순서는 그대로 (resources/dylib → 메인 바이너리 → .app 번들).
+      #
+      # ⚠️ v3.0.9 실검증(2026-07-03): 이 스텝은 배포 dmg 에 반영되지 않는다 —
+      # tauri build 가 .app 서명 직후 dmg 까지 만들어버려, 여기서 고친 .app 은
+      # 업로드되지 않는 bundle/macos/ 쪽뿐이다. dylib 자체 서명은
+      # scripts/setup-macos-resources.sh 가 번들 투입 전에 보장한다 (근원 수정).
+      # 이 스텝은 .app 직접 배포 대비용으로만 유지.
       - name: Re-apply ad-hoc signature (no hardened runtime)
         run: |
           APP="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Anything.app"
