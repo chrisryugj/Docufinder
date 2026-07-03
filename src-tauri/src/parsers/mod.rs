@@ -75,15 +75,20 @@ pub struct DocumentChunk {
 
 /// 파일 확장자로 파서 선택 후 파싱.
 ///
-/// 추출된 본문은 `utils::normalize_text` 로 정규화되어 검색 쿼리와 동일 정규형
+/// 추출된 청크는 `utils::normalize_text` 로 정규화되어 검색 쿼리와 동일 정규형
 /// (NFC·비가시 제거·공백 폴딩·줄바꿈 통일)으로 인덱싱된다. 쿼리측
 /// (`sanitize_fts_query` 등)과 반드시 짝을 이뤄야 매칭이 일관된다. 기존 인덱스는
 /// 비정규화 상태로 남으므로(점진 적용) 폴더 재인덱싱 시 정규화가 반영된다.
 ///
+/// 인덱싱(유일한 호출 경로)은 chunks 만 소비하므로 전문 `content` 는 여기서 비운다 —
+/// 유지하면 배치 파이프라인이 문서당 본문을 이중으로(전문+청크) 채널 버퍼 개수만큼
+/// 들고 다녀 피크 메모리가 배가된다 (T2-5). 전문이 필요한 소비자가 생기면
+/// `parse_file_inner` 기반 별도 진입점을 추가할 것.
+///
 /// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
     let mut doc = parse_file_inner(path, ocr)?;
-    doc.content = crate::utils::normalize_text(&doc.content);
+    doc.content = String::new();
     for chunk in &mut doc.chunks {
         chunk.content = crate::utils::normalize_text(&chunk.content);
     }
