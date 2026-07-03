@@ -123,83 +123,96 @@ impl SearchService {
         let start = Instant::now();
         let use_tokenizer = self.tokenizer.is_some();
 
-        let conn = self.get_connection()?;
-
         // 벡터 임베딩·스니펫 보정용 텍스트 — 연산자 사용 시 연산자 제거본
         let display_query = match op {
             Some(o) => o.semantic_text(),
             None => query.to_string(),
         };
 
-        // 1. FTS5 검색 (mode + 메타 필터 적용 / 연산자 합성)
-        let fts_results = match op {
-            Some(o) => {
-                let tok_ref = self.tokenizer.as_ref().map(|a| a.as_ref());
-                fts::search_with_operators(
-                    &conn,
-                    o,
-                    max_results,
-                    tok_ref,
-                    folder_scope,
-                    mode,
-                    filter,
-                )
-                .map_err(|e| AppError::SearchFailed(e.to_string()))?
-            }
-            None => match self.tokenizer.as_ref() {
-                Some(tok) => fts::search_with_tokenizer(
-                    &conn,
-                    query,
-                    max_results,
-                    tok.as_ref(),
-                    folder_scope,
-                    mode,
-                    filter,
-                )
-                .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-                None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
-                    .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+        // 1·2. FTS5 ∥ 벡터 병렬 (임베딩 ONNX 가 지배적이라 FTS 를 그 뒤에 숨긴다:
+        // 총지연 ≈ max(FTS, embed+vec)). rusqlite Connection 은 !Sync 라 각 클로저가
+        // 풀에서 conn 을 따로 빌린다 (MAX_POOL_SIZE=16, 동시 최대 3개는 여유).
+        let (fts_res, vec_bundle) = rayon::join(
+            || -> AppResult<Vec<fts::FtsResult>> {
+                let conn = self.get_connection()?;
+                let fts_results = match op {
+                    Some(o) => {
+                        let tok_ref = self.tokenizer.as_ref().map(|a| a.as_ref());
+                        fts::search_with_operators(
+                            &conn,
+                            o,
+                            max_results,
+                            tok_ref,
+                            folder_scope,
+                            mode,
+                            filter,
+                        )
+                        .map_err(|e| AppError::SearchFailed(e.to_string()))?
+                    }
+                    None => match self.tokenizer.as_ref() {
+                        Some(tok) => fts::search_with_tokenizer(
+                            &conn,
+                            query,
+                            max_results,
+                            tok.as_ref(),
+                            folder_scope,
+                            mode,
+                            filter,
+                        )
+                        .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+                        None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
+                            .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+                    },
+                };
+                Ok(fts_results)
             },
-        };
+            || -> AppResult<(Vec<crate::search::vector::VectorResult>, Option<Vec<f32>>)> {
+                let vector_fetch_limit = if folder_scope.is_some() {
+                    max_results * 3
+                } else {
+                    max_results
+                };
+                match (self.embedder.as_ref(), self.vector_index.as_ref()) {
+                    // 필터 전용 질의(검색어 없음)는 임베딩할 텍스트가 없으므로 벡터 생략
+                    (Some(_), Some(_)) if display_query.trim().is_empty() => Ok((vec![], None)),
+                    (Some(emb), Some(vi)) => match emb.embed(&display_query, true) {
+                        Ok(qe) => {
+                            let raw_results =
+                                vi.search(&qe, vector_fetch_limit).unwrap_or_default();
+                            let results = if folder_scope.is_some() && !raw_results.is_empty() {
+                                let conn = self.get_connection()?;
+                                let ids: Vec<i64> =
+                                    raw_results.iter().map(|r| r.chunk_id).collect();
+                                let path_map =
+                                    db::get_chunk_file_paths(&conn, &ids).unwrap_or_default();
+                                raw_results
+                                    .into_iter()
+                                    .filter(|r| {
+                                        path_map
+                                            .get(&r.chunk_id)
+                                            .map(|p| matches_folder_scope(p, folder_scope))
+                                            .unwrap_or(false)
+                                    })
+                                    .collect()
+                            } else {
+                                raw_results
+                            };
+                            Ok((results, Some(qe)))
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to embed query: {}", e);
+                            Ok((vec![], None))
+                        }
+                    },
+                    _ => Ok((vec![], None)),
+                }
+            },
+        );
+        let fts_results = fts_res?;
+        let (vector_results, query_embedding) = vec_bundle?;
 
-        // 2. 벡터 검색
-        let vector_fetch_limit = if folder_scope.is_some() {
-            max_results * 3
-        } else {
-            max_results
-        };
-        let (vector_results, query_embedding) =
-            match (self.embedder.as_ref(), self.vector_index.as_ref()) {
-                // 필터 전용 질의(검색어 없음)는 임베딩할 텍스트가 없으므로 벡터 생략
-                (Some(_), Some(_)) if display_query.trim().is_empty() => (vec![], None),
-                (Some(emb), Some(vi)) => match emb.embed(&display_query, true) {
-                    Ok(qe) => {
-                        let raw_results = vi.search(&qe, vector_fetch_limit).unwrap_or_default();
-                        let results = if folder_scope.is_some() && !raw_results.is_empty() {
-                            let ids: Vec<i64> = raw_results.iter().map(|r| r.chunk_id).collect();
-                            let path_map =
-                                db::get_chunk_file_paths(&conn, &ids).unwrap_or_default();
-                            raw_results
-                                .into_iter()
-                                .filter(|r| {
-                                    path_map
-                                        .get(&r.chunk_id)
-                                        .map(|p| matches_folder_scope(p, folder_scope))
-                                        .unwrap_or(false)
-                                })
-                                .collect()
-                        } else {
-                            raw_results
-                        };
-                        (results, Some(qe))
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to embed query: {}", e);
-                        (vec![], None)
-                    }
-                },
-                _ => (vec![], None),
-            };
+        // RRF 병합·enrichment 용 conn 재획득 (병렬 클로저의 conn 은 반납됨)
+        let conn = self.get_connection()?;
 
         // 3. FTS → HashMap
         let fts_map: HashMap<i64, &fts::FtsResult> =
