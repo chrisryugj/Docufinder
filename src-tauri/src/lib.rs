@@ -1325,7 +1325,7 @@ pub fn run() {
             commands::search::search_hybrid,
             commands::search::search_smart,
             commands::search::find_similar_documents,
-            commands::search::classify_document,
+            commands::search::classify_documents,
             commands::search::save_search_query,
             commands::search::get_document_statistics,
             commands::search::get_recently_opened_documents,

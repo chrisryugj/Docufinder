@@ -23,16 +23,20 @@ export function useDocumentCategories(
 
     const batch = newPaths.slice(0, 10);
     batch.forEach(p => classifiedPathsRef.current.add(p));
-    Promise.all(
-      batch.map(async (filePath) => {
-        try {
-          const cat = await invoke<string>("classify_document", { filePath });
-          setCategories(prev => ({ ...prev, [filePath]: cat }));
-        } catch {
-          classifiedPathsRef.current.delete(filePath);
+    // 배치 커맨드 1회 + setCategories 1회 — 파일당 개별 IPC/리렌더 방지 (T2-6)
+    invoke<Record<string, string>>("classify_documents", { filePaths: batch })
+      .then(cats => {
+        // 응답에 빠진 경로(개별 조회 실패)는 다음 결과 변경 때 재시도되도록 되돌림
+        batch.forEach(p => {
+          if (!(p in cats)) classifiedPathsRef.current.delete(p);
+        });
+        if (Object.keys(cats).length > 0) {
+          setCategories(prev => ({ ...prev, ...cats }));
         }
       })
-    );
+      .catch(() => {
+        batch.forEach(p => classifiedPathsRef.current.delete(p));
+      });
   }, [filteredResults]);
 
   return categories;
