@@ -6,6 +6,52 @@
 
 ---
 
+## 0.0 검증 세션 완료 (2026-07-04 #2, ultracode) — ahead 17
+
+직전 구현물의 **런타임/실측 검증 + 프로덕션 리뷰**(코드리뷰가 안 본 축). 커밋 `7c2414c`.
+
+### 적용 완료 (확정결함 3건, 게이트 전부 통과)
+- **LayoutView §1-D 찾기버그** — 활성매치 effect deps 에 `findTerm,svg` 추가(같은 매치수 새 검색어 갱신). ← 아래 §1-D 해소.
+- **LayoutView 줌 stale 앵커** — '너비 맞춤' 리셋 분기에 `zoomAnchorRef.current=null`(클램프 한계 no-op 줌 잔여 앵커 → 리셋 스크롤 튐).
+- **pdf.rs rasterize 높이상한** — `MAX_OCR_RENDER_HEIGHT=10000` + `set_maximum_height`(극단 종횡비 MediaBox 거대 비트맵 OOM 갭, 임베디드 경로 방어 대칭화).
+
+### E 심화검증 결과 (실측 — 다양한 문서)
+5개 실문서 페이지 `analyze()` 실행. Header/Footer 검출은 대개 레터헤드·출처줄(진짜 노이즈)을
+정확히 잡지만, **표문서(근무변경신청서)에서 상단 중앙 문서제목을 Header(score 0.523)로 오분류
+→ containment 100% → OCR 본문에서 제목 통째 드롭** 재현. 즉 `ocr/mod.rs:301` 필터의 본문손실
+리스크가 실증됨(4문서 중 1건).
+
+### ★제품결정 확정 (사용자, 구현은 이번 세션 = 다음 실행분)
+- **머리글/바닥글 = 노이즈 클래스 임계 상향**: Header/Footer/PageNumber 는 `score ≥ ~0.62` 일 때만
+  본문서 드롭. `ocr/layout.rs` SCORE_THRESHOLD(0.5)는 검출 유지하되, 드롭 판정용 별도 임계를
+  노이즈 클래스에만 적용(또는 class_to_kind 후 필터 직전 score 게이트). 근무변경 제목(0.523)은
+  유지, 확실한 레터헤드(0.63)만 제거. → 검증데이터: 근무변경 title 0.523 / doc_page header 0.541 /
+  refdoc footer 0.518 / press1 header 0.629. 임계 0.62 면 앞 3개 유지·press1 만 드롭.
+- 표: 현행 유지(Table kind 는 드롭 안 함 → 본문 인라인 유지, 검색 OK).
+
+### 프로덕션 리뷰 이월 백로그 (다음 세션 처리)
+CONFIRMED(미적용):
+- **pdf.rs:513** — pdfium fallback 이 페이지마다 `load_pdf_from_file`로 PDF 전체 재로드(≤20회, dlopen 만 문서당 1회). 효율. 문서 1회 로드 후 페이지 인덱스 렌더로 리팩터(lifetime 주의).
+- **pipeline.rs:778 / pdf.rs:799** — `looks_like_garbage_text` 가 전 파일타입 확대 적용돼 중/일(한자 지배) 문서에 "복사 시 깨짐" 오탐 배지. ★순진한 수정(한자를 readable 카운트) 금지 — 원 설계가 "한국어 CID깨짐=랜덤한자"라 일부러 제외. **올바른 수정 = garbled 저장을 pdf/hwp 파일타입으로 게이팅**.
+- **PreviewPanel.tsx:1408** — '크게 보기' 팝업(role=dialog) 포커스 트랩·초기 포커스 없음(a11y). 마운트 시 focus + Tab 트랩.
+
+PLAUSIBLE(경미, 판단):
+- pdf.rs:514 `page_index as u16` 64K+ 페이지 절단(극단), model_downloader.rs:375 pdfium 비원자 쓰기+추출후 미검증(디스크풀 시), settings.rs:813 layout/pdfium 다운로드 실패 무신호(주석 "호출부 warn" 계약 위반), SearchTab.tsx:324 checkOcrCandidates 취소가드 없음.
+- **레이아웃 토글 다운로드 UX**: 수식OCR 은 모델상태 패널 있는데 레이아웃 토글은 진행/실패 피드백 전무 — 추가 검토.
+
+보안 축 = 발견 0(count 쿼리 파라미터바인딩·tar dest 고정·URL 상수·icacls 풀패스 안전).
+
+### 앱 시각검증 (미완 — 헤드리스 불가, 사람 실측 필요)
+`KORDOC_CLI_PATH=~/workspace/kordoc/dist/cli.js pnpm tauri:dev:mac` 로 띄워 C 줌·A 재인덱싱·E 레이아웃
+실동작 확인. ★A: OCR 켜자마자 "지금 재인덱싱" 누르면 det/rec 모델 다운로드 완료 전이라 헛돌 수
+있음(모델 온 뒤). 코드 검증은 다 됐고 화면 실측만 남음.
+
+### rhwp 차용 후보 (edwardkim/rhwp, MIT, 활발)
+kordoc: ①**HWPX LINE_SEG 합성 규칙**(Tier-2 reflow 와 동일 문제 — 인코딩단계 IR 등가화, `mydocs/eng/feedback/hwpx2ir.md`) ②render-diff 기하 게이트(bbox 구조경로 diff, TS 이식) ③금칙 테이블·표 병합셀 분할 규칙. Paint IR 은 과설계.
+docufinder: native PNG 썸네일, AI Q&A용 VLM 타깃 렌더(1568px), rhwp core 크레이트 텍스트추출 교차검증. 라이선스 MIT(아이디어 자유, 코드이식 시 고지).
+
+---
+
 ## 0. 직전 세션 완료 (origin/main 대비 ahead 15, 전부 미푸시)
 
 | 커밋 | 내용 | 게이트 |
@@ -51,11 +97,8 @@
 - SHA·아카이브 경로는 검증 완료. **런타임 바인딩+OCR 실행은 mac-arm64 만** 실측. Win/Linux 에서
   스캔 PDF OCR 실동작 QA 필요(코드 감사상 정상). tauri 번들 포함 여부도 결정(현재 런타임 다운로드).
 
-### D. 기존 버그(리뷰가 발견, 미수정 — surgical) ★신규
-- **레이아웃 뷰 찾기 매치 하이라이트** (`LayoutView.tsx` 활성매치 effect, deps `[matchIdx, matchCount]`):
-  새 검색어가 이전과 **매치 수가 같으면** idx·count 둘 다 안 변해 active 하이라이트·스크롤이
-  갱신 안 됨. 이번 줌 작업과 무관한 기존 버그라 미수정. 고치려면 deps 에 `findTerm, svg` 추가
-  (수집 effect 가 먼저 실행돼 matchesRef 재구성 후 이 effect 가 읽으므로 순서 안전).
+### D. ~~레이아웃 뷰 찾기 매치 하이라이트~~ ✅해소 (2026-07-04 #2, 커밋 7c2414c)
+- deps 에 `findTerm, svg` 추가로 수정 완료. (같은 매치수 새 검색어에서 active·스크롤 갱신)
 
 ### E. 이월 백로그
 - E Phase 2(표구조 SLANet)·Phase 3(미리보기 region 오버레이) — 설계 `docs/OCR-LAYOUT-DESIGN.md`.
