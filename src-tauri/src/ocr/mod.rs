@@ -4,6 +4,7 @@
 
 mod detection;
 mod geometry;
+mod reading_order;
 mod recognition;
 
 use image::DynamicImage;
@@ -39,6 +40,48 @@ pub struct OcrResult {
 pub struct OcrRegion {
     pub text: String,
     pub confidence: f32,
+    /// 축 정렬 바운딩 박스 (Quad 에서 유도) — 읽기순서·레이아웃 분석의 전제
+    pub bbox: BBox,
+    /// 레이아웃 분류 (Phase 0 는 항상 Text, Phase 1 에서 PP-DocLayout 로 채움)
+    pub kind: RegionKind,
+}
+
+/// 축 정렬 바운딩 박스 (이미지 좌표계, y 아래로 증가)
+#[derive(Debug, Clone, Copy)]
+pub struct BBox {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+}
+
+impl BBox {
+    /// Quad(4점, 축 정렬 직사각형: 좌상→우상→우하→좌하)에서 bbox 유도
+    fn from_quad(q: &geometry::Quad) -> Self {
+        Self {
+            x0: q.points[0].0,
+            y0: q.points[0].1,
+            x1: q.points[2].0,
+            y1: q.points[2].1,
+        }
+    }
+}
+
+/// 레이아웃 영역 분류 — Phase 1(PP-DocLayout)에서 채워질 forward 선언.
+/// Text 외 variant 는 아직 구성되지 않으므로 dead_code 를 허용한다.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum RegionKind {
+    #[default]
+    Text,
+    Title,
+    List,
+    Table,
+    Figure,
+    Caption,
+    Header,
+    Footer,
+    PageNumber,
 }
 
 /// PaddleOCR ONNX 엔진
@@ -152,15 +195,25 @@ impl OcrEngine {
         let rec_results =
             recognition::recognize_batch(&self.rec_session, &crops, &self.dictionary)?;
 
-        // 4. 결과 조합
+        // 4. 결과 조합 — box 좌표를 OcrRegion.bbox 로 보존 (읽기순서·레이아웃의 전제).
+        //    boxes[i] ↔ crops[i] ↔ rec_results[i] 는 인덱스 1:1 대응.
         let regions: Vec<OcrRegion> = rec_results
             .iter()
-            .filter(|r| !r.text.trim().is_empty())
-            .map(|r| OcrRegion {
+            .zip(boxes.iter())
+            .filter(|(r, _)| !r.text.trim().is_empty())
+            .map(|(r, quad)| OcrRegion {
                 text: r.text.clone(),
                 confidence: r.confidence,
+                bbox: BBox::from_quad(quad),
+                kind: RegionKind::Text,
             })
             .collect();
+
+        // 5. 읽기순서(XY-Cut) 재정렬 — 검출 순서가 아닌 사람이 읽는 순서로 본문 조립.
+        //    다단(multi-column) 스캔본에서 좌우 텍스트가 행 단위로 뒤섞이는 문제를 해소.
+        let bboxes: Vec<BBox> = regions.iter().map(|r| r.bbox).collect();
+        let order = reading_order::reading_order(&bboxes);
+        let regions: Vec<OcrRegion> = order.iter().map(|&i| regions[i].clone()).collect();
 
         let text = regions
             .iter()
