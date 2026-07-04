@@ -95,7 +95,24 @@ Tauri 데스크톱 앱에 Python 런타임을 얹는 순간 배포·크래시·�
 
 이유: `ort` 세션·`model_downloader`·`geometry` 전부 재사용, 딕셔너리/전처리 규약 일관, 추가 런타임 0.
 
-> 모델 파일: 세션 인계 시 **PaddleOCR ONNX export 또는 공개 ONNX 미러 URL + SHA-256을 먼저 확정**해야 함. 후보 — PaddleX/PaddleOCR 3.x의 PP-DocLayout ONNX, 또는 RapidOCR/OnnxOCR 배포판. (구현 착수 전 실물 확보 = 첫 블로커, §7 참조)
+#### 모델 실물 (확정 — 블로커 해소됨)
+**[GreatV/oar-ocr](https://github.com/GreatV/oar-ocr)** — Rust + `ort` 기반 OCR 라이브러리가 PP-DocLayout·SLANet ONNX를 GitHub 릴리스로 **직배포(Apache-2.0)**. docufinder와 동일 런타임(`ort`)이라 **전처리·후처리 Rust 코드까지 참조 가능** = 구현 리스크 최소.
+
+레이아웃 (RT-DETR/PicoDet 계열, 23 class: text·title·header·footer·page number·table·figure·caption·formula·seal 등):
+
+| 모델 | URL | 크기 | 읽기순서 | 비고 |
+|---|---|---|---|---|
+| PP-DocLayout-**S** | `.../v0.3.0/pp-doclayout-s.onnx` | 4.7MB | ✗ | 저사양 폴백 |
+| PP-DocLayout-**M** | `.../v0.3.0/pp-doclayout-m.onnx` | 22.4MB | ✗ | **★기본 채택** (기존 rec 모델과 유사 footprint, CPU 데스크톱 균형) |
+| PP-DocLayout-L | `.../v0.3.0/pp-doclayout-l.onnx` | 123.4MB | ✗ | 고정밀(90.4 mAP), 무거움 |
+| PP-DocLayoutV2 | `.../v0.3.0/pp-doclayoutv2.onnx` | 204MB | ✓ (col,row) | 읽기순서 in-model, 대형 → optional 업그레이드 |
+| SLANet (표) | `.../v0.3.0/slanet.onnx` | **7.4MB** | — | Phase 2, 초경량 |
+| SLANeXt wired | `.../v0.3.0/slanext_wired.onnx` | 350MB | — | 과대, 미채택 |
+
+- 릴리스 베이스: `https://github.com/GreatV/oar-ocr/releases/download/`
+- **기본 = PP-DocLayout-M(22.4MB) + kordoc XY-Cut 읽기순서**(Phase 0에서 이미 이식). V2(204MB)의 in-model 읽기순서는 데스크톱 CPU엔 과함 → optional 상위티어로만.
+- **표 = SLANet(7.4MB)** — 초경량, 즉시 채택 가능.
+- SHA-256: `model_downloader`의 `download_file_optional_hash`가 빈 해시 허용 → 최초 다운로드로 실물 받아 `shasum -a 256`으로 값 확정 후 상수 박기(기존 OCR 모델과 동일 절차). 착수 시 빈 문자열로 시작 가능 = 블로커 아님.
 
 ### 3.3 Tier-2 — docling-serve 사이드카 (optional, 기본 아님)
 파워유저가 로컬에 docling-serve(HTTP)를 띄운 경우에만, 설정 토글로 외부 위임. kordoc Node.js 사이드카(`parsers/kordoc.rs`)와 동일한 spawn/파이프 패턴. **기본 비활성**, 실패 시 in-process로 폴백. 스캔 PDF 대량 처리 시 `pdf_sniff` 조기차단 교훈(자식 프로세스 누적 → 크래시, #17) 반드시 승계 — per-file spawn 금지, 단일 데몬 재사용.
@@ -149,9 +166,11 @@ pub struct OcrResult {
 
 **이 단계만으로 다단 문서 검색 품질 유의미 개선.** 레이아웃 모델 없이 가능 = 블로커 없음, 즉시 착수 가능.
 
-### Phase 1 — 레이아웃 분류 (PP-DocLayout)
-1. `model_downloader.rs`: `ensure_layout_model()` 추가 — `models_dir/paddleocr/layout.onnx` + SHA. `ensure_ocr_models` 미러.
-2. `constants.rs`: `OCR_LAYOUT_URL`/`OCR_LAYOUT_SHA256`.
+### Phase 1 — 레이아웃 분류 (PP-DocLayout-M)
+> **Rust 레퍼런스**: [GreatV/oar-ocr](https://github.com/GreatV/oar-ocr) `src/` — 동일 `ort` 런타임의 PP-DocLayout 전처리(리사이즈·정규화)·후처리(디코드·NMS·class 매핑)를 이미 구현. 착수 전 이 크레이트의 layout 모듈을 정독해 규약 복제(포팅 or 참조).
+
+1. `model_downloader.rs`: `ensure_layout_model()` 추가 — `models_dir/paddleocr/layout.onnx` + SHA. `ensure_ocr_models` 미러. URL = `.../oar-ocr/releases/download/v0.3.0/pp-doclayout-m.onnx`.
+2. `constants.rs`: `OCR_LAYOUT_URL`/`OCR_LAYOUT_SHA256`(초기 빈 문자열 허용).
 3. 신규 `ocr/layout.rs`:
    ```rust
    pub struct LayoutRegion { pub bbox: BBox, pub kind: RegionKind, pub score: f32 }
@@ -205,10 +224,11 @@ pub struct OcrResult {
 
 ## 9. 열린 질문 (착수 전 확정 필요)
 
-1. **PP-DocLayout ONNX 배포처** — PaddleX export vs 공개 미러(RapidOCR/OnnxOCR). 라이선스(Apache-2.0) 확인. → 첫 블로커.
+1. ~~PP-DocLayout ONNX 배포처~~ **해소** — GreatV/oar-ocr 릴리스 직배포(Apache-2.0), §3.2 표 참조. 남은 건 M vs S 기본값 최종 결정(권장 M).
 2. Header/Footer를 완전 폐기 vs 별도 인덱스 필드(예: 문서 제목/페이지 힌트로 활용)? → 검색 UX 결정.
 3. 표를 본문 인라인 마크다운 vs 별도 `tables` 필드만 → FTS5 청킹 전략과 연동.
 4. Tier-2 docling-serve 어댑터를 이번 스코프에 포함할지(기본은 제외 권장).
+5. 읽기순서를 kordoc XY-Cut(경량, 기본) vs PP-DocLayoutV2 in-model(204MB) — 데스크톱 CPU 감안 XY-Cut 권장, V2는 정확도 부족 시에만.
 
 ---
 
@@ -218,4 +238,5 @@ pub struct OcrResult {
 - 소비부: [`parsers/image_ocr.rs`](../src-tauri/src/parsers/image_ocr.rs), [`parsers/pdf.rs`](../src-tauri/src/parsers/pdf.rs), [`parsers/pdf_sniff.rs`](../src-tauri/src/parsers/pdf_sniff.rs)
 - 모델 패턴: [`model_downloader.rs`](../src-tauri/src/model_downloader.rs) `ensure_ocr_models`
 - 알고리즘 이식 원본(kordoc, Apache-2.0): `~/workspace/kordoc/src/pdf/{xy-cut,cluster-detector,cell-text}.ts`
+- **Rust 레퍼런스 구현(동일 `ort` 런타임, Apache-2.0)**: [GreatV/oar-ocr](https://github.com/GreatV/oar-ocr) — PP-DocLayout·SLANet 전처리/후처리 + ONNX 릴리스 배포
 - 북극성/벤치: docling — https://github.com/docling-project/docling
