@@ -6,7 +6,7 @@
 
 ---
 
-## 0.-1 실행 세션 완료 (2026-07-04 #3, ultracode) — ahead 19
+## 0.-1 실행 세션 완료 (2026-07-04 #3, ultracode) — ✅v3.0.11 발행(태그 푸시, CI 빌드)
 
 §0.0 ★제품결정 + 프로덕션 리뷰 이월 백로그 2건(#2·#3) 구현·검증. 적대적 워크플로우(9 리뷰 에이전트
 → 검증 6, 확정 5·기각 1) + 수정본 재검증(2 에이전트, 전부 sound) 통과. 게이트: cargo fmt/clippy
@@ -119,11 +119,16 @@ docufinder: native PNG 썸네일, AI Q&A용 VLM 타깃 렌더(1568px), rhwp core
 
 ## 1. 남은 열린 항목 (우선순위)
 
-### A. 발행 ★지시 대기 (유일한 미완)
-- 미푸시 12커밋 push 여부 — 사용자 히스토리 관리. **CHANGELOG 초안·버전 권고(3.0.11)·발행 절차는
-  scratchpad/CHANGELOG-draft.md 참조** (버전 bump 3곳: package.json·Cargo.toml·tauri.conf.json).
-- kordoc 릴리스 의식(별개): 태그 v3.14.0(`8dc1fa5`)·v3.15.0(`7fb9885`), npm publish(현 3.13.0), gh release.
-  README v3.14 섹션은 이번에 로컬 커밋(`c3bc1e2`, 미푸시).
+### A. 발행 ✅완료 (2026-07-04 #3) — docufinder v3.0.11
+- **v3.0.11 발행 완료**: 버전 bump 4곳(package.json·tauri.conf.json·Cargo.toml·**Cargo.lock**) +
+  CHANGELOG [3.0.11] + 문서 현행화(README·CLAUDE.md) 커밋(`7b9035c`), main push, `./scripts/release.sh
+  3.0.11` 로 로컬 CI 통과 후 태그 `v3.0.11` 푸시 → GitHub Actions **Publish Release** 빌드 트리거됨.
+  (미릴리스 22커밋 전부 발행. 아티팩트 빌드는 CI에서 진행 — Actions 페이지 확인.)
+- ⚠️ 레포가 GitHub 에서 `docufinder`→`Docufinder`(대문자)로 rename됨. remote URL 은 아직 소문자라
+  push 시 "repository moved" 경고(리다이렉트로 정상 동작). 정리하려면 `git remote set-url origin
+  git@github.com:chrisryugj/Docufinder.git`.
+- kordoc 릴리스 의식(별개, 이월): 태그 v3.14.0(`8dc1fa5`)·v3.15.0(`7fb9885`), npm publish(현 3.13.0), gh release.
+  README v3.14 섹션은 로컬 커밋(`c3bc1e2`, 미푸시).
 
 ### B. E(레이아웃) 실앱 검증 — opt-in 이라 안전하나 시각검증 미완
 - 포팅은 스모크로 검증됐으나, **스캔 PDF 전체 파이프(OCR→레이아웃→머리글/바닥글 제외→인덱스)**
