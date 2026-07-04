@@ -51,10 +51,49 @@ interface PruneResult {
   elapsed_ms: number;
 }
 
+interface OcrReindexCandidates {
+  count: number;
+  folders: string[];
+}
+
 export function SearchTab({ settings, onChange }: TabProps) {
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildResult, setRebuildResult] = useState<string | null>(null);
   const [pruning, setPruning] = useState(false);
+
+  // ────────── OCR 재인덱싱 프롬프트 ──────────
+  // OCR 를 새로 켜면 이미 인덱싱된 이미지·스캔 PDF 는 재인덱싱해야 인식된다.
+  const [ocrReindex, setOcrReindex] = useState<OcrReindexCandidates | null>(null);
+  const [ocrReindexing, setOcrReindexing] = useState(false);
+  const [ocrReindexMsg, setOcrReindexMsg] = useState<string | null>(null);
+
+  const checkOcrCandidates = useCallback(async () => {
+    try {
+      const res = await invoke<OcrReindexCandidates>("count_ocr_reindex_candidates");
+      setOcrReindexMsg(null);
+      setOcrReindex(res.count > 0 ? res : null);
+    } catch {
+      // 조회 실패 시 프롬프트 없이 조용히 넘어간다(핵심 흐름 아님).
+      setOcrReindex(null);
+    }
+  }, []);
+
+  const handleOcrReindex = useCallback(async () => {
+    if (!ocrReindex || ocrReindexing) return;
+    setOcrReindexing(true);
+    try {
+      // 후보 폴더만 순차 재인덱싱(동시 실행은 감시 pause/resume 충돌 → 순차).
+      for (const path of ocrReindex.folders) {
+        await invoke("reindex_folder", { path });
+      }
+      setOcrReindexMsg(`✅ ${ocrReindex.folders.length}개 폴더 재인덱싱 완료 — 스캔 PDF·이미지가 OCR로 인식됩니다.`);
+      setOcrReindex(null);
+    } catch (e) {
+      setOcrReindexMsg(`재인덱싱 실패: ${e}`);
+    } finally {
+      setOcrReindexing(false);
+    }
+  }, [ocrReindex, ocrReindexing]);
 
   // ────────── 수식 OCR 모델 상태 ──────────
   const [formulaStatus, setFormulaStatus] = useState<FormulaModelsStatus | null>(null);
@@ -282,8 +321,58 @@ export function SearchTab({ settings, onChange }: TabProps) {
           label="OCR (이미지 텍스트 인식)"
           description="이미지 파일(JPG, PNG, BMP, TIFF)과 스캔 PDF(이미지 기반)에서 텍스트 추출 (PaddleOCR, ~15MB 모델)"
           checked={settings.ocr_enabled ?? false}
-          onChange={(v) => onChange("ocr_enabled", v)}
+          onChange={(v) => {
+            onChange("ocr_enabled", v);
+            if (v) void checkOcrCandidates();
+            else {
+              setOcrReindex(null);
+              setOcrReindexMsg(null);
+            }
+          }}
         />
+        {/* OCR 를 새로 켰을 때: 이미 인덱싱된 이미지·PDF 는 재인덱싱해야 인식됨 → 후보 폴더만 재인덱싱 프롬프트 */}
+        {ocrReindex && (
+          <div
+            className="mt-2 p-2.5 rounded-md text-xs leading-relaxed"
+            style={{
+              backgroundColor: "var(--color-bg-secondary)",
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-secondary)",
+            }}
+          >
+            <p>
+              이미 인덱싱된{" "}
+              <strong style={{ color: "var(--color-text-primary)" }}>
+                이미지·PDF {ocrReindex.count.toLocaleString()}개
+              </strong>
+              는 재인덱싱해야 OCR로 인식돼요. (폴더 {ocrReindex.folders.length}개 · 폴더 전체 재처리)
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleOcrReindex}
+                isLoading={ocrReindexing}
+                disabled={ocrReindexing}
+              >
+                지금 재인덱싱
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOcrReindex(null)}
+                disabled={ocrReindexing}
+              >
+                나중에
+              </Button>
+            </div>
+          </div>
+        )}
+        {ocrReindexMsg && (
+          <p className="mt-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+            {ocrReindexMsg}
+          </p>
+        )}
       </div>
 
       {/* PDF 수식 OCR */}

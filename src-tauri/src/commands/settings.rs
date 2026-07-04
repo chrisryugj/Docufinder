@@ -419,6 +419,63 @@ pub async fn get_settings(state: State<'_, RwLock<AppContainer>>) -> ApiResult<S
     Ok(settings)
 }
 
+/// OCR 재인덱싱 후보. OCR 를 새로 켜면 이미 인덱싱된 이미지·PDF 는 재인덱싱해야 OCR 로
+/// 인식된다. 그 파일을 담은 감시 폴더 목록과 총 개수 — 프론트가 "재인덱싱?" 프롬프트에 사용.
+#[derive(Debug, Serialize)]
+pub struct OcrReindexCandidates {
+    pub count: usize,
+    pub folders: Vec<String>,
+}
+
+/// 이미 인덱싱된 OCR 대상(이미지·PDF) 파일 수와 그 파일을 담은 감시 폴더를 센다(읽기 전용).
+///
+/// 재인덱싱 단위가 폴더이므로 파일 단위 스캔 판정은 불필요 — 이미지·PDF 를 담은 폴더만
+/// 재인덱싱하면 스캔 PDF·이미지가 OCR 로 인식된다. SQLite `LIKE` 는 ASCII 대소문자 무관이라
+/// 대문자 확장자(.PDF)도 매칭된다.
+#[tauri::command]
+pub async fn count_ocr_reindex_candidates(
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<OcrReindexCandidates> {
+    let db_path = { state.read()?.db_path.clone() };
+    let conn = crate::db::get_connection(&db_path)
+        .map_err(|e| ApiError::DatabaseConnection(e.to_string()))?;
+
+    // OCR 대상 확장자 = 이미지 + pdf → 확장자별 LIKE 패턴.
+    let patterns: Vec<String> = crate::constants::OCR_IMAGE_EXTENSIONS
+        .iter()
+        .copied()
+        .chain(std::iter::once("pdf"))
+        .map(|e| format!("%.{e}"))
+        .collect();
+
+    let count_clause = vec!["path LIKE ?"; patterns.len()].join(" OR ");
+    let count: i64 = conn.query_row(
+        &format!("SELECT COUNT(*) FROM files WHERE {count_clause}"),
+        rusqlite::params_from_iter(patterns.iter()),
+        |row| row.get(0),
+    )?;
+
+    // 후보 파일을 하나라도 담은 감시 폴더(경로 접두 매칭).
+    let folder_clause = vec!["f.path LIKE ?"; patterns.len()].join(" OR ");
+    let sql = format!(
+        "SELECT DISTINCT w.path FROM watched_folders w \
+         JOIN files f ON f.path LIKE w.path || '/%' \
+         WHERE {folder_clause}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let folders = stmt
+        .query_map(rusqlite::params_from_iter(patterns.iter()), |row| {
+            row.get::<_, String>(0)
+        })?
+        .filter_map(Result::ok)
+        .collect::<Vec<String>>();
+
+    Ok(OcrReindexCandidates {
+        count: count as usize,
+        folders,
+    })
+}
+
 /// 설정 동기 조회 (내부 사용)
 /// 수동 편집된 설정 파일의 비정상 값에 대비하여 범위 클램핑 적용
 pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
