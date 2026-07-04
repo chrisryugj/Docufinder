@@ -83,7 +83,8 @@
 - **E. 앱 시각 검증** — 통합 툴바, 팝업 뷰어, 선호 뷰 재적용, 휠=스크롤/핀치=줌.
   `KORDOC_CLI_PATH=~/workspace/kordoc/dist/cli.js pnpm tauri:dev:mac`
 - **F. reflow 미세개선**(kordoc, 이월) — dyMax≈176 세로offset·81% 셀 줄나눔. `bench/verify-reflow.mjs` 게이트.
-- **G. 복잡 결재 HWPX 문서-텍스트 미리보기 깨짐** ★신규(2026-07-04 진단됨, 사용자 보고).
+- **G. 복잡 결재 HWPX 문서-텍스트 미리보기 깨짐** ✅**해소**(커밋 81183b8 — 수정방향 ① 채택:
+  stripHtmlForMarkdown 제거 → rehype-raw + rehype-sanitize 로 HTML 표 네이티브 렌더. 아래는 진단 기록).
   - **재현**: `~/anything-demo/문서/36268856_결재문서본문_제안서+평가위원회+개최+결과보고.hwpx`
   - **원인**: kordoc(3.14)가 결재 헤더(복합 병합셀)를 **중첩 `<table>` HTML**로 방출 →
     docufinder `PreviewPanel.tsx`의 `stripHtmlForMarkdown`(정규식 `<table>…</table>` non-greedy,

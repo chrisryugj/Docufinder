@@ -42,6 +42,12 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 ### 실시간 동기화
 파일을 추가/수정/삭제하면 자동으로 반영됩니다. 수동 재인덱싱 필요 없음.
 
+### 문서 미리보기 & 크게 보기
+결과를 클릭하면 문서를 미리보기로 렌더합니다. 병합·중첩된 표도 원본 구조 그대로 표시하고, 전체화면 팝업 뷰어에서 커서 기준 휠 줌·더블클릭 확대·너비/페이지 맞춤으로 크게 볼 수 있습니다.
+
+### 파일 드래그아웃
+검색 결과를 다른 앱이나 웹 페이지로 바로 끌어다 놓을 수 있습니다 (파일 탐색기 드래그와 동일).
+
 ---
 
 ## 지원 파일 형식
@@ -229,7 +235,7 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | 한국어 처리 | Lindera 2.0 형태소 분석 |
 | 임베딩 | ONNX Runtime, KoSimCSE-roberta (768차원) |
 | AI | Gemini API (RAG) |
-| OCR | PaddleOCR ONNX |
+| OCR | PaddleOCR ONNX + PP-DocLayout 레이아웃 분석 |
 | HWP 파싱 | [kordoc](https://www.npmjs.com/package/kordoc) (번들 포함) |
 
 ---
