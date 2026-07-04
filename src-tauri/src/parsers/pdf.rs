@@ -1,6 +1,6 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use crate::ocr::OcrEngine;
-use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
+use pdfium_render::prelude::{PdfDocument, PdfRenderConfig, Pdfium};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -346,95 +346,84 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
 
     let pages = doc.get_pages(); // BTreeMap<u32, ObjectId>
 
+    let mut results: Vec<Option<String>> = vec![None; page_texts.len()];
+    // pdfium 래스터화가 필요한 페이지(임베디드 이미지 추출 실패 — 미지원 코덱). Pass 1 에서
+    // 큐잉하고, Pass 2 에서 pdfium 문서를 딱 1회 로드해 페이지 인덱스로 렌더한다 —
+    // 페이지마다 문서 전체를 재파싱하지 않는다.
+    let mut needs_raster: Vec<usize> = Vec::new();
     let mut ocr_count = 0usize;
-    // pdfium 은 스캔 페이지당이 아니라 문서당 1회만 바인딩(dlopen)한다. 임베디드 이미지
-    // 추출이 실패하는 페이지가 처음 나올 때 지연 바인딩 → 이후 fallback 페이지에서 재사용.
-    // (thread_safe 피처로 Pdfium 은 Send+Sync — 순차 map 재사용 안전. 모든 페이지가
-    //  임베디드 추출로 처리되면 dlopen 자체가 일어나지 않는다.)
-    let mut pdfium: Option<Pdfium> = None;
-    let mut pdfium_tried = false;
 
-    page_texts
-        .iter()
-        .enumerate()
-        .map(|(page_idx, text)| {
-            // 텍스트 충분한 페이지는 스킵 (단, CID 디코딩 실패 페이지는 OCR 강제)
-            if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD && !looks_like_garbage_text(text)
-            {
-                return None;
+    // ── Pass 1: 텍스트 스킵/예산 판정 + 임베디드 이미지 추출 OCR. 추출 실패는 래스터 큐로.
+    for (page_idx, text) in page_texts.iter().enumerate() {
+        // 텍스트 충분한 페이지는 스킵 (단, CID 디코딩 실패 페이지는 OCR 강제).
+        if text.chars().count() >= SCANNED_PAGE_CHAR_THRESHOLD && !looks_like_garbage_text(text) {
+            continue;
+        }
+        // OCR 페이지 수 제한 (성능 보호). 예산은 임베디드·래스터 OCR 를 합산해 문서 순서로 소진.
+        if ocr_count >= MAX_OCR_PAGES {
+            if ocr_count == MAX_OCR_PAGES {
+                tracing::info!(
+                    "PDF OCR page limit reached ({}), skipping remaining pages",
+                    MAX_OCR_PAGES
+                );
+                ocr_count += 1; // 로그는 한 번만
             }
+            continue;
+        }
+        ocr_count += 1;
 
-            // OCR 페이지 수 제한 (성능 보호)
-            if ocr_count >= MAX_OCR_PAGES {
-                if ocr_count == MAX_OCR_PAGES {
-                    tracing::info!(
-                        "PDF OCR page limit reached ({}), skipping remaining pages",
-                        MAX_OCR_PAGES
-                    );
-                }
-                return None;
-            }
-            ocr_count += 1;
+        let page_num = (page_idx + 1) as u32;
+        let page_id = match pages.get(&page_num) {
+            Some(id) => *id,
+            None => continue,
+        };
 
-            let page_num = (page_idx + 1) as u32;
-            let page_id = match pages.get(&page_num) {
-                Some(id) => *id,
-                None => return None,
-            };
+        // 우선순위 ① 임베디드 이미지 추출(빠름). 실패 시(미지원 코덱 — CCITTFax/JBIG2/JPX/CMYK
+        // 등) 페이지를 래스터 큐에 넣어 Pass 2 에서 pdfium 으로 통째 렌더한다.
+        match extract_page_image(&doc, page_id) {
+            Some(image) => results[page_idx] = ocr_image_to_text(ocr, &image, page_num),
+            None => needs_raster.push(page_idx),
+        }
+    }
 
-            // 우선순위 ① 임베디드 이미지 추출(빠름, 기존). 실패 시(미지원 코덱 —
-            // CCITTFax/JBIG2/JPX/CMYK 등) ② 페이지 통째 pdfium 래스터화로 fallback해
-            // 모든 코덱을 우회한다. pdfium 미설치/바인딩 실패면 None → 이 페이지 OCR 스킵.
-            let image = match extract_page_image(&doc, page_id) {
-                Some(img) => img,
-                None => {
-                    if !pdfium_tried {
-                        pdfium = bind_pdfium();
-                        pdfium_tried = true;
-                    }
-                    let rasterized = pdfium
-                        .as_ref()
-                        .and_then(|p| rasterize_page(p, path, page_idx, MAX_OCR_IMAGE_WIDTH));
-                    match rasterized {
-                        Some(img) => {
-                            tracing::info!(
-                                "PDF page {} rasterized via pdfium for OCR ({}x{})",
-                                page_num,
-                                img.width(),
-                                img.height()
-                            );
-                            img
-                        }
-                        None => {
-                            tracing::debug!("No extractable image in scanned page {}", page_num);
-                            return None;
+    // ── Pass 2: 래스터 대상이 있으면 pdfium 을 문서당 1회 바인딩+로드해 인덱스로 렌더 → OCR.
+    // 모든 페이지가 임베디드로 처리되면 dlopen·문서 로드 자체가 일어나지 않는다.
+    if !needs_raster.is_empty() {
+        if let Some(pdfium) = bind_pdfium() {
+            // 로드는 보통 Result 로 실패하지만, 만일의 pdfium 내부 패닉이 parse 전체를 실패시켜
+            // 추출된 텍스트·임베디드 OCR 까지 잃지 않도록 catch_unwind 로 방어(래스터화만 생략).
+            let loaded = catch_unwind(AssertUnwindSafe(|| pdfium.load_pdf_from_file(path, None)));
+            match loaded {
+                Ok(Ok(document)) => {
+                    for &page_idx in &needs_raster {
+                        let page_num = (page_idx + 1) as u32;
+                        match rasterize_doc_page(&document, page_idx, MAX_OCR_IMAGE_WIDTH) {
+                            Some(image) => {
+                                tracing::info!(
+                                    "PDF page {} rasterized via pdfium for OCR ({}x{})",
+                                    page_num,
+                                    image.width(),
+                                    image.height()
+                                );
+                                results[page_idx] = ocr_image_to_text(ocr, &image, page_num);
+                            }
+                            None => {
+                                tracing::debug!("No extractable image in scanned page {}", page_num)
+                            }
                         }
                     }
                 }
-            };
-
-            // OCR 실행
-            match ocr.recognize_image(&image) {
-                Ok(result) => {
-                    let ocr_text = result.text.trim().to_string();
-                    if ocr_text.is_empty() {
-                        None
-                    } else {
-                        tracing::info!(
-                            "PDF page {} OCR: {} chars extracted",
-                            page_num,
-                            ocr_text.len()
-                        );
-                        Some(ocr_text)
-                    }
+                Ok(Err(e)) => {
+                    tracing::debug!("pdfium 문서 로드 실패, 래스터화 생략: {:?} ({})", path, e)
                 }
-                Err(e) => {
-                    tracing::debug!("OCR failed for PDF page {}: {}", page_num, e);
-                    None
+                Err(_) => {
+                    tracing::warn!("pdfium 문서 로드 중 panic, 래스터화 생략: {:?}", path)
                 }
             }
-        })
-        .collect()
+        }
+    }
+
+    results
 }
 
 /// 페이지에서 가장 큰 이미지 추출 (스캔 PDF: 페이지당 1개 이미지가 일반적)
@@ -501,23 +490,50 @@ fn extract_page_image(
 // pdfium 페이지 래스터화 fallback — 임베디드 이미지 추출이 실패하는 코덱 우회
 // ============================================================================
 
-/// pdfium 으로 PDF 페이지를 통째 이미지로 래스터화 (스캔 페이지 OCR fallback).
+/// 준비된 이미지를 OCR 해 텍스트를 뽑는다. 빈 결과·에러는 `None`(해당 페이지 스킵).
+fn ocr_image_to_text(
+    ocr: &OcrEngine,
+    image: &image::DynamicImage,
+    page_num: u32,
+) -> Option<String> {
+    match ocr.recognize_image(image) {
+        Ok(result) => {
+            let ocr_text = result.text.trim().to_string();
+            if ocr_text.is_empty() {
+                None
+            } else {
+                tracing::info!(
+                    "PDF page {} OCR: {} chars extracted",
+                    page_num,
+                    ocr_text.len()
+                );
+                Some(ocr_text)
+            }
+        }
+        Err(e) => {
+            tracing::debug!("OCR failed for PDF page {}: {}", page_num, e);
+            None
+        }
+    }
+}
+
+/// 이미 로드된 pdfium 문서에서 페이지 하나를 이미지로 래스터화 (스캔 페이지 OCR fallback).
 ///
-/// CCITTFax/JBIG2/JPX/CMYK 등 `decode_pdf_image` 가 지원하지 않는 코덱으로 인코딩된 스캔본을
-/// OCR 하기 위해 페이지 자체를 렌더한다. 바인딩된 `pdfium`(호출부가 문서당 1회 `bind_pdfium`)을
-/// 받아 재사용한다 — 페이지마다 dlopen 하지 않는다. render 중 예기치 못한 패닉은 `catch_unwind`
-/// 로 방어해 `None` 을 반환한다(크래시 금지). `target_width` px 기준으로 렌더해 기존 OCR 이미지
-/// 폭 상한을 준수한다.
-fn rasterize_page(
-    pdfium: &Pdfium,
-    path: &Path,
+/// CCITTFax/JBIG2/JPX/CMYK 등 `decode_pdf_image` 가 지원하지 않는 코덱의 스캔본을 OCR 하기
+/// 위해 페이지 자체를 렌더한다. 문서는 호출부가 문서당 1회 로드해 넘겨준다 — 페이지마다
+/// 재파싱하지 않는다. render 중 예기치 못한 패닉은 `catch_unwind` 로 방어해 `None` 을 반환한다
+/// (크래시 금지). `target_width` px 기준으로 렌더해 기존 OCR 이미지 폭 상한을 준수한다.
+fn rasterize_doc_page(
+    document: &PdfDocument<'_>,
     page_index: usize,
     target_width: u32,
 ) -> Option<image::DynamicImage> {
+    // pdfium 페이지 인덱스는 u16 — 65,535 초과 페이지(극단적 대용량 PDF)를 조용히 절단하지
+    // 않고 렌더 불가로 건너뛴다.
+    let page_index = u16::try_from(page_index).ok()?;
     // pdfium 내부에서의 예기치 못한 패닉까지 방어 (OCR 경로는 catch_unwind 밖에서 실행됨).
     let rendered = catch_unwind(AssertUnwindSafe(|| {
-        let document = pdfium.load_pdf_from_file(path, None).ok()?;
-        let page = document.pages().get(page_index as u16).ok()?;
+        let page = document.pages().get(page_index).ok()?;
         let config = PdfRenderConfig::new()
             .set_target_width(target_width as i32)
             .set_maximum_height(MAX_OCR_RENDER_HEIGHT as i32);
@@ -527,7 +543,7 @@ fn rasterize_page(
     match rendered {
         Ok(img) => img,
         Err(_) => {
-            tracing::warn!("pdfium 렌더 중 panic (page {}): {:?}", page_index + 1, path);
+            tracing::warn!("pdfium 렌더 중 panic (page {})", page_index + 1);
             None
         }
     }

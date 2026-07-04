@@ -62,6 +62,7 @@ export function useAppEvents({
   useEffect(() => {
     let semanticToastId: string | null = null;
     let ocrToastId: string | null = null;
+    let layoutToastId: string | null = null;
     let unlistenFn: UnlistenFn | null = null;
     listen<string>("model-download-status", (event) => {
       const cb = cbRef.current;
@@ -96,6 +97,22 @@ export function useAppEvents({
             cb.updateToast(ocrToastId, { message: "OCR 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 8000);
           } else {
             cb.showToast("OCR 모델 다운로드 실패. 설정에서 OCR을 확인하세요.", "error", 8000);
+          }
+          break;
+        // 레이아웃 분석 모델 (PP-DocLayout, 실험 기능 토글)
+        case "downloading-layout":
+          layoutToastId = cb.showToast("레이아웃 분석 모델 다운로드 중...", "loading");
+          break;
+        case "completed-layout":
+          if (layoutToastId) {
+            cb.updateToast(layoutToastId, { message: "레이아웃 분석 모델 다운로드 완료!", type: "success" });
+          }
+          break;
+        case "failed-layout":
+          if (layoutToastId) {
+            cb.updateToast(layoutToastId, { message: "레이아웃 분석 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 8000);
+          } else {
+            cb.showToast("레이아웃 분석 모델 다운로드 실패. 설정에서 다시 시도하세요.", "error", 8000);
           }
           break;
       }
