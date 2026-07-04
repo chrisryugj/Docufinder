@@ -1398,6 +1398,7 @@ pub fn run() {
             commands::index::cancel_indexing_batch,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::count_ocr_reindex_candidates,
             commands::file::open_file,
             commands::file::open_url,
             commands::file::check_github_release,
