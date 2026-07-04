@@ -210,7 +210,10 @@ export const LayoutView = memo(function LayoutView({
     if (m.length === 0) return;
     m.forEach((t, i) => t.setAttribute("data-find", i === matchIdx ? "active" : "1"));
     m[matchIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [matchIdx, matchCount]);
+    // findTerm·svg 도 의존성에 포함: 매치 수가 이전과 같은 새 검색어(예: 3건→3건)는
+    // matchIdx·matchCount 가 안 바뀌어 active 강조·스크롤이 갱신되지 않는다. 수집 effect가
+    // 먼저(선언순) 실행돼 matchesRef 를 재구성한 뒤 이 effect가 읽으므로 순서 안전.
+  }, [matchIdx, matchCount, findTerm, svg]);
 
   const navMatch = useCallback((dir: 1 | -1) => {
     setMatchIdx((i) => (matchCount > 0 ? (i + dir + matchCount) % matchCount : 0));
@@ -251,7 +254,7 @@ export const LayoutView = memo(function LayoutView({
         <button onClick={() => zoomBy(ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="확대" aria-label="확대">
           <ZoomIn size={13} />
         </button>
-        <button onClick={() => { if (fitWidth) fitPage(); else { setFitWidth(true); setZoom(1); } }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fitWidth ? "페이지 맞춤" : "너비 맞춤"} aria-label={fitWidth ? "페이지 맞춤" : "너비 맞춤"}>
+        <button onClick={() => { if (fitWidth) fitPage(); else { setFitWidth(true); setZoom(1); zoomAnchorRef.current = null; } }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fitWidth ? "페이지 맞춤" : "너비 맞춤"} aria-label={fitWidth ? "페이지 맞춤" : "너비 맞춤"}>
           <Maximize2 size={13} />
         </button>
 
