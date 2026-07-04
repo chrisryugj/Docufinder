@@ -765,10 +765,17 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
 
     let chunks_count = document.chunks.len();
 
-    // 복사 시 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트) 판정 —
+    // 복사 시 깨지는 문서(PDF CID/ToUnicode 누락, HWP/HWPX PUA 커스텀폰트) 판정 —
     // 청크 본문을 이어붙여 looks_like_garbage_text 로 검사한다. chunks 를 소비하기
     // 전에 계산해야 하므로 into_iter() 루프 앞에서 수행.
-    let garbled_flag = {
+    //
+    // 판정 자체를 pdf/hwp/hwpx 로 게이팅한다. 판정기는 "한글/라틴이 지배적이지 않으면
+    // 깨짐"으로도 보므로 한자 지배 문서(중/일)를 오탐하는데, 이 CID/PUA 깨짐은 pdf 와 한글
+    // 오피스 계열(hwp·hwpx)에서만 실제로 발생한다. hwpx 도 커스텀폰트 PUA 코드포인트가
+    // 그대로 실려 깨질 수 있어 포함한다(유니코드 네이티브라도 PUA 는 유니코드다 — hwpx 파서는
+    // PUA 를 걸러내지 않는다). 그 외 타입(docx/xlsx/txt 등)은 판정 생략 → 중/일 문서 오탐
+    // 배지를 원천 차단(항상 false = 깨끗함).
+    let garbled_flag = if matches!(file_type.as_str(), "pdf" | "hwp" | "hwpx") {
         let joined: String = document
             .chunks
             .iter()
@@ -776,6 +783,8 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
             .collect::<Vec<_>>()
             .join("\n");
         crate::parsers::pdf::looks_like_garbage_text(&joined)
+    } else {
+        false
     };
 
     let mut tokenize_panics: usize = 0;
