@@ -41,6 +41,26 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 ///
 /// app_data_dir이 Some이면 파일 로깅도 활성화.
 /// None이면 콘솔만 (app_data_dir 확보 실패 시 fallback).
+/// 네이티브 드래그아웃 프리뷰 아이콘 경로 — 내장 PNG 를 앱 캐시에 1회 기록하고 절대경로 반환.
+/// @crabnebula/tauri-plugin-drag 의 startDrag(icon) 는 디스크상 실존 이미지 경로를 요구한다.
+#[tauri::command]
+fn drag_preview_icon(app: tauri::AppHandle) -> Result<String, String> {
+    use std::io::Write;
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| format!("cache dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create cache dir: {e}"))?;
+    let path = dir.join("drag-preview.png");
+    if !path.exists() {
+        let bytes = include_bytes!("../icons/32x32.png");
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(bytes))
+            .map_err(|e| format!("write drag icon: {e}"))?;
+    }
+    Ok(path.to_string_lossy().into_owned())
+}
+
 fn init_logging(app_data_dir: Option<&PathBuf>) {
     // 기본 필터: 릴리즈에서는 info, 디버그에서는 debug
     let default_filter = if cfg!(debug_assertions) {
@@ -569,6 +589,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // relaunch() 지원 — updater가 설치 완료 후 앱 재시작
         .plugin(tauri_plugin_process::init())
+        // 네이티브 드래그아웃 — 검색 결과 파일을 다른 앱/웹페이지로 끌어다 놓기
+        .plugin(tauri_plugin_drag::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -1319,6 +1341,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            drag_preview_icon,
             commands::search::search_keyword,
             commands::search::search_filename,
             commands::search::search_semantic,
