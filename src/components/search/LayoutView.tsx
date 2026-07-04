@@ -1,12 +1,17 @@
 import { memo, useRef, useState, useEffect, useCallback } from "react";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, ArrowUp, ArrowDown } from "lucide-react";
-import { ImageLightbox } from "./ImageLightbox";
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, ArrowUp, ArrowDown, Expand, X } from "lucide-react";
 
 interface LayoutViewProps {
   /** kordoc render 가 만든 전체 페이지 세로 스택 SVG (신뢰된 소스) */
   svg: string;
   /** 찾기 바 확정어 — 레이아웃 뷰 내 SVG <text> 매치 이동 (없으면 비활성) */
   findTerm?: string;
+  /** 자유 줌 — 휠(Ctrl 없이)로 바로 확대/축소 (팝업 뷰어용, 이미지 뷰어처럼) */
+  freeZoom?: boolean;
+  /** 있으면 뷰어(팝업) 모드 — 툴바에 닫기(X), Esc 로 닫힘 */
+  onClose?: () => void;
+  /** 있으면 인라인 모드 — 툴바에 "크게 보기(팝업)" 버튼 노출 */
+  onExpand?: () => void;
 }
 
 const ZOOM_MIN = 0.3;
@@ -18,8 +23,17 @@ const ZOOM_STEP = 0.2;
  * `<img>` 격리 대신 인라인이지만, SVG 는 kordoc 이 생성한 신뢰 소스이고 스크립트/외부
  * 리소스를 포함하지 않는다(텍스트·도형·이미지 data URI 뿐). DOM 접근이 열려야 페이지
  * 점프·매치 스크롤·텍스트 선택이 가능하다.
+ *
+ * 팝업 뷰어 모드(onClose 지정): PreviewPanel 이 이 컴포넌트를 전체화면 오버레이에 다시
+ * 렌더해 문서를 크게 보게 한다. freeZoom 이면 휠만으로 자유 줌(이미지 뷰어 감각).
  */
-export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutViewProps) {
+export const LayoutView = memo(function LayoutView({
+  svg,
+  findTerm,
+  freeZoom = false,
+  onClose,
+  onExpand,
+}: LayoutViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null); // overflow 스크롤 컨테이너(팬)
   const hostRef = useRef<HTMLDivElement>(null); // dangerouslySetInnerHTML 대상
   const matchesRef = useRef<SVGTextElement[]>([]);
@@ -30,7 +44,6 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
   const [pageCount, setPageCount] = useState(1);
   const [matchIdx, setMatchIdx] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null); // 이미지 확대 오버레이
 
   // 페이지 수 (data-page 그룹)
   useEffect(() => {
@@ -60,13 +73,13 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
     setPage(cur);
   }, []);
 
-  // 줌 (Ctrl/⌘ + 휠 → 자유 배율)
+  // 줌 — 인라인은 Ctrl/⌘+휠, 뷰어(freeZoom)는 휠만으로 자유 배율
   const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
+    if (!freeZoom && !e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     setFitWidth(false);
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z - e.deltaY * 0.0015)));
-  }, []);
+  }, [freeZoom]);
 
   const zoomBy = useCallback((d: number) => {
     setFitWidth(false);
@@ -76,21 +89,11 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
   // 드래그 팬 (줌 상태에서 종이 끌어 이동)
   const panRef = useRef<{ x: number; y: number; l: number; t: number } | null>(null);
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // 텍스트 선택·이미지 클릭과 충돌 방지 — 빈 영역(SVG 배경)에서만 팬
-    const tag = (e.target as Element).tagName?.toLowerCase();
-    if (tag === "text" || tag === "image") return;
+    // 텍스트 선택과 충돌 방지 — 빈 영역(SVG 배경)에서만 팬
+    if ((e.target as Element).tagName?.toLowerCase() === "text") return;
     const sc = scrollRef.current;
     if (!sc) return;
     panRef.current = { x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop };
-  }, []);
-
-  // 이미지 클릭 → 라이트박스 (SVG <image> 의 href/xlink:href 추출해 확대 오버레이)
-  const onImageClick = useCallback((e: React.MouseEvent) => {
-    const el = e.target as Element;
-    const image = el.tagName?.toLowerCase() === "image" ? el : el.closest?.("image");
-    if (!image) return;
-    const href = image.getAttribute("href") || image.getAttribute("xlink:href");
-    if (href) setLightboxSrc(href);
   }, []);
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const p = panRef.current, sc = scrollRef.current;
@@ -99,6 +102,21 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
     sc.scrollTop = p.t - (e.clientY - p.y);
   }, []);
   const endPan = useCallback(() => { panRef.current = null; }, []);
+
+  // 뷰어(팝업) 모드 — Esc 로 닫기. capture 로 전역 단축키보다 먼저 소비해
+  // 뒤 미리보기(찾기/프리뷰 닫힘)까지 번지지 않게 한다.
+  useEffect(() => {
+    if (!onClose) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
   // 찾기 매치 — SVG <text> 내용에서 findTerm 포함 요소 수집·강조
   useEffect(() => {
@@ -136,7 +154,6 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
         .layout-svg-host svg { width: 100%; height: auto; display: block; }
         .layout-svg-host text[data-find] { fill: #b45309; }
         .layout-svg-host text[data-find="active"] { fill: #dc2626; font-weight: 700; }
-        .layout-svg-host image { cursor: zoom-in; }
       `}</style>
 
       {/* 툴바 — 페이지 네비 · 줌 · 매치 이동 (에디토리얼 미니멀, hairline) */}
@@ -180,6 +197,18 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
             </button>
           </>
         )}
+
+        {/* 인라인: 크게 보기(팝업) 진입 · 뷰어: 닫기 (우측 정렬) */}
+        {onExpand && (
+          <button onClick={onExpand} className="ml-auto p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="크게 보기 (팝업)" aria-label="크게 보기">
+            <Expand size={13} />
+          </button>
+        )}
+        {onClose && (
+          <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="닫기 (Esc)" aria-label="닫기">
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {/* SVG 스크롤/팬 영역 — 종이 배경은 SVG 자체 포함 */}
@@ -191,9 +220,8 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
         onMouseMove={onMouseMove}
         onMouseUp={endPan}
         onMouseLeave={endPan}
-        onClick={onImageClick}
         className="flex-1 overflow-auto px-4 py-3"
-        style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        style={{ backgroundColor: "var(--color-bg-tertiary)", cursor: freeZoom ? "grab" : undefined }}
       >
         <div
           ref={hostRef}
@@ -202,9 +230,6 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       </div>
-
-      {/* 이미지 확대 라이트박스 — SVG <image> 클릭 시 */}
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   );
 });
