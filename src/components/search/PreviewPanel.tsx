@@ -699,6 +699,9 @@ export const PreviewPanel = memo(function PreviewPanel({
     setLayoutSvg(null);
     setLayoutLoading(false);
     setViewerOpen(false);
+    // 파일이 (재)열릴 때마다 선호 뷰를 다시 적용 — 같은 파일을 닫았다 다시 열어도 원본
+    // 레이아웃 선호가 유지되도록. (이 리셋이 없으면 prefAppliedRef 가 남아 재적용을 건너뜀)
+    prefAppliedRef.current = null;
 
     let cancelled = false;
     setLoading(true);
@@ -1411,9 +1414,9 @@ export const PreviewPanel = memo(function PreviewPanel({
         {markdown && <span className="shrink-0 tabular-nums">{markdown.length.toLocaleString()}자</span>}
       </div>
 
-      {/* 문서 크게 보기 — 레이아웃 렌더를 팝업으로 띄워 자유 줌/팬 (이미지 뷰어처럼).
-          검증된 LayoutView 를 freeZoom(휠만으로 줌)·onClose 로 재사용. role=dialog 라
-          앱 bare-key 가드에 자동 편입(뒤 뷰 몰래 전환 방지). */}
+      {/* 문서 크게 보기 — 레이아웃 렌더를 팝업으로 크게. 휠=스크롤, Ctrl/⌘+휠(트랙패드
+          핀치)=줌, 너비맞춤은 창 크기 따라 스케일. 검증된 LayoutView 를 onClose 로 재사용.
+          role=dialog 라 앱 bare-key 가드에 자동 편입(뒤 뷰 몰래 전환 방지). */}
       {viewerOpen && layoutSvg && (
         <div
           role="dialog"
@@ -1429,7 +1432,6 @@ export const PreviewPanel = memo(function PreviewPanel({
           >
             <LayoutView
               svg={layoutSvg}
-              freeZoom
               onClose={() => setViewerOpen(false)}
               findTerm={findOpen ? findTerm.trim() || undefined : undefined}
             />

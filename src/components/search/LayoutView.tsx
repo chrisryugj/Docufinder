@@ -6,8 +6,6 @@ interface LayoutViewProps {
   svg: string;
   /** 찾기 바 확정어 — 레이아웃 뷰 내 SVG <text> 매치 이동 (없으면 비활성) */
   findTerm?: string;
-  /** 자유 줌 — 휠(Ctrl 없이)로 바로 확대/축소 (팝업 뷰어용, 이미지 뷰어처럼) */
-  freeZoom?: boolean;
   /** 있으면 뷰어(팝업) 모드 — 툴바에 닫기(X), Esc 로 닫힘 */
   onClose?: () => void;
   /** 있으면 인라인 모드 — 툴바에 "크게 보기(팝업)" 버튼 노출 */
@@ -25,12 +23,11 @@ const ZOOM_STEP = 0.2;
  * 점프·매치 스크롤·텍스트 선택이 가능하다.
  *
  * 팝업 뷰어 모드(onClose 지정): PreviewPanel 이 이 컴포넌트를 전체화면 오버레이에 다시
- * 렌더해 문서를 크게 보게 한다. freeZoom 이면 휠만으로 자유 줌(이미지 뷰어 감각).
+ * 렌더해 문서를 크게 보게 한다. 휠=스크롤, Ctrl/⌘+휠(트랙패드 핀치)=줌 — 문서 뷰어 관례.
  */
 export const LayoutView = memo(function LayoutView({
   svg,
   findTerm,
-  freeZoom = false,
   onClose,
   onExpand,
 }: LayoutViewProps) {
@@ -73,13 +70,13 @@ export const LayoutView = memo(function LayoutView({
     setPage(cur);
   }, []);
 
-  // 줌 — 인라인은 Ctrl/⌘+휠, 뷰어(freeZoom)는 휠만으로 자유 배율
+  // 줌 — Ctrl/⌘+휠(트랙패드 핀치도 이 이벤트로 도착). 일반 휠은 스크롤(문서 뷰어 관례).
   const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!freeZoom && !e.ctrlKey && !e.metaKey) return;
+    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     setFitWidth(false);
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z - e.deltaY * 0.0015)));
-  }, [freeZoom]);
+  }, []);
 
   const zoomBy = useCallback((d: number) => {
     setFitWidth(false);
@@ -221,7 +218,7 @@ export const LayoutView = memo(function LayoutView({
         onMouseUp={endPan}
         onMouseLeave={endPan}
         className="flex-1 overflow-auto px-4 py-3"
-        style={{ backgroundColor: "var(--color-bg-tertiary)", cursor: freeZoom ? "grab" : undefined }}
+        style={{ backgroundColor: "var(--color-bg-tertiary)" }}
       >
         <div
           ref={hostRef}
