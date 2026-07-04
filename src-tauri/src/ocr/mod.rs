@@ -4,6 +4,7 @@
 
 mod detection;
 mod geometry;
+mod layout;
 mod reading_order;
 mod recognition;
 
@@ -67,8 +68,8 @@ impl BBox {
     }
 }
 
-/// 레이아웃 영역 분류 — Phase 1(PP-DocLayout)에서 채워질 forward 선언.
-/// Text 외 variant 는 아직 구성되지 않으므로 dead_code 를 허용한다.
+/// 레이아웃 영역 분류(PP-DocLayout). 대부분의 variant 는 `layout::class_to_kind` 가 구성하며,
+/// `List` 는 현재 어떤 클래스에도 매핑되지 않아 dead_code 를 허용한다.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum RegionKind {
@@ -88,6 +89,8 @@ pub enum RegionKind {
 pub struct OcrEngine {
     det_session: Mutex<Session>,
     rec_session: Mutex<Session>,
+    /// 선택적 PP-DocLayout 레이아웃 세션 — `layout.onnx` 가 있을 때만 로드(없으면 Phase 0).
+    layout_session: Option<Mutex<Session>>,
     dictionary: Vec<String>,
 }
 
@@ -151,18 +154,84 @@ impl OcrEngine {
             .map_err(|e| OcrError::ModelLoad(format!("Dictionary read: {}", e)))?;
         let dictionary: Vec<String> = dict_content.lines().map(|l| l.to_string()).collect();
 
+        // 선택적 레이아웃 모델 — 있으면 로드, 없으면 None(레이아웃 분석 없이 동작).
+        let layout_session = Self::try_load_layout(models_dir, num_threads);
+
         tracing::info!(
-            "OCR engine initialized: det={:?}, rec={:?}, dict={} chars",
+            "OCR engine initialized: det={:?}, rec={:?}, dict={} chars, layout={}",
             det_path.file_name(),
             rec_path.file_name(),
-            dictionary.len()
+            dictionary.len(),
+            layout_session.is_some()
         );
 
         Ok(Self {
             det_session: Mutex::new(det_session),
             rec_session: Mutex::new(rec_session),
+            layout_session,
             dictionary,
         })
+    }
+
+    /// 선택적 레이아웃 모델(`layout.onnx`)을 로드. 없거나 로드 실패면 `None` — OCR 은
+    /// 레이아웃 분석 없이 계속 동작한다(기능만 off, 크래시·에러 전파 금지).
+    fn try_load_layout(models_dir: &Path, num_threads: usize) -> Option<Mutex<Session>> {
+        let layout_path = models_dir.join("layout.onnx");
+        if !layout_path.exists() {
+            return None;
+        }
+        let build = Session::builder()
+            .and_then(|b| b.with_execution_providers([ort::ep::CPU::default().build()]))
+            .and_then(|b| {
+                b.with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
+            })
+            .and_then(|b| b.with_intra_threads(num_threads))
+            .and_then(|b| b.commit_from_file(&layout_path));
+        match build {
+            Ok(s) => {
+                tracing::info!("OCR layout model loaded: {:?}", layout_path.file_name());
+                Some(Mutex::new(s))
+            }
+            Err(e) => {
+                tracing::warn!("layout 모델 로드 실패, 레이아웃 분석 생략: {}", e);
+                None
+            }
+        }
+    }
+
+    /// 텍스트 영역에 레이아웃 종류를 귀속한다. 레이아웃 세션이 없으면(기본) regions 를
+    /// 그대로 반환 — 모든 kind 는 Text 로 유지되어 기존 동작과 완전히 동일하다.
+    fn classify_regions(
+        &self,
+        mut regions: Vec<OcrRegion>,
+        image: &DynamicImage,
+    ) -> Vec<OcrRegion> {
+        let session = match &self.layout_session {
+            Some(s) => s,
+            None => return regions,
+        };
+        let layout_regions = match layout::analyze(session, image) {
+            Ok(lr) if !lr.is_empty() => lr,
+            Ok(_) => return regions,
+            Err(e) => {
+                tracing::debug!("layout 분석 실패, 분류 생략: {}", e);
+                return regions;
+            }
+        };
+        for region in &mut regions {
+            // 텍스트 박스가 가장 많이 포함되는 레이아웃 영역의 종류를 귀속(containment 기준).
+            let mut best_kind = RegionKind::Text;
+            let mut best_overlap = 0.30_f32; // 텍스트 박스 면적 대비 최소 겹침
+            for lr in &layout_regions {
+                let c = containment(&region.bbox, &lr.bbox);
+                if c > best_overlap {
+                    best_overlap = c;
+                    best_kind = lr.kind;
+                }
+            }
+            region.kind = best_kind;
+        }
+        regions
     }
 
     /// 이미지 파일에서 텍스트 추출
@@ -215,8 +284,21 @@ impl OcrEngine {
         let order = reading_order::reading_order(&bboxes);
         let regions: Vec<OcrRegion> = order.iter().map(|&i| regions[i].clone()).collect();
 
+        // 6. 레이아웃 분류(선택) — 레이아웃 모델이 있으면 각 영역의 kind 를 채운다.
+        //    없으면 regions 그대로(모든 kind = Text) → 아래 필터가 무동작.
+        let regions = self.classify_regions(regions, image);
+
+        // 본문 텍스트는 머리글/바닥글/페이지번호를 제외해 검색 노이즈를 줄인다.
+        // (해당 kind 는 레이아웃 분류가 있을 때만 생기므로 모델 부재 시 기존과 동일.)
+        //  regions 자체엔 전부 보존(미리보기 오버레이·별도 소비용).
         let text = regions
             .iter()
+            .filter(|r| {
+                !matches!(
+                    r.kind,
+                    RegionKind::Header | RegionKind::Footer | RegionKind::PageNumber
+                )
+            })
             .map(|r| r.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
@@ -232,5 +314,21 @@ impl OcrEngine {
             regions,
             confidence: avg_confidence,
         })
+    }
+}
+
+/// 텍스트 박스가 레이아웃 영역에 포함되는 비율 = 교집합 면적 / 텍스트 박스 면적.
+/// 텍스트 박스는 작고 레이아웃 영역은 크므로 IoU 대신 containment 로 귀속 판정한다.
+fn containment(inner: &BBox, outer: &BBox) -> f32 {
+    let ix0 = inner.x0.max(outer.x0);
+    let iy0 = inner.y0.max(outer.y0);
+    let ix1 = inner.x1.min(outer.x1);
+    let iy1 = inner.y1.min(outer.y1);
+    let inter = (ix1 - ix0).max(0.0) * (iy1 - iy0).max(0.0);
+    let inner_area = (inner.x1 - inner.x0).max(0.0) * (inner.y1 - inner.y0).max(0.0);
+    if inner_area <= 0.0 {
+        0.0
+    } else {
+        inter / inner_area
     }
 }

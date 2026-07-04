@@ -373,6 +373,17 @@ export function SearchTab({ settings, onChange }: TabProps) {
             {ocrReindexMsg}
           </p>
         )}
+        {/* 레이아웃 분석 — OCR 켰을 때만 노출되는 하위 실험 옵션 */}
+        {(settings.ocr_enabled ?? false) && (
+          <div className="mt-2 pl-3 border-l-2" style={{ borderColor: "var(--color-border)" }}>
+            <SettingsToggle
+              label="레이아웃 분석 (실험적)"
+              description="스캔 PDF·이미지에서 제목·표·머리글/바닥글을 구분해 본문 노이즈(머리글·바닥글·페이지번호)를 제거 · PP-DocLayout ~22MB 모델 · 재시작 후 적용"
+              checked={settings.ocr_layout_enabled ?? false}
+              onChange={(v) => onChange("ocr_layout_enabled", v)}
+            />
+          </div>
+        )}
       </div>
 
       {/* PDF 수식 OCR */}

@@ -102,6 +102,12 @@ const OCR_DET_SHA256: &str = "ee40e80071ba3a320d4efda75f3e22047a7d049e9bf7bcaaf9
 const OCR_REC_KO_SHA256: &str = "322f140154c820fcb83c3d24cfe42c9ec70dd1a1834163306a7338136e4f1eaa";
 const OCR_DICT_KO_SHA256: &str = "a88071c68c01707489baa79ebe0405b7beb5cca229f4fc94cc3ef992328802d7";
 
+// PP-DocLayout-M — 문서 레이아웃 검출 ONNX (GreatV/oar-ocr v0.3.0 릴리스, Apache-2.0, 22.4MB).
+// 스캔/이미지 OCR 텍스트 영역을 제목·표·머리글/바닥글 등으로 분류. 선택적 모델(부재 시 미로드).
+const OCR_LAYOUT_URL: &str =
+    "https://github.com/GreatV/oar-ocr/releases/download/v0.3.0/pp-doclayout-m.onnx";
+const OCR_LAYOUT_SHA256: &str = "8e458bfc919bbf7a35be9802485b5cd30151cb356364cfad09911d2ee1fc1f76";
+
 // 다운로드 설정
 const CONNECT_TIMEOUT_SECS: u64 = 30;
 const READ_TIMEOUT_SECS: u64 = 600; // 10분 (대용량 모델)
@@ -297,6 +303,27 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
     }
 
     Ok((det_downloaded, rec_downloaded, dict_downloaded))
+}
+
+/// PP-DocLayout 레이아웃 모델(선택) 다운로드. OCR 모델과 같은 `paddleocr/` 아래 `layout.onnx`
+/// 로 둔다. 없으면 다운로드, 있으면 SHA 검증. 이 모델은 `OcrEngine` 이 지연 로드하며 부재 시
+/// OCR 은 레이아웃 분석 없이 동작한다(기능만 off). 새로 받았으면 `true`.
+pub fn ensure_layout_model(models_dir: &Path) -> Result<bool, String> {
+    let ocr_dir = models_dir.join("paddleocr");
+    fs::create_dir_all(&ocr_dir).map_err(|e| format!("OCR 디렉토리 생성 실패: {}", e))?;
+    let layout_path = ocr_dir.join("layout.onnx");
+
+    if layout_path.exists() {
+        if !OCR_LAYOUT_SHA256.is_empty() {
+            verify_existing_file(&layout_path, OCR_LAYOUT_SHA256, "OCR Layout")?;
+        }
+        return Ok(false);
+    }
+
+    tracing::info!("PP-DocLayout 레이아웃 모델 다운로드 중...");
+    download_file_optional_hash(OCR_LAYOUT_URL, &layout_path, OCR_LAYOUT_SHA256)?;
+    tracing::info!("PP-DocLayout 레이아웃 모델 다운로드 완료");
+    Ok(true)
 }
 
 /// 스캔/이미지 PDF 페이지 래스터화용 pdfium 동적 라이브러리를 확인하고 없으면 다운로드.
