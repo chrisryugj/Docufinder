@@ -9,6 +9,7 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
+import { LayoutView } from "./LayoutView";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { TagInput } from "../ui/TagInput";
 import type { AiAnalysis } from "../../types/search";
@@ -810,19 +811,6 @@ export const PreviewPanel = memo(function PreviewPanel({
     );
   }, [processedMarkdown, markdownComponents]);
 
-  // SVG 를 <img data:> 로 격리 삽입 — img 컨텍스트에선 스크립트 실행·외부 리소스
-  // 로드가 차단된다 (kordoc 이 통제된 소스라도 방어적으로). CSP img-src 에 data: 허용됨.
-  const layoutSvgUri = useMemo(
-    () => (layoutSvg ? `data:image/svg+xml,${encodeURIComponent(layoutSvg)}` : null),
-    [layoutSvg],
-  );
-
-  // 페이지 수 — kordoc 스택 SVG 의 페이지 그룹(data-page) 수로 캡션 표기
-  const layoutPageCount = useMemo(
-    () => (layoutSvg ? (layoutSvg.match(/data-page="/g) ?? []).length : 0),
-    [layoutSvg],
-  );
-
   // ── 찾기 바 동작 ──
 
   const closeFind = useCallback(() => {
@@ -830,16 +818,11 @@ export const PreviewPanel = memo(function PreviewPanel({
     setFindActiveIdx(0);
   }, []);
 
-  // 찾기 토글 — 레이아웃 뷰에선 본문 DOM 이 없어 찾기가 무의미하므로
-  // 마크다운 뷰로 복귀하면서 찾기 바를 연다 (버튼·Ctrl+F 공용).
+  // 찾기 토글 — 레이아웃 뷰에서도 인라인 SVG <text> 매치를 LayoutView 가 처리하므로
+  // 뷰 전환 없이 찾기 바만 토글한다 (버튼·Ctrl+F 공용).
   const handleFindToggle = useCallback(() => {
-    if (viewMode === "layout") {
-      setViewMode("markdown");
-      setFindOpen(true);
-      return;
-    }
     setFindOpen((v) => !v);
-  }, [viewMode]);
+  }, []);
 
   // ── 레이아웃 뷰 (kordoc render SVG) ──
 
@@ -1300,49 +1283,38 @@ export const PreviewPanel = memo(function PreviewPanel({
         </div>
       )}
 
-      {/* 마크다운 스크롤 영역 */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
-        {loading && (
-          <div className="flex items-center justify-center h-32">
-            <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
-
-        {error && (
-          <div className="p-4 text-sm text-[var(--color-error)]">
-            <FileText size={20} className="mx-auto mb-2 opacity-50" />
-            <p className="text-center">{error}</p>
-          </div>
-        )}
-
-        {!loading && !error && markdown !== null && markdown.length === 0 && (
-          <div className="p-4 text-sm text-center text-[var(--color-text-muted)]">
-            <FileText size={24} className="mx-auto mb-2 opacity-30" />
-            인덱싱된 텍스트가 없습니다
-          </div>
-        )}
-
-        {/* 마크다운 렌더링 */}
-        {!loading && !error && markdown && viewMode === "markdown" && (
-          <div ref={previewBodyRef} className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
-        )}
-
-        {/* 레이아웃(SVG) 렌더링 — 격리된 <img data:>, 스크립트 실행/외부 요청 차단.
-            종이 흰 배경·페이지 경계선은 SVG 가 자체 포함(다크모드에서도 원본 대비 유지) */}
-        {!loading && !error && viewMode === "layout" && layoutSvgUri && (
-          <div className="px-4 py-3" style={{ backgroundColor: "var(--color-bg-tertiary)", minHeight: "100%" }}>
-            <div className="text-[11px] mb-2 text-center" style={{ color: "var(--color-text-muted)" }}>
-              {layoutPageCount > 0 ? `원본 레이아웃 — ${layoutPageCount}페이지` : "원본 레이아웃"}
+      {/* 본문 영역 — 레이아웃 뷰는 LayoutView(인라인 SVG·줌/팬·페이지 네비·매치 이동),
+          그 외는 마크다운 스크롤 영역 */}
+      {!loading && !error && viewMode === "layout" && layoutSvg ? (
+        <LayoutView svg={layoutSvg} findTerm={findOpen ? findTerm.trim() || undefined : undefined} />
+      ) : (
+        <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
+          {loading && (
+            <div className="flex items-center justify-center h-32">
+              <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
             </div>
-            <img
-              src={layoutSvgUri}
-              alt="원본 레이아웃"
-              className="w-full h-auto"
-              draggable={false}
-            />
-          </div>
-        )}
-      </div>
+          )}
+
+          {error && (
+            <div className="p-4 text-sm text-[var(--color-error)]">
+              <FileText size={20} className="mx-auto mb-2 opacity-50" />
+              <p className="text-center">{error}</p>
+            </div>
+          )}
+
+          {!loading && !error && markdown !== null && markdown.length === 0 && (
+            <div className="p-4 text-sm text-center text-[var(--color-text-muted)]">
+              <FileText size={24} className="mx-auto mb-2 opacity-30" />
+              인덱싱된 텍스트가 없습니다
+            </div>
+          )}
+
+          {/* 마크다운 렌더링 */}
+          {!loading && !error && markdown && viewMode === "markdown" && (
+            <div ref={previewBodyRef} className="doc-preview px-6 py-5">{previewMarkdownNode}</div>
+          )}
+        </div>
+      )}
 
       {/* 경로 + 글자수 */}
       <div

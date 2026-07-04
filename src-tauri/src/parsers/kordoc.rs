@@ -9,8 +9,12 @@ use super::{
     DEFAULT_CHUNK_SIZE,
 };
 use serde::Deserialize;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Child, ChildStdin, Stdio};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
 /// kordoc 프로세스 기본 타임아웃 (초)
@@ -280,14 +284,29 @@ pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<Str
         .ok_or_else(|| ParseError::ParseError("kordoc: 추출된 텍스트 없음".to_string()))
 }
 
-/// kordoc render — 한컴 저장 HWPX 의 조판 캐시를 전체 페이지 세로 스택 SVG 로 렌더
-/// (레이아웃 미리보기용). `highlights` 는 검색어 형광펜 (kordoc `--highlight`).
+/// kordoc render — HWPX 조판을 전체 페이지 세로 스택 SVG 로 렌더 (레이아웃 미리보기용).
+/// `highlights` 는 검색어 형광펜 (kordoc `--highlight`).
 ///
-/// HWPX 전용 — HWP·조판 캐시 없는 파일은 kordoc 이 exit≠0 + stderr 로 거절한다.
-/// render 는 stdout 출력을 지원하지 않아 임시 파일(-o)로 받아 읽은 뒤 삭제한다.
+/// persistent 워커(render-worker)를 우선 사용해 node 콜드스타트를 없애고, 워커 통신
+/// 실패 시 1회성 spawn 으로 폴백한다. `reflow=true` 로 조판 캐시 없는 HWPX(생성/편집본)도
+/// 순수 TS 조판으로 렌더한다(캐시 있으면 kordoc 이 자동으로 캐시 재생 — 무회귀).
 pub fn render_svg(path: &Path, highlights: &[String]) -> Result<String, ParseError> {
     validate_file_size(path)?;
+    match render_svg_via_worker(path, highlights, true) {
+        Ok(svg) => Ok(svg),
+        Err(e) => {
+            warn!("render 워커 실패 — 1회성 spawn 폴백: {}", e);
+            render_svg_oneshot(path, highlights, true)
+        }
+    }
+}
 
+/// render 1회성 spawn (워커 폴백) — 임시 파일(-o)로 받아 읽은 뒤 삭제한다.
+fn render_svg_oneshot(
+    path: &Path,
+    highlights: &[String],
+    reflow: bool,
+) -> Result<String, ParseError> {
     let cli_path = find_kordoc_cli()
         .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
 
@@ -314,6 +333,9 @@ pub fn render_svg(path: &Path, highlights: &[String]) -> Result<String, ParseErr
         out_path.clone().into(),
         "--silent".into(),
     ];
+    if reflow {
+        args.push("--reflow".into());
+    }
     // kordoc 은 쉼표 구분 목록을 받으므로 검색어 내 쉼표는 공백으로 정규화
     let terms: Vec<String> = highlights
         .iter()
@@ -370,6 +392,216 @@ pub fn render_svg(path: &Path, highlights: &[String]) -> Result<String, ParseErr
     // 성공/실패 무관 임시 파일 정리 (없으면 무시)
     let _ = std::fs::remove_file(&out_path);
 
+    result
+}
+
+// ─── persistent 렌더 워커 (콜드스타트 제거) ───────────────
+
+/// 워커 응답용 유니크 임시 SVG 경로
+fn temp_svg_path() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "docufinder-render-{}-{}.svg",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default()
+    ))
+}
+
+/// 살아있는 render-worker 프로세스 + stdin + 응답 채널(백그라운드 리더 스레드)
+struct RenderWorker {
+    child: Child,
+    stdin: ChildStdin,
+    resp_rx: Receiver<String>,
+    next_id: u64,
+}
+
+/// 전역 단일 렌더 워커 — 미리보기는 순차라 Mutex 직렬화로 충분하다.
+static RENDER_WORKER: Mutex<Option<RenderWorker>> = Mutex::new(None);
+
+/// render-worker 프로세스를 띄우고 ready 신호를 소비한다.
+fn spawn_render_worker() -> Result<RenderWorker, ParseError> {
+    let node = which_node()
+        .ok_or_else(|| ParseError::ParseError("Node.js가 설치되지 않았습니다".to_string()))?;
+    let cli_path = find_kordoc_cli()
+        .ok_or_else(|| ParseError::ParseError("kordoc CLI를 찾을 수 없습니다".to_string()))?;
+
+    let mut cmd = std::process::Command::new(node);
+    cmd.arg(cli_path.to_string_lossy().as_ref())
+        .arg("render-worker")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| ParseError::ParseError(format!("render 워커 시작 실패: {e}")))?;
+    // 이슈 #33: 앱 종료/크래시 시 고아 방지
+    crate::utils::process_job::track_child(&child);
+
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| ParseError::ParseError("워커 stdin 캡처 실패".to_string()))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| ParseError::ParseError("워커 stdout 캡처 실패".to_string()))?;
+
+    // 백그라운드 리더 — stdout 라인을 채널로 (요청 스레드는 recv_timeout 으로 대기)
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(l) => {
+                    if tx.send(l).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let mut worker = RenderWorker {
+        child,
+        stdin,
+        resp_rx: rx,
+        next_id: 1,
+    };
+    // ready 신호 대기 (모듈 로드 시간 고려 30초)
+    match worker.resp_rx.recv_timeout(Duration::from_secs(30)) {
+        Ok(line) if line.contains("\"ready\"") => Ok(worker),
+        Ok(other) => {
+            let _ = worker.child.kill();
+            Err(ParseError::ParseError(format!(
+                "render 워커 준비 실패 — 예상치 못한 응답: {}",
+                other.chars().take(80).collect::<String>()
+            )))
+        }
+        Err(_) => {
+            let _ = worker.child.kill();
+            Err(ParseError::ParseError(
+                "render 워커 준비 타임아웃".to_string(),
+            ))
+        }
+    }
+}
+
+/// persistent 워커로 render — NDJSON 요청/응답, id 매칭, 통신/타임아웃 실패 시 워커 폐기.
+fn render_svg_via_worker(
+    path: &Path,
+    highlights: &[String],
+    reflow: bool,
+) -> Result<String, ParseError> {
+    let file_owned = crate::utils::network_path::simplify(path);
+    let file_str = file_owned.to_string_lossy().to_string();
+    let out_path = temp_svg_path();
+    let out_str = out_path.to_string_lossy().to_string();
+
+    let terms: Vec<String> = highlights
+        .iter()
+        .map(|t| t.replace(',', " ").trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    let mut guard = RENDER_WORKER
+        .lock()
+        .map_err(|_| ParseError::ParseError("render 워커 잠금 실패".to_string()))?;
+    if guard.is_none() {
+        *guard = Some(spawn_render_worker()?);
+    }
+    let worker = guard.as_mut().unwrap();
+
+    let id = worker.next_id;
+    worker.next_id += 1;
+
+    let req = serde_json::json!({
+        "id": id,
+        "file": file_str,
+        "out": out_str,
+        "reflow": reflow,
+        "highlight": terms,
+    });
+
+    // worker_dead: 통신/타임아웃 실패(워커 자체 이상)만 true — render 실패(ok:false)는 워커 정상.
+    let mut worker_dead = false;
+    let result: Result<String, ParseError> = (|| {
+        if writeln!(worker.stdin, "{req}")
+            .and_then(|_| worker.stdin.flush())
+            .is_err()
+        {
+            worker_dead = true;
+            return Err(ParseError::ParseError(
+                "render 워커 통신 실패 (파이프 끊김)".to_string(),
+            ));
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(KORDOC_TIMEOUT_SECS);
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                worker_dead = true;
+                return Err(ParseError::ParseError(format!(
+                    "render 워커 타임아웃 ({}초 초과)",
+                    KORDOC_TIMEOUT_SECS
+                )));
+            }
+            match worker.resp_rx.recv_timeout(remaining) {
+                Ok(line) => {
+                    let resp: serde_json::Value = match serde_json::from_str(&line) {
+                        Ok(v) => v,
+                        Err(_) => continue, // 잡음 라인 무시
+                    };
+                    if resp.get("id").and_then(|v| v.as_u64()) != Some(id) {
+                        continue; // 이전 타임아웃 요청의 지연 응답 — 스킵
+                    }
+                    if resp.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+                        let size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
+                        if size > RENDER_MAX_SVG_SIZE {
+                            return Err(ParseError::ParseError(format!(
+                                "레이아웃 SVG 크기 초과: {}MB (최대 {}MB)",
+                                size / 1_048_576,
+                                RENDER_MAX_SVG_SIZE / 1_048_576
+                            )));
+                        }
+                        return std::fs::read_to_string(&out_path)
+                            .map_err(|e| ParseError::ParseError(format!("SVG 읽기 실패: {e}")));
+                    }
+                    let msg = resp
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("render 실패")
+                        .to_string();
+                    return Err(ParseError::ParseError(msg));
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    worker_dead = true;
+                    return Err(ParseError::ParseError("render 워커 타임아웃".to_string()));
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    worker_dead = true;
+                    return Err(ParseError::ParseError("render 워커 종료됨".to_string()));
+                }
+            }
+        }
+    })();
+
+    let _ = std::fs::remove_file(&out_path);
+
+    if worker_dead {
+        if let Some(w) = guard.as_mut() {
+            let _ = w.child.kill();
+        }
+        *guard = None;
+    }
     result
 }
 
