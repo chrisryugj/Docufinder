@@ -29,6 +29,12 @@ const MAX_OCR_FILE_SIZE: u64 = 100 * 1024 * 1024;
 /// OCR 입력 이미지 최대 폭 (큰 이미지 리사이즈 → OCR 속도 2~3배 향상)
 const MAX_OCR_IMAGE_WIDTH: u32 = 2000;
 
+/// pdfium 래스터화 렌더 최대 높이 (px). 폭만 지정하면 극단적 종횡비 MediaBox(예: 2×2000)는
+/// 높이가 종횡비대로 스케일돼 수백만 px 비트맵을 할당하려 한다(임베디드 경로의 MAX_IMAGE_PIXELS
+/// 방어와 대칭이 되도록 상한을 건다). 2000×10000 ≈ 20M px(≈80MB) — 정상 문서는 절대 도달하지
+/// 않고 병리적 페이지만 이 상한에 걸려 축소(letterbox)된다.
+const MAX_OCR_RENDER_HEIGHT: u32 = 10000;
+
 /// 파일 크기 기반 동적 타임아웃 계산
 fn calc_timeout_secs(path: &Path) -> u64 {
     let file_size_mb = std::fs::metadata(path)
@@ -512,7 +518,9 @@ fn rasterize_page(
     let rendered = catch_unwind(AssertUnwindSafe(|| {
         let document = pdfium.load_pdf_from_file(path, None).ok()?;
         let page = document.pages().get(page_index as u16).ok()?;
-        let config = PdfRenderConfig::new().set_target_width(target_width as i32);
+        let config = PdfRenderConfig::new()
+            .set_target_width(target_width as i32)
+            .set_maximum_height(MAX_OCR_RENDER_HEIGHT as i32);
         let bitmap = page.render_with_config(&config).ok()?;
         Some(bitmap.as_image())
     }));
