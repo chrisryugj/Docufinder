@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, LayoutTemplate } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -360,6 +360,21 @@ const SUMMARY_TYPE_LABELS: Record<SummaryType, string> = {
   keywords: "핵심 키워드",
 };
 
+// ─── 미리보기 뷰 선호 (localStorage 전역 지속) ──
+// 마지막으로 고른 뷰를 기억해 다음 HWPX 파일에도 적용 (파일 전환마다 markdown 리셋 대신).
+type PreviewView = "markdown" | "layout";
+const PREF_VIEW_KEY = "docufinder:preview-view";
+const readPreferredView = (): PreviewView => {
+  try {
+    return localStorage.getItem(PREF_VIEW_KEY) === "layout" ? "layout" : "markdown";
+  } catch {
+    return "markdown";
+  }
+};
+const writePreferredView = (mode: PreviewView) => {
+  try { localStorage.setItem(PREF_VIEW_KEY, mode); } catch { /* private mode 등 무시 */ }
+};
+
 // ─── FileQaSection (격리 컴포넌트 — 입력 시 부모 리렌더 방지) ──
 
 interface FileQaSectionProps {
@@ -609,10 +624,12 @@ export const PreviewPanel = memo(function PreviewPanel({
 
   // 레이아웃 뷰 (kordoc render SVG) — HWPX 전용, 파일당 1회 렌더 후 캐시.
   // kordoc 은 조판 캐시 기반 첫 페이지만 렌더한다 — UI 라벨도 "첫 페이지"로 정직하게.
-  const [viewMode, setViewMode] = useState<"markdown" | "layout">("markdown");
+  const [viewMode, setViewMode] = useState<PreviewView>("markdown");
   const [layoutSvg, setLayoutSvg] = useState<string | null>(null);
   const [layoutLoading, setLayoutLoading] = useState(false);
   const layoutReqRef = useRef(0); // 파일 전환 시 in-flight 렌더 응답 무효화
+  const prefAppliedRef = useRef<string | null>(null); // 선호 뷰 자동 진입: 파일당 1회
+  const desiredViewRef = useRef<PreviewView>("markdown"); // 의도한 뷰 — in-flight 렌더가 사용자 전환/점프를 덮지 않게
 
   const { showToast, updateToast } = useUIContext();
 
@@ -674,6 +691,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     setFindActiveIdx(0);
     layoutReqRef.current++;
     setViewMode("markdown");
+    desiredViewRef.current = "markdown";
     setLayoutSvg(null);
     setLayoutLoading(false);
 
@@ -708,6 +726,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     if (!jumpTarget || loading || !markdown) return;
     if (jumpDoneRef.current === jumpTarget.token) return; // 같은 점프 중복 방지
+    desiredViewRef.current = "markdown"; // 인용 점프는 항상 마크다운 — in-flight 레이아웃 렌더가 덮지 못하게
     if (viewMode === "layout") {
       // 레이아웃 뷰에선 본문 DOM 이 없어 점프 불가 — 마크다운 뷰로 복귀만 하고
       // done 마킹 없이 반환, viewMode 가 바뀐 재실행에서 점프한다.
@@ -835,8 +854,9 @@ export const PreviewPanel = memo(function PreviewPanel({
     invoke<string>("render_layout_svg", { filePath, highlightQuery: highlightQuery?.trim() || null })
       .then((svg) => {
         if (layoutReqRef.current !== req) return; // 파일 전환됨 — 늦은 응답 폐기
-        setLayoutSvg(svg);
-        setViewMode("layout");
+        setLayoutSvg(svg); // 캐시는 항상 저장 (다음 레이아웃 전환 즉시)
+        // 렌더 도중 사용자가 마크다운으로 전환/인용 점프했으면 뷰를 덮지 않는다.
+        if (desiredViewRef.current === "layout") setViewMode("layout");
       })
       .catch((e) => {
         if (layoutReqRef.current !== req) return;
@@ -851,13 +871,17 @@ export const PreviewPanel = memo(function PreviewPanel({
       });
   }, [filePath, highlightQuery, showToast]);
 
-  // 토글 ON: 캐시 있으면 즉시 전환, 없으면 렌더 후 전환. 실패(HWP·조판 캐시 없음 등)
-  // 시 에러 토스트만 띄우고 마크다운 뷰 유지 — 버튼은 남겨 재시도 가능.
-  const handleToggleLayout = useCallback(() => {
-    if (viewMode === "layout") {
+  // 뷰 명시 선택 (세그먼트·단축키 공용) — 고른 뷰를 localStorage 에 선호로 기억.
+  // 레이아웃: 캐시 있으면 즉시, 없으면 렌더 후 전환. 실패(HWP·조판 캐시 없음 등) 시
+  // requestLayoutRender 가 에러 토스트만 띄우고 마크다운 뷰 유지 — 세그먼트는 남아 재시도 가능.
+  const selectView = useCallback((mode: PreviewView) => {
+    desiredViewRef.current = mode;
+    writePreferredView(mode);
+    if (mode === "markdown") {
       setViewMode("markdown");
       return;
     }
+    if (viewMode === "layout") return;
     closeFind();
     if (layoutSvg) {
       setViewMode("layout");
@@ -880,6 +904,19 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     if (viewMode === "layout") contentRef.current?.scrollTo(0, 0);
   }, [viewMode]);
+
+  // 선호 뷰 자동 진입 — 선호가 레이아웃이고 HWPX면 파일 열 때 자동으로 레이아웃 렌더(파일당 1회).
+  // 대기 중인 인용 점프가 있으면 마크다운(인용 위치)을 우선한다. silent 렌더라 실패해도 조용히 유지.
+  useEffect(() => {
+    if (!filePath || loading || markdown === null) return;
+    if (prefAppliedRef.current === filePath) return;
+    prefAppliedRef.current = filePath;
+    if (jumpTarget && jumpDoneRef.current !== jumpTarget.token) return;
+    if (filePath.split(".").pop()?.toLowerCase() !== "hwpx") return;
+    if (readPreferredView() !== "layout") return;
+    desiredViewRef.current = "layout";
+    requestLayoutRender(true);
+  }, [filePath, loading, markdown, jumpTarget, requestLayoutRender]);
 
   const handleFindNav = useCallback((dir: 1 | -1) => {
     setFindActiveIdx((prev) => (findCount > 0 ? (prev + dir + findCount) % findCount : 0));
@@ -932,6 +969,24 @@ export const PreviewPanel = memo(function PreviewPanel({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [filePath, handleFindToggle]);
+
+  // 뷰 전환 단축키 (1=문서 텍스트, 2=원본 레이아웃) — HWPX·입력창 밖에서만.
+  // 앱 기존 bare-key 전역 단축키(`/`)와 같은 패턴. 입력/텍스트영역 포커스 시엔 비활성.
+  useEffect(() => {
+    if (!filePath || filePath.split(".").pop()?.toLowerCase() !== "hwpx") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      // 모달(설정·도움말·문서비교 등)이 떠 있으면 가려진 미리보기를 몰래 전환하지 않는다
+      // (앱 기존 bare-key 단축키 관례 — useKeyboardShortcuts 와 동일).
+      if (document.querySelector("[role='dialog']")) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "1") { e.preventDefault(); selectView("markdown"); }
+      else if (e.key === "2") { e.preventDefault(); selectView("layout"); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filePath, selectView]);
 
   // 열릴 때 입력 포커스 (기존 검색어 유지 시 전체 선택)
   useEffect(() => {
@@ -1076,21 +1131,6 @@ export const PreviewPanel = memo(function PreviewPanel({
 
         {markdown && (
           <>
-            {isHwpx && (
-              <button
-                onClick={handleToggleLayout}
-                disabled={layoutLoading}
-                className={`p-1.5 rounded-lg transition-colors ${viewMode === "layout" ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-                title={viewMode === "layout" ? "마크다운 보기" : "원본 레이아웃 보기"}
-                aria-label="원본 레이아웃 보기"
-                aria-pressed={viewMode === "layout"}
-              >
-                {layoutLoading
-                  ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
-                  : <LayoutTemplate size={14} />
-                }
-              </button>
-            )}
             <button
               onClick={handleFindToggle}
               className={`p-1.5 rounded-lg transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
@@ -1280,6 +1320,43 @@ export const PreviewPanel = memo(function PreviewPanel({
           >
             <X size={12} />
           </button>
+        </div>
+      )}
+
+      {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX 전용). 현재 뷰가 항상 명확,
+          한 번에 전환. 단축키 1·2. 에디토리얼 미니멀 iOS형 세그먼트(raised pill). */}
+      {isHwpx && markdown !== null && !loading && !error && (
+        <div
+          role="radiogroup"
+          aria-label="미리보기 뷰"
+          className="flex items-center px-3 py-1.5 border-b shrink-0"
+          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}
+        >
+          <div className="inline-flex gap-0.5 p-0.5 rounded-lg" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+            {([
+              { mode: "markdown", label: "문서 텍스트", key: "1" },
+              { mode: "layout", label: "원본 레이아웃", key: "2" },
+            ] as const).map(({ mode, label, key }) => {
+              const active = viewMode === mode;
+              const busy = mode === "layout" && layoutLoading;
+              return (
+                <button
+                  key={mode}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => selectView(mode)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-colors"
+                  style={active
+                    ? { backgroundColor: "var(--color-bg-secondary)", color: "var(--color-accent)", boxShadow: "var(--shadow-sm)" }
+                    : { color: "var(--color-text-muted)" }}
+                  title={`${label}  ·  단축키 ${key}`}
+                >
+                  {busy && <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
