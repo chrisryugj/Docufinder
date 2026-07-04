@@ -797,10 +797,17 @@ pub async fn update_settings(
             .join(model_downloader::pdfium_lib_filename());
         if !pdfium_lib.exists() {
             tauri::async_runtime::spawn(async move {
-                let _ = tokio::task::spawn_blocking(move || {
+                match tokio::task::spawn_blocking(move || {
                     model_downloader::ensure_pdfium(&pdfium_models_dir)
                 })
-                .await;
+                .await
+                {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        tracing::warn!("pdfium 다운로드 실패(스캔 PDF 래스터화 비활성): {}", e)
+                    }
+                    Err(e) => tracing::warn!("pdfium 다운로드 태스크 오류: {}", e),
+                }
             });
         }
 
@@ -810,11 +817,26 @@ pub async fn update_settings(
         let layout_path = layout_models_dir.join("paddleocr").join("layout.onnx");
         if settings.ocr_layout_enabled {
             if !layout_path.exists() {
+                let layout_app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = tokio::task::spawn_blocking(move || {
+                    let _ = layout_app.emit("model-download-status", "downloading-layout");
+                    match tokio::task::spawn_blocking(move || {
                         model_downloader::ensure_layout_model(&layout_models_dir)
                     })
-                    .await;
+                    .await
+                    {
+                        Ok(Ok(_)) => {
+                            let _ = layout_app.emit("model-download-status", "completed-layout");
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!("레이아웃 모델 다운로드 실패: {}", e);
+                            let _ = layout_app.emit("model-download-status", "failed-layout");
+                        }
+                        Err(e) => {
+                            tracing::warn!("레이아웃 모델 다운로드 태스크 오류: {}", e);
+                            let _ = layout_app.emit("model-download-status", "failed-layout");
+                        }
+                    }
                 });
             }
         } else {

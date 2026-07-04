@@ -415,14 +415,21 @@ fn extract_pdfium_from_tgz(tgz_path: &Path, lib_filename: &str, dest: &Path) -> 
             break; // 손상된 아카이브
         }
         if name.ends_with(lib_filename) {
-            fs::write(dest, &tar[data_start..data_end])
+            // 원자적 쓰기: 임시 파일 → rename(같은 디렉토리라 원자적). 디스크풀·중단으로 부분
+            // 파일이 최종 경로에 남아 bind_pdfium 이 손상된 dylib 를 로드하는 것을 방지한다.
+            let tmp = dest.with_extension("part");
+            fs::write(&tmp, &tar[data_start..data_end])
                 .map_err(|e| format!("pdfium 추출 쓰기 실패: {}", e))?;
             // 실행 권한 부여 (dylib 로드 자체엔 불필요하나 관례상)
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(dest, fs::Permissions::from_mode(0o755));
+                let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755));
             }
+            fs::rename(&tmp, dest).map_err(|e| {
+                let _ = fs::remove_file(&tmp);
+                format!("pdfium 최종 배치(rename) 실패: {}", e)
+            })?;
             return Ok(());
         }
         // 다음 헤더: 512(헤더) + 데이터(512 정렬)

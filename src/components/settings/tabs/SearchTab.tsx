@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { InfoTooltip } from "../../ui/Tooltip";
@@ -67,13 +67,19 @@ export function SearchTab({ settings, onChange }: TabProps) {
   const [ocrReindexing, setOcrReindexing] = useState(false);
   const [ocrReindexMsg, setOcrReindexMsg] = useState<string | null>(null);
 
+  // OCR 토글을 빠르게 껐다 켜면 이전 조회 응답이 늦게 도착해 최신 상태를 덮을 수 있다.
+  // seq 로 최신 호출만 반영(stale 응답 무시).
+  const ocrCheckSeq = useRef(0);
   const checkOcrCandidates = useCallback(async () => {
+    const seq = ++ocrCheckSeq.current;
     try {
       const res = await invoke<OcrReindexCandidates>("count_ocr_reindex_candidates");
+      if (seq !== ocrCheckSeq.current) return; // 재토글로 취소됨
       setOcrReindexMsg(null);
       setOcrReindex(res.count > 0 ? res : null);
     } catch {
       // 조회 실패 시 프롬프트 없이 조용히 넘어간다(핵심 흐름 아님).
+      if (seq !== ocrCheckSeq.current) return;
       setOcrReindex(null);
     }
   }, []);
@@ -325,6 +331,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
             onChange("ocr_enabled", v);
             if (v) void checkOcrCandidates();
             else {
+              ocrCheckSeq.current++; // 진행 중인 ON 조회 무효화(OFF 후 프롬프트 재표시 방지)
               setOcrReindex(null);
               setOcrReindexMsg(null);
             }
