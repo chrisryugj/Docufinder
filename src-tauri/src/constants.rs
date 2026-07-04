@@ -114,8 +114,9 @@ pub const MAX_FILE_SIZE_LIMIT_MB: u64 = 500;
 /// `lib/libpdfium.so` 를 담고 있다. `model_downloader::ensure_pdfium` 이 이 URL 을 받아
 /// 압축을 풀고 dylib 만 `models/pdfium/` 로 추출한다. SHA-256 이 빈 문자열이면 검증을 스킵한다.
 ///
-/// ⚠️ mac-arm64 경로만 실제 다운로드·추출·OCR 까지 검증됨(2026-07). mac-x64/win-x64/linux-x64 는
-///    URL·SHA-256 을 채워두었으나 각 플랫폼에서의 실행 검증은 미완료.
+/// 검증 상태(2026-07): 4개 플랫폼 tgz 의 SHA-256 + 아카이브 내부 경로(win=`bin/pdfium.dll`,
+/// linux=`lib/libpdfium.so`, mac=`lib/libpdfium.dylib`)를 실제 다운로드로 대조 완료 — 전부 일치.
+/// 런타임 바인딩+OCR 실행까지 검증된 건 mac-arm64 뿐(나머지는 다운로드·추출·바인딩 로직만 감사).
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-mac-arm64.tgz";
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
