@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, MoreHorizontal, Tag } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -608,9 +608,11 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 파일 질문 토글
   const [showFileQa, setShowFileQa] = useState(false);
 
-  // 텍스트 내보내기 메뉴 토글 (복사 버튼 아래 드롭다운 팝오버)
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
+  // 더보기(⋯) 메뉴 토글 — 파일 위치·복사/내보내기·태그 추가를 담는 오버플로 팝오버
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  // 태그 패널 — 태그가 있거나 ⋯>태그 추가로 열었을 때만 노출 (빈 태그 바 상시 노출 제거)
+  const [tagPanelOpen, setTagPanelOpen] = useState(false);
 
   // 찾기 바 (Ctrl+F) — 문서 내 즉석 찾기
   const panelRef = useRef<HTMLDivElement>(null);
@@ -636,7 +638,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   // 파싱된 텍스트 복사
   const handleCopyText = useCallback(async () => {
     if (!markdown) return;
-    setShowExportMenu(false);
+    setShowMoreMenu(false);
     try {
       await navigator.clipboard.writeText(markdown);
       showToast(`텍스트 복사 완료 (${markdown.length.toLocaleString()}자)`, "success");
@@ -648,7 +650,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   // Markdown 파일로 저장
   const handleExportMarkdown = useCallback(async () => {
     if (!markdown || !filePath) return;
-    setShowExportMenu(false);
+    setShowMoreMenu(false);
     const baseName = filePath.replace(/^\\\\\?\\/, "").split(/[\\/]/).pop() || "preview";
     const stem = baseName.replace(/\.[^.]+$/, "") || "preview";
     const safeName = stem.replace(/[<>:"/\\|?*]+/g, "_");
@@ -684,7 +686,8 @@ export const PreviewPanel = memo(function PreviewPanel({
     setSummaryError(null);
     setShowSummaryMenu(false);
     setShowFileQa(false);
-    setShowExportMenu(false);
+    setShowMoreMenu(false);
+    setTagPanelOpen(false);
     setFindOpen(false);
     setFindInput("");
     setFindTerm("");
@@ -1043,15 +1046,15 @@ export const PreviewPanel = memo(function PreviewPanel({
 
   // 복사/내보내기 드롭다운 — 바깥 클릭 시 닫기
   useEffect(() => {
-    if (!showExportMenu) return;
+    if (!showMoreMenu) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setShowExportMenu(false);
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
+        setShowMoreMenu(false);
       }
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [showExportMenu]);
+  }, [showMoreMenu]);
 
   if (!filePath) return null;
 
@@ -1077,88 +1080,128 @@ export const PreviewPanel = memo(function PreviewPanel({
         </button>
       </div>
 
-      {/* 액션 바 — 아이콘 전용, 컴팩트 */}
-      <div className="flex items-center gap-0.5 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
-        <button onClick={() => onOpenFile?.(filePath)} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
-          <ExternalLink size={14} />
-        </button>
-        <div className="relative inline-flex" ref={exportMenuRef}>
-          <button
-            onClick={() => setShowExportMenu((v) => !v)}
-            className={`p-1.5 rounded-lg transition-colors ${showExportMenu ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-            title="복사 / 내보내기"
-            aria-haspopup="menu"
-            aria-expanded={showExportMenu}
-          >
-            <Copy size={14} />
+      {/* 통합 툴바 — 뷰 세그먼트(좌) + 액션(우) 한 줄. 세그먼트를 별도 바에서 승격,
+          액션바와 병합해 세로 크롬 축소. 파일위치·복사/내보내기·태그추가는 ⋯ 로 접어 정돈. */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
+        {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX 전용). 단축키 1·2. raised pill. */}
+        {isHwpx && markdown !== null && !loading && !error && (
+          <div role="radiogroup" aria-label="미리보기 뷰" className="inline-flex gap-0.5 p-0.5 rounded-lg shrink-0" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
+            {([
+              { mode: "markdown", label: "문서 텍스트", key: "1" },
+              { mode: "layout", label: "원본 레이아웃", key: "2" },
+            ] as const).map(({ mode, label, key }) => {
+              const active = viewMode === mode;
+              const busy = mode === "layout" && layoutLoading;
+              return (
+                <button
+                  key={mode}
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => selectView(mode)}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
+                  style={active
+                    ? { backgroundColor: "var(--color-bg-secondary)", color: "var(--color-accent)", boxShadow: "var(--shadow-sm)" }
+                    : { color: "var(--color-text-muted)" }}
+                  title={`${label}  ·  단축키 ${key}`}
+                >
+                  {busy && <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />}
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 액션 — 우측 정렬. 자주 쓰는 것만 인라인, 나머지는 ⋯ */}
+        <div className="ml-auto flex items-center gap-0.5 shrink-0">
+          <button onClick={() => onOpenFile?.(filePath)} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 열기">
+            <ExternalLink size={14} />
           </button>
-          {showExportMenu && (
-            <div
-              role="menu"
-              className="absolute left-0 top-full mt-1.5 z-20 min-w-[160px] py-1 rounded-lg border overflow-hidden"
-              style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)", boxShadow: "var(--shadow-premium)" }}
-            >
-              {markdown && (
-                <>
-                  <button onClick={handleCopyText} role="menuitem" className="export-dropdown-item" title="파싱된 텍스트를 클립보드에 복사">
-                    <ClipboardCopy size={13} />텍스트 복사
-                  </button>
-                  <button onClick={handleExportMarkdown} role="menuitem" className="export-dropdown-item" title=".md 파일로 저장">
-                    <Save size={13} />Markdown 저장
-                  </button>
-                </>
-              )}
-              <button onClick={() => { setShowExportMenu(false); onCopyPath?.(filePath); }} role="menuitem" className="export-dropdown-item" title="파일 경로를 클립보드에 복사">
-                <Copy size={13} />경로 복사
+          {markdown && (
+            <>
+              <button
+                onClick={handleFindToggle}
+                className={`p-1.5 rounded-lg transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+                title={`문서 내 찾기 (${MOD_KEY}+F)`}
+                aria-label="문서 내 찾기"
+              >
+                <Search size={14} />
               </button>
-            </div>
+              <button
+                onClick={() => setShowSummaryMenu((v) => !v)}
+                disabled={summaryLoading}
+                className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+                title="AI 요약"
+              >
+                {summaryLoading
+                  ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                  : <Sparkles size={14} />
+                }
+              </button>
+              <button
+                onClick={() => setShowFileQa((v) => !v)}
+                className={`p-1.5 rounded-lg transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+                title="이 파일에 대해 질문"
+              >
+                <MessageSquare size={14} />
+              </button>
+            </>
           )}
+          {onBookmark && (
+            <button
+              onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
+              className={`p-1.5 rounded-lg transition-colors ${isBookmarked ? "text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              title={isBookmarked ? "북마크 해제" : "북마크 추가"}
+            >
+              <Bookmark size={14} fill={isBookmarked ? "currentColor" : "none"} />
+            </button>
+          )}
+          {/* ⋯ 더보기 — 파일 위치·복사/내보내기·태그 추가 (우측 정렬이라 메뉴는 right-0) */}
+          <div className="relative inline-flex" ref={moreMenuRef}>
+            <button
+              onClick={() => setShowMoreMenu((v) => !v)}
+              className={`p-1.5 rounded-lg transition-colors ${showMoreMenu ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+              title="더보기"
+              aria-haspopup="menu"
+              aria-expanded={showMoreMenu}
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            {showMoreMenu && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full mt-1.5 z-20 min-w-[168px] py-1 rounded-lg border overflow-hidden"
+                style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)", boxShadow: "var(--shadow-premium)" }}
+              >
+                <button onClick={() => { setShowMoreMenu(false); onOpenFolder?.(filePath); }} role="menuitem" className="export-dropdown-item" title="파일 위치 열기 (탐색기에서 선택)">
+                  <FolderOpen size={13} />파일 위치 열기
+                </button>
+                {markdown && (
+                  <>
+                    <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+                    <button onClick={handleCopyText} role="menuitem" className="export-dropdown-item" title="파싱된 텍스트를 클립보드에 복사">
+                      <ClipboardCopy size={13} />텍스트 복사
+                    </button>
+                    <button onClick={handleExportMarkdown} role="menuitem" className="export-dropdown-item" title=".md 파일로 저장">
+                      <Save size={13} />Markdown 저장
+                    </button>
+                  </>
+                )}
+                <button onClick={() => { setShowMoreMenu(false); onCopyPath?.(filePath); }} role="menuitem" className="export-dropdown-item" title="파일 경로를 클립보드에 복사">
+                  <Copy size={13} />경로 복사
+                </button>
+                {onAddTag && (
+                  <>
+                    <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+                    <button onClick={() => { setShowMoreMenu(false); setTagPanelOpen(true); }} role="menuitem" className="export-dropdown-item" title="태그 추가">
+                      <Tag size={13} />태그 추가
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <button onClick={() => onOpenFolder?.(filePath)} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors" title="파일 위치 열기 (탐색기에서 선택)">
-          <FolderOpen size={14} />
-        </button>
-        {onBookmark && (
-          <button
-            onClick={() => onBookmark(filePath, markdown?.slice(0, 200) || "", null, null)}
-            className={`p-1.5 rounded-lg transition-colors ${isBookmarked ? "text-[var(--color-accent)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-            title={isBookmarked ? "북마크 해제" : "북마크 추가"}
-          >
-            <Bookmark size={14} fill={isBookmarked ? "currentColor" : "none"} />
-          </button>
-        )}
-
-        <div className="w-px h-4 mx-0.5" style={{ backgroundColor: "var(--color-border)" }} />
-
-        {markdown && (
-          <>
-            <button
-              onClick={handleFindToggle}
-              className={`p-1.5 rounded-lg transition-colors ${findOpen ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-              title={`문서 내 찾기 (${MOD_KEY}+F)`}
-              aria-label="문서 내 찾기"
-            >
-              <Search size={14} />
-            </button>
-            <button
-              onClick={() => setShowSummaryMenu((v) => !v)}
-              disabled={summaryLoading}
-              className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
-              title="AI 요약"
-            >
-              {summaryLoading
-                ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
-                : <Sparkles size={14} />
-              }
-            </button>
-            <button
-              onClick={() => setShowFileQa((v) => !v)}
-              className={`p-1.5 rounded-lg transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-              title="이 파일에 대해 질문"
-            >
-              <MessageSquare size={14} />
-            </button>
-          </>
-        )}
       </div>
 
       {/* 요약 유형 선택 메뉴 */}
@@ -1185,12 +1228,13 @@ export const PreviewPanel = memo(function PreviewPanel({
         </div>
       )}
 
-      {/* 태그 */}
-      {onAddTag && filePath && (
+      {/* 태그 — 태그가 있거나 ⋯>태그 추가로 열었을 때만. 빈 태그 바 상시 노출을 없애 세로 공간 절약. */}
+      {onAddTag && filePath && (tags.length > 0 || tagPanelOpen) && (
         <div className="px-3 py-1.5 border-b" style={{ borderColor: "var(--color-border)" }}>
           <TagInput
             tags={tags}
             suggestions={tagSuggestions}
+            autoFocus={tagPanelOpen && tags.length === 0}
             onAdd={(tag) => onAddTag(filePath, tag)}
             onRemove={(tag) => onRemoveTag?.(filePath, tag)}
           />
@@ -1320,43 +1364,6 @@ export const PreviewPanel = memo(function PreviewPanel({
           >
             <X size={12} />
           </button>
-        </div>
-      )}
-
-      {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX 전용). 현재 뷰가 항상 명확,
-          한 번에 전환. 단축키 1·2. 에디토리얼 미니멀 iOS형 세그먼트(raised pill). */}
-      {isHwpx && markdown !== null && !loading && !error && (
-        <div
-          role="radiogroup"
-          aria-label="미리보기 뷰"
-          className="flex items-center px-3 py-1.5 border-b shrink-0"
-          style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-secondary)" }}
-        >
-          <div className="inline-flex gap-0.5 p-0.5 rounded-lg" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
-            {([
-              { mode: "markdown", label: "문서 텍스트", key: "1" },
-              { mode: "layout", label: "원본 레이아웃", key: "2" },
-            ] as const).map(({ mode, label, key }) => {
-              const active = viewMode === mode;
-              const busy = mode === "layout" && layoutLoading;
-              return (
-                <button
-                  key={mode}
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => selectView(mode)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-medium transition-colors"
-                  style={active
-                    ? { backgroundColor: "var(--color-bg-secondary)", color: "var(--color-accent)", boxShadow: "var(--shadow-sm)" }
-                    : { color: "var(--color-text-muted)" }}
-                  title={`${label}  ·  단축키 ${key}`}
-                >
-                  {busy && <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />}
-                  {label}
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
 
