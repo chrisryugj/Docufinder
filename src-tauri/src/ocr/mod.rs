@@ -226,17 +226,8 @@ impl OcrEngine {
             }
         };
         for region in &mut regions {
-            // 텍스트 박스가 가장 많이 포함되는 레이아웃 영역의 종류를 귀속(containment 기준).
-            let mut best_kind = RegionKind::Text;
-            let mut best_overlap = 0.30_f32; // 텍스트 박스 면적 대비 최소 겹침
-            for lr in &layout_regions {
-                let c = containment(&region.bbox, &lr.bbox);
-                if c > best_overlap {
-                    best_overlap = c;
-                    best_kind = lr.kind;
-                }
-            }
-            region.kind = best_kind;
+            region.kind =
+                attribute_kind(&region.bbox, &layout_regions, layout::NOISE_DROP_THRESHOLD);
         }
         regions
     }
@@ -300,12 +291,7 @@ impl OcrEngine {
         //  regions 자체엔 전부 보존(미리보기 오버레이·별도 소비용).
         let text = regions
             .iter()
-            .filter(|r| {
-                !matches!(
-                    r.kind,
-                    RegionKind::Header | RegionKind::Footer | RegionKind::PageNumber
-                )
-            })
+            .filter(|r| !is_noise_kind(r.kind))
             .map(|r| r.text.as_str())
             .collect::<Vec<_>>()
             .join("\n");
@@ -337,5 +323,134 @@ fn containment(inner: &BBox, outer: &BBox) -> f32 {
         0.0
     } else {
         inter / inner_area
+    }
+}
+
+/// 본문에서 제외(드롭)되는 노이즈 종류 — 머리글·바닥글·페이지번호.
+fn is_noise_kind(kind: RegionKind) -> bool {
+    matches!(
+        kind,
+        RegionKind::Header | RegionKind::Footer | RegionKind::PageNumber
+    )
+}
+
+/// 텍스트 박스 하나에 레이아웃 종류를 귀속한다. containment 가 가장 큰(≥0.30) 레이아웃
+/// 영역의 종류를 고르되, **드롭 대상 노이즈 종류(머리글/바닥글/페이지번호)는 그 영역의
+/// 점수가 `noise_drop` 이상일 때만 유지**한다. 낮은 점수 오분류(상단 중앙 문서제목을
+/// Header 0.52 로 검출 등)로 본문이 통째 누락되는 것을 막는 게이트 — 검출 임계
+/// (`layout::SCORE_THRESHOLD`)는 그대로 두고 드롭 판정에만 상향 임계를 적용한다.
+fn attribute_kind(
+    bbox: &BBox,
+    layout_regions: &[layout::LayoutRegion],
+    noise_drop: f32,
+) -> RegionKind {
+    let mut best_kind = RegionKind::Text;
+    let mut best_overlap = 0.30_f32; // 텍스트 박스 면적 대비 최소 겹침
+    let mut best_score = 0.0_f32;
+    for lr in layout_regions {
+        let c = containment(bbox, &lr.bbox);
+        if c > best_overlap {
+            best_overlap = c;
+            best_kind = lr.kind;
+            best_score = lr.score;
+        }
+    }
+    if is_noise_kind(best_kind) && best_score < noise_drop {
+        return RegionKind::Text;
+    }
+    best_kind
+}
+
+#[cfg(test)]
+mod tests {
+    use super::layout::LayoutRegion;
+    use super::*;
+
+    const NDT: f32 = 0.62;
+
+    /// 이미지 전체를 덮는 레이아웃 영역 — 아래 text_box 가 100% containment 되도록.
+    fn full(kind: RegionKind, score: f32) -> LayoutRegion {
+        LayoutRegion {
+            bbox: BBox {
+                x0: 0.0,
+                y0: 0.0,
+                x1: 100.0,
+                y1: 100.0,
+            },
+            kind,
+            score,
+        }
+    }
+
+    fn text_box() -> BBox {
+        BBox {
+            x0: 10.0,
+            y0: 10.0,
+            x1: 20.0,
+            y1: 20.0,
+        }
+    }
+
+    #[test]
+    fn low_score_noise_kept_as_text() {
+        // 실측 오분류 케이스(임계 미만) — 본문 보존을 위해 Text 로 다운그레이드해야 한다.
+        for (kind, score) in [
+            (RegionKind::Header, 0.541_f32), // doc_page 약한 머리글
+            (RegionKind::Footer, 0.518),     // refdoc 약한 바닥글
+            (RegionKind::Header, 0.523),     // 근무변경 문서제목 오분류
+            (RegionKind::PageNumber, 0.500), // 검출 임계 직상단
+        ] {
+            let lr = [full(kind, score)];
+            assert_eq!(
+                attribute_kind(&text_box(), &lr, NDT),
+                RegionKind::Text,
+                "score {score} 의 노이즈({kind:?}) 는 Text 로 보존돼야 한다",
+            );
+        }
+    }
+
+    #[test]
+    fn high_score_noise_dropped() {
+        // press1 머리글 0.629 — 확실한 노이즈는 종류를 유지(본문 드롭 대상).
+        for kind in [
+            RegionKind::Header,
+            RegionKind::Footer,
+            RegionKind::PageNumber,
+        ] {
+            let lr = [full(kind, 0.629)];
+            assert_eq!(attribute_kind(&text_box(), &lr, NDT), kind);
+        }
+    }
+
+    #[test]
+    fn boundary_score_at_threshold_dropped() {
+        // 임계 정확히(0.62) — `< noise_drop` 게이트라 유지(드롭 대상).
+        let lr = [full(RegionKind::Header, 0.62)];
+        assert_eq!(attribute_kind(&text_box(), &lr, NDT), RegionKind::Header);
+    }
+
+    #[test]
+    fn content_kind_ignores_noise_gate() {
+        // 콘텐츠 종류는 점수 게이트와 무관 — 검출 임계만 통과하면 그대로.
+        let lr = [full(RegionKind::Title, 0.51)];
+        assert_eq!(attribute_kind(&text_box(), &lr, NDT), RegionKind::Title);
+        let lr = [full(RegionKind::Table, 0.51)];
+        assert_eq!(attribute_kind(&text_box(), &lr, NDT), RegionKind::Table);
+    }
+
+    #[test]
+    fn no_overlap_defaults_to_text() {
+        // 텍스트 박스와 안 겹치는 영역(containment 0)은 무시 → 기본 Text.
+        let lr = [LayoutRegion {
+            bbox: BBox {
+                x0: 50.0,
+                y0: 50.0,
+                x1: 60.0,
+                y1: 60.0,
+            },
+            kind: RegionKind::Header,
+            score: 0.9,
+        }];
+        assert_eq!(attribute_kind(&text_box(), &lr, NDT), RegionKind::Text);
     }
 }

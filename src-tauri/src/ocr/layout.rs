@@ -20,6 +20,11 @@ use std::sync::Mutex;
 const INPUT_SIZE: u32 = 640;
 /// 검출 점수 하한 (PaddleX draw_threshold 기본값).
 const SCORE_THRESHOLD: f32 = 0.5;
+/// 노이즈 종류(머리글/바닥글/페이지번호) **본문 드롭** 임계 — 검출 임계보다 높게 잡는다.
+/// 낮은 점수의 레이아웃 오분류(예: 상단 중앙 문서제목을 Header 0.52 로 검출)로 본문이
+/// 통째 누락되는 것을 막는 게이트. 실측 근거: 오분류 문서제목/약한 머리글 0.52~0.54 는
+/// 유지, 확실한 머리글 0.63 만 드롭 → 0.62 경계가 둘을 가른다.
+pub(super) const NOISE_DROP_THRESHOLD: f32 = 0.62;
 /// 페이지당 최대 영역 수 (PaddleX max_elements).
 const MAX_ELEMENTS: usize = 100;
 
