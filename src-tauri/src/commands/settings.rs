@@ -84,6 +84,11 @@ pub struct Settings {
     /// OCR 기능 활성화 (이미지 파일 텍스트 인식)
     #[serde(default)]
     pub ocr_enabled: bool,
+    /// 스캔/이미지 OCR 레이아웃 분석 (PP-DocLayout, 실험적, 기본 off). 켜면 layout.onnx
+    /// (~22MB)를 내려받아 OCR 텍스트 영역을 제목·표·머리글/바닥글로 분류하고, 본문에서
+    /// 머리글/바닥글/페이지번호를 제외한다. off 면 모델을 받지 않아 기존 동작과 완전히 동일.
+    #[serde(default)]
+    pub ocr_layout_enabled: bool,
     /// 검색 결과에서 같은 문서의 여러 버전을 대표 1개로 접기 (Document Lineage Graph)
     #[serde(default = "default_group_versions")]
     pub group_versions: bool,
@@ -243,6 +248,7 @@ impl Default for Settings {
             ai_temperature: default_ai_temperature(),
             ai_max_tokens: default_ai_max_tokens(),
             ocr_enabled: false,
+            ocr_layout_enabled: false,
             group_versions: true,
             auto_sync_interval_minutes: default_auto_sync_interval_minutes(),
             error_reporting_enabled: default_error_reporting_enabled(),
@@ -793,6 +799,23 @@ pub async fn update_settings(
                 })
                 .await;
             });
+        }
+
+        // PP-DocLayout 레이아웃 모델 — 레이아웃 분석 토글이 켜졌을 때만 받는다(선택·실험).
+        // 끄면 모델 파일을 제거해, 다음 OCR 엔진 초기화(재시작)부터 레이아웃 분석이 꺼진다.
+        let layout_models_dir = app_data_dir.join("models");
+        let layout_path = layout_models_dir.join("paddleocr").join("layout.onnx");
+        if settings.ocr_layout_enabled {
+            if !layout_path.exists() {
+                tauri::async_runtime::spawn(async move {
+                    let _ = tokio::task::spawn_blocking(move || {
+                        model_downloader::ensure_layout_model(&layout_models_dir)
+                    })
+                    .await;
+                });
+            }
+        } else {
+            let _ = std::fs::remove_file(&layout_path);
         }
     }
 
