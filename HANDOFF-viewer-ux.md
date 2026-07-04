@@ -83,6 +83,22 @@
 - **E. 앱 시각 검증** — 통합 툴바, 팝업 뷰어, 선호 뷰 재적용, 휠=스크롤/핀치=줌.
   `KORDOC_CLI_PATH=~/workspace/kordoc/dist/cli.js pnpm tauri:dev:mac`
 - **F. reflow 미세개선**(kordoc, 이월) — dyMax≈176 세로offset·81% 셀 줄나눔. `bench/verify-reflow.mjs` 게이트.
+- **G. 복잡 결재 HWPX 문서-텍스트 미리보기 깨짐** ★신규(2026-07-04 진단됨, 사용자 보고).
+  - **재현**: `~/anything-demo/문서/36268856_결재문서본문_제안서+평가위원회+개최+결과보고.hwpx`
+  - **원인**: kordoc(3.14)가 결재 헤더(복합 병합셀)를 **중첩 `<table>` HTML**로 방출 →
+    docufinder `PreviewPanel.tsx`의 `stripHtmlForMarkdown`(정규식 `<table>…</table>` non-greedy,
+    **중첩을 못 셈**)이 바깥 표 닫힘을 놓쳐 셀이 뭉개지고 잔여 태그가 새어나옴.
+    → **그 함수 주석에 이미 명시된 한계**(셀 안 중첩 table)가 실제 파일로 터진 것.
+  - **범위**: **문서 텍스트(마크다운) 뷰만**. 원본 레이아웃(SVG) 뷰는 `render_layout_svg`(stripHtml
+    경로 안 탐)라 **정상일 것 → 사용자 임시 회피 = 원본 레이아웃 뷰로 보기**. 파일 자체는 정상(PrvText
+    오라클·zip 유효 확인).
+  - **수정 방향(택1, ① 권장)**:
+    1. docufinder에 `rehype-raw` + `rehype-sanitize`(table/thead/tbody/tr/td/th/colspan/rowspan/br만
+       허용) 도입 → HTML 표를 ReactMarkdown이 직접 렌더(중첩 지원). 복합표 전반 품질↑, XSS 차단.
+       `stripHtmlForMarkdown`의 HTML→MD 정규식 변환은 제거/축소 가능.
+    2. `stripHtmlForMarkdown`을 정규식→스택 기반 경량 HTML 파서로 교체(중첩 균형 추적).
+    3. kordoc 측에서 중첩 표를 평탄화/GFM으로 방출(근본이나 영향범위 큼, 렌더/patch 회귀 위험).
+  - **게이트**: 이 파일 + 기존 단순표 파일 스냅샷 비교로 회귀 0 확인.
 
 ## 3. 게이트/주의
 - 프론트: `tsc && vite build`. Rust: `cargo fmt --check` + `cargo clippy --all-targets -- -D warnings` + `cargo test`
