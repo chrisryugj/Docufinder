@@ -112,6 +112,7 @@ impl SearchService {
                     lineage_role: None,
                     version_label: None,
                     version_count: 0,
+                    garbled: false,
                 })
             })
             .map_err(|e| AppError::SearchFailed(e.to_string()))?

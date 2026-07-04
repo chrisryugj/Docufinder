@@ -290,6 +290,16 @@ pub fn upsert_file(
     Ok(file_id)
 }
 
+/// 파일의 garbled(복사 시 깨짐) 플래그 설정.
+/// 인덱싱 시점에 looks_like_garbage_text 판정 결과를 files.garbled 에 기록한다.
+pub fn set_file_garbled(conn: &Connection, file_id: i64, garbled: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE files SET garbled = ?1 WHERE id = ?2",
+        params![garbled, file_id],
+    )?;
+    Ok(())
+}
+
 /// 파일 삭제 (청크 + FTS 인덱스 포함) - 트랜잭션 보장
 pub fn delete_file(conn: &Connection, path: &str) -> Result<usize> {
     // 트랜잭션 시작 (원자성 보장)
@@ -703,6 +713,39 @@ pub fn get_chunk_counts_by_file_paths(
         for row in rows {
             let (path, count) = row?;
             map.insert(path, count);
+        }
+    }
+    Ok(map)
+}
+
+/// 파일 경로 목록 → 파일별 garbled(복사 시 깨짐) 플래그 batch 조회 (검색 결과 배지용).
+/// 대용량 시 자동 분할. 결과에 없는 경로는 호출부에서 기본값(false)으로 남긴다.
+pub fn get_garbled_flags(
+    conn: &Connection,
+    file_paths: &[String],
+) -> Result<HashMap<String, bool>> {
+    if file_paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut map = HashMap::with_capacity(file_paths.len());
+    for batch in file_paths.chunks(SQL_BATCH_SIZE) {
+        let placeholders: String = batch.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT path, garbled FROM files WHERE path IN ({})",
+            placeholders
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> =
+            batch.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+
+        let rows = stmt.query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? != 0))
+        })?;
+        for row in rows {
+            let (path, garbled) = row?;
+            map.insert(path, garbled);
         }
     }
     Ok(map)

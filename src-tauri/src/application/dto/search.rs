@@ -63,6 +63,9 @@ pub struct SearchResult {
     /// 같은 lineage에 속한 전체 파일 수 (자기 자신 포함)
     #[serde(default)]
     pub version_count: i64,
+    /// 복사 시 글자가 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트)로 감지됨 — 경고 배지용
+    #[serde(default)]
+    pub garbled: bool,
 }
 
 /// 검색 응답 DTO

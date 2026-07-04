@@ -1,5 +1,6 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
 use crate::ocr::OcrEngine;
+use pdfium_render::prelude::{PdfRenderConfig, Pdfium};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -369,13 +370,26 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
                 None => return None,
             };
 
-            // 페이지에서 가장 큰 이미지 추출
+            // 우선순위 ① 임베디드 이미지 추출(빠름, 기존). 실패 시(미지원 코덱 —
+            // CCITTFax/JBIG2/JPX/CMYK 등) ② 페이지 통째 pdfium 래스터화로 fallback해
+            // 모든 코덱을 우회한다. pdfium 미설치/바인딩 실패면 None → 이 페이지 OCR 스킵.
             let image = match extract_page_image(&doc, page_id) {
                 Some(img) => img,
-                None => {
-                    tracing::debug!("No extractable image in scanned page {}", page_num);
-                    return None;
-                }
+                None => match rasterize_page(path, page_idx, MAX_OCR_IMAGE_WIDTH) {
+                    Some(img) => {
+                        tracing::info!(
+                            "PDF page {} rasterized via pdfium for OCR ({}x{})",
+                            page_num,
+                            img.width(),
+                            img.height()
+                        );
+                        img
+                    }
+                    None => {
+                        tracing::debug!("No extractable image in scanned page {}", page_num);
+                        return None;
+                    }
+                },
             };
 
             // OCR 실행
@@ -460,6 +474,62 @@ fn extract_page_image(
             img
         }
     })
+}
+
+// ============================================================================
+// pdfium 페이지 래스터화 fallback — 임베디드 이미지 추출이 실패하는 코덱 우회
+// ============================================================================
+
+/// pdfium 으로 PDF 페이지를 통째 이미지로 래스터화 (스캔 페이지 OCR fallback).
+///
+/// CCITTFax/JBIG2/JPX/CMYK 등 `decode_pdf_image` 가 지원하지 않는 코덱으로 인코딩된 스캔본을
+/// OCR 하기 위해 페이지 자체를 렌더한다. libpdfium 은 `PDFIUM_DYLIB_PATH`(lib.rs setup 이 설정,
+/// onnxruntime 과 동일 패턴)로 런타임 동적 로드하며, 미설치/바인딩 실패 시 `None` 을 반환한다
+/// (크래시·패닉 금지). `target_width` px 기준으로 렌더해 기존 OCR 이미지 폭 상한을 준수한다.
+fn rasterize_page(
+    path: &Path,
+    page_index: usize,
+    target_width: u32,
+) -> Option<image::DynamicImage> {
+    let pdfium = bind_pdfium()?;
+    // pdfium 내부에서의 예기치 못한 패닉까지 방어 (OCR 경로는 catch_unwind 밖에서 실행됨).
+    let rendered = catch_unwind(AssertUnwindSafe(|| {
+        let document = pdfium.load_pdf_from_file(path, None).ok()?;
+        let page = document.pages().get(page_index as u16).ok()?;
+        let config = PdfRenderConfig::new().set_target_width(target_width as i32);
+        let bitmap = page.render_with_config(&config).ok()?;
+        Some(bitmap.as_image())
+    }));
+    match rendered {
+        Ok(img) => img,
+        Err(_) => {
+            tracing::warn!("pdfium 렌더 중 panic (page {}): {:?}", page_index + 1, path);
+            None
+        }
+    }
+}
+
+/// `PDFIUM_DYLIB_PATH` 로 pdfium 을 런타임 바인딩. 미설정/미존재/실패 시 `None`.
+///
+/// onnxruntime(`ORT_DYLIB_PATH`)과 동일하게 환경변수로 dylib 경로를 받는다. 값이 없거나 파일이
+/// 없으면 스캔 PDF 래스터화 기능만 비활성될 뿐, 기존 PDF 파싱 경로는 영향받지 않는다.
+fn bind_pdfium() -> Option<Pdfium> {
+    let raw = std::env::var_os("PDFIUM_DYLIB_PATH")?;
+    let dylib_path = std::path::PathBuf::from(raw);
+    if !dylib_path.exists() {
+        tracing::debug!(
+            "PDFIUM_DYLIB_PATH 미존재 ({:?}) — 스캔 PDF 래스터화 fallback 비활성",
+            dylib_path
+        );
+        return None;
+    }
+    match Pdfium::bind_to_library(&dylib_path) {
+        Ok(bindings) => Some(Pdfium::new(bindings)),
+        Err(e) => {
+            tracing::debug!("pdfium 바인딩 실패 ({:?}): {}", dylib_path, e);
+            None
+        }
+    }
 }
 
 /// 단일 이미지 최대 픽셀 수 (100M 픽셀 ≈ 10000×10000)

@@ -32,6 +32,23 @@ pub fn dylib_filename() -> &'static str {
     }
 }
 
+/// 플랫폼별 pdfium 동적 라이브러리 파일명.
+/// bblanchon/pdfium-binaries 아카이브 내부 명칭 및 `PDFIUM_DYLIB_PATH` 경로에 일관 사용된다.
+pub fn pdfium_lib_filename() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "pdfium.dll"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "libpdfium.dylib"
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "libpdfium.so"
+    }
+}
+
 // ort 2.0.0-rc.11 은 ONNX Runtime **>= 1.23.x** 를 요구한다.
 // v1.20.1 을 쓰던 구 빌드에서 업그레이드하면 DLL 버전 불일치로 부팅 단계 panic 발생.
 // URL 갱신 시 반드시 ZIP/DLL SHA-256 을 함께 갱신해야 한다.
@@ -280,6 +297,122 @@ pub fn ensure_ocr_models(models_dir: &Path) -> Result<(bool, bool, bool), String
     }
 
     Ok((det_downloaded, rec_downloaded, dict_downloaded))
+}
+
+/// 스캔/이미지 PDF 페이지 래스터화용 pdfium 동적 라이브러리를 확인하고 없으면 다운로드.
+///
+/// bblanchon/pdfium-binaries 의 플랫폼별 `.tgz` 를 받아 내부 dylib 한 개만
+/// `models/pdfium/<파일명>` 으로 추출한다. `PDFIUM_DOWNLOAD_SHA256` 이 채워져 있으면 tgz
+/// 무결성을 검증하고, 빈 문자열이면 스킵한다. URL 이 빈 미지원 플랫폼이면 `Ok(false)` 로 조용히 스킵.
+///
+/// 반환값: 이번 호출에서 새로 다운로드/추출했으면 true. 실패해도 앱은 계속 동작하며 스캔
+/// PDF 래스터화 fallback 만 비활성된다(호출부에서 warn 처리).
+///
+/// ⚠️ mac-arm64 만 실제 다운로드·추출까지 검증됨. 나머지 플랫폼은 URL·SHA 만 채워둔 미검증 상태.
+pub fn ensure_pdfium(models_dir: &Path) -> Result<bool, String> {
+    let url = crate::constants::PDFIUM_DOWNLOAD_URL;
+    let expected_hash = crate::constants::PDFIUM_DOWNLOAD_SHA256;
+
+    if url.is_empty() {
+        tracing::debug!("pdfium 다운로드 미지원 플랫폼 — 스캔 PDF 래스터화 fallback 비활성");
+        return Ok(false);
+    }
+
+    let pdfium_dir = models_dir.join("pdfium");
+    fs::create_dir_all(&pdfium_dir).map_err(|e| format!("pdfium 디렉토리 생성 실패: {}", e))?;
+    let lib_path = pdfium_dir.join(pdfium_lib_filename());
+    if lib_path.exists() {
+        return Ok(false); // 이미 존재
+    }
+
+    tracing::info!("pdfium 동적 라이브러리 다운로드 중 (스캔 PDF OCR)...");
+
+    // .tgz 아카이브를 임시 파일로 받는다
+    let tgz_path = pdfium_dir.join("pdfium.tgz.tmp");
+    download_file_with_timeout(url, &tgz_path)?;
+
+    // 선택적 SHA-256 검증 (아카이브 본체)
+    if !expected_hash.is_empty() {
+        let actual = compute_sha256(&tgz_path)?;
+        if actual != expected_hash {
+            let _ = fs::remove_file(&tgz_path);
+            return Err(format!(
+                "pdfium 아카이브 무결성 검증 실패!\n예상: {}\n실제: {}",
+                expected_hash, actual
+            ));
+        }
+        tracing::info!("pdfium 아카이브 SHA-256 검증 성공");
+    }
+
+    // gzip+tar 에서 dylib 한 개만 추출
+    let extracted = extract_pdfium_from_tgz(&tgz_path, pdfium_lib_filename(), &lib_path);
+    let _ = fs::remove_file(&tgz_path);
+    extracted?;
+
+    tracing::info!("pdfium 준비 완료: {}", lib_path.display());
+    Ok(true)
+}
+
+/// pdfium `.tgz`(gzip+tar) 에서 파일명이 `lib_filename` 로 끝나는 엔트리 하나를 `dest` 로 추출.
+///
+/// tar 헤더(512바이트 블록)를 직접 스캔한다 — pdfium 아카이브의 경로는 짧아 ustar name 필드
+/// (100바이트) 안에 들어가므로 GNU long-name/PAX 확장을 다룰 필요가 없다. tar 크레이트 의존성을
+/// 추가하지 않고 이미 있는 flate2(gzip)만으로 처리한다.
+fn extract_pdfium_from_tgz(tgz_path: &Path, lib_filename: &str, dest: &Path) -> Result<(), String> {
+    use flate2::read::GzDecoder;
+
+    let file = File::open(tgz_path).map_err(|e| format!("tgz 열기 실패: {}", e))?;
+
+    // gzip 해제된 tar 전체를 메모리로 (pdfium tar ≈ 8MB, 상한 이내)
+    const MAX_TAR_SIZE: u64 = 64 * 1024 * 1024;
+    let mut tar = Vec::new();
+    GzDecoder::new(file)
+        .take(MAX_TAR_SIZE)
+        .read_to_end(&mut tar)
+        .map_err(|e| format!("gzip 해제 실패: {}", e))?;
+
+    let mut pos = 0usize;
+    while pos + 512 <= tar.len() {
+        let header = &tar[pos..pos + 512];
+        // 이름 첫 바이트가 0 이면 아카이브 종료(zero-block)
+        if header[0] == 0 {
+            break;
+        }
+        // name: 0..100 (NUL 종료), size(octal ASCII): 124..136
+        let name_end = header[..100].iter().position(|&b| b == 0).unwrap_or(100);
+        let name = String::from_utf8_lossy(&header[..name_end]);
+        let size = parse_tar_octal(&header[124..136]);
+        let data_start = pos + 512;
+        let data_end = data_start + size as usize;
+        if data_end > tar.len() {
+            break; // 손상된 아카이브
+        }
+        if name.ends_with(lib_filename) {
+            fs::write(dest, &tar[data_start..data_end])
+                .map_err(|e| format!("pdfium 추출 쓰기 실패: {}", e))?;
+            // 실행 권한 부여 (dylib 로드 자체엔 불필요하나 관례상)
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(dest, fs::Permissions::from_mode(0o755));
+            }
+            return Ok(());
+        }
+        // 다음 헤더: 512(헤더) + 데이터(512 정렬)
+        pos = data_start + (size.div_ceil(512) * 512) as usize;
+    }
+
+    Err(format!(
+        "pdfium 아카이브에서 {} 를 찾을 수 없습니다",
+        lib_filename
+    ))
+}
+
+/// tar 헤더의 8진수 ASCII 필드(공백/NUL 패딩)를 u64 로 파싱.
+fn parse_tar_octal(bytes: &[u8]) -> u64 {
+    let s = String::from_utf8_lossy(bytes);
+    let trimmed = s.trim_matches(|c| c == ' ' || c == '\0');
+    u64::from_str_radix(trimmed, 8).unwrap_or(0)
 }
 
 /// SHA-256 해시가 비어있으면 검증 스킵, 있으면 검증
@@ -553,6 +686,21 @@ pub fn seed_bundled_models(resource_dir: &Path, models_dir: &Path) {
             &ocr_dest_dir.join(name),
             hash,
             label,
+        );
+    }
+
+    // pdfium dylib → models/pdfium/<lib> (스캔 PDF 래스터화 fallback).
+    // 번들(resources/pdfium/)에 있으면 복사, 없으면 no-op → ensure_pdfium 다운로드 fallback.
+    let pdfium_dest_dir = models_dir.join("pdfium");
+    if let Err(e) = fs::create_dir_all(&pdfium_dest_dir) {
+        tracing::warn!("seed: pdfium 디렉토리 생성 실패: {}", e);
+    } else {
+        let lib = pdfium_lib_filename();
+        seed_one(
+            &bundled_root.join("pdfium").join(lib),
+            &pdfium_dest_dir.join(lib),
+            "", // pdfium dylib 해시 미고정
+            "pdfium dylib",
         );
     }
 }

@@ -53,6 +53,28 @@ pub fn enrich_lineage_info(conn: &Connection, results: &mut [SearchResult]) {
     }
 }
 
+/// 검색 결과에 files.garbled(복사 시 글자 깨짐) 플래그를 채운다.
+/// 실패 시 조용히 무시 (garbled는 false로 남음).
+pub fn enrich_garbled(conn: &Connection, results: &mut [SearchResult]) {
+    if results.is_empty() {
+        return;
+    }
+    let unique_paths: HashSet<String> = results.iter().map(|r| r.file_path.clone()).collect();
+    let paths: Vec<String> = unique_paths.into_iter().collect();
+    let flags = match db::get_garbled_flags(conn, &paths) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("enrich_garbled failed: {}", e);
+            return;
+        }
+    };
+    for r in results.iter_mut() {
+        if let Some(&g) = flags.get(&r.file_path) {
+            r.garbled = g;
+        }
+    }
+}
+
 /// 같은 lineage의 다른 버전 파일들을 접는다.
 ///
 /// 각 lineage 그룹에서 대표(canonical → 없으면 최고 점수)를 선출하고, 그 외 버전의 결과를 제거한다.
@@ -537,6 +559,7 @@ mod tests {
             lineage_role: None,
             version_label: None,
             version_count: 0,
+            garbled: false,
         }
     }
 

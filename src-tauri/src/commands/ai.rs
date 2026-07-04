@@ -255,6 +255,7 @@ async fn expand_with_neighbors(
             lineage_role: None,
             version_label: None,
             version_count: 0,
+            garbled: false,
         });
     }
 

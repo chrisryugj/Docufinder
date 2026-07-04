@@ -932,6 +932,18 @@ pub fn run() {
                 tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
             }
 
+            // PDFIUM_DYLIB_PATH 설정: 스캔/이미지 PDF 페이지 래스터화 fallback 용 (parsers/pdf.rs).
+            // ORT_DYLIB_PATH 와 동일하게 models/pdfium/<lib> 를 가리키게 하되, 외부에서 이미
+            // 명시 설정돼 있으면 그 값을 존중한다. 파일이 없으면 pdf.rs 가 조용히 기능 비활성한다
+            // (크래시 없음 — 기존 born-digital/JPEG 스캔 경로는 그대로 동작).
+            if std::env::var_os("PDFIUM_DYLIB_PATH").is_none() {
+                let pdfium_path = models_dir
+                    .join("pdfium")
+                    .join(model_downloader::pdfium_lib_filename());
+                unsafe { std::env::set_var("PDFIUM_DYLIB_PATH", &pdfium_path) };
+                tracing::info!("PDFIUM_DYLIB_PATH set to {:?}", pdfium_path);
+            }
+
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
 
             // 번들 모델 seed + ONNX Runtime DLL 검증 + 모델 자동 다운로드 — 백그라운드 실행.
@@ -974,6 +986,18 @@ pub fn run() {
                         models_dir_bg.clone(),
                         semantic_enabled,
                     );
+
+                    // pdfium 준비 (스캔/이미지 PDF 페이지 래스터화 fallback) — OCR 활성 시에만.
+                    // best-effort: 실패해도 born-digital/JPEG 스캔 경로는 그대로 동작한다.
+                    if ocr_enabled {
+                        if let Err(e) = model_downloader::ensure_pdfium(&models_dir_bg) {
+                            tracing::warn!(
+                                "pdfium 준비 실패 (스캔 PDF 래스터화 OCR 비활성): {}",
+                                e
+                            );
+                        }
+                    }
+
                     maybe_download_ocr_models(app_handle_bg, models_dir_bg, ocr_enabled);
                 });
             }

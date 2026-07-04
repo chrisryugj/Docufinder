@@ -529,7 +529,9 @@ mark.hl-filename {
   font-weight: 600;
   text-align: left;
   color: var(--color-text-primary);
-  border-bottom: 2px solid var(--color-border);
+  /* 전체 격자 테두리 — HWP 표(결재 도장란·문서번호표 등 병합셀 격자)를 격자로 읽히게 */
+  border: 1px solid var(--color-border);
+  background-color: color-mix(in srgb, var(--color-bg-tertiary) 60%, transparent);
   /* nowrap 제거 — 헤더도 필요시 줄바꿈, 대신 한글은 단어 경계 유지 */
   white-space: normal;
   word-break: keep-all;
@@ -537,17 +539,22 @@ mark.hl-filename {
 }
 .doc-td {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
   vertical-align: top;
   /* 한국어 단어 경계 유지 + 긴 토큰은 break */
   word-break: keep-all;
   overflow-wrap: break-word;
 }
-.doc-table tr:last-child .doc-td {
-  border-bottom: none;
-}
 .doc-table tr:hover .doc-td {
   background-color: color-mix(in srgb, var(--color-accent) 4%, transparent);
+}
+/* 셀 안 중첩 표(결재 헤더 등)는 래퍼의 여백·테두리·스크롤을 제거해 셀 격자에 밀착시킨다 */
+.doc-td .doc-table-wrapper,
+.doc-th .doc-table-wrapper {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
 }
 
 /* 리스트 */

@@ -40,7 +40,12 @@ calamine = "0.35"  # Excel
 pdf-extract = "0.7"  # PDF
 lopdf = "0.34"  # PDF 임베디드 이미지 추출 (스캔 PDF OCR용, pdf-extract와 버전 일치)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "tiff"] }
-flate2 = "1"  # PDF 이미지 스트림 디코딩 (FlateDecode)
+flate2 = "1"  # PDF 이미지 스트림 디코딩 (FlateDecode) + pdfium tgz 압축 해제(gzip)
+# 스캔/이미지 PDF 페이지 래스터화 → OCR fallback. CCITTFax/JBIG2/JPX/CMYK 등 임베디드
+# 이미지 추출이 실패하는 코덱을 페이지 통째 렌더로 우회. libpdfium 은 런타임 동적 로드
+# (PDFIUM_DYLIB_PATH env, onnxruntime 와 동일 패턴) — bundled 정적 링크 금지.
+# image_025 로 repo 의 image 0.25 와 단일 버전 유지.
+pdfium-render = { version = "0.8.37", default-features = false, features = ["image_025", "thread_safe", "pdfium_latest"] }
 # .eml 메일 (이슈 #29) — RFC822 MIME 파싱. full_encoding: EUC-KR/CP949 등 한국 메일 charset 디코딩
 mail-parser = { version = "0.11", default-features = false, features = ["full_encoding"] }
 
