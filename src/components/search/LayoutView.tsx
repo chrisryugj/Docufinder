@@ -84,23 +84,30 @@ export const LayoutView = memo(function LayoutView({
     const sc = scrollRef.current, host = hostRef.current;
     if (!sc || !host) return;
     const rect = sc.getBoundingClientRect();
-    const cx = clientX - rect.left, cy = clientY - rect.top;
+    const hostRect = host.getBoundingClientRect();
+    // 커서 지점의 host 내 분율 — host 의 실제 위치 기준(px-4/py-3 패딩·mx-auto 여백 포함).
+    // cx/cy 는 스크롤 컨테이너 뷰포트 기준 커서 위치(보정 때 이 위치로 되돌린다).
     zoomAnchorRef.current = {
-      fx: (sc.scrollLeft + cx) / host.offsetWidth,
-      fy: (sc.scrollTop + cy) / host.offsetHeight,
-      cx,
-      cy,
+      fx: (clientX - hostRect.left) / host.offsetWidth,
+      fy: (clientY - hostRect.top) / host.offsetHeight,
+      cx: clientX - rect.left,
+      cy: clientY - rect.top,
     };
     setFitWidth(false);
     setZoom(clampZoom(nextZoom));
   }, []);
 
-  // 줌 후 스크롤 보정 — 분율은 스케일 불변이라 옛 fx × 새 offsetWidth 가 정확.
+  // 줌 후 스크롤 보정 — 분율은 스케일 불변. host 의 콘텐츠 좌표계 오프셋(패딩+여백)을
+  // 측정해 더한다 — host 가 스크롤 콘텐츠 원점에서 시작하지 않으므로(패딩·mx-auto).
   useLayoutEffect(() => {
     const a = zoomAnchorRef.current, sc = scrollRef.current, host = hostRef.current;
     if (!a || !sc || !host) return;
-    sc.scrollLeft = a.fx * host.offsetWidth - a.cx;
-    sc.scrollTop = a.fy * host.offsetHeight - a.cy;
+    const scRect = sc.getBoundingClientRect();
+    const hostRect = host.getBoundingClientRect();
+    const hostLeft = hostRect.left - scRect.left + sc.scrollLeft; // scrollLeft 무관한 콘텐츠 오프셋
+    const hostTop = hostRect.top - scRect.top + sc.scrollTop;
+    sc.scrollLeft = hostLeft + a.fx * host.offsetWidth - a.cx;
+    sc.scrollTop = hostTop + a.fy * host.offsetHeight - a.cy;
     zoomAnchorRef.current = null;
   }, [zoom, fitWidth]);
 
