@@ -17,6 +17,8 @@
 
 검색엔진 관점의 가치: 읽기순서 복원 → chunk 응집도↑ → 임베딩·시맨틱 검색 품질↑ / 표구조 → 키워드 히트↑ / 머리글·바닥글 제거 → 노이즈↓.
 
+> **2026-07-04 재판단**: docling이 북극성 레이아웃 모델을 **standalone ONNX로 직배포** 시작(§3.4). 전략(ONNX를 `ort`에 in-process) 불변, **기본 채택은 PP-DocLayout-M(22MB) 유지** — 다만 heron-onnx가 ①벤치 오라클을 Python 없이 만들고 ②정확도 상위티어를 여는 두 실익이 있어 반영.
+
 ---
 
 ## 1. 현재 상태 (팩트)
@@ -116,6 +118,31 @@ Tauri 데스크톱 앱에 Python 런타임을 얹는 순간 배포·크래시·�
 
 ### 3.3 Tier-2 — docling-serve 사이드카 (optional, 기본 아님)
 파워유저가 로컬에 docling-serve(HTTP)를 띄운 경우에만, 설정 토글로 외부 위임. kordoc Node.js 사이드카(`parsers/kordoc.rs`)와 동일한 spawn/파이프 패턴. **기본 비활성**, 실패 시 in-process로 폴백. 스캔 PDF 대량 처리 시 `pdf_sniff` 조기차단 교훈(자식 프로세스 누적 → 크래시, #17) 반드시 승계 — per-file spawn 금지, 단일 데몬 재사용.
+
+### 3.4 재판단 — docling 자체 ONNX 레이아웃 모델 출시 (2026-07-04)
+§3.1의 전제("docling = Python 전용, 번들 불가")는 **레이아웃 모델에 한해 낡았다**. docling이 북극성 모델을 **standalone ONNX로 배포**하기 시작했다. 실측 확인:
+
+- **[docling-project/docling-layout-heron-onnx](https://huggingface.co/docling-project/docling-layout-heron-onnx)** — `model.onnx` **171MB** + `config.json`(878B) + `preprocessor_config.json`(445B), **Apache-2.0**.
+- 아키텍처 **RT-DETR v2**(ResNet101; heron-101 = DocLayNet **78% mAP**, 이전 docling 레이아웃 대비 +23.9%). **NMS-free**(end-to-end) → PP-DocLayout PicoDet보다 후처리 단순.
+- **17 클래스**: Caption · Footnote · Formula · List-item · **Page-footer · Page-header** · Picture · Section-header · Table · Text · Title · Document Index · Code · Checkbox-Selected · Checkbox-Unselected · Form · Key-Value Region — §2 목표(머리글·바닥글 분리, 표·수식·리스트·제목)와 정확히 정합.
+- 논문 [arXiv:2509.11720](https://arxiv.org/abs/2509.11720) *Advanced Layout Analysis Models for Docling*. 변종: heron/heron-101, egret-medium/large/xlarge(카탈로그상 ONNX "in progress"), v2(legacy). 전처리는 HF `RTDetrImageProcessor` 규약(리사이즈 + rescale) — 착수 시 `preprocessor_config.json`으로 실값 확정.
+- **표구조는 아직 ONNX 없음** — docling TableFormer는 PyTorch 전용. 따라서 Phase 2 표는 SLANet(oar-ocr, 7.4MB) 또는 알고리즘 폴백을 그대로 유지한다.
+
+**판단 — 기본은 PP-DocLayout-M 유지, heron은 오라클+상위티어**
+
+| | PP-DocLayout-M (oar-ocr, §3.2 현행 기본) | docling-heron-onnx |
+|---|---|---|
+| 크기 | **22.4MB** | 171MB (7.6×) |
+| 후처리 | PicoDet NMS 필요 | **RT-DETR NMS-free** |
+| Rust 참조 | **oar-ocr `src/` 존재** | 없음(RT-DETR 전처리 직접 구현) |
+| GT 정합 | docling과 cross-model | **docling 그 자체 = GT·런타임 일치** |
+| 표 ONNX | SLANet 동생태계(7.4MB) | 없음 |
+
+- **기본 = PP-DocLayout-M(22MB) 유지.** 데스크톱 footprint·Rust 레퍼런스·SLANet 동생태계가 결정적. 171MB는 default로 과함 — PP-DocLayoutV2(204MB)와 같은 무게급이다.
+- **heron-onnx의 두 실익(반영 가치)**:
+  1. **§7 벤치 오라클을 heron-onnx로** → **Python docling 불필요.** region GT를 `ort`에서 직접 생성 = CI/검증 의존성 제거(기존엔 "docling Python 벤치용" 필요).
+  2. **정확도 상위티어(optional)**: PP-DocLayout-M 정확도 부족 시 heron-onnx로 모델만 스왑(융합 로직 재사용). §9-Q5의 V2(204MB)보다 heron이 NMS-free·docling 정합이라 상위티어로 더 적합.
+- **RegionKind 라벨셋은 heron 17클래스를 상위집합으로 채택 권장** — Phase 1 분류 확장 시 이 셋으로 매핑하면 오라클(§7)과 일관.
 
 ---
 
