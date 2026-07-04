@@ -1,4 +1,6 @@
-import { useCallback, useMemo, memo } from "react";
+import { useCallback, useMemo, memo, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
@@ -10,6 +12,16 @@ import { Tooltip } from "../ui/Tooltip";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { LineageBadge } from "./LineageBadge";
+
+// 네이티브 드래그아웃용 프리뷰 아이콘 경로 — 앱당 1회만 백엔드에서 가져와 캐시.
+// startDrag(icon) 가 동기 경로를 요구하므로 드래그 전에 미리 확보해 둔다.
+let dragIconPath = "";
+let dragIconRequested = false;
+function ensureDragIcon() {
+  if (dragIconRequested) return;
+  dragIconRequested = true;
+  invoke<string>("drag_preview_icon").then((p) => { dragIconPath = p; }).catch(() => {});
+}
 
 interface SearchResultItemProps {
   result: SearchResult;
@@ -61,6 +73,13 @@ export const SearchResultItem = memo(function SearchResultItem({
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
+
+  // 네이티브 드래그아웃 — 파일명을 다른 앱/웹페이지로 끌어다 놓기 (탐색기 드래그처럼)
+  useEffect(() => { ensureDragIcon(); }, []);
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); // 브라우저 기본 드래그 대신 네이티브 드래그아웃 사용
+    startDrag({ item: [result.file_path], icon: dragIconPath, mode: "copy" }).catch(() => {});
+  }, [result.file_path]);
 
   // 신뢰도 %는 시맨틱/하이브리드 매칭에서만 노출 (ux-audit-8)
   // — 키워드/파일명 매칭의 RRF 기반 점수는 일반 사용자에게 의미가 약해 숨긴다.
@@ -169,12 +188,14 @@ export const SearchResultItem = memo(function SearchResultItem({
       <div className="flex items-center justify-between mb-1.5">
         <div
           className="flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text gap-2"
+          draggable
+          onDragStart={handleDragStart}
           onClick={(e) => {
             // 카드 래퍼(미리보기 선택)로 버블되면 외부 열기와 미리보기가 동시에 일어난다
             e.stopPropagation();
             onOpenFile(result.file_path, result.page_number);
           }}
-          title={result.page_number ? `${result.page_number}페이지로 열기` : "파일 열기"}
+          title={result.page_number ? `${result.page_number}페이지로 열기 · 끌어서 다른 앱으로` : "파일 열기 · 끌어서 다른 앱으로"}
         >
           <FileIcon fileName={result.file_name} size="sm" />
           <span

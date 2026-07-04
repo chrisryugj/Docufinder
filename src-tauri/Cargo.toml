@@ -97,6 +97,7 @@ dirs = "6"  # 크래시 로그 저장 경로
 # Parallel processing
 rayon = "1.10"
 crossbeam-channel = "0.5"
+tauri-plugin-drag = "2.1.1"
 
 [dev-dependencies]
 tempfile = "3"
