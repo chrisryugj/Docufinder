@@ -7,6 +7,8 @@ interface TagInputProps {
   onAdd: (tag: string) => void;
   onRemove: (tag: string) => void;
   maxTags?: number;
+  /** 마운트 시 바로 입력 편집 상태로 진입 (⋯>태그 추가로 빈 태그 패널을 열 때) */
+  autoFocus?: boolean;
 }
 
 export const TagInput = memo(function TagInput({
@@ -15,8 +17,9 @@ export const TagInput = memo(function TagInput({
   onAdd,
   onRemove,
   maxTags = 10,
+  autoFocus = false,
 }: TagInputProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(autoFocus);
   const [value, setValue] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
