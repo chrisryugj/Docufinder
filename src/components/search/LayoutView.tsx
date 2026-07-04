@@ -1,4 +1,4 @@
-import { memo, useRef, useState, useEffect, useCallback } from "react";
+import { memo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, ArrowUp, ArrowDown, Expand, X } from "lucide-react";
 
 interface LayoutViewProps {
@@ -15,6 +15,7 @@ interface LayoutViewProps {
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.2;
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 /**
  * 레이아웃(조판 SVG) 뷰어 — 인라인 SVG 로 삽입해 줌/팬·페이지 네비·찾기 매치 이동을 연다.
@@ -41,6 +42,13 @@ export const LayoutView = memo(function LayoutView({
   const [pageCount, setPageCount] = useState(1);
   const [matchIdx, setMatchIdx] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
+
+  // 커서 기준 줌 보정용 — 핸들러 스테일 클로저 방지(렌더마다 최신값 미러)
+  const zoomRef = useRef(zoom);
+  const fitWidthRef = useRef(fitWidth);
+  zoomRef.current = zoom;
+  fitWidthRef.current = fitWidth;
+  const zoomAnchorRef = useRef<{ fx: number; fy: number; cx: number; cy: number } | null>(null);
 
   // 페이지 수 (data-page 그룹)
   useEffect(() => {
@@ -70,17 +78,76 @@ export const LayoutView = memo(function LayoutView({
     setPage(cur);
   }, []);
 
+  // 커서 기준 줌 — width-% 모델이라 transform:scale 이 아니다. 줌 전 커서 아래 지점의
+  // 분율을 캡처했다가, 새 host 치수로 스크롤을 되돌려 그 지점을 고정한다(아래 보정 effect).
+  const zoomToPoint = useCallback((nextZoom: number, clientX: number, clientY: number) => {
+    const sc = scrollRef.current, host = hostRef.current;
+    if (!sc || !host) return;
+    const rect = sc.getBoundingClientRect();
+    const cx = clientX - rect.left, cy = clientY - rect.top;
+    zoomAnchorRef.current = {
+      fx: (sc.scrollLeft + cx) / host.offsetWidth,
+      fy: (sc.scrollTop + cy) / host.offsetHeight,
+      cx,
+      cy,
+    };
+    setFitWidth(false);
+    setZoom(clampZoom(nextZoom));
+  }, []);
+
+  // 줌 후 스크롤 보정 — 분율은 스케일 불변이라 옛 fx × 새 offsetWidth 가 정확.
+  useLayoutEffect(() => {
+    const a = zoomAnchorRef.current, sc = scrollRef.current, host = hostRef.current;
+    if (!a || !sc || !host) return;
+    sc.scrollLeft = a.fx * host.offsetWidth - a.cx;
+    sc.scrollTop = a.fy * host.offsetHeight - a.cy;
+    zoomAnchorRef.current = null;
+  }, [zoom, fitWidth]);
+
   // 줌 — Ctrl/⌘+휠(트랙패드 핀치도 이 이벤트로 도착). 일반 휠은 스크롤(문서 뷰어 관례).
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    setFitWidth(false);
-    setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z - e.deltaY * 0.0015)));
-  }, []);
+    const cur = fitWidthRef.current ? 1 : zoomRef.current;
+    zoomToPoint(cur - e.deltaY * 0.0015, e.clientX, e.clientY);
+  }, [zoomToPoint]);
 
+  // ± 버튼 — 컨테이너 중앙 기준 줌
   const zoomBy = useCallback((d: number) => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const rect = sc.getBoundingClientRect();
+    const cur = fitWidthRef.current ? 1 : zoomRef.current;
+    zoomToPoint(cur + d, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [zoomToPoint]);
+
+  // 더블클릭 줌 토글 — 뷰어(팝업) 모드에서만(onClose 게이트). 확대 상태면 너비맞춤 원복,
+  // 아니면 그 지점 2× 확대. 인라인엔 미부착 — SVG <text> 단어 더블클릭 선택 보존.
+  const onDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (!fitWidthRef.current && zoomRef.current > 1.01) {
+      setFitWidth(true);
+      setZoom(1);
+      zoomAnchorRef.current = null;
+    } else {
+      zoomToPoint(2, e.clientX, e.clientY);
+    }
+  }, [zoomToPoint]);
+
+  // 페이지 맞춤 — 첫 페이지 높이를 컨테이너에 맞춰 줌 계산(너비맞춤 ↔ 페이지맞춤 순환용).
+  const fitPage = useCallback(() => {
+    const sc = scrollRef.current, host = hostRef.current;
+    if (!sc || !host) return;
+    const pageEl = host.querySelector<HTMLElement>("[data-page]") ?? host;
+    const pageH = pageEl.offsetHeight;
+    if (pageH <= 0) return;
+    const contH = sc.clientHeight - 24; // px-4 py-3 세로 여백
+    const cur = fitWidthRef.current ? 1 : zoomRef.current;
     setFitWidth(false);
-    setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, +(z + d).toFixed(2))));
+    setZoom(clampZoom(cur * (contH / pageH)));
+    zoomAnchorRef.current = null;
+    requestAnimationFrame(() => {
+      sc.scrollTop = 0;
+    });
   }, []);
 
   // 드래그 팬 (줌 상태에서 종이 끌어 이동)
@@ -177,7 +244,7 @@ export const LayoutView = memo(function LayoutView({
         <button onClick={() => zoomBy(ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="확대" aria-label="확대">
           <ZoomIn size={13} />
         </button>
-        <button onClick={() => { setFitWidth(true); setZoom(1); }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="너비 맞춤" aria-label="너비 맞춤">
+        <button onClick={() => { if (fitWidth) fitPage(); else { setFitWidth(true); setZoom(1); } }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fitWidth ? "페이지 맞춤" : "너비 맞춤"} aria-label={fitWidth ? "페이지 맞춤" : "너비 맞춤"}>
           <Maximize2 size={13} />
         </button>
 
@@ -213,6 +280,7 @@ export const LayoutView = memo(function LayoutView({
         ref={scrollRef}
         onScroll={onScroll}
         onWheel={onWheel}
+        onDoubleClick={onClose ? onDoubleClick : undefined}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={endPan}
