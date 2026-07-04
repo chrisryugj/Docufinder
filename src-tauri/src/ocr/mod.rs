@@ -97,8 +97,11 @@ pub struct OcrEngine {
 impl OcrEngine {
     /// 모델 디렉토리에서 OcrEngine 초기화
     ///
-    /// models_dir에 det.onnx, rec.onnx, dict.txt가 존재해야 함
-    pub fn new(models_dir: &Path) -> Result<Self, OcrError> {
+    /// models_dir에 det.onnx, rec.onnx, dict.txt가 존재해야 함.
+    /// `layout_enabled` 가 false 면 layout.onnx 가 디스크에 있어도 로드하지 않는다 —
+    /// 레이아웃 분석의 활성 여부는 파일 존재가 아니라 설정으로만 결정된다(다운로드 레이스로
+    /// 남은 잔여 파일이 있어도 "off = 기존 동작" 보장이 유지되도록).
+    pub fn new(models_dir: &Path, layout_enabled: bool) -> Result<Self, OcrError> {
         let det_path = models_dir.join("det.onnx");
         let rec_path = models_dir.join("rec.onnx");
         let dict_path = models_dir.join("dict.txt");
@@ -154,8 +157,8 @@ impl OcrEngine {
             .map_err(|e| OcrError::ModelLoad(format!("Dictionary read: {}", e)))?;
         let dictionary: Vec<String> = dict_content.lines().map(|l| l.to_string()).collect();
 
-        // 선택적 레이아웃 모델 — 있으면 로드, 없으면 None(레이아웃 분석 없이 동작).
-        let layout_session = Self::try_load_layout(models_dir, num_threads);
+        // 선택적 레이아웃 모델 — 설정이 켜져 있고 파일이 있을 때만 로드(없으면 Phase 0).
+        let layout_session = Self::try_load_layout(models_dir, num_threads, layout_enabled);
 
         tracing::info!(
             "OCR engine initialized: det={:?}, rec={:?}, dict={} chars, layout={}",
@@ -175,9 +178,13 @@ impl OcrEngine {
 
     /// 선택적 레이아웃 모델(`layout.onnx`)을 로드. 없거나 로드 실패면 `None` — OCR 은
     /// 레이아웃 분석 없이 계속 동작한다(기능만 off, 크래시·에러 전파 금지).
-    fn try_load_layout(models_dir: &Path, num_threads: usize) -> Option<Mutex<Session>> {
+    fn try_load_layout(
+        models_dir: &Path,
+        num_threads: usize,
+        layout_enabled: bool,
+    ) -> Option<Mutex<Session>> {
         let layout_path = models_dir.join("layout.onnx");
-        if !layout_path.exists() {
+        if !layout_enabled || !layout_path.exists() {
             return None;
         }
         let build = Session::builder()

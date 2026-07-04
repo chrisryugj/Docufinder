@@ -246,7 +246,8 @@ mod scanned_pdf_ocr_tests {
             return;
         }
 
-        let ocr = docufinder_lib::ocr::OcrEngine::new(ocr_dir).expect("OCR engine init failed");
+        let ocr =
+            docufinder_lib::ocr::OcrEngine::new(ocr_dir, false).expect("OCR engine init failed");
 
         let doc = docufinder_lib::parsers::pdf::parse(fixture, Some(&ocr))
             .expect("scanned PDF parse failed");
