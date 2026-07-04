@@ -613,6 +613,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [layoutSvg, setLayoutSvg] = useState<string | null>(null);
   const [layoutLoading, setLayoutLoading] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false); // 문서 크게 보기(팝업) 오버레이
+  const viewerRef = useRef<HTMLDivElement>(null); // 팝업 다이얼로그 — 포커스 트랩 대상
+  const viewerReturnFocusRef = useRef<HTMLElement | null>(null); // 닫힐 때 포커스 복원 대상
   const layoutReqRef = useRef(0); // 파일 전환 시 in-flight 렌더 응답 무효화
   const prefAppliedRef = useRef<string | null>(null); // 선호 뷰 자동 진입: 파일당 1회
   const desiredViewRef = useRef<PreviewView>("markdown"); // 의도한 뷰 — in-flight 렌더가 사용자 전환/점프를 덮지 않게
@@ -952,6 +954,9 @@ export const PreviewPanel = memo(function PreviewPanel({
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
       if (e.key.toLowerCase() !== "f" && e.code !== "KeyF") return;
+      // 다이얼로그(크게 보기 팝업 등)가 열려 있으면 무시 — 오버레이 뒤 안 보이는 찾기 바를
+      // 열어 포커스를 모달 밖으로 빼가는 것을 막는다(bare-key 뷰 전환 가드와 동일 관례).
+      if (document.querySelector("[role='dialog']")) return;
       e.preventDefault();
       handleFindToggle();
     };
@@ -976,6 +981,64 @@ export const PreviewPanel = memo(function PreviewPanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [filePath, selectView]);
+
+  // 크게 보기(팝업) 다이얼로그 접근성 — 초기 포커스 + Tab 트랩 + 포커스 복원.
+  // (Escape 닫기는 LayoutView 가 capture 단계에서 이미 처리하므로 여기선 Tab 만.)
+  // ui/Modal 의 포커스 트랩과 동일 규약: disabled/숨김 요소 제외, 리스너는 document 에
+  // 걸어 포커스가 모달 밖으로 새더라도 되돌린다. dialog 노드는 `viewerOpen && layoutSvg`
+  // 로 조건부 렌더되므로 layoutSvg 재렌더로 노드가 교체되면 재설치되도록 deps 에 포함.
+  useEffect(() => {
+    if (!viewerOpen) return;
+    const dialog = viewerRef.current;
+    if (!dialog) return;
+    // 실제로 포커스를 받는 요소만 — disabled(예: 1페이지에서 이전/다음 버튼)·숨김 제외.
+    const FOCUSABLE =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const getFocusable = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.getClientRects().length > 0,
+      );
+    // 직전 포커스 저장 후 다이얼로그 첫 요소로 이동(렌더 커밋 후).
+    viewerReturnFocusRef.current = document.activeElement as HTMLElement | null;
+    const raf = requestAnimationFrame(() => {
+      const [first] = getFocusable();
+      (first ?? dialog).focus();
+    });
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const items = getFocusable();
+      const firstEl = items[0];
+      const lastEl = items[items.length - 1];
+      if (!firstEl) {
+        // 포커스 가능한 컨트롤이 없으면 컨테이너에 가둔다.
+        e.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const active = document.activeElement;
+      if (!dialog.contains(active)) {
+        // 포커스가 다이얼로그 밖으로 샜으면(다른 단축키 등) 안으로 되돌린다.
+        e.preventDefault();
+        (e.shiftKey ? lastEl : firstEl).focus();
+      } else if (e.shiftKey) {
+        if (active === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else if (active === lastEl) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener("keydown", onKeyDown);
+      // 닫힐 때 원래 위치로 포커스 복원(요소가 아직 문서에 있으면).
+      const prev = viewerReturnFocusRef.current;
+      if (prev?.isConnected) prev.focus();
+    };
+  }, [viewerOpen, layoutSvg]);
 
   // 열릴 때 입력 포커스 (기존 검색어 유지 시 전체 선택)
   useEffect(() => {
@@ -1407,10 +1470,12 @@ export const PreviewPanel = memo(function PreviewPanel({
           role=dialog 라 앱 bare-key 가드에 자동 편입(뒤 뷰 몰래 전환 방지). */}
       {viewerOpen && layoutSvg && (
         <div
+          ref={viewerRef}
           role="dialog"
           aria-modal="true"
           aria-label="문서 크게 보기"
-          className="fixed inset-0 z-[1200] flex p-4 sm:p-8"
+          tabIndex={-1}
+          className="fixed inset-0 z-[1200] flex p-4 sm:p-8 outline-none"
           style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
           onClick={(e) => { if (e.target === e.currentTarget) setViewerOpen(false); }}
         >
