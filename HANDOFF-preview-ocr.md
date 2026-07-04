@@ -6,6 +6,45 @@
 
 ---
 
+## 0.-1 실행 세션 완료 (2026-07-04 #3, ultracode) — ahead 19
+
+§0.0 ★제품결정 + 프로덕션 리뷰 이월 백로그 2건(#2·#3) 구현·검증. 적대적 워크플로우(9 리뷰 에이전트
+→ 검증 6, 확정 5·기각 1) + 수정본 재검증(2 에이전트, 전부 sound) 통과. 게이트: cargo fmt/clippy
+(-D warnings)/test **241✓**, tsc✓, vite✓.
+
+### 적용 완료
+- **★노이즈 클래스 드롭 임계 (제품결정 구현)** — `ocr/layout.rs` `NOISE_DROP_THRESHOLD=0.62` 신설.
+  `ocr/mod.rs` 순수함수 `attribute_kind`(containment 최대 귀속 + 노이즈 종류는 score≥0.62 일 때만 드롭
+  유지, 미만은 Text 로 다운그레이드) + `is_noise_kind` 헬퍼(본문 필터도 통일). 단위테스트 5종(실측
+  0.518/0.523/0.541 유지 · 0.629/경계0.62 드롭 · 콘텐츠 무영향 · 무겹침 기본Text). 검출 임계
+  (`SCORE_THRESHOLD` 0.5) 불변. **적대적 3렌즈(correctness/regression/side-effects) 결함 0** —
+  kind 는 본문 필터에서만 소비(OcrRegion 비직렬화·프론트 소비처 0)라 다운그레이드 부작용 없음 확인.
+- **#2 garbage-text 게이팅** — `indexer/pipeline.rs` `garbled_flag` 를 pdf/hwp/**hwpx** 로 게이팅
+  (중/일 한자지배 문서 '복사 시 깨짐' 오탐 배지 차단). ★적대적 리뷰가 exact-match {pdf,hwp} 는 HWPX
+  누락 → PUA 손상 HWPX 참-양성 회귀를 잡아 **hwpx 추가**(hwpx 파서가 PUA 를 sanitize 안 함 = 실측
+  확인, hml/hwt 는 게이트 미도달). docx/xlsx/txt 등은 판정 생략(항상 false).
+- **#3 뷰어 focus-trap** — `PreviewPanel.tsx` 크게보기 팝업(role=dialog) 초기포커스 + Tab트랩 + 복원.
+  ★적대적 리뷰 확정결함 3건 전부 수정: (a **HIGH**) FOCUSABLE 이 `:disabled` 미제외 → 1페이지 문서의
+  disabled '이전'버튼에 초기포커스 no-op → 트랩 100% 무력화 ⇒ `:not([disabled])`+getClientRects 필터.
+  (b **MED**) deps `[viewerOpen]` 인데 dialog 는 `viewerOpen&&layoutSvg` 조건부 → `/` 재검색 remount 시
+  미재설치 ⇒ deps 에 `layoutSvg` 추가. (c **MED**) 전역 Ctrl+F 가 dialog 가드 없음 → 뷰어 위 Ctrl+F 가
+  오버레이 뒤 안 보이는 찾기바로 포커스 탈출 ⇒ `[role='dialog']` 가드. 리스너를 dialog→**document** 로
+  옮기고 밖 포커스 recovery 분기 추가(ui/Modal 규약). 수정본 재검증 clean.
+
+### #1 pdfium 페이지당 재로드 — ★보류 (이번 세션 판단)
+`pdf.rs:519` `rasterize_page` 가 fallback 페이지마다 `load_pdf_from_file`(문서 전체 재파싱). 효율 이슈지만
+**깔끔한 단일로드가 safe Rust 에서 non-trivial**: `PdfDocument` 가 `Pdfium` 을 빌림(self-referential) →
+(a) eager bind = 지연성 회귀, (b) 2-pass 재구조 = `MAX_OCR_PAGES` 예산·페이지 순서 의미 변경 위험. 드문
+fallback(미지원 코덱 스캔본, ≤20p)라 위험 대비 이득 낮음 + 앱 헤드리스 검증 불가 ⇒ 이월. 착수 시:
+pass1(임베디드추출 + raster 필요 목록·예산 수집) → pass2(문서 1회 로드 후 페이지 인덱스로 렌더).
+
+### 잔여(이월) — PLAUSIBLE + 백로그
+pdf.rs:514 `u16` 페이지절단(극단), model_downloader.rs:375 pdfium 비원자 쓰기, settings.rs:813 다운로드
+실패 무신호, SearchTab.tsx:324 취소가드, 레이아웃 토글 다운로드 UX 피드백. + E Phase2/3, 앱 시각검증,
+발행(D). (아래 §0.0 백로그 3건 중 #2·#3 = 해소, #1 = 보류 상기.)
+
+---
+
 ## 0.0 검증 세션 완료 (2026-07-04 #2, ultracode) — ahead 17
 
 직전 구현물의 **런타임/실측 검증 + 프로덕션 리뷰**(코드리뷰가 안 본 축). 커밋 `7c2414c`.
@@ -30,10 +69,10 @@
 - 표: 현행 유지(Table kind 는 드롭 안 함 → 본문 인라인 유지, 검색 OK).
 
 ### 프로덕션 리뷰 이월 백로그 (다음 세션 처리)
-CONFIRMED(미적용):
-- **pdf.rs:513** — pdfium fallback 이 페이지마다 `load_pdf_from_file`로 PDF 전체 재로드(≤20회, dlopen 만 문서당 1회). 효율. 문서 1회 로드 후 페이지 인덱스 렌더로 리팩터(lifetime 주의).
-- **pipeline.rs:778 / pdf.rs:799** — `looks_like_garbage_text` 가 전 파일타입 확대 적용돼 중/일(한자 지배) 문서에 "복사 시 깨짐" 오탐 배지. ★순진한 수정(한자를 readable 카운트) 금지 — 원 설계가 "한국어 CID깨짐=랜덤한자"라 일부러 제외. **올바른 수정 = garbled 저장을 pdf/hwp 파일타입으로 게이팅**.
-- **PreviewPanel.tsx:1408** — '크게 보기' 팝업(role=dialog) 포커스 트랩·초기 포커스 없음(a11y). 마운트 시 focus + Tab 트랩.
+CONFIRMED (2026-07-04 #3 에서 #2·#3 ✅해소, #1 ⏸️보류 — §0.-1 참조):
+- ⏸️ **pdf.rs:513** — pdfium fallback 이 페이지마다 `load_pdf_from_file`로 PDF 전체 재로드(≤20회, dlopen 만 문서당 1회). 효율. 문서 1회 로드 후 페이지 인덱스 렌더로 리팩터(lifetime 주의). → **보류**(self-referential borrow, 2-pass 위험).
+- ✅ **pipeline.rs:778 / pdf.rs:799** — `looks_like_garbage_text` 가 전 파일타입 확대 적용돼 중/일(한자 지배) 문서에 "복사 시 깨짐" 오탐 배지. ★순진한 수정(한자를 readable 카운트) 금지 — 원 설계가 "한국어 CID깨짐=랜덤한자"라 일부러 제외. **올바른 수정 = garbled 저장을 pdf/hwp 파일타입으로 게이팅**. → **해소**(pdf/hwp/**hwpx** 게이팅, 적대적 리뷰가 hwpx 누락 회귀 잡음).
+- ✅ **PreviewPanel.tsx:1408** — '크게 보기' 팝업(role=dialog) 포커스 트랩·초기 포커스 없음(a11y). 마운트 시 focus + Tab 트랩. → **해소**(초기포커스+Tab트랩+복원, disabled 필터·document 바인딩·Ctrl+F 가드까지 적대적 리뷰 3건 반영).
 
 PLAUSIBLE(경미, 판단):
 - pdf.rs:514 `page_index as u16` 64K+ 페이지 절단(극단), model_downloader.rs:375 pdfium 비원자 쓰기+추출후 미검증(디스크풀 시), settings.rs:813 layout/pdfium 다운로드 실패 무신호(주석 "호출부 warn" 계약 위반), SearchTab.tsx:324 checkOcrCandidates 취소가드 없음.
