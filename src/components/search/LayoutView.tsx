@@ -1,5 +1,6 @@
 import { memo, useRef, useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, ArrowUp, ArrowDown } from "lucide-react";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface LayoutViewProps {
   /** kordoc render 가 만든 전체 페이지 세로 스택 SVG (신뢰된 소스) */
@@ -29,6 +30,7 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
   const [pageCount, setPageCount] = useState(1);
   const [matchIdx, setMatchIdx] = useState(0);
   const [matchCount, setMatchCount] = useState(0);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null); // 이미지 확대 오버레이
 
   // 페이지 수 (data-page 그룹)
   useEffect(() => {
@@ -74,11 +76,21 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
   // 드래그 팬 (줌 상태에서 종이 끌어 이동)
   const panRef = useRef<{ x: number; y: number; l: number; t: number } | null>(null);
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // 텍스트 선택과 충돌 방지 — 빈 영역(SVG 배경)에서만 팬
-    if ((e.target as Element).tagName === "text") return;
+    // 텍스트 선택·이미지 클릭과 충돌 방지 — 빈 영역(SVG 배경)에서만 팬
+    const tag = (e.target as Element).tagName?.toLowerCase();
+    if (tag === "text" || tag === "image") return;
     const sc = scrollRef.current;
     if (!sc) return;
     panRef.current = { x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop };
+  }, []);
+
+  // 이미지 클릭 → 라이트박스 (SVG <image> 의 href/xlink:href 추출해 확대 오버레이)
+  const onImageClick = useCallback((e: React.MouseEvent) => {
+    const el = e.target as Element;
+    const image = el.tagName?.toLowerCase() === "image" ? el : el.closest?.("image");
+    if (!image) return;
+    const href = image.getAttribute("href") || image.getAttribute("xlink:href");
+    if (href) setLightboxSrc(href);
   }, []);
   const onMouseMove = useCallback((e: React.MouseEvent) => {
     const p = panRef.current, sc = scrollRef.current;
@@ -124,6 +136,7 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
         .layout-svg-host svg { width: 100%; height: auto; display: block; }
         .layout-svg-host text[data-find] { fill: #b45309; }
         .layout-svg-host text[data-find="active"] { fill: #dc2626; font-weight: 700; }
+        .layout-svg-host image { cursor: zoom-in; }
       `}</style>
 
       {/* 툴바 — 페이지 네비 · 줌 · 매치 이동 (에디토리얼 미니멀, hairline) */}
@@ -178,6 +191,7 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
         onMouseMove={onMouseMove}
         onMouseUp={endPan}
         onMouseLeave={endPan}
+        onClick={onImageClick}
         className="flex-1 overflow-auto px-4 py-3"
         style={{ backgroundColor: "var(--color-bg-tertiary)" }}
       >
@@ -188,6 +202,9 @@ export const LayoutView = memo(function LayoutView({ svg, findTerm }: LayoutView
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       </div>
+
+      {/* 이미지 확대 라이트박스 — SVG <image> 클릭 시 */}
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   );
 });
