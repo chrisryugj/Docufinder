@@ -461,11 +461,14 @@ pub async fn count_ocr_reindex_candidates(
         |row| row.get(0),
     )?;
 
-    // 후보 파일을 하나라도 담은 감시 폴더(경로 접두 매칭).
+    // 후보 파일을 하나라도 담은 감시 폴더. 경로 접두는 substr 정확 매칭 — LIKE 와 달리
+    // w.path 안의 `_`/`%` 메타문자에 오매칭되지 않고, `/`(unix)·`\`(win, char(92)) 두
+    // 구분자를 모두 처리한다(파일 경로는 플랫폼별 구분자로 원문 저장됨).
     let folder_clause = vec!["f.path LIKE ?"; patterns.len()].join(" OR ");
     let sql = format!(
         "SELECT DISTINCT w.path FROM watched_folders w \
-         JOIN files f ON f.path LIKE w.path || '/%' \
+         JOIN files f ON (substr(f.path, 1, length(w.path) + 1) = w.path || '/' \
+                       OR substr(f.path, 1, length(w.path) + 1) = w.path || char(92)) \
          WHERE {folder_clause}"
     );
     let mut stmt = conn.prepare(&sql)?;
