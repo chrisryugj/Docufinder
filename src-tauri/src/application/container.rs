@@ -451,7 +451,7 @@ impl AppContainer {
         self.ocr_engine
             .get_or_try_init(|| {
                 let ocr_dir = self.models_dir.join("paddleocr");
-                OcrEngine::new(&ocr_dir)
+                OcrEngine::new(&ocr_dir, self.get_settings().ocr_layout_enabled)
                     .map(Arc::new)
                     .map_err(|e| ApiError::IndexingFailed(format!("OCR 엔진 초기화 실패: {}", e)))
             })
