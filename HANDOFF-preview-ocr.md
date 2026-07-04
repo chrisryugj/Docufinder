@@ -6,7 +6,7 @@
 
 ---
 
-## 0.-1 실행 세션 완료 (2026-07-04 #3, ultracode) — ✅v3.0.11 발행(태그 푸시, CI 빌드)
+## 0.-1 실행 세션 완료 (2026-07-04 #3~4, ultracode) — v3.1.0 재버전(★미배포·fable5 리뷰 대기)
 
 §0.0 ★제품결정 + 프로덕션 리뷰 이월 백로그 2건(#2·#3) 구현·검증. 적대적 워크플로우(9 리뷰 에이전트
 → 검증 6, 확정 5·기각 1) + 수정본 재검증(2 에이전트, 전부 sound) 통과. 게이트: cargo fmt/clippy
@@ -31,17 +31,26 @@
   오버레이 뒤 안 보이는 찾기바로 포커스 탈출 ⇒ `[role='dialog']` 가드. 리스너를 dialog→**document** 로
   옮기고 밖 포커스 recovery 분기 추가(ui/Modal 규약). 수정본 재검증 clean.
 
-### #1 pdfium 페이지당 재로드 — ★보류 (이번 세션 판단)
-`pdf.rs:519` `rasterize_page` 가 fallback 페이지마다 `load_pdf_from_file`(문서 전체 재파싱). 효율 이슈지만
-**깔끔한 단일로드가 safe Rust 에서 non-trivial**: `PdfDocument` 가 `Pdfium` 을 빌림(self-referential) →
-(a) eager bind = 지연성 회귀, (b) 2-pass 재구조 = `MAX_OCR_PAGES` 예산·페이지 순서 의미 변경 위험. 드문
-fallback(미지원 코덱 스캔본, ≤20p)라 위험 대비 이득 낮음 + 앱 헤드리스 검증 불가 ⇒ 이월. 착수 시:
-pass1(임베디드추출 + raster 필요 목록·예산 수집) → pass2(문서 1회 로드 후 페이지 인덱스로 렌더).
+### 프로덕션 리뷰 이월 백로그 — ✅전부 해소 (2026-07-04 #4, 배포 직전 사용자 지시로 일괄 처리)
+적대적 검증(2 에이전트)이 잡은 저severity 2건까지 수정 후 clean:
+- **#1 pdfium 페이지당 재로드** — `pdf.rs` `ocr_scanned_pages` 를 **2-pass** 로 재구성(pass1 임베디드추출
+  OCR + raster 필요 큐잉, pass2 pdfium 문서 **1회 로드** 후 페이지 인덱스 렌더). 예산(`MAX_OCR_PAGES`)·
+  페이지 순서 의미 보존 검증됨. `rasterize_doc_page`(`&PdfDocument`, `u16::try_from` 페이지 절단 가드),
+  로드는 `catch_unwind` 방어(부분성공→전체실패 회귀 차단). log-once 정리.
+- **model_downloader.rs** pdfium dylib **원자적 쓰기**(임시 `.part` → rename, 부분 파일 로드 방지).
+- **settings.rs** pdfium·레이아웃 다운로드 실패 **warn** + 레이아웃 모델 **다운로드 토스트**
+  (`downloading/completed/failed-layout` 이벤트 → `useAppEvents.ts` 핸들러).
+- **SearchTab.tsx** OCR 후보조회 **레이스 가드**(seq ref, ON→OFF·OFF→ON 양방향).
+- 게이트 전부 green(fmt/clippy/test 241·tsc·vite).
 
-### 잔여(이월) — PLAUSIBLE + 백로그
-pdf.rs:514 `u16` 페이지절단(극단), model_downloader.rs:375 pdfium 비원자 쓰기, settings.rs:813 다운로드
-실패 무신호, SearchTab.tsx:324 취소가드, 레이아웃 토글 다운로드 UX 피드백. + E Phase2/3, 앱 시각검증,
-발행(D). (아래 §0.0 백로그 3건 중 #2·#3 = 해소, #1 = 보류 상기.)
+### ★배포 보류 → fable5 리뷰 대기 (다음 세션)
+버전 **3.1.0**(minor bump). 3.0.11 태그는 생성 후 **취소·삭제**(§A). **배포 안 함** — 사용자가 다음
+세션에서 **fable5 로 어제·오늘 anything+kordoc 개선분을 리뷰**시킬 예정. 리뷰 브리프:
+`~/workspace/REVIEW-fable5-anything-kordoc.md`. 리뷰 후 사용자 지시로 배포.
+
+### 잔여(이월, 배포와 무관)
+E Phase2/3(표구조 SLANet·미리보기 region 오버레이), **앱 시각검증**(헤드리스 불가 — 사람 실측),
+레포 rename(`docufinder`→`Docufinder`) remote URL 정리, kordoc 릴리스(별개).
 
 ---
 
@@ -69,8 +78,8 @@ pdf.rs:514 `u16` 페이지절단(극단), model_downloader.rs:375 pdfium 비원�
 - 표: 현행 유지(Table kind 는 드롭 안 함 → 본문 인라인 유지, 검색 OK).
 
 ### 프로덕션 리뷰 이월 백로그 (다음 세션 처리)
-CONFIRMED (2026-07-04 #3 에서 #2·#3 ✅해소, #1 ⏸️보류 — §0.-1 참조):
-- ⏸️ **pdf.rs:513** — pdfium fallback 이 페이지마다 `load_pdf_from_file`로 PDF 전체 재로드(≤20회, dlopen 만 문서당 1회). 효율. 문서 1회 로드 후 페이지 인덱스 렌더로 리팩터(lifetime 주의). → **보류**(self-referential borrow, 2-pass 위험).
+CONFIRMED (2026-07-04 #3~4 에서 **전부 ✅해소** — §0.-1 참조):
+- ✅ **pdf.rs:513** — pdfium fallback 이 페이지마다 `load_pdf_from_file`로 PDF 전체 재로드(≤20회, dlopen 만 문서당 1회). 효율. → **해소**(#4 에서 2-pass 재구조로 문서 1회 로드, 예산·순서 보존 검증, catch_unwind 방어).
 - ✅ **pipeline.rs:778 / pdf.rs:799** — `looks_like_garbage_text` 가 전 파일타입 확대 적용돼 중/일(한자 지배) 문서에 "복사 시 깨짐" 오탐 배지. ★순진한 수정(한자를 readable 카운트) 금지 — 원 설계가 "한국어 CID깨짐=랜덤한자"라 일부러 제외. **올바른 수정 = garbled 저장을 pdf/hwp 파일타입으로 게이팅**. → **해소**(pdf/hwp/**hwpx** 게이팅, 적대적 리뷰가 hwpx 누락 회귀 잡음).
 - ✅ **PreviewPanel.tsx:1408** — '크게 보기' 팝업(role=dialog) 포커스 트랩·초기 포커스 없음(a11y). 마운트 시 focus + Tab 트랩. → **해소**(초기포커스+Tab트랩+복원, disabled 필터·document 바인딩·Ctrl+F 가드까지 적대적 리뷰 3건 반영).
 
@@ -119,11 +128,18 @@ docufinder: native PNG 썸네일, AI Q&A용 VLM 타깃 렌더(1568px), rhwp core
 
 ## 1. 남은 열린 항목 (우선순위)
 
-### A. 발행 ✅완료 (2026-07-04 #3) — docufinder v3.0.11
-- **v3.0.11 발행 완료**: 버전 bump 4곳(package.json·tauri.conf.json·Cargo.toml·**Cargo.lock**) +
-  CHANGELOG [3.0.11] + 문서 현행화(README·CLAUDE.md) 커밋(`7b9035c`), main push, `./scripts/release.sh
-  3.0.11` 로 로컬 CI 통과 후 태그 `v3.0.11` 푸시 → GitHub Actions **Publish Release** 빌드 트리거됨.
-  (미릴리스 22커밋 전부 발행. 아티팩트 빌드는 CI에서 진행 — Actions 페이지 확인.)
+### A. 발행 — ★보류(리뷰 대기). v3.1.0 재버전, 미배포
+- **경위**: v3.0.11 로 버전 bump+CHANGELOG+문서 커밋(`7b9035c`) push, `release.sh 3.0.11` 로 태그
+  `v3.0.11` 푸시·CI 트리거까지 갔으나, 사용자가 **버전을 3.1.0(minor)로 재지정 + 배포 보류** 지시.
+  → CI run **취소**, 태그 `v3.0.11` **로컬·원격 삭제**(GitHub 릴리스는 생성 전이라 없음). 이후 버전
+  파일 4곳·CHANGELOG 헤더를 **3.1.0** 로 재bump하고 프로덕션 리뷰 백로그까지 반영(§0.-1).
+- **현재**: 3.1.0 로컬 커밋 완료, **미푸시·미태그·미배포**. 다음 세션 fable5 리뷰 후 사용자 지시로 발행.
+  발행 절차: 버전 3곳+lock 확인 → main push → `./scripts/release.sh 3.1.0`(clean·origin동기·pkg=버전 요구).
+- ⚠️ 히스토리 주의: origin 에 이미 push된 `7b9035c`("chore(release): v3.0.11")·`2373367`("v3.0.11 발행
+  완료")는 메시지가 낡음(3.1.0·미배포로 바뀜). force-push 안 함 — 그대로 두고 forward-fix.
+- ⚠️ 레포가 GitHub 에서 `docufinder`→`Docufinder`(대문자)로 rename됨. remote URL 은 아직 소문자라
+  push 시 "repository moved" 경고(리다이렉트로 정상 동작). 정리하려면 `git remote set-url origin
+  git@github.com:chrisryugj/Docufinder.git`.
 - ⚠️ 레포가 GitHub 에서 `docufinder`→`Docufinder`(대문자)로 rename됨. remote URL 은 아직 소문자라
   push 시 "repository moved" 경고(리다이렉트로 정상 동작). 정리하려면 `git remote set-url origin
   git@github.com:chrisryugj/Docufinder.git`.
