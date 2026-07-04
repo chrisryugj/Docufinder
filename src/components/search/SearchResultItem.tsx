@@ -1,7 +1,7 @@
 import { useCallback, useMemo, memo, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
-import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search } from "lucide-react";
+import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search, AlertTriangle } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext, formatPathSegments, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
@@ -244,6 +244,15 @@ export const SearchResultItem = memo(function SearchResultItem({
               >
                 {relativeTime}
               </span>
+            </Tooltip>
+          )}
+
+          {/* 복사 시 글자 깨짐 경고 — CID/PUA 매핑 손상 문서 */}
+          {result.garbled && (
+            <Tooltip content="복사 시 글자가 깨질 수 있는 문서" position="bottom" delay={200}>
+              <Badge variant="warning" aria-label="복사 시 글자가 깨질 수 있는 문서">
+                <AlertTriangle className="w-3 h-3" />
+              </Badge>
             </Tooltip>
           )}
 

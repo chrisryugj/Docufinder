@@ -30,6 +30,8 @@ export interface SearchResult {
   version_label?: string;
   /** 같은 lineage에 속한 전체 파일 수 (자기 자신 포함). 2 이상이면 UI 뱃지 표시 */
   version_count?: number;
+  /** 복사 시 글자가 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트)로 감지됨 */
+  garbled?: boolean;
 }
 
 /** Lineage 버전 항목 (펼치기용) */

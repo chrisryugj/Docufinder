@@ -147,12 +147,14 @@ impl SearchService {
                     lineage_role: None,
                     version_label: None,
                     version_count: 0,
+                    garbled: false,
                 }
             })
             .collect();
 
         enrich_total_chunks(conn, &mut results);
         enrich_lineage_info(conn, &mut results);
+        enrich_garbled(conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
@@ -224,6 +226,7 @@ impl SearchService {
                         lineage_role: None,
                         version_label: None,
                         version_count: 0,
+                        garbled: false,
                     }
                 })
                 .collect()
@@ -259,6 +262,7 @@ impl SearchService {
                     lineage_role: None,
                     version_label: None,
                     version_count: 0,
+                    garbled: false,
                 })
                 .collect()
         };
@@ -267,6 +271,7 @@ impl SearchService {
         if let Ok(conn) = self.get_connection() {
             enrich_total_chunks(&conn, &mut results);
             enrich_lineage_info(&conn, &mut results);
+            enrich_garbled(&conn, &mut results);
         }
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;

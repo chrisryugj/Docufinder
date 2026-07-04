@@ -106,6 +106,57 @@ pub const DEFAULT_MAX_FILE_SIZE_MB: u64 = 200;
 pub const MAX_FILE_SIZE_LIMIT_MB: u64 = 500;
 
 // ============================================
+// pdfium 동적 라이브러리 다운로드 (스캔/이미지 PDF 페이지 래스터화 fallback)
+// ============================================
+
+/// bblanchon/pdfium-binaries 릴리스의 플랫폼별 pdfium 동적 라이브러리 아카이브 URL.
+/// 각 asset 은 `.tgz`(gzip+tar) 로, 내부에 `lib/libpdfium.dylib` · `bin/pdfium.dll` ·
+/// `lib/libpdfium.so` 를 담고 있다. `model_downloader::ensure_pdfium` 이 이 URL 을 받아
+/// 압축을 풀고 dylib 만 `models/pdfium/` 로 추출한다. SHA-256 이 빈 문자열이면 검증을 스킵한다.
+///
+/// ⚠️ mac-arm64 경로만 실제 다운로드·추출·OCR 까지 검증됨(2026-07). mac-x64/win-x64/linux-x64 는
+///    URL·SHA-256 을 채워두었으나 각 플랫폼에서의 실행 검증은 미완료.
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-mac-arm64.tgz";
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const PDFIUM_DOWNLOAD_SHA256: &str =
+    "c032aa59be58b0f12e41e76a8ef707e347b9841b0426446f646b2568d350ec4f";
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-mac-x64.tgz";
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_SHA256: &str =
+    "0c78b8d55a4c97e02c9bb516997253cb972739373009cf29554c959a2f6b194a";
+
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-win-x64.tgz";
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_SHA256: &str =
+    "bf25149815b34b00042f48a886653d469c817529dd9cccabb4b509b6465a9526";
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-linux-x64.tgz";
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub const PDFIUM_DOWNLOAD_SHA256: &str =
+    "49ab3afbd4e6c1e284b5f2898129c8bb8a10fd785c1c5392c8c1fc70242f9ced";
+
+/// 위 조합에 없는 플랫폼(예: linux-arm64) — 빈 URL 이면 `ensure_pdfium` 이 다운로드를 조용히 스킵.
+#[cfg(not(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "windows", target_arch = "x86_64"),
+    all(target_os = "linux", target_arch = "x86_64"),
+)))]
+pub const PDFIUM_DOWNLOAD_URL: &str = "";
+#[cfg(not(any(
+    all(target_os = "macos", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "windows", target_arch = "x86_64"),
+    all(target_os = "linux", target_arch = "x86_64"),
+)))]
+pub const PDFIUM_DOWNLOAD_SHA256: &str = "";
+
+// ============================================
 // 보안 관련 상수
 // ============================================
 

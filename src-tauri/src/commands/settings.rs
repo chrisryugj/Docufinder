@@ -721,6 +721,22 @@ pub async fn update_settings(
                 }
             });
         }
+
+        // pdfium 도 함께 준비 — 런타임 OCR 토글에서도 스캔/이미지 PDF 래스터화가
+        // 즉시 동작하도록. (기존엔 앱 시작 setup 에서만 받아, 런타임에 켜면 재시작
+        // 전까지 스캔 PDF 인식이 안 됐다.) best-effort — 실패해도 기존 경로는 무손상.
+        let pdfium_models_dir = app_data_dir.join("models");
+        let pdfium_lib = pdfium_models_dir
+            .join("pdfium")
+            .join(model_downloader::pdfium_lib_filename());
+        if !pdfium_lib.exists() {
+            tauri::async_runtime::spawn(async move {
+                let _ = tokio::task::spawn_blocking(move || {
+                    model_downloader::ensure_pdfium(&pdfium_models_dir)
+                })
+                .await;
+            });
+        }
     }
 
     Ok(())

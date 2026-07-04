@@ -6,7 +6,7 @@ use super::pool::get_connection;
 // ==================== 스키마 마이그레이션 ====================
 
 /// 현재 스키마 버전
-const CURRENT_SCHEMA_VERSION: i32 = 17;
+const CURRENT_SCHEMA_VERSION: i32 = 18;
 
 /// 스키마 버전 조회
 fn get_schema_version(conn: &Connection) -> i32 {
@@ -444,6 +444,21 @@ pub fn migrate_schema(conn: &Connection, db_path: &Path) -> Result<()> {
         )?;
         set_schema_version(conn, 17)?;
         tracing::info!("Schema migrated to v17 (last_opened_at/size partial indexes)");
+    }
+
+    // === v18: files.garbled — 복사 시 깨지는 문서(CID/PUA 매핑 손상) 표식 ===
+    // 화면엔 정상이지만 복사하면 글자가 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA
+    // 커스텀폰트)를 인덱싱 시점에 looks_like_garbage_text 로 판정해 저장한다.
+    // 검색 결과·미리보기의 경고 배지에 사용.
+    if get_schema_version(conn) == 17 {
+        if let Err(e) = conn.execute(
+            "ALTER TABLE files ADD COLUMN garbled INTEGER NOT NULL DEFAULT 0",
+            [],
+        ) {
+            tracing::trace!("Migration v18: garbled already exists: {}", e);
+        }
+        set_schema_version(conn, 18)?;
+        tracing::info!("Schema migrated to v18 (files.garbled)");
     }
 
     tracing::info!(

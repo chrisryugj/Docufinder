@@ -764,6 +764,20 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
         .map_err(|e| IndexError::DbError(e.to_string()))?;
 
     let chunks_count = document.chunks.len();
+
+    // 복사 시 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트) 판정 —
+    // 청크 본문을 이어붙여 looks_like_garbage_text 로 검사한다. chunks 를 소비하기
+    // 전에 계산해야 하므로 into_iter() 루프 앞에서 수행.
+    let garbled_flag = {
+        let joined: String = document
+            .chunks
+            .iter()
+            .map(|c| c.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        crate::parsers::pdf::looks_like_garbage_text(&joined)
+    };
+
     let mut tokenize_panics: usize = 0;
     let mut precomputed_tokens = precomputed_tokens;
 
@@ -817,6 +831,12 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
             chunks_count,
             path_str
         );
+    }
+
+    // 복사 시 깨짐 표식 저장 — 검색 결과/미리보기 배지용. 실패해도 인덱싱 자체는
+    // 성공으로 두어야 하므로(배지는 부가 정보) lineage assign 과 동일하게 warn 후 진행.
+    if let Err(e) = db::set_file_garbled(conn, file_id, garbled_flag) {
+        tracing::warn!("set_file_garbled failed for {}: {}", path_str, e);
     }
 
     tracing::debug!("[FTS] Indexed: {} ({} chunks)", path_str, chunks_count);

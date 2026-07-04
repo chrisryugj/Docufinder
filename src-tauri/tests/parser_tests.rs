@@ -205,6 +205,71 @@ mod xlsx_tests {
     }
 }
 
+// 스캔/이미지 기반 PDF 래스터화 + OCR 테스트 (pdfium fallback)
+mod scanned_pdf_ocr_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// 합성 이미지 기반 PDF(CCITTFax 인코딩 → 임베디드 이미지 추출 불가)를 pdfium 으로
+    /// 페이지 통째 래스터화한 뒤 PaddleOCR 로 한국어를 복원하는지 검증한다.
+    ///
+    /// 아래 조건을 모두 만족할 때만 실행하고, 하나라도 없으면 skip 한다(CI 는 동적 라이브러리
+    /// 부재로 자동 skip — 회귀 게이트를 깨지 않음):
+    ///   - PDFIUM_DYLIB_PATH: libpdfium 동적 라이브러리 경로(존재하는 파일)
+    ///   - ORT_DYLIB_PATH: onnxruntime 동적 라이브러리 경로(ort load-dynamic)
+    ///   - tests/fixtures/scanned_korean.pdf (합성 픽스처)
+    ///   - resources/paddleocr/{det.onnx,rec.onnx,dict.txt}
+    #[test]
+    fn test_scanned_pdf_rasterize_ocr() {
+        let fixture = Path::new("tests/fixtures/scanned_korean.pdf");
+        let ocr_dir = Path::new("resources/paddleocr");
+
+        let env_dylib_ok = |key: &str| {
+            std::env::var_os(key)
+                .map(|p| PathBuf::from(p).exists())
+                .unwrap_or(false)
+        };
+        let pdfium_ok = env_dylib_ok("PDFIUM_DYLIB_PATH");
+        let ort_ok = env_dylib_ok("ORT_DYLIB_PATH");
+        let models_ok = ocr_dir.join("det.onnx").exists()
+            && ocr_dir.join("rec.onnx").exists()
+            && ocr_dir.join("dict.txt").exists();
+
+        if !fixture.exists() || !pdfium_ok || !ort_ok || !models_ok {
+            eprintln!(
+                "Skipping scanned-PDF OCR test (fixture={}, pdfium={}, ort={}, models={})",
+                fixture.exists(),
+                pdfium_ok,
+                ort_ok,
+                models_ok
+            );
+            return;
+        }
+
+        let ocr = docufinder_lib::ocr::OcrEngine::new(ocr_dir).expect("OCR engine init failed");
+
+        let doc = docufinder_lib::parsers::pdf::parse(fixture, Some(&ocr))
+            .expect("scanned PDF parse failed");
+
+        eprintln!(
+            "--- Recovered OCR text ---\n{}\n--------------------------",
+            doc.content
+        );
+
+        assert!(
+            !doc.content.trim().is_empty(),
+            "OCR recovered no text from the scanned image PDF"
+        );
+        // 픽스처에 렌더한 한국어 토큰 중 하나 이상이 복원돼야 함 (OCR 오차 허용)
+        let expected = ["문서", "검색", "스캔", "한글", "인식", "복원"];
+        assert!(
+            expected.iter().any(|w| doc.content.contains(w)),
+            "OCR output contained no expected Korean token: {:?}",
+            doc.content
+        );
+    }
+}
+
 // 청킹 로직 테스트
 mod chunking_tests {
     #[test]

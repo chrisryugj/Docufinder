@@ -1,16 +1,19 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, MoreHorizontal, Tag } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, MoreHorizontal, Tag, AlertTriangle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import "katex/dist/katex.min.css";
 import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
 import { LayoutView } from "./LayoutView";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
+import { Tooltip } from "../ui/Tooltip";
 import { TagInput } from "../ui/TagInput";
 import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
@@ -24,6 +27,8 @@ interface MarkdownPreviewResponse {
   file_path: string;
   file_name: string;
   markdown: string;
+  /** 복사 시 글자가 깨지는 문서(CID/PUA 매핑 손상)로 감지됨 */
+  garbled: boolean;
 }
 
 /** 인용 점프 타깃 — AI 답변 [출처N] 클릭 시 부모가 내려보냄.
@@ -193,54 +198,29 @@ function findJumpTarget(
   return null;
 }
 
-// ─── HTML 태그 전처리 (kordoc이 HTML 표를 반환하는 경우 대응) ──
-
-/** HTML 표를 마크다운 테이블로 변환, 기타 HTML 태그 제거 */
-function stripHtmlForMarkdown(md: string): string {
-  // HTML <table>을 마크다운 테이블로 변환
-  const result = md.replace(/<table[^>]*>[\s\S]*?<\/table>/gi, (table) => {
-    const rows: string[][] = [];
-    // 각 행 추출
-    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-    let trMatch;
-    while ((trMatch = trRegex.exec(table)) !== null) {
-      const cells: string[] = [];
-      const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(trMatch[1])) !== null) {
-        // 셀 내부 HTML 태그 제거 + 트림
-        cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
-      }
-      if (cells.length > 0) rows.push(cells);
-    }
-    if (rows.length === 0) return "";
-
-    // 최대 열 수에 맞춰 정규화
-    const maxCols = Math.max(...rows.map((r) => r.length));
-    const normalized = rows.map((r) => {
-      while (r.length < maxCols) r.push("");
-      return r;
-    });
-
-    // 마크다운 테이블 생성
-    const header = `| ${normalized[0].join(" | ")} |`;
-    const separator = `| ${normalized[0].map(() => "---").join(" | ")} |`;
-    const body = normalized.slice(1).map((r) => `| ${r.join(" | ")} |`).join("\n");
-    return `\n${header}\n${separator}\n${body}\n`;
-  });
-
-  // 나머지 <br> + 변환되지 못한 잔여 표 태그 정리.
-  // 셀 안에 중첩 <table>이 있으면 위 정규식이 바깥 표의 닫는 부분을 놓쳐
-  // </td></tr>…</table> 가 본문에 그대로 노출된다(정규식은 중첩을 셀 수 없음).
-  // ReactMarkdown은 rehype-raw 없이 이를 텍스트로 흘려보내므로 후처리로 방어한다.
-  return result
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<img[^>]*>/gi, "")
-    .replace(/<\/(?:td|th)>\s*/gi, " ")
-    .replace(/<\/(?:tr|table)>\s*/gi, "\n")
-    .replace(/<(?:table|thead|tbody|tfoot|tr|td|th|col|colgroup)[^>]*>/gi, "")
-    .replace(/<\/(?:thead|tbody|tfoot|colgroup)>/gi, "");
-}
+// ─── 미리보기 HTML 살균 스키마 (kordoc HTML 표 네이티브 렌더용) ──
+//
+// kordoc은 병합·중첩 표를 <table><td colspan rowspan> HTML로 방출한다(단순 표는 GFM).
+// 과거엔 이 HTML을 정규식으로 GFM 파이프표에 눌러 담았으나, GFM은 colspan/rowspan·중첩표를
+// 표현하지 못하고 non-greedy 정규식이 중첩표에서 바깥 표 닫힘을 놓쳐 결재문서(실측 194건 중
+// 43%가 중첩표)의 도장란·문서번호표가 뭉개졌다. 이제 rehype-raw로 HTML 표를 그대로 렌더해
+// 브라우저가 병합·중첩을 네이티브 처리하게 하고(rhwp HTML 백엔드·kordoc renderHtml과 동일 접근),
+// rehype-sanitize로 XSS를 차단한다. 표 구조 태그 + 병합 속성 + KaTeX placeholder 통과용
+// className만 기본 스키마에 추가 허용한다. (sanitize는 katex 앞에 두어 수식 출력은 통과.)
+const PREVIEW_SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames ?? []),
+    "table", "thead", "tbody", "tfoot", "tr", "td", "th", "col", "colgroup", "br",
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    td: [...(defaultSchema.attributes?.td ?? []), "colSpan", "rowSpan", "colspan", "rowspan", "align"],
+    th: [...(defaultSchema.attributes?.th ?? []), "colSpan", "rowSpan", "colspan", "rowspan", "align", "scope"],
+    col: ["span", "width"],
+    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
+  },
+};
 
 // ─── 마크다운 커스텀 컴포넌트 ──────────────────────────
 
@@ -322,8 +302,9 @@ function createMarkdownComponents(
       </div>
     ),
     thead: ({ children }) => <thead className="doc-thead">{children}</thead>,
-    th: ({ children }) => <th className="doc-th"><TextWrapper>{children}</TextWrapper></th>,
-    td: ({ children }) => <td className="doc-td"><TextWrapper>{children}</TextWrapper></td>,
+    // node 제외 후 나머지(colSpan/rowSpan/align 등 병합 속성) 전달 — HTML 표 병합셀 보존
+    th: ({ children, node: _node, ...rest }) => <th className="doc-th" {...rest}><TextWrapper>{children}</TextWrapper></th>,
+    td: ({ children, node: _node, ...rest }) => <td className="doc-td" {...rest}><TextWrapper>{children}</TextWrapper></td>,
     // 링크: 외부 브라우저로 열기
     a: ({ href, children }) => (
       <button
@@ -589,6 +570,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   onRemoveTag,
 }: PreviewPanelProps) {
   const [markdown, setMarkdown] = useState<string | null>(null);
+  // 복사 시 글자 깨짐 표식 — 최종 반환 markdown 기준 판정값 (백엔드 계산)
+  const [garbled, setGarbled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -680,6 +663,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   useEffect(() => {
     if (!filePath) {
       setMarkdown(null);
+      setGarbled(false);
       return;
     }
     summaryRequestId.current++;
@@ -706,6 +690,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setGarbled(false);
 
     // 빠른 탐색 시 불필요한 파싱 방지를 위해 300ms debounce (화살표 키 고속 이동 대응)
     const timer = setTimeout(() => {
@@ -713,6 +698,7 @@ export const PreviewPanel = memo(function PreviewPanel({
         .then((res) => {
           if (!cancelled) {
             setMarkdown(res.markdown);
+            setGarbled(res.garbled ?? false);
             setLoading(false);
             contentRef.current?.scrollTo(0, 0);
           }
@@ -814,29 +800,24 @@ export const PreviewPanel = memo(function PreviewPanel({
     [searchRegex, handleOpenUrl],
   );
 
-  // 본문 전처리 캐시 — stripHtmlForMarkdown은 전문 대상 정규식 다중 패스라
-  // 렌더마다 실행하면 대형 문서에서 키 입력마다 수십~수백 ms를 태운다
-  const processedMarkdown = useMemo(
-    () => (markdown ? stripHtmlForMarkdown(markdown) : null),
-    [markdown],
-  );
-
   // 본문 파싱 캐시 — react-markdown은 memo가 아니라 부모 리렌더마다 remark/katex
   // 전체를 재파싱한다. 매치 이동·메뉴 토글 등 무관한 상태 변화에 수만 줄 문서를
   // 재파싱하지 않도록 내용과 검색어 확정값(searchRegex)이 바뀔 때만 재구성한다.
   // 찾기(Ctrl+F)는 DOM Range 하이라이트라 여기 관여하지 않는다 (T3-6).
+  // rehypePlugins 순서: raw(원시 HTML 표 파싱) → sanitize(XSS 차단) → katex(수식). katex 출력은
+  // sanitize 뒤라 그대로 통과한다. kordoc의 병합·중첩 HTML 표는 여기서 네이티브로 렌더된다.
   const previewMarkdownNode = useMemo(() => {
-    if (processedMarkdown === null) return null;
+    if (!markdown) return null;
     return (
       <ReactMarkdown
         remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, PREVIEW_SANITIZE_SCHEMA], rehypeKatex]}
         components={markdownComponents}
       >
-        {processedMarkdown}
+        {markdown}
       </ReactMarkdown>
     );
-  }, [processedMarkdown, markdownComponents]);
+  }, [markdown, markdownComponents]);
 
   // ── 찾기 바 동작 ──
 
@@ -1077,6 +1058,13 @@ export const PreviewPanel = memo(function PreviewPanel({
         <span className="flex-1 text-sm font-medium truncate text-[var(--color-text-primary)]" title={fileName}>
           {fileName}
         </span>
+        {garbled && (
+          <Tooltip content="복사 시 글자가 깨질 수 있는 문서" position="bottom" delay={200}>
+            <Badge variant="warning" aria-label="복사 시 글자가 깨질 수 있는 문서">
+              <AlertTriangle className="w-3 h-3" />
+            </Badge>
+          </Tooltip>
+        )}
         <Badge variant={getFileTypeBadgeVariant(fileName)}>
           {ext.toUpperCase()}
         </Badge>

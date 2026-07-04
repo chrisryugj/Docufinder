@@ -130,6 +130,9 @@ pub struct MarkdownPreviewResponse {
     pub file_path: String,
     pub file_name: String,
     pub markdown: String,
+    /// 복사 시 글자가 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트)로 감지됨.
+    /// 최종 반환 markdown(교체 후) 기준 판정 = "복사 시 실제로 깨지는가"와 일치.
+    pub garbled: bool,
 }
 
 /// kordoc으로 파일의 마크다운을 직접 추출 (미리보기 렌더링용)
@@ -236,19 +239,25 @@ pub async fn load_markdown_preview(
     };
 
     match result {
-        Ok(markdown) => Ok(MarkdownPreviewResponse {
-            file_path,
-            file_name,
-            markdown,
-        }),
-        Err(_) => {
-            let markdown = fetch_db_markdown(&file_path, &state)
-                .await
-                .unwrap_or_default();
+        Ok(markdown) => {
+            let garbled = crate::parsers::pdf::looks_like_garbage_text(&markdown);
             Ok(MarkdownPreviewResponse {
                 file_path,
                 file_name,
                 markdown,
+                garbled,
+            })
+        }
+        Err(_) => {
+            let markdown = fetch_db_markdown(&file_path, &state)
+                .await
+                .unwrap_or_default();
+            let garbled = crate::parsers::pdf::looks_like_garbage_text(&markdown);
+            Ok(MarkdownPreviewResponse {
+                file_path,
+                file_name,
+                markdown,
+                garbled,
             })
         }
     }

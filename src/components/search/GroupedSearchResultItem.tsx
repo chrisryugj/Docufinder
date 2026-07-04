@@ -1,8 +1,9 @@
 import { memo, useMemo } from "react";
-import { ChevronUp, ClipboardCopy, FolderOpen } from "lucide-react";
+import { ChevronUp, ClipboardCopy, FolderOpen, AlertTriangle } from "lucide-react";
 import type { GroupedSearchResult } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
+import { Tooltip } from "../ui/Tooltip";
 import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext, formatPathSegments, stripHtmlTags } from "../../utils/searchTextUtils";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
@@ -47,6 +48,8 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
   const stripeClass = getStripeClass(group.file_name);
+  // 복사 시 글자 깨짐 — 파일 단위 표식이라 어떤 청크든 하나라도 true면 표시
+  const isGarbled = group.chunks.some((c) => c.garbled);
 
   // 검색어를 키워드로 분리 (snippet 없을 때 폴백 하이라이트용)
   const fallbackKeywords = useMemo(() => {
@@ -204,6 +207,15 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             >
               {Math.round(group.top_confidence)}%
             </span>
+          )}
+
+          {/* 복사 시 글자 깨짐 경고 — CID/PUA 매핑 손상 문서 */}
+          {isGarbled && (
+            <Tooltip content="복사 시 글자가 깨질 수 있는 문서" position="bottom" delay={200}>
+              <Badge variant="warning" aria-label="복사 시 글자가 깨질 수 있는 문서">
+                <AlertTriangle className="w-3 h-3" />
+              </Badge>
+            </Tooltip>
           )}
 
           {/* 파일 타입 */}

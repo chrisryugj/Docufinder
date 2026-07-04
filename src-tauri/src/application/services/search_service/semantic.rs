@@ -99,6 +99,7 @@ impl SearchService {
                     lineage_role: None,
                     version_label: None,
                     version_count: 0,
+                    garbled: false,
                 })
             })
             .collect();
@@ -109,6 +110,7 @@ impl SearchService {
 
         enrich_total_chunks(&conn, &mut results);
         enrich_lineage_info(&conn, &mut results);
+        enrich_garbled(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
@@ -319,6 +321,7 @@ impl SearchService {
                                 lineage_role: None,
                                 version_label: None,
                                 version_count: 0,
+                                garbled: false,
                             };
                         }
                     })
@@ -346,6 +349,7 @@ impl SearchService {
                                 lineage_role: None,
                                 version_label: None,
                                 version_count: 0,
+                                garbled: false,
                             },
                         )
                     });
@@ -358,6 +362,7 @@ impl SearchService {
 
         enrich_total_chunks(&conn, &mut results);
         enrich_lineage_info(&conn, &mut results);
+        enrich_garbled(&conn, &mut results);
         let total_count = results.len();
         let search_time_ms = start.elapsed().as_millis() as u64;
 
