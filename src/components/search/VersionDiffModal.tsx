@@ -76,6 +76,8 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
 
   const content = (
     <div
+      role="dialog"
+      aria-modal="true"
       className="fixed inset-0 flex items-center justify-center p-4"
       style={{ backgroundColor: "rgba(0,0,0,0.55)", zIndex: 1000 }}
       onClick={(e) => {
