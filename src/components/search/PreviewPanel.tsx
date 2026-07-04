@@ -629,6 +629,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [viewMode, setViewMode] = useState<PreviewView>("markdown");
   const [layoutSvg, setLayoutSvg] = useState<string | null>(null);
   const [layoutLoading, setLayoutLoading] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false); // 문서 크게 보기(팝업) 오버레이
   const layoutReqRef = useRef(0); // 파일 전환 시 in-flight 렌더 응답 무효화
   const prefAppliedRef = useRef<string | null>(null); // 선호 뷰 자동 진입: 파일당 1회
   const desiredViewRef = useRef<PreviewView>("markdown"); // 의도한 뷰 — in-flight 렌더가 사용자 전환/점프를 덮지 않게
@@ -697,6 +698,7 @@ export const PreviewPanel = memo(function PreviewPanel({
     desiredViewRef.current = "markdown";
     setLayoutSvg(null);
     setLayoutLoading(false);
+    setViewerOpen(false);
 
     let cancelled = false;
     setLoading(true);
@@ -1370,7 +1372,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       {/* 본문 영역 — 레이아웃 뷰는 LayoutView(인라인 SVG·줌/팬·페이지 네비·매치 이동),
           그 외는 마크다운 스크롤 영역 */}
       {!loading && !error && viewMode === "layout" && layoutSvg ? (
-        <LayoutView svg={layoutSvg} findTerm={findOpen ? findTerm.trim() || undefined : undefined} />
+        <LayoutView svg={layoutSvg} findTerm={findOpen ? findTerm.trim() || undefined : undefined} onExpand={() => setViewerOpen(true)} />
       ) : (
         <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
           {loading && (
@@ -1408,6 +1410,32 @@ export const PreviewPanel = memo(function PreviewPanel({
         <span className="truncate flex-1" title={cleanPath(filePath)}>{cleanPath(filePath)}</span>
         {markdown && <span className="shrink-0 tabular-nums">{markdown.length.toLocaleString()}자</span>}
       </div>
+
+      {/* 문서 크게 보기 — 레이아웃 렌더를 팝업으로 띄워 자유 줌/팬 (이미지 뷰어처럼).
+          검증된 LayoutView 를 freeZoom(휠만으로 줌)·onClose 로 재사용. role=dialog 라
+          앱 bare-key 가드에 자동 편입(뒤 뷰 몰래 전환 방지). */}
+      {viewerOpen && layoutSvg && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="문서 크게 보기"
+          className="fixed inset-0 z-[1200] flex p-4 sm:p-8"
+          style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setViewerOpen(false); }}
+        >
+          <div
+            className="flex-1 min-h-0 rounded-xl overflow-hidden border shadow-2xl"
+            style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-primary)" }}
+          >
+            <LayoutView
+              svg={layoutSvg}
+              freeZoom
+              onClose={() => setViewerOpen(false)}
+              findTerm={findOpen ? findTerm.trim() || undefined : undefined}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 });
