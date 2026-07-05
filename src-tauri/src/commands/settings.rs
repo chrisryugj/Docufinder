@@ -433,6 +433,13 @@ pub struct OcrReindexCandidates {
     pub folders: Vec<String>,
 }
 
+/// OCR 후보 파일을 담은 감시 폴더 조회 (WHERE 절은 호출부가 붙임).
+/// `rtrim(path,'/\')` 는 트레일링 구분자 정규화 — 드라이브 루트(`C:\`·`/`) 매칭용.
+const OCR_CANDIDATE_FOLDERS_SQL: &str = "SELECT DISTINCT w.orig FROM \
+    (SELECT path AS orig, rtrim(path, '/\\') AS norm FROM watched_folders) w \
+    JOIN files f ON (substr(f.path, 1, length(w.norm) + 1) = w.norm || '/' \
+                  OR substr(f.path, 1, length(w.norm) + 1) = w.norm || char(92))";
+
 /// 이미 인덱싱된 OCR 대상(이미지·PDF) 파일 수와 그 파일을 담은 감시 폴더를 센다(읽기 전용).
 ///
 /// 재인덱싱 단위가 폴더이므로 파일 단위 스캔 판정은 불필요 — 이미지·PDF 를 담은 폴더만
@@ -464,13 +471,11 @@ pub async fn count_ocr_reindex_candidates(
     // 후보 파일을 하나라도 담은 감시 폴더. 경로 접두는 substr 정확 매칭 — LIKE 와 달리
     // w.path 안의 `_`/`%` 메타문자에 오매칭되지 않고, `/`(unix)·`\`(win, char(92)) 두
     // 구분자를 모두 처리한다(파일 경로는 플랫폼별 구분자로 원문 저장됨).
+    // 드라이브 루트(`C:\`·`/`)는 canonicalize 가 트레일링 구분자를 보존해 `w.path||'/'` 가
+    // `C:\\` 처럼 이중 구분자가 되어 절대 불일치했다 — db/mod.rs 의 trim_end_matches 관례처럼
+    // rtrim 으로 정규화 후 비교한다(루트는 빈 문자열이 되어 모든 절대경로와 매칭).
     let folder_clause = vec!["f.path LIKE ?"; patterns.len()].join(" OR ");
-    let sql = format!(
-        "SELECT DISTINCT w.path FROM watched_folders w \
-         JOIN files f ON (substr(f.path, 1, length(w.path) + 1) = w.path || '/' \
-                       OR substr(f.path, 1, length(w.path) + 1) = w.path || char(92)) \
-         WHERE {folder_clause}"
-    );
+    let sql = format!("{} WHERE {folder_clause}", OCR_CANDIDATE_FOLDERS_SQL);
     let mut stmt = conn.prepare(&sql)?;
     let folders = stmt
         .query_map(rusqlite::params_from_iter(patterns.iter()), |row| {
@@ -845,4 +850,48 @@ pub async fn update_settings(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OCR_CANDIDATE_FOLDERS_SQL;
+
+    /// 드라이브 루트(`C:\`·`/`) 감시 폴더가 OCR 재인덱싱 후보 조회에서 매칭되는지 —
+    /// 정규화 없이는 `C:\`+`\` = `C:\\` 가 되어 어떤 파일과도 불일치했다(리뷰 #2).
+    #[test]
+    fn ocr_candidate_folders_matches_drive_roots() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE watched_folders (path TEXT); CREATE TABLE files (path TEXT);",
+        )
+        .unwrap();
+        for folder in [r"C:\", "/", r"D:\docs", "/foo"] {
+            conn.execute("INSERT INTO watched_folders VALUES (?1)", [folder])
+                .unwrap();
+        }
+        for file in [
+            r"C:\Users\me\scan.pdf",
+            "/data/z.png",
+            r"D:\docs\a.pdf",
+            "/foobar/trap.pdf", // 형제 접두 폴더 오매칭 방지 대조군
+        ] {
+            conn.execute("INSERT INTO files VALUES (?1)", [file])
+                .unwrap();
+        }
+
+        let sql = format!("{} WHERE f.path LIKE ?", OCR_CANDIDATE_FOLDERS_SQL);
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let mut folders: Vec<String> = stmt
+            .query_map(["%.pdf"], |row| row.get(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        folders.sort();
+
+        // `/` 는 모든 절대 unix 경로와 매칭되므로 포함, `/foo` 는 `/foobar` 와 매칭되면 안 됨
+        assert_eq!(
+            folders,
+            vec!["/".to_string(), r"C:\".to_string(), r"D:\docs".to_string()]
+        );
+    }
 }
