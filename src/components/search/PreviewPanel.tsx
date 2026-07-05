@@ -207,6 +207,11 @@ function findJumpTarget(
 // 브라우저가 병합·중첩을 네이티브 처리하게 하고(rhwp HTML 백엔드·kordoc renderHtml과 동일 접근),
 // rehype-sanitize로 XSS를 차단한다. 표 구조 태그 + 병합 속성 + KaTeX placeholder 통과용
 // className만 기본 스키마에 추가 허용한다. (sanitize는 katex 앞에 두어 수식 출력은 통과.)
+//
+// className은 code 요소의 화이트리스트 값(language-*·math-inline·math-display, remark-math
+// 공식 sanitize 레시피)으로만 허용한다. 전역("*") className 허용은 신뢰 불가 문서가 번들
+// Tailwind 클래스(.fixed .inset-0 .z-50 .bg-white …)로 전창 오버레이 디페이스/피싱 UI를
+// 구성할 수 있어 금지 — KaTeX 는 code.math-inline/math-display 만 보므로 수식 렌더는 유지.
 const PREVIEW_SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [
@@ -218,7 +223,7 @@ const PREVIEW_SANITIZE_SCHEMA = {
     td: [...(defaultSchema.attributes?.td ?? []), "colSpan", "rowSpan", "colspan", "rowspan", "align"],
     th: [...(defaultSchema.attributes?.th ?? []), "colSpan", "rowSpan", "colspan", "rowspan", "align", "scope"],
     col: ["span", "width"],
-    "*": [...(defaultSchema.attributes?.["*"] ?? []), "className"],
+    code: [["className", /^language-./, "math-inline", "math-display"]],
   },
 };
 
