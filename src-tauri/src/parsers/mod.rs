@@ -7,6 +7,7 @@ pub mod password_detect;
 pub mod pdf;
 pub mod pdf_sniff;
 pub mod pptx;
+pub mod rhwp;
 pub mod txt;
 pub mod xlsx;
 
