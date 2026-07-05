@@ -252,6 +252,11 @@ function SearchSection() {
         검색바 상단의 토글에서 '스마트' 모드로 전환하면 일상 언어로 검색할 수 있어요. "지난주 예산 관련 한글 문서 찾아줘"처럼 입력하고 Enter를 누르면, 검색어·파일 형식·날짜 범위를 자동으로 분석해서 결과를 보여줘요.
       </Paragraph>
 
+      <SubTitle>Anything에게 질문 (AI 답변)</SubTitle>
+      <Paragraph>
+        같은 토글에서 'Anything' 모드를 선택하면 문서에 대해 질문할 수 있어요. "연차 사용 조건이 어떻게 되나요?"처럼 입력하고 Enter를 누르면 관련 문서를 찾아 내용을 근거로 답변해줘요. 설정 → AI 탭에서 API 키를 등록해야 동작해요.
+      </Paragraph>
+
       <SubTitle>검색어 자동완성</SubTitle>
       <Paragraph>
         검색창에 2글자 이상 입력하면 이전 검색 기록과 문서 내 어휘를 기반으로 검색어를 제안해요. 화살표 키로 선택하거나 클릭하면 바로 적용돼요.
@@ -381,9 +386,24 @@ function AdvancedSection() {
         검색 결과를 우클릭 → '유사 문서 찾기'로 선택한 문서와 비슷한 내용의 다른 문서를 벡터 유사도 기반으로 찾아줘요.
       </Paragraph>
 
+      <SubTitle>문서 비교</SubTitle>
+      <Paragraph>
+        검색 결과를 우클릭 → '비교 대상으로 선택'으로 기준 문서를 정한 뒤, 다른 결과를 우클릭하면 '○○와 비교' 메뉴가 생겨요. 두 문서의 달라진 부분을 나란히 보여줘서 버전이 여러 개인 문서를 정리할 때 유용해요.
+      </Paragraph>
+
+      <SubTitle>문서 크게 보기 (팝업 뷰어)</SubTitle>
+      <Paragraph>
+        미리보기 패널의 '문서 크게 보기' 버튼을 누르면 원본 서식 그대로 전체화면 팝업으로 볼 수 있어요. 휠은 스크롤, {MOD_KEY}+휠(트랙패드 핀치)은 커서 위치 기준 확대·축소, 더블클릭은 확대 토글이에요. 너비 맞춤 ↔ 페이지 맞춤 버튼도 있어요.
+      </Paragraph>
+
       <SubTitle>OCR (이미지 텍스트 인식)</SubTitle>
       <Paragraph>
-        PNG, JPG, BMP, TIFF 등 이미지 파일과 스캔된 PDF의 텍스트를 자동으로 인식해요. PaddleOCR 기반으로 오프라인에서 동작하며, 인덱싱 시 자동 처리됩니다.
+        설정 → 검색 탭에서 OCR을 켜면 PNG, JPG, BMP, TIFF 등 이미지 파일과 스캔된 PDF의 텍스트를 인식해서 검색할 수 있어요. PaddleOCR 기반으로 오프라인에서 동작해요. 켜는 시점에 이미 인덱싱된 이미지·스캔 PDF가 있으면 재인덱싱할지 물어봐요.
+      </Paragraph>
+
+      <SubTitle>PDF 수식 OCR</SubTitle>
+      <Paragraph>
+        설정 → 검색 탭에서 'PDF 수식 OCR'을 켜면 PDF 속 수학 수식을 LaTeX로 추출해 검색하고, 미리보기에서 수식 모양 그대로 렌더해줘요. 최초 1회 모델(약 155MB)을 자동 다운로드해요.
       </Paragraph>
 
       <SubTitle>자동 문서 분류</SubTitle>
@@ -424,6 +444,14 @@ function TipsSection() {
         <FeatureBox
           title="테마 변경"
           description="설정 → 일반 탭에서 라이트, 다크, 시스템 설정 중 원하는 테마를 선택하세요."
+        />
+        <FeatureBox
+          title="스마트 폴더 (검색 저장)"
+          description="자주 쓰는 검색 조건은 사이드바의 '현재 검색을 스마트 폴더로 저장' 버튼으로 저장하세요. 클릭 한 번으로 같은 검색을 다시 실행해요."
+        />
+        <FeatureBox
+          title="드래그로 꺼내기"
+          description="검색 결과 파일을 그대로 끌어서 폴더, 메일, 메신저 등 다른 앱에 놓을 수 있어요. 탐색기를 거칠 필요가 없어요."
         />
         <FeatureBox
           title="결과 내보내기"
