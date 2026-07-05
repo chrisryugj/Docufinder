@@ -12,6 +12,7 @@ import "katex/dist/katex.min.css";
 import { save } from "@tauri-apps/plugin-dialog";
 import { FileIcon } from "../ui/FileIcon";
 import { LayoutView } from "./LayoutView";
+import { PdfLayoutView } from "./PdfLayoutView";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
 import { TagInput } from "../ui/TagInput";
@@ -879,13 +880,18 @@ export const PreviewPanel = memo(function PreviewPanel({
     }
     if (viewMode === "layout") return;
     closeFind();
+    // PDF 는 SVG 렌더(render_layout_svg) 없이 PdfLayoutView 가 페이지 이미지를 자체 로드한다
+    if (filePath?.split(".").pop()?.toLowerCase() === "pdf") {
+      setViewMode("layout");
+      return;
+    }
     if (layoutSvg) {
       setViewMode("layout");
       return;
     }
     if (layoutLoading) return;
     requestLayoutRender();
-  }, [viewMode, layoutSvg, layoutLoading, closeFind, requestLayoutRender]);
+  }, [viewMode, layoutSvg, layoutLoading, closeFind, requestLayoutRender, filePath]);
 
   // 검색어가 바뀌면 캐시 무효화 (형광펜이 SVG 에 박제돼 있음) — 레이아웃 뷰 열람 중이면 재렌더
   const prevHlRef = useRef(highlightQuery);
@@ -969,10 +975,11 @@ export const PreviewPanel = memo(function PreviewPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [filePath, handleFindToggle]);
 
-  // 뷰 전환 단축키 (1=문서 텍스트, 2=원본 레이아웃) — HWPX·입력창 밖에서만.
+  // 뷰 전환 단축키 (1=문서 텍스트, 2=원본 레이아웃) — HWPX·PDF·입력창 밖에서만.
   // 앱 기존 bare-key 전역 단축키(`/`)와 같은 패턴. 입력/텍스트영역 포커스 시엔 비활성.
   useEffect(() => {
-    if (!filePath || filePath.split(".").pop()?.toLowerCase() !== "hwpx") return;
+    const extLower = filePath?.split(".").pop()?.toLowerCase();
+    if (!filePath || (extLower !== "hwpx" && extLower !== "pdf")) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       // 모달(설정·도움말·문서비교 등)이 떠 있으면 가려진 미리보기를 몰래 전환하지 않는다
@@ -1117,6 +1124,8 @@ export const PreviewPanel = memo(function PreviewPanel({
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
   // 레이아웃 렌더(kordoc render)는 한컴 저장 HWPX 전용 — HWP 등은 버튼 자체를 숨긴다
   const isHwpx = ext === "hwpx";
+  // PDF 는 pdfium 페이지 이미지로 원본 레이아웃을 본다 (HWPX 의 SVG 경로와 별개, PdfLayoutView)
+  const isPdf = ext === "pdf";
 
   return (
     <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="preview-panel flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
@@ -1144,8 +1153,8 @@ export const PreviewPanel = memo(function PreviewPanel({
       {/* 통합 툴바 — 뷰 세그먼트(좌) + 액션(우) 한 줄. 세그먼트를 별도 바에서 승격,
           액션바와 병합해 세로 크롬 축소. 파일위치·복사/내보내기·태그추가는 ⋯ 로 접어 정돈. */}
       <div className="flex items-center gap-1 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
-        {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX 전용). 단축키 1·2. raised pill. */}
-        {isHwpx && markdown !== null && !loading && !error && (
+        {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX SVG · PDF 페이지 이미지). 단축키 1·2. */}
+        {(isHwpx || isPdf) && markdown !== null && !loading && !error && (
           <div role="radiogroup" aria-label="미리보기 뷰" className="inline-flex gap-0.5 p-0.5 rounded-lg shrink-0" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
             {([
               { mode: "markdown", label: "문서 텍스트", key: "1" },
@@ -1428,9 +1437,11 @@ export const PreviewPanel = memo(function PreviewPanel({
         </div>
       )}
 
-      {/* 본문 영역 — 레이아웃 뷰는 LayoutView(인라인 SVG·줌/팬·페이지 네비·매치 이동),
-          그 외는 마크다운 스크롤 영역 */}
-      {!loading && !error && viewMode === "layout" && layoutSvg ? (
+      {/* 본문 영역 — 레이아웃 뷰: HWPX=LayoutView(인라인 SVG·줌/팬·매치), PDF=PdfLayoutView
+          (pdfium 페이지 이미지). 그 외는 마크다운 스크롤 영역 */}
+      {!loading && !error && viewMode === "layout" && isPdf ? (
+        <PdfLayoutView filePath={filePath} onExpand={() => setViewerOpen(true)} />
+      ) : !loading && !error && viewMode === "layout" && layoutSvg ? (
         <LayoutView svg={layoutSvg} findTerm={findOpen ? findTerm.trim() || undefined : undefined} onExpand={() => setViewerOpen(true)} />
       ) : (
         <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -1473,7 +1484,7 @@ export const PreviewPanel = memo(function PreviewPanel({
       {/* 문서 크게 보기 — 레이아웃 렌더를 팝업으로 크게. 휠=스크롤, Ctrl/⌘+휠(트랙패드
           핀치)=줌, 너비맞춤은 창 크기 따라 스케일. 검증된 LayoutView 를 onClose 로 재사용.
           role=dialog 라 앱 bare-key 가드에 자동 편입(뒤 뷰 몰래 전환 방지). */}
-      {viewerOpen && layoutSvg && (
+      {viewerOpen && (isPdf ? true : !!layoutSvg) && (
         <div
           ref={viewerRef}
           role="dialog"
@@ -1488,11 +1499,15 @@ export const PreviewPanel = memo(function PreviewPanel({
             className="flex-1 min-h-0 rounded-xl overflow-hidden border shadow-2xl"
             style={{ borderColor: "var(--color-border)", backgroundColor: "var(--color-bg-primary)" }}
           >
-            <LayoutView
-              svg={layoutSvg}
-              onClose={() => setViewerOpen(false)}
-              findTerm={findOpen ? findTerm.trim() || undefined : undefined}
-            />
+            {isPdf ? (
+              <PdfLayoutView filePath={filePath} onClose={() => setViewerOpen(false)} />
+            ) : (
+              <LayoutView
+                svg={layoutSvg!}
+                onClose={() => setViewerOpen(false)}
+                findTerm={findOpen ? findTerm.trim() || undefined : undefined}
+              />
+            )}
           </div>
         </div>
       )}

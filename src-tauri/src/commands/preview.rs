@@ -301,6 +301,55 @@ pub async fn render_layout_svg(
     .await?
 }
 
+// ======================== PDF 레이아웃 미리보기 (페이지 이미지) ========================
+
+/// PDF 한 페이지 렌더 응답 — data URI PNG + 총 페이지 수.
+#[derive(Debug, Serialize)]
+pub struct PdfPageResponse {
+    /// data:image/png;base64,… (CSP img-src data: 허용 — 프론트 <img>에 직접 사용)
+    pub data_url: String,
+    pub page_count: usize,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// PDF 페이지를 pdfium 으로 원본 조판 그대로 래스터화 → PNG data URI (원본 레이아웃 미리보기).
+/// `page` 는 0-based. HWPX 의 render_layout_svg 에 대응하는 PDF 경로.
+#[tauri::command]
+pub async fn render_pdf_page(
+    file_path: String,
+    page: usize,
+    state: State<'_, RwLock<AppContainer>>,
+) -> ApiResult<PdfPageResponse> {
+    if file_path.trim().is_empty() {
+        return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
+    }
+    // 경로 검증: canonicalize + 감시 폴더 화이트리스트 (다른 미리보기와 동일)
+    let fp = validate_preview_path(&file_path, &state)?;
+    let ext = std::path::Path::new(&fp)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext != "pdf" {
+        return Err(ApiError::Validation("PDF 파일만 지원합니다".to_string()));
+    }
+
+    tokio::task::spawn_blocking(move || -> ApiResult<PdfPageResponse> {
+        let render = crate::parsers::pdf::render_page_png(std::path::Path::new(&fp), page)
+            .map_err(|e| ApiError::CommandFailed(e.to_string()))?;
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&render.png);
+        Ok(PdfPageResponse {
+            data_url: format!("data:image/png;base64,{}", b64),
+            page_count: render.page_count,
+            width: render.width,
+            height: render.height,
+        })
+    })
+    .await?
+}
+
 /// DB 청크를 병합해 마크다운 본문 생성 (스캔 PDF OCR 결과 복원용)
 async fn fetch_db_markdown(
     file_path: &str,
