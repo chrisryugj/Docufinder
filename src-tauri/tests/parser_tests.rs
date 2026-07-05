@@ -477,3 +477,49 @@ mod chunking_tests {
         }
     }
 }
+
+// PDF 원본 레이아웃 미리보기 (pdfium 페이지 래스터화) 테스트
+mod pdf_layout_tests {
+    use super::*;
+
+    /// render_page_png 가 PDF 페이지를 유효한 PNG 로 래스터화하는지.
+    /// PDFIUM_DYLIB_PATH(존재하는 pdfium dylib) 없으면 skip (CI·미다운로드 환경).
+    #[test]
+    fn test_render_pdf_page_produces_png() {
+        let path = Path::new("tests/fixtures/multipage_text.pdf");
+        if !path.exists() {
+            eprintln!("Skipping: {:?} not found", path);
+            return;
+        }
+        let pdfium_ok = std::env::var_os("PDFIUM_DYLIB_PATH")
+            .map(|p| std::path::PathBuf::from(p).exists())
+            .unwrap_or(false);
+        if !pdfium_ok {
+            eprintln!("Skipping PDF layout test — PDFIUM_DYLIB_PATH 미설정/미존재");
+            return;
+        }
+
+        let render = docufinder_lib::parsers::pdf::render_page_png(path, 0)
+            .expect("render_page_png failed");
+        // PNG 매직바이트
+        assert_eq!(
+            &render.png[..4],
+            &[0x89, 0x50, 0x4E, 0x47],
+            "PNG 매직바이트가 아님"
+        );
+        assert!(render.page_count >= 1, "page_count >= 1 이어야 함");
+        assert!(render.width > 0 && render.height > 0, "치수 > 0 이어야 함");
+        // 범위 초과 페이지는 에러
+        assert!(
+            docufinder_lib::parsers::pdf::render_page_png(path, render.page_count).is_err(),
+            "범위 초과 페이지는 Err 이어야 함"
+        );
+        eprintln!(
+            "PDF 레이아웃 렌더 OK — {}페이지, {}x{}px, PNG {}바이트",
+            render.page_count,
+            render.width,
+            render.height,
+            render.png.len()
+        );
+    }
+}

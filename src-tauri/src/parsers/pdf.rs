@@ -649,6 +649,64 @@ fn bind_pdfium() -> Option<Pdfium> {
     }
 }
 
+/// 미리보기 렌더 폭 (px) — A4 폭(595pt) ≈ 200dpi. 프론트에서 CSS 로 확대/축소하므로
+/// 원본보다 넉넉히 그려 확대 시에도 선명하게 한다. 높이는 rasterize_doc_page 의
+/// MAX_OCR_RENDER_HEIGHT 상한(10000px)이 병리적 종횡비를 방어한다.
+const PREVIEW_RENDER_WIDTH: u32 = 1654;
+
+/// PDF 페이지 미리보기 렌더 결과 (원본 조판 이미지 + 총 페이지 수).
+pub struct PdfPagePreview {
+    pub png: Vec<u8>,
+    pub page_count: usize,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// PDF 한 페이지를 원본 조판 그대로 PNG 로 래스터화 (원본 레이아웃 미리보기).
+///
+/// pdfium 이 렌더하므로 벡터/스캔 구분 없이 100% 원본 레이아웃을 보존한다. `page_index` 0-based.
+/// pdfium 미바인딩(모델 미다운로드)·문서 로드 실패·페이지 범위 초과 시 ParseError.
+/// pdfium 내부 패닉은 catch_unwind 로 흡수(마샬 뮤텍스 poison 방지 — OCR 경로와 동일 방어).
+pub fn render_page_png(path: &Path, page_index: usize) -> Result<PdfPagePreview, ParseError> {
+    let pdfium = bind_pdfium().ok_or_else(|| {
+        ParseError::ParseError("PDF 렌더 모듈(pdfium) 미준비 — 설정에서 다운로드 후 재시도".to_string())
+    })?;
+    let result = catch_unwind(AssertUnwindSafe(|| -> Result<PdfPagePreview, ParseError> {
+        let document = pdfium
+            .load_pdf_from_file(path, None)
+            .map_err(|e| ParseError::ParseError(format!("PDF 로드 실패: {e}")))?;
+        let page_count = document.pages().len() as usize;
+        if page_count == 0 {
+            return Err(ParseError::ParseError("빈 PDF".to_string()));
+        }
+        if page_index >= page_count {
+            return Err(ParseError::ParseError(format!(
+                "페이지 범위 초과: {} (총 {}페이지)",
+                page_index + 1,
+                page_count
+            )));
+        }
+        let image = rasterize_doc_page(&document, page_index, PREVIEW_RENDER_WIDTH)
+            .ok_or_else(|| ParseError::ParseError("페이지 렌더 실패".to_string()))?;
+        let width = image.width();
+        let height = image.height();
+        let mut png: Vec<u8> = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .map_err(|e| ParseError::ParseError(format!("PNG 인코딩 실패: {e}")))?;
+        Ok(PdfPagePreview {
+            png,
+            page_count,
+            width,
+            height,
+        })
+    }));
+    match result {
+        Ok(r) => r,
+        Err(_) => Err(ParseError::ParseError("pdfium 렌더 중 panic".to_string())),
+    }
+}
+
 /// 단일 이미지 최대 픽셀 수 (100M 픽셀 ≈ 10000×10000)
 ///
 /// 악성 PDF가 `Width=65535, Height=65535` 같은 값으로 멀티GB 버퍼 할당을 유도하는
