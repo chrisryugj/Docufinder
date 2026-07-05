@@ -56,6 +56,10 @@ pub struct VectorIndexingProgress {
     pub processed_chunks: usize,
     pub current_file: Option<String>,
     pub is_complete: bool,
+    /// 워커 종료(완료·취소 무관) 이벤트 여부 — is_complete 는 '성공 완료'만 true 라 취소를
+    /// 구분하지 못해, 취소 시 감시 재개(pause 해제)가 누락됐다. finished 는 종료 시 항상 true 로
+    /// 콜백이 종료 1회를 확실히 감지해 pause refcount 누수를 막는다 (dworker-1).
+    pub finished: bool,
 }
 
 /// 진행률 콜백 타입
@@ -233,16 +237,18 @@ fn run_vector_indexing(
     }
 
     // 진행률 알림 (base_processed를 더해 누적 진행률 표시)
-    let send_progress = |processed: usize, current_file: Option<&str>, is_complete: bool| {
-        if let Some(ref cb) = progress_callback {
-            cb(VectorIndexingProgress {
-                total_chunks,
-                processed_chunks: base_processed + processed,
-                current_file: current_file.map(|s| s.to_string()),
-                is_complete,
-            });
-        }
-    };
+    let send_progress =
+        |processed: usize, current_file: Option<&str>, is_complete: bool, finished: bool| {
+            if let Some(ref cb) = progress_callback {
+                cb(VectorIndexingProgress {
+                    total_chunks,
+                    processed_chunks: base_processed + processed,
+                    current_file: current_file.map(|s| s.to_string()),
+                    is_complete,
+                    finished,
+                });
+            }
+        };
 
     // 파이프라인 채널 생성
     let (batch_tx, batch_rx) = bounded::<PrefetchedBatch>(PREFETCH_BUFFER_SIZE);
@@ -280,7 +286,7 @@ fn run_vector_indexing(
         if cancel_flag.load(Ordering::Acquire) {
             tracing::info!("[VectorWorker] Cancelled");
             was_cancelled = true;
-            send_progress(st.processed, None, false);
+            send_progress(st.processed, None, false, false);
             break;
         }
 
@@ -295,7 +301,7 @@ fn run_vector_indexing(
                     s.pending_chunks = total_chunks.saturating_sub(base_processed + st.processed);
                 }
 
-                send_progress(st.processed, current_file, false);
+                send_progress(st.processed, current_file, false, false);
 
                 // 파일 완료 판정용 등록 (배치가 파일 경계를 넘으므로 청크 집계로 판정)
                 let total_chunks_in_file = prefetched.chunks.len();
@@ -450,7 +456,7 @@ fn run_vector_indexing(
         s.pending_chunks = final_pending;
     }
 
-    send_progress(processed, None, fully_done);
+    send_progress(processed, None, fully_done, true);
 
     Ok(())
 }

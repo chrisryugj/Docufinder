@@ -14,8 +14,14 @@ const PDF_PARSE_TIMEOUT_BASE_SECS: u64 = 5;
 /// MB당 추가 타임아웃 (초) — HDD 순차 읽기 ~100MB/s 감안, 안전 마진 포함
 const PDF_PARSE_TIMEOUT_PER_MB: f64 = 0.3;
 
-/// 최대 타임아웃 상한 (초) — 무한 대기 방지
-const PDF_PARSE_TIMEOUT_MAX_SECS: u64 = 30;
+/// 페이지당 추가 타임아웃 (초) — extract_text_by_pages 는 페이지마다 get_pages 를 재실행해
+/// O(N²) 이므로, 고페이지 PDF 의 파싱이 크기 기반 타임아웃을 넘겨 무경고로 인덱스에서
+/// 누락되던 것을 페이지 수에 비례한 여유로 막는다 (dpdf-1). 실측 10k페이지≈12.5s 기준 마진.
+const PDF_PARSE_TIMEOUT_PER_PAGE: f64 = 0.003;
+
+/// 최대 타임아웃 상한 (초) — 무한 대기 방지. 고페이지 PDF(수천~2만 페이지)의 O(N²) 추출을
+/// 수용하도록 상향(구 30s 는 ~7천 페이지부터 무경고 누락 유발, dpdf-1).
+const PDF_PARSE_TIMEOUT_MAX_SECS: u64 = 60;
 
 /// 스캔 페이지 판정 기준: 이 글자 수 미만이면 스캔 페이지로 간주
 const SCANNED_PAGE_CHAR_THRESHOLD: usize = 10;
@@ -40,7 +46,18 @@ fn calc_timeout_secs(path: &Path) -> u64 {
     let file_size_mb = std::fs::metadata(path)
         .map(|m| m.len() as f64 / 1_048_576.0)
         .unwrap_or(0.0);
-    let timeout = PDF_PARSE_TIMEOUT_BASE_SECS as f64 + file_size_mb * PDF_PARSE_TIMEOUT_PER_MB;
+    // 페이지 수 반영 — get_pages 1회는 O(N) 로 저렴하다. 실패(암호·손상)·panic 시 0 으로
+    // 폴백해 크기 기반만 쓴다. 이 사전 로드는 spawn 타임아웃 밖이라 catch_unwind 로 감싼다.
+    let page_count = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        lopdf::Document::load(path)
+            .ok()
+            .map(|d| d.get_pages().len())
+            .unwrap_or(0)
+    }))
+    .unwrap_or(0);
+    let timeout = PDF_PARSE_TIMEOUT_BASE_SECS as f64
+        + file_size_mb * PDF_PARSE_TIMEOUT_PER_MB
+        + page_count as f64 * PDF_PARSE_TIMEOUT_PER_PAGE;
     (timeout.ceil() as u64).min(PDF_PARSE_TIMEOUT_MAX_SECS)
 }
 
@@ -238,11 +255,15 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
                 MAX_EXTRACTED_TEXT_SIZE / 1_048_576,
                 path
             );
-            raw_pages[i].truncate(remain);
-            // char 경계 안전하게 자르기
-            while !raw_pages[i].is_char_boundary(raw_pages[i].len()) {
-                raw_pages[i].pop();
+            // char 경계까지 내린 안전 길이를 먼저 구한 뒤 자른다 — String::truncate 는
+            // new_len 이 char 경계가 아니면 즉시 패닉하므로(한국어 3바이트 경계에서 확정),
+            // truncate 후 보정 루프는 도달 불가 데드코드였다. 감시 증분 경로엔 catch_unwind 가
+            // 없어 패닉 시 감시 스레드가 사망한다 (dpdf-2).
+            let mut safe = remain;
+            while safe > 0 && !raw_pages[i].is_char_boundary(safe) {
+                safe -= 1;
             }
+            raw_pages[i].truncate(safe);
             raw_pages.truncate(i + 1);
             break;
         }

@@ -315,9 +315,20 @@ impl IndexService {
         // 벡터 워커 정지 후 진행 — 워커가 프리페치해 둔 청크(rowid 동결)가 아래 삭제·재삽입과
         // 겹치면, 삭제로 반납된 rowid 를 새 파일이 재사용할 때(INTEGER PRIMARY KEY 는 꼬리
         // rowid 재사용) 옛 파일의 임베딩이 새 청크 id 로 add 되어 시맨틱 검색이 영구
-        // 오염된다(무관한 문서가 히트). 재인덱싱 완료 후 auto 모드는 워커가 자동 재시작되고,
-        // manual 모드는 사용자가 재실행한다(취소와 동일한 재개 시맨틱).
-        self.stop_vector_worker();
+        // 오염된다(무관한 문서가 히트). ※ 정지된 벡터 워커는 자동 재시작되지 않는다
+        // (should_auto_vector 는 항상 false — AI RAG 전용). 남은 pending_chunks 는 사용자가
+        // 시맨틱을 다시 켜거나 앱 재시작 시 이어서 처리된다. 감시 재개는 dworker-1 이
+        // 취소 경로에서도 보장한다 (dworker-2: 허위 'auto 재시작' 주석 정정).
+        // write 락+join 이 대형 인덱스 저장 동안 길어질 수 있어 spawn_blocking 으로 tokio
+        // 워커 스레드를 막지 않는다 (코드베이스 관례, dworker-4).
+        let worker = self.vector_worker.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Ok(mut w) = worker.write() {
+                w.cancel();
+                w.join();
+            }
+        })
+        .await;
 
         // 1. 벡터 인덱스에서 삭제
         if let Some(vi) = self.vector_index.as_ref() {

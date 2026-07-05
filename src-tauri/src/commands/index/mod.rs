@@ -189,12 +189,20 @@ pub(super) fn create_vector_progress_callback(
     app_handle: AppHandle,
     resume_on_complete: bool,
 ) -> Arc<dyn Fn(VectorIndexingProgress) + Send + Sync> {
+    // 워커 종료를 정확히 1회만 재개하도록 가드 — 재개가 두 번 실행되면 pause refcount 가
+    // 음수로 새어 인덱싱 중 감시가 켜지는 역결함이 될 수 있다.
+    let resumed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     Arc::new(move |progress: VectorIndexingProgress| {
         if let Err(e) = app_handle.emit("vector-indexing-progress", &progress) {
             tracing::warn!("Failed to emit vector progress: {}", e);
         }
-        // 벡터 완료 시 파일 감시 재개 (auto 모드에서 pause_watching 호출된 경우)
-        if progress.is_complete && resume_on_complete {
+        // 워커 종료(완료·취소 무관) 시 파일 감시 재개 — 취소된 워커는 is_complete=true 를 안
+        // 보내므로 여기서 놓치면 pause refcount 가 고착돼 세션 내내 감시·동기화가 죽는다.
+        // finished 는 종료 이벤트에서만 true, resumed 가드로 정확히 1회만 실행 (dworker-1).
+        if progress.finished
+            && resume_on_complete
+            && !resumed.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
             let state = app_handle.state::<RwLock<AppContainer>>();
             let db_path = state.read().ok().map(|c| c.db_path.clone());
             if let Some(db_path) = db_path {

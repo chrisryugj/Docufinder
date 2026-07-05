@@ -461,9 +461,20 @@ pub async fn count_ocr_reindex_candidates(
         .map(|e| format!("%.{e}"))
         .collect();
 
-    let count_clause = vec!["path LIKE ?"; patterns.len()].join(" OR ");
+    // count 도 folders 와 동일하게 watched_folders 범위로 — 전역 files COUNT 는 어떤 감시
+    // 폴더에도 속하지 않는 고아 행(remove_folder 백그라운드 cleanup 부분 실패·미완 종료 잔존)이
+    // 있으면 count>0·folders=[] 조합을 만들어 원 결함의 '0개 폴더 재인덱싱 완료' 허위 메시지가
+    // 재발한다. 같은 JOIN 으로 세어 count>0 ⟺ folders 비어있지 않음 을 보장한다 (dworker-5).
+    let count_clause = vec!["f.path LIKE ?"; patterns.len()].join(" OR ");
+    let count_sql = format!(
+        "SELECT COUNT(DISTINCT f.path) FROM \
+         (SELECT rtrim(path, '/\\') AS norm FROM watched_folders) w \
+         JOIN files f ON (substr(f.path, 1, length(w.norm) + 1) = w.norm || '/' \
+                       OR substr(f.path, 1, length(w.norm) + 1) = w.norm || char(92)) \
+         WHERE {count_clause}"
+    );
     let count: i64 = conn.query_row(
-        &format!("SELECT COUNT(*) FROM files WHERE {count_clause}"),
+        &count_sql,
         rusqlite::params_from_iter(patterns.iter()),
         |row| row.get(0),
     )?;
