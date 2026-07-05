@@ -254,10 +254,11 @@ pub async fn remove_folder(
     stop_file_watching(&state, Path::new(&path))?;
 
     // DB/벡터 삭제에 필요한 것들을 미리 추출 (State는 spawn 안으로 못 넘김)
-    let (service, db_path, filename_cache) = {
+    let (service, index_service, db_path, filename_cache) = {
         let container = state.read()?;
         (
             container.folder_service(),
+            container.index_service(),
             container.db_path.clone(),
             container.get_filename_cache(),
         )
@@ -272,6 +273,10 @@ pub async fn remove_folder(
     // 2단계: 벡터/파일 행 cleanup 은 시간이 걸리므로 백그라운드. 결과는 folder-removed 이벤트로.
     let path_clone = path.clone();
     tauri::async_runtime::spawn(async move {
+        // rowid 오귀속 방지 — cleanup 삭제로 반납되는 tail rowid 를 벡터 워커가 프리페치해 둔
+        // 옛 청크가 재사용하기 전에 워커를 정지한다(reindex·clear 와 동일 보호). write 락+join
+        // 은 spawn_blocking 으로, 감시 재개는 dworker-1 콜백이 워커 종료 시 처리 (dworker-3).
+        let _ = tokio::task::spawn_blocking(move || index_service.stop_vector_worker()).await;
         let cleanup = service.cleanup_folder_data(&path_clone).await;
         // FilenameCache 갱신은 cleanup 성공 여부와 무관하게 시도 (DB 상태 기준)
         if let Ok(conn) = crate::db::get_connection(&db_path) {
