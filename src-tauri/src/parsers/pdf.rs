@@ -141,14 +141,19 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
     let path_owned = path.to_path_buf();
     let (tx, rx) = mpsc::channel();
 
+    // 페이지별 추출(extract_text_by_pages) — extract_text 는 페이지 경계 없이 전체를 하나의
+    // 문자열로 반환한다(PlainTextOutput 은 form feed 를 출력하지 않아 '\x0c' split 이 항상
+    // 1원소). 페이지 귀속(page_number)·스캔 페이지 판정·페이지별 OCR 전부 페이지 벡터가 전제.
     let handle = std::thread::spawn(move || {
-        let result = catch_unwind(AssertUnwindSafe(|| pdf_extract::extract_text(&path_owned)));
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            pdf_extract::extract_text_by_pages(&path_owned)
+        }));
         let _ = tx.send(result);
     });
 
     // 동적 타임아웃 대기 (파일 크기 기반)
-    let raw_text = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
-        Ok(Ok(Ok(text))) => text,
+    let raw_pages = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
+        Ok(Ok(Ok(pages))) => pages,
         Ok(Ok(Err(e))) => {
             let msg = e.to_string().to_lowercase();
             if msg.contains("password") || msg.contains("encrypt") {
@@ -210,30 +215,45 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
     // 스레드 정상 종료 대기 (이미 완료됨)
     let _ = handle.join();
 
-    // 추출 텍스트 크기 제한 (50MB — 대용량 PDF OOM 방지)
+    // 페이지 0개 = 손상 PDF(스펙상 페이지 ≥1) 또는 1페이지부터 추출 실패.
+    // 기존 extract_text 는 이 경우 Err 를 반환했으므로 조용한 빈 문서 대신 에러로 유지.
+    if raw_pages.is_empty() {
+        return Err(ParseError::ParseError(
+            "PDF text extraction returned no pages".to_string(),
+        ));
+    }
+
+    let page_count = raw_pages.len();
+
+    // 추출 텍스트 크기 제한 (50MB — 대용량 PDF OOM 방지, 페이지 누적 기준)
     const MAX_EXTRACTED_TEXT_SIZE: usize = 50 * 1024 * 1024;
-    let raw_text = if raw_text.len() > MAX_EXTRACTED_TEXT_SIZE {
-        tracing::warn!(
-            "PDF text truncated: {}MB → {}MB: {:?}",
-            raw_text.len() / 1_048_576,
-            MAX_EXTRACTED_TEXT_SIZE / 1_048_576,
-            path
-        );
-        let mut truncated = raw_text;
-        truncated.truncate(MAX_EXTRACTED_TEXT_SIZE);
-        // char 경계 안전하게 자르기
-        while !truncated.is_char_boundary(truncated.len()) {
-            truncated.pop();
+    let mut raw_pages = raw_pages;
+    let mut acc = 0usize;
+    for i in 0..raw_pages.len() {
+        let remain = MAX_EXTRACTED_TEXT_SIZE - acc; // 루프 불변식: acc ≤ MAX
+        if raw_pages[i].len() > remain {
+            tracing::warn!(
+                "PDF text truncated at page {}: total > {}MB: {:?}",
+                i + 1,
+                MAX_EXTRACTED_TEXT_SIZE / 1_048_576,
+                path
+            );
+            raw_pages[i].truncate(remain);
+            // char 경계 안전하게 자르기
+            while !raw_pages[i].is_char_boundary(raw_pages[i].len()) {
+                raw_pages[i].pop();
+            }
+            raw_pages.truncate(i + 1);
+            break;
         }
-        truncated
-    } else {
-        raw_text
-    };
+        acc += raw_pages[i].len();
+    }
 
-    // 페이지별 분리 (form feed 문자 \x0c 기준)
-    let page_count = raw_text.matches('\x0c').count() + 1;
+    // 페이지별 정리 — 스캔 판정·OCR·본문 조립이 같은 정리본을 공유
+    let cleaned_pages: Vec<String> = raw_pages.iter().map(|p| clean_pdf_text(p)).collect();
+    drop(raw_pages);
 
-    // OCR 필요 여부 판정 + OCR 결과 (필요 시에만 cleaned_pages 전체 보유)
+    // OCR 필요 여부 판정 + OCR 결과 (필요 시에만 수행)
     let file_size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let ocr_texts: Vec<Option<String>> = if let Some(ocr_engine) = ocr {
         if file_size > MAX_OCR_FILE_SIZE {
@@ -246,15 +266,11 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
             vec![]
         } else {
             // 스캔 페이지 존재 여부: (1) 텍스트 10자 미만 OR (2) CID 디코딩 실패로 깨진 페이지
-            let has_scanned = raw_text.split('\x0c').any(|p| {
-                let trimmed = p.trim();
-                trimmed.chars().count() < SCANNED_PAGE_CHAR_THRESHOLD
-                    || looks_like_garbage_text(trimmed)
+            let has_scanned = cleaned_pages.iter().any(|p| {
+                p.chars().count() < SCANNED_PAGE_CHAR_THRESHOLD || looks_like_garbage_text(p)
             });
             if has_scanned {
-                // OCR 경로: cleaned_pages 전체 필요 (lopdf가 페이지 번호로 접근하므로)
-                let cleaned: Vec<String> = raw_text.split('\x0c').map(clean_pdf_text).collect();
-                ocr_scanned_pages(path, &cleaned, ocr_engine)
+                ocr_scanned_pages(path, &cleaned_pages, ocr_engine)
             } else {
                 vec![]
             }
@@ -263,20 +279,18 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
         vec![]
     };
 
-    // 페이지별 스트리밍 처리: clean → chunk → all_text에 추가
-    // raw_text를 split 이터레이터로 소비하여 메모리 피크 최소화
-    let mut all_text = String::with_capacity(raw_text.len() / 2); // 정리 후 대략 50% 추정
+    // 페이지별 처리: chunk → all_text에 추가
+    let mut all_text =
+        String::with_capacity(cleaned_pages.iter().map(|p| p.len() + 2).sum::<usize>());
     let mut chunks = Vec::new();
     let mut global_offset = 0;
 
-    for (page_idx, raw_page) in raw_text.split('\x0c').enumerate() {
-        // OCR 결과가 있으면 대체, 없으면 현재 페이지만 clean
-        let page_text_owned;
+    for (page_idx, cleaned) in cleaned_pages.iter().enumerate() {
+        // OCR 결과가 있으면 대체
         let page_text: &str = if let Some(Some(ocr_text)) = ocr_texts.get(page_idx) {
             ocr_text.as_str()
         } else {
-            page_text_owned = clean_pdf_text(raw_page);
-            &page_text_owned
+            cleaned.as_str()
         };
 
         if page_text.is_empty() {
