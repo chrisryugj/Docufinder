@@ -392,6 +392,14 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
             None => continue,
         };
 
+        // 회전 페이지(/Rotate ≠ 0)는 임베디드 추출을 건너뛰고 래스터 큐로 — 임베디드 이미지는
+        // 회전 미반영이라 누운 글자를 OCR 해 빈/쓰레기가 되지만, pdfium 렌더는 /Rotate 를
+        // 반영한다.
+        if page_rotation(&doc, page_id) != 0 {
+            needs_raster.push(page_idx);
+            continue;
+        }
+
         // 우선순위 ① 임베디드 이미지 추출(빠름). 실패 시(미지원 코덱 — CCITTFax/JBIG2/JPX/CMYK
         // 등) 페이지를 래스터 큐에 넣어 Pass 2 에서 pdfium 으로 통째 렌더한다.
         match extract_page_image(&doc, page_id) {
@@ -419,7 +427,16 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
                                     image.width(),
                                     image.height()
                                 );
-                                results[page_idx] = ocr_image_to_text(ocr, &image, page_num);
+                                // OCR 패닉이 pdfium 문서 스코프를 unwind 로 관통하면 마샬
+                                // 뮤텍스가 poison 되어 세션 내내 스캔 PDF 래스터화가 전멸한다
+                                // — 여기서 흡수하고 해당 페이지만 스킵.
+                                results[page_idx] = catch_unwind(AssertUnwindSafe(|| {
+                                    ocr_image_to_text(ocr, &image, page_num)
+                                }))
+                                .unwrap_or_else(|_| {
+                                    tracing::warn!("PDF page {} OCR panicked, skipping", page_num);
+                                    None
+                                });
                             }
                             None => {
                                 tracing::debug!("No extractable image in scanned page {}", page_num)
@@ -438,6 +455,31 @@ fn ocr_scanned_pages(path: &Path, page_texts: &[String], ocr: &OcrEngine) -> Vec
     }
 
     results
+}
+
+/// 페이지 /Rotate 조회 (PDF 스펙상 Pages 트리에서 상속 가능 — Parent 체인 추적).
+/// 0/90/180/270 정규화 값 반환, 미지정·해석 불가는 0. 체인 깊이 제한은 순환 참조 방어.
+fn page_rotation(doc: &lopdf::Document, page_id: lopdf::ObjectId) -> i64 {
+    let mut dict = match doc.get_object(page_id).ok().and_then(|o| o.as_dict().ok()) {
+        Some(d) => d,
+        None => return 0,
+    };
+    for _ in 0..32 {
+        if let Some(r) = resolve_integer(doc, dict, b"Rotate") {
+            return r.rem_euclid(360);
+        }
+        match dict
+            .get(b"Parent")
+            .ok()
+            .and_then(|p| p.as_reference().ok())
+            .and_then(|id| doc.get_object(id).ok())
+            .and_then(|o| o.as_dict().ok())
+        {
+            Some(parent) => dict = parent,
+            None => return 0,
+        }
+    }
+    0
 }
 
 /// 페이지에서 가장 큰 이미지 추출 (스캔 PDF: 페이지당 1개 이미지가 일반적)
@@ -890,4 +932,58 @@ fn clean_pdf_text(text: &str) -> String {
     }
 
     result.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopdf::{dictionary, Document, Object};
+
+    /// /Rotate 직접 지정·Pages 상속·미지정 기본 0·음수 정규화 (리뷰 #6 — 회전 스캔은
+    /// 임베디드 추출 대신 needs_raster 강등의 판정 함수)
+    #[test]
+    fn test_page_rotation_direct_inherited_default() {
+        let mut doc = Document::with_version("1.4");
+        let pages_id = doc.new_object_id();
+        let p_direct = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => Object::Reference(pages_id), "Rotate" => 90
+        });
+        let p_inherit = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => Object::Reference(pages_id)
+        });
+        let p_negative = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => Object::Reference(pages_id), "Rotate" => -90
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![
+                    Object::Reference(p_direct),
+                    Object::Reference(p_inherit),
+                    Object::Reference(p_negative),
+                ],
+                "Count" => 3,
+                "Rotate" => 180
+            }),
+        );
+
+        assert_eq!(page_rotation(&doc, p_direct), 90);
+        assert_eq!(page_rotation(&doc, p_inherit), 180, "Pages 트리 상속");
+        assert_eq!(page_rotation(&doc, p_negative), 270, "-90 → 270 정규화");
+
+        // 상속 원천도 없으면 0 (기본)
+        let mut doc2 = Document::with_version("1.4");
+        let pages2 = doc2.new_object_id();
+        let p_plain = doc2.add_object(dictionary! {
+            "Type" => "Page", "Parent" => Object::Reference(pages2)
+        });
+        doc2.objects.insert(
+            pages2,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(p_plain)], "Count" => 1
+            }),
+        );
+        assert_eq!(page_rotation(&doc2, p_plain), 0);
+    }
 }
