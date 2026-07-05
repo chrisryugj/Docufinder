@@ -31,7 +31,13 @@ pub fn merge_results(
         .collect();
 
     // total_cmp: partial_cmp+unwrap_or(Equal) 은 NaN 섞이면 전이성 위반 (Rust 1.81+ smallsort panic)
-    results.sort_by(|a, b| b.score.total_cmp(&a.score));
+    // 2차 키 chunk_id: RRF 동점(FTS rank i + vector rank i 는 정확한 f32 동점)이 HashMap
+    // 순회순(RandomState — 실행마다 다름)으로 남으면 같은 질의가 실행마다 다른 순서가 된다.
+    results.sort_by(|a, b| {
+        b.score
+            .total_cmp(&a.score)
+            .then(a.chunk_id.cmp(&b.chunk_id))
+    });
 
     results
 }
@@ -96,6 +102,21 @@ mod tests {
         // 양쪽 모두 등장한 1, 2가 상위 2개
         let top2: Vec<i64> = results[..2].iter().map(|r| r.chunk_id).collect();
         assert!(top2.contains(&1) || top2.contains(&2));
+    }
+
+    #[test]
+    fn test_rrf_tie_break_deterministic() {
+        // FTS rank i + vector rank i 조합은 정확한 f32 동점 — HashMap 순회순이 아니라
+        // chunk_id 2차 키로 실행 간 결정적이어야 한다 (리뷰 #9)
+        let fts = make_fts(&[9, 3]);
+        let vec = make_vec(&[3, 9]); // 9: rank0+rank1, 3: rank1+rank0 → 동점
+
+        for _ in 0..8 {
+            let results = merge_results(&fts, &vec, 60.0);
+            assert_eq!(results[0].score, results[1].score, "전제: 정확한 동점");
+            let ids: Vec<i64> = results.iter().map(|r| r.chunk_id).collect();
+            assert_eq!(ids, vec![3, 9], "동점은 chunk_id 오름차순으로 고정");
+        }
     }
 
     #[test]

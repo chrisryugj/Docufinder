@@ -294,10 +294,14 @@ pub fn render_svg(path: &Path, highlights: &[String]) -> Result<String, ParseErr
     validate_file_size(path)?;
     match render_svg_via_worker(path, highlights, true) {
         Ok(svg) => Ok(svg),
-        Err(e) => {
-            warn!("render 워커 실패 — 1회성 spawn 폴백: {}", e);
+        // 워커 인프라 실패(spawn·파이프 끊김·프로세스 종료)만 1회성 spawn 폴백.
+        // 렌더 실패(ok:false)는 콜드스타트로 재시도해도 동일하게 실패하고, 타임아웃은
+        // 폴백까지 겹치면 60+60 ≈ 120초 스피너가 되므로 즉시 에러 반환한다.
+        Err((e, true)) => {
+            warn!("render 워커 인프라 실패 — 1회성 spawn 폴백: {}", e);
             render_svg_oneshot(path, highlights, true)
         }
+        Err((e, false)) => Err(e),
     }
 }
 
@@ -481,6 +485,7 @@ fn spawn_render_worker() -> Result<RenderWorker, ParseError> {
         Ok(line) if line.contains("\"ready\"") => Ok(worker),
         Ok(other) => {
             let _ = worker.child.kill();
+            let _ = worker.child.wait(); // kill 만 하면 유닉스에서 좀비로 남는다
             Err(ParseError::ParseError(format!(
                 "render 워커 준비 실패 — 예상치 못한 응답: {}",
                 other.chars().take(80).collect::<String>()
@@ -488,6 +493,7 @@ fn spawn_render_worker() -> Result<RenderWorker, ParseError> {
         }
         Err(_) => {
             let _ = worker.child.kill();
+            let _ = worker.child.wait();
             Err(ParseError::ParseError(
                 "render 워커 준비 타임아웃".to_string(),
             ))
@@ -496,11 +502,15 @@ fn spawn_render_worker() -> Result<RenderWorker, ParseError> {
 }
 
 /// persistent 워커로 render — NDJSON 요청/응답, id 매칭, 통신/타임아웃 실패 시 워커 폐기.
+///
+/// 에러의 `bool` 은 "1회성 spawn 폴백이 의미 있는가" — 워커 인프라 실패(spawn·파이프
+/// 끊김·프로세스 종료)만 true. 렌더 실패(ok:false)·타임아웃·SVG 후처리 실패는 폴백해도
+/// 동일 실패거나 대기만 배가되므로 false.
 fn render_svg_via_worker(
     path: &Path,
     highlights: &[String],
     reflow: bool,
-) -> Result<String, ParseError> {
+) -> Result<String, (ParseError, bool)> {
     let file_owned = crate::utils::network_path::simplify(path);
     let file_str = file_owned.to_string_lossy().to_string();
     let out_path = temp_svg_path();
@@ -512,11 +522,14 @@ fn render_svg_via_worker(
         .filter(|t| !t.is_empty())
         .collect();
 
-    let mut guard = RENDER_WORKER
-        .lock()
-        .map_err(|_| ParseError::ParseError("render 워커 잠금 실패".to_string()))?;
+    let mut guard = RENDER_WORKER.lock().map_err(|_| {
+        (
+            ParseError::ParseError("render 워커 잠금 실패".to_string()),
+            false,
+        )
+    })?;
     if guard.is_none() {
-        *guard = Some(spawn_render_worker()?);
+        *guard = Some(spawn_render_worker().map_err(|e| (e, true))?);
     }
     let worker = guard.as_mut().unwrap();
 
@@ -532,15 +545,18 @@ fn render_svg_via_worker(
     });
 
     // worker_dead: 통신/타임아웃 실패(워커 자체 이상)만 true — render 실패(ok:false)는 워커 정상.
+    // 에러의 bool 은 폴백 힌트(retry_oneshot) — 타임아웃은 워커를 폐기(worker_dead)하되
+    // 폴백은 하지 않는다(대기 배가 방지).
     let mut worker_dead = false;
-    let result: Result<String, ParseError> = (|| {
+    let result: Result<String, (ParseError, bool)> = (|| {
         if writeln!(worker.stdin, "{req}")
             .and_then(|_| worker.stdin.flush())
             .is_err()
         {
             worker_dead = true;
-            return Err(ParseError::ParseError(
-                "render 워커 통신 실패 (파이프 끊김)".to_string(),
+            return Err((
+                ParseError::ParseError("render 워커 통신 실패 (파이프 끊김)".to_string()),
+                true,
             ));
         }
 
@@ -549,10 +565,13 @@ fn render_svg_via_worker(
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 worker_dead = true;
-                return Err(ParseError::ParseError(format!(
-                    "render 워커 타임아웃 ({}초 초과)",
-                    KORDOC_TIMEOUT_SECS
-                )));
+                return Err((
+                    ParseError::ParseError(format!(
+                        "render 워커 타임아웃 ({}초 초과)",
+                        KORDOC_TIMEOUT_SECS
+                    )),
+                    false,
+                ));
             }
             match worker.resp_rx.recv_timeout(remaining) {
                 Ok(line) => {
@@ -566,29 +585,39 @@ fn render_svg_via_worker(
                     if resp.get("ok").and_then(|v| v.as_bool()) == Some(true) {
                         let size = std::fs::metadata(&out_path).map(|m| m.len()).unwrap_or(0);
                         if size > RENDER_MAX_SVG_SIZE {
-                            return Err(ParseError::ParseError(format!(
-                                "레이아웃 SVG 크기 초과: {}MB (최대 {}MB)",
-                                size / 1_048_576,
-                                RENDER_MAX_SVG_SIZE / 1_048_576
-                            )));
+                            return Err((
+                                ParseError::ParseError(format!(
+                                    "레이아웃 SVG 크기 초과: {}MB (최대 {}MB)",
+                                    size / 1_048_576,
+                                    RENDER_MAX_SVG_SIZE / 1_048_576
+                                )),
+                                false,
+                            ));
                         }
-                        return std::fs::read_to_string(&out_path)
-                            .map_err(|e| ParseError::ParseError(format!("SVG 읽기 실패: {e}")));
+                        return std::fs::read_to_string(&out_path).map_err(|e| {
+                            (ParseError::ParseError(format!("SVG 읽기 실패: {e}")), false)
+                        });
                     }
                     let msg = resp
                         .get("error")
                         .and_then(|v| v.as_str())
                         .unwrap_or("render 실패")
                         .to_string();
-                    return Err(ParseError::ParseError(msg));
+                    return Err((ParseError::ParseError(msg), false));
                 }
                 Err(RecvTimeoutError::Timeout) => {
                     worker_dead = true;
-                    return Err(ParseError::ParseError("render 워커 타임아웃".to_string()));
+                    return Err((
+                        ParseError::ParseError("render 워커 타임아웃".to_string()),
+                        false,
+                    ));
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     worker_dead = true;
-                    return Err(ParseError::ParseError("render 워커 종료됨".to_string()));
+                    return Err((
+                        ParseError::ParseError("render 워커 종료됨".to_string()),
+                        true,
+                    ));
                 }
             }
         }
@@ -599,6 +628,7 @@ fn render_svg_via_worker(
     if worker_dead {
         if let Some(w) = guard.as_mut() {
             let _ = w.child.kill();
+            let _ = w.child.wait(); // 좀비 회수 (oneshot 러너와 대칭)
         }
         *guard = None;
     }
