@@ -49,6 +49,12 @@ pdfium-render = { version = "0.8.37", default-features = false, features = ["ima
 # .eml 메일 (이슈 #29) — RFC822 MIME 파싱. full_encoding: EUC-KR/CP949 등 한국 메일 charset 디코딩
 mail-parser = { version = "0.11", default-features = false, features = ["full_encoding"] }
 
+# HWP5(.hwp) 바이너리 원본 레이아웃 미리보기 — rhwp(순수 Rust HWP/HWPX 뷰어) DocumentCore→SVG.
+# 미리보기 "원본 레이아웃" 뷰 전용 (인덱싱/마크다운은 kordoc 담당). native-skia(C++) feature 는
+# 켜지 않는다 — render_page_svg_native 는 순수 Rust(tiny-skia) 경로라 C++ 링크 없이 Win/macOS 컴파일.
+# rev 는 v0.7.17 태그 커밋 SHA 고정 (공급망 차단, kordoc SHA-pin 정책과 동일).
+rhwp = { git = "https://github.com/edwardkim/rhwp", rev = "03351190ec35436e58cbfee0aa9278a8fdc04a59", default-features = false }
+
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process"] }
 

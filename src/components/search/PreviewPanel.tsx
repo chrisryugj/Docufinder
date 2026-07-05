@@ -914,7 +914,8 @@ export const PreviewPanel = memo(function PreviewPanel({
     if (prefAppliedRef.current === filePath) return;
     prefAppliedRef.current = filePath;
     if (jumpTarget && jumpDoneRef.current !== jumpTarget.token) return;
-    if (filePath.split(".").pop()?.toLowerCase() !== "hwpx") return;
+    const pvExt = filePath.split(".").pop()?.toLowerCase();
+    if (pvExt !== "hwpx" && pvExt !== "hwp") return;
     if (readPreferredView() !== "layout") return;
     desiredViewRef.current = "layout";
     requestLayoutRender(true);
@@ -975,11 +976,11 @@ export const PreviewPanel = memo(function PreviewPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [filePath, handleFindToggle]);
 
-  // 뷰 전환 단축키 (1=문서 텍스트, 2=원본 레이아웃) — HWPX·PDF·입력창 밖에서만.
+  // 뷰 전환 단축키 (1=문서 텍스트, 2=원본 레이아웃) — HWPX·HWP·PDF·입력창 밖에서만.
   // 앱 기존 bare-key 전역 단축키(`/`)와 같은 패턴. 입력/텍스트영역 포커스 시엔 비활성.
   useEffect(() => {
     const extLower = filePath?.split(".").pop()?.toLowerCase();
-    if (!filePath || (extLower !== "hwpx" && extLower !== "pdf")) return;
+    if (!filePath || (extLower !== "hwpx" && extLower !== "pdf" && extLower !== "hwp")) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       // 모달(설정·도움말·문서비교 등)이 떠 있으면 가려진 미리보기를 몰래 전환하지 않는다
@@ -1122,9 +1123,10 @@ export const PreviewPanel = memo(function PreviewPanel({
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const fileName = filePath.split(/[/\\]/).pop() || filePath;
   const hasAiContent = aiSummary || summaryError || summaryLoading || showFileQa;
-  // 레이아웃 렌더(kordoc render)는 한컴 저장 HWPX 전용 — HWP 등은 버튼 자체를 숨긴다
+  // 원본 레이아웃 세그먼트: HWPX=kordoc render SVG, HWP=rhwp 네이티브 SVG (둘 다 LayoutView 소비)
   const isHwpx = ext === "hwpx";
-  // PDF 는 pdfium 페이지 이미지로 원본 레이아웃을 본다 (HWPX 의 SVG 경로와 별개, PdfLayoutView)
+  const isHwp = ext === "hwp";
+  // PDF 는 pdfium 페이지 이미지로 원본 레이아웃을 본다 (SVG 경로와 별개, PdfLayoutView)
   const isPdf = ext === "pdf";
 
   return (
@@ -1154,7 +1156,7 @@ export const PreviewPanel = memo(function PreviewPanel({
           액션바와 병합해 세로 크롬 축소. 파일위치·복사/내보내기·태그추가는 ⋯ 로 접어 정돈. */}
       <div className="flex items-center gap-1 px-2 py-1 border-b" style={{ borderColor: "var(--color-border)" }}>
         {/* 뷰 세그먼트 — 문서 텍스트 ↔ 원본 레이아웃 (HWPX SVG · PDF 페이지 이미지). 단축키 1·2. */}
-        {(isHwpx || isPdf) && markdown !== null && !loading && !error && (
+        {(isHwpx || isPdf || isHwp) && markdown !== null && !loading && !error && (
           <div role="radiogroup" aria-label="미리보기 뷰" className="inline-flex gap-0.5 p-0.5 rounded-lg shrink-0" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
             {([
               { mode: "markdown", label: "문서 텍스트", key: "1" },

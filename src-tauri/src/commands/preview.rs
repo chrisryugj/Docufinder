@@ -265,11 +265,13 @@ pub async fn load_markdown_preview(
 
 // ======================== 레이아웃 미리보기 (SVG) ========================
 
-/// kordoc render 로 HWPX 전체 페이지를 원본 조판 그대로의 SVG 로 렌더 (레이아웃 보기 토글).
-/// `highlight_query` 는 공백 구분 검색어 — SVG 안에 형광펜 rect 로 칠해진다.
+/// 원본 조판 그대로의 SVG 로 렌더 (레이아웃 보기 토글).
+/// HWPX 는 kordoc render(조판 보존 SVG, `highlight_query` 공백 구분 검색어를 형광펜 rect 로
+/// 구워 넣음), HWP5(.hwp) 바이너리는 rhwp 네이티브 렌더(DocumentCore→SVG)로 분기한다.
 ///
-/// 한컴 저장 HWPX 전용 — HWP·조판 캐시 없는 파일은 kordoc 이 stderr 로 거절하며,
-/// 프론트는 에러 토스트 후 마크다운 뷰를 유지한다.
+/// HWPX: 한컴 저장/조판 캐시 없는 파일도 kordoc 이 reflow 로 렌더(캐시 있으면 재생), 실패 시 stderr 거절.
+/// HWP: rhwp 는 검색어 형광펜을 지원하지 않아 `highlight_query` 를 무시한다(프론트 LayoutView 의
+/// 인앱 찾기 Ctrl+F 는 계속 동작). 실패 시 프론트는 에러 토스트 후 마크다운 뷰를 유지한다.
 #[tauri::command]
 pub async fn render_layout_svg(
     file_path: String,
@@ -283,6 +285,12 @@ pub async fn render_layout_svg(
     // 경로 검증: canonicalize + 감시 폴더 화이트리스트 (마크다운 미리보기와 동일)
     let fp = validate_preview_path(&file_path, &state)?;
 
+    let ext = std::path::Path::new(&fp)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
     let highlights: Vec<String> = highlight_query
         .unwrap_or_default()
         .split_whitespace()
@@ -290,12 +298,16 @@ pub async fn render_layout_svg(
         .collect();
 
     tokio::task::spawn_blocking(move || -> ApiResult<String> {
-        crate::parsers::kordoc::render_svg(std::path::Path::new(&fp), &highlights).map_err(|e| {
-            match e {
-                // ParseError Display 의 "Parse error:" 프리픽스 없이 진단 메시지만 토스트로
-                crate::parsers::ParseError::ParseError(msg) => ApiError::CommandFailed(msg),
-                other => ApiError::CommandFailed(other.to_string()),
-            }
+        let result = if ext == "hwp" {
+            // HWP5 바이너리: rhwp 네이티브 렌더 (검색어 형광펜 미지원 — highlights 무시)
+            crate::parsers::rhwp::render_svg(std::path::Path::new(&fp))
+        } else {
+            crate::parsers::kordoc::render_svg(std::path::Path::new(&fp), &highlights)
+        };
+        result.map_err(|e| match e {
+            // ParseError Display 의 "Parse error:" 프리픽스 없이 진단 메시지만 토스트로
+            crate::parsers::ParseError::ParseError(msg) => ApiError::CommandFailed(msg),
+            other => ApiError::CommandFailed(other.to_string()),
         })
     })
     .await?
