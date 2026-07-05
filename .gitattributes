@@ -1,0 +1,12 @@
+# 테스트 픽스처·문서 바이너리 — CRLF 변환 금지.
+# ASCII-only PDF(multipage_text.pdf)를 git 이 텍스트로 오판해 Windows CI
+# 체크아웃에서 xref 오프셋이 깨졌다 ("Invalid file trailer", CI 28725604583).
+*.pdf binary
+*.hwp binary
+*.hwpx binary
+*.docx binary
+*.xlsx binary
+*.xls binary
+*.png binary
+*.ico binary
+*.onnx binary
