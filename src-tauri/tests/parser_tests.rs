@@ -271,6 +271,170 @@ mod scanned_pdf_ocr_tests {
     }
 }
 
+// 다페이지 PDF 페이지 귀속 + 페이지별 OCR 테스트
+//
+// pdf-extract 의 PlainTextOutput 은 페이지 구분자('\x0c')를 출력하지 않으므로 split 방식은
+// 전 문서를 1페이지로 뭉갠다(다페이지 스캔 PDF 가 1페이지만 OCR 되던 결함). 페이지별
+// 추출(extract_text_by_pages) 전환 후의 페이지 귀속·스캔 판정·전 페이지 OCR 를 검증한다.
+mod multipage_pdf_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// 3페이지 텍스트 PDF: page_count·청크 page_number 가 실제 페이지에 귀속되는지
+    #[test]
+    fn test_multipage_text_pdf_page_attribution() {
+        let path = Path::new("tests/fixtures/multipage_text.pdf");
+        if !path.exists() {
+            eprintln!("Skipping: {:?} not found", path);
+            return;
+        }
+
+        let doc = docufinder_lib::parsers::pdf::parse(path, None).expect("parse failed");
+
+        assert_eq!(
+            doc.metadata.page_count,
+            Some(3),
+            "3페이지 PDF 인데 page_count 오태깅"
+        );
+
+        let pages: BTreeSet<usize> = doc.chunks.iter().filter_map(|c| c.page_number).collect();
+        assert_eq!(
+            pages,
+            BTreeSet::from([1, 2, 3]),
+            "청크가 페이지 1·2·3 전부에 귀속돼야 함: {:?}",
+            pages
+        );
+
+        // 페이지 텍스트가 해당 페이지 번호의 청크에 실림
+        for (token, page) in [("Alpha", 1), ("Bravo", 2), ("Charlie", 3)] {
+            assert!(
+                doc.chunks
+                    .iter()
+                    .any(|c| c.content.contains(token) && c.page_number == Some(page)),
+                "'{}' 가 페이지 {} 청크에 없음",
+                token,
+                page
+            );
+        }
+    }
+
+    /// 이미지-only 3페이지 PDF: OCR 없이도 페이지 수는 실제값
+    #[test]
+    fn test_multipage_scanned_pdf_page_count_without_ocr() {
+        let path = Path::new("tests/fixtures/multipage_scanned.pdf");
+        if !path.exists() {
+            eprintln!("Skipping: {:?} not found", path);
+            return;
+        }
+
+        let doc = docufinder_lib::parsers::pdf::parse(path, None).expect("parse failed");
+        assert_eq!(doc.metadata.page_count, Some(3));
+        assert!(
+            doc.content.trim().is_empty(),
+            "텍스트 레이어 없는 PDF 인데 content 가 비어있지 않음"
+        );
+    }
+
+    fn ocr_engine_if_available() -> Option<docufinder_lib::ocr::OcrEngine> {
+        let ocr_dir = Path::new("resources/paddleocr");
+        let ort_ok = std::env::var_os("ORT_DYLIB_PATH")
+            .map(|p| std::path::PathBuf::from(p).exists())
+            .unwrap_or(false);
+        let models_ok = ocr_dir.join("det.onnx").exists()
+            && ocr_dir.join("rec.onnx").exists()
+            && ocr_dir.join("dict.txt").exists();
+        if !ort_ok || !models_ok {
+            eprintln!("Skipping OCR test (ort={}, models={})", ort_ok, models_ok);
+            return None;
+        }
+        Some(docufinder_lib::ocr::OcrEngine::new(ocr_dir, false).expect("OCR engine init failed"))
+    }
+
+    /// 이미지-only 3페이지 PDF: 1페이지만이 아니라 전 페이지가 OCR 되는지 (임베디드 추출 경로,
+    /// pdfium 불필요). ORT_DYLIB_PATH + 모델 없으면 skip.
+    #[test]
+    fn test_multipage_scanned_pdf_all_pages_ocr() {
+        let path = Path::new("tests/fixtures/multipage_scanned.pdf");
+        if !path.exists() {
+            eprintln!("Skipping: {:?} not found", path);
+            return;
+        }
+        let Some(ocr) = ocr_engine_if_available() else {
+            return;
+        };
+
+        let doc = docufinder_lib::parsers::pdf::parse(path, Some(&ocr)).expect("parse failed");
+        eprintln!(
+            "--- multipage OCR ---\n{}\n---------------------",
+            doc.content
+        );
+
+        let pages: BTreeSet<usize> = doc.chunks.iter().filter_map(|c| c.page_number).collect();
+        assert_eq!(
+            pages,
+            BTreeSet::from([1, 2, 3]),
+            "다페이지 스캔 PDF 는 전 페이지가 OCR 돼야 함 (1페이지만 OCR 되던 결함): {:?}",
+            pages
+        );
+
+        // 각 페이지의 토큰이 해당 페이지 청크에 귀속 (OCR 오차 허용 — 페이지당 후보 중 1개)
+        for (tokens, page) in [
+            (["하나", "문서"], 1usize),
+            (["둘", "검색"], 2),
+            (["셋", "복원"], 3),
+        ] {
+            let page_text: String = doc
+                .chunks
+                .iter()
+                .filter(|c| c.page_number == Some(page))
+                .map(|c| c.content.as_str())
+                .collect();
+            assert!(
+                tokens.iter().any(|t| page_text.contains(t)),
+                "페이지 {} OCR 결과에 {:?} 중 아무것도 없음: {:?}",
+                page,
+                tokens,
+                page_text
+            );
+        }
+    }
+
+    /// 혼합 PDF(텍스트 1p + 스캔 1p): 병합 텍스트가 10자를 넘어도 스캔 페이지가 OCR 되는지
+    /// (has_scanned 가 문서 전체가 아니라 페이지 단위로 판정돼야 함)
+    #[test]
+    fn test_mixed_pdf_scanned_page_still_ocred() {
+        let path = Path::new("tests/fixtures/mixed_text_scanned.pdf");
+        if !path.exists() {
+            eprintln!("Skipping: {:?} not found", path);
+            return;
+        }
+        let Some(ocr) = ocr_engine_if_available() else {
+            return;
+        };
+
+        let doc = docufinder_lib::parsers::pdf::parse(path, Some(&ocr)).expect("parse failed");
+        eprintln!("--- mixed OCR ---\n{}\n-----------------", doc.content);
+
+        assert!(
+            doc.chunks
+                .iter()
+                .any(|c| c.page_number == Some(1) && c.content.contains("readable")),
+            "1페이지 텍스트가 소실됨"
+        );
+        let page2: String = doc
+            .chunks
+            .iter()
+            .filter(|c| c.page_number == Some(2))
+            .map(|c| c.content.as_str())
+            .collect();
+        assert!(
+            ["스캔", "전용", "페이지"].iter().any(|t| page2.contains(t)),
+            "혼합 PDF 의 스캔 페이지(2p)가 OCR 되지 않음: {:?}",
+            page2
+        );
+    }
+}
+
 // 청킹 로직 테스트
 mod chunking_tests {
     #[test]
