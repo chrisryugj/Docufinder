@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v3.15.0 (Tier-2 reflow 렌더·다중줄 채움·리뷰 결함 15건 픽스) — 2026-07-05
+      # 현재: v3.16.0 (차트 생성·도장 배치·플러그인 패키징) — 2026-07-05
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 67e131d3d463d04148b5d3efd302952ef2148988
+          ref: f6a41113ae2b457c78f08a9d26017aef76d4b513
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -222,7 +222,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 67e131d3d463d04148b5d3efd302952ef2148988
+          ref: f6a41113ae2b457c78f08a9d26017aef76d4b513
 
       - name: Build kordoc dist
         working-directory: kordoc-src
