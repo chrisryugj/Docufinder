@@ -61,7 +61,7 @@ rhwp는 **페이지당 SVG 파일 1개**를 만든다(kordoc은 `data-page` 세�
 **대기(다른 PC에서 할 것)**:
 - ⬜ **실앱 런타임 E2E** — `pnpm tauri:dev`로 앱 실행 → .hwp 포함 폴더 인덱싱 → 결과 클릭 →
   "원본 레이아웃"(단축키 2) 클릭 → rhwp 렌더가 `LayoutView`에 뜨는지. 팝업 크게보기·줌·찾기(Ctrl+F)도.
-- ⬜ 릴리즈 빌드(`pnpm tauri:build`)에서 thin-LTO로 rhwp 컴파일 확인 (dev는 검증됨) — v3.2.0 태그 CI가 검증 예정
+- ✅ 릴리즈 빌드 thin-LTO rhwp 컴파일 — **v3.2.0 태그 CI로 검증 완료(2026-07-06)**: Windows setup.exe + macOS dmg 빌드·Release 게시 성공
 - ✅ macOS(`tauri:build:mac`) 실빌드 확인 — **2026-07-06 맥미니(Apple Silicon) 검증**: cargo test 248/248(rhwp 유닛 포함),
   릴리스 컴파일 3m36s, Anything.app 번들·ad-hoc 서명 성공 (DMG 스크립트만 SSH 셸 Finder 스크립팅 불가로 실패 — 환경 문제, CI 무관)
 
