@@ -499,8 +499,8 @@ mod pdf_layout_tests {
             return;
         }
 
-        let render = docufinder_lib::parsers::pdf::render_page_png(path, 0)
-            .expect("render_page_png failed");
+        let render =
+            docufinder_lib::parsers::pdf::render_page_png(path, 0).expect("render_page_png failed");
         // PNG 매직바이트
         assert_eq!(
             &render.png[..4],
