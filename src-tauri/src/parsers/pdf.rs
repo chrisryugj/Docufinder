@@ -669,38 +669,42 @@ pub struct PdfPagePreview {
 /// pdfium 내부 패닉은 catch_unwind 로 흡수(마샬 뮤텍스 poison 방지 — OCR 경로와 동일 방어).
 pub fn render_page_png(path: &Path, page_index: usize) -> Result<PdfPagePreview, ParseError> {
     let pdfium = bind_pdfium().ok_or_else(|| {
-        ParseError::ParseError("PDF 렌더 모듈(pdfium) 미준비 — 설정에서 다운로드 후 재시도".to_string())
+        ParseError::ParseError(
+            "PDF 렌더 모듈(pdfium) 미준비 — 설정에서 다운로드 후 재시도".to_string(),
+        )
     })?;
-    let result = catch_unwind(AssertUnwindSafe(|| -> Result<PdfPagePreview, ParseError> {
-        let document = pdfium
-            .load_pdf_from_file(path, None)
-            .map_err(|e| ParseError::ParseError(format!("PDF 로드 실패: {e}")))?;
-        let page_count = document.pages().len() as usize;
-        if page_count == 0 {
-            return Err(ParseError::ParseError("빈 PDF".to_string()));
-        }
-        if page_index >= page_count {
-            return Err(ParseError::ParseError(format!(
-                "페이지 범위 초과: {} (총 {}페이지)",
-                page_index + 1,
-                page_count
-            )));
-        }
-        let image = rasterize_doc_page(&document, page_index, PREVIEW_RENDER_WIDTH)
-            .ok_or_else(|| ParseError::ParseError("페이지 렌더 실패".to_string()))?;
-        let width = image.width();
-        let height = image.height();
-        let mut png: Vec<u8> = Vec::new();
-        image
-            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-            .map_err(|e| ParseError::ParseError(format!("PNG 인코딩 실패: {e}")))?;
-        Ok(PdfPagePreview {
-            png,
-            page_count,
-            width,
-            height,
-        })
-    }));
+    let result = catch_unwind(AssertUnwindSafe(
+        || -> Result<PdfPagePreview, ParseError> {
+            let document = pdfium
+                .load_pdf_from_file(path, None)
+                .map_err(|e| ParseError::ParseError(format!("PDF 로드 실패: {e}")))?;
+            let page_count = document.pages().len() as usize;
+            if page_count == 0 {
+                return Err(ParseError::ParseError("빈 PDF".to_string()));
+            }
+            if page_index >= page_count {
+                return Err(ParseError::ParseError(format!(
+                    "페이지 범위 초과: {} (총 {}페이지)",
+                    page_index + 1,
+                    page_count
+                )));
+            }
+            let image = rasterize_doc_page(&document, page_index, PREVIEW_RENDER_WIDTH)
+                .ok_or_else(|| ParseError::ParseError("페이지 렌더 실패".to_string()))?;
+            let width = image.width();
+            let height = image.height();
+            let mut png: Vec<u8> = Vec::new();
+            image
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .map_err(|e| ParseError::ParseError(format!("PNG 인코딩 실패: {e}")))?;
+            Ok(PdfPagePreview {
+                png,
+                page_count,
+                width,
+                height,
+            })
+        },
+    ));
     match result {
         Ok(r) => r,
         Err(_) => Err(ParseError::ParseError("pdfium 렌더 중 panic".to_string())),

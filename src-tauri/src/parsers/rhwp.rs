@@ -167,7 +167,8 @@ mod tests {
 
     #[test]
     fn viewbox_parsed() {
-        let svg = r#"<svg xmlns="..." width="793.7" height="1122.5" viewBox="0 0 793.7 1122.5">x</svg>"#;
+        let svg =
+            r#"<svg xmlns="..." width="793.7" height="1122.5" viewBox="0 0 793.7 1122.5">x</svg>"#;
         assert_eq!(parse_viewbox(svg), Some((793.7, 1122.5)));
     }
 
@@ -179,7 +180,8 @@ mod tests {
 
     #[test]
     fn ids_namespaced_per_page() {
-        let inner = r#"<clipPath id="cell-clip-3"><rect/></clipPath><g clip-path="url(#cell-clip-3)"/>"#;
+        let inner =
+            r#"<clipPath id="cell-clip-3"><rect/></clipPath><g clip-path="url(#cell-clip-3)"/>"#;
         let out = namespace_ids(inner, 2);
         assert!(out.contains(r#"id="p2-cell-clip-3""#), "id 접두: {out}");
         assert!(out.contains("url(#p2-cell-clip-3)"), "ref 접두: {out}");
@@ -194,9 +196,15 @@ mod tests {
         // data-page 2개
         assert_eq!(out.matches("data-page=").count(), 2, "{out}");
         // 페이지별 ID 네임스페이스로 충돌 제거
-        assert!(out.contains(r#"id="p1-a""#) && out.contains(r#"id="p2-a""#), "{out}");
+        assert!(
+            out.contains(r#"id="p1-a""#) && out.contains(r#"id="p2-a""#),
+            "{out}"
+        );
         // 2페이지는 1페이지 높이(200)+GAP(12) 만큼 아래로
-        assert!(out.contains("translate(0,212.000)"), "2페이지 오프셋: {out}");
+        assert!(
+            out.contains("translate(0,212.000)"),
+            "2페이지 오프셋: {out}"
+        );
         // 외곽 폭은 최대폭(120), 높이는 200+12+200
         assert!(out.contains(r#"width="120.000""#), "최대폭: {out}");
         assert!(out.contains(r#"height="412.000""#), "총높이: {out}");
