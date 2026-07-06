@@ -70,6 +70,8 @@ export interface UIContextValue {
 
 // ── Context ────────────────────────────────────────────
 
+const PREVIEW_WIDTH_KEY = "docufinder_preview_width";
+
 const UIContext = createContext<UIContextValue | null>(null);
 
 export function useUIContext(): UIContextValue {
@@ -119,9 +121,25 @@ export function UIProvider({ children }: { children: ReactNode }) {
 
   // Preview
   const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
-  const [previewWidth, setPreviewWidth] = useState(() => Math.max(380, Math.round(window.innerWidth * 0.3)));
+  const [previewWidth, setPreviewWidth] = useState(() => {
+    // 직전 세션에서 조절한 너비 복원 (현재 창 기준 상한으로 클램프)
+    try {
+      const saved = Number(localStorage.getItem(PREVIEW_WIDTH_KEY));
+      if (Number.isFinite(saved) && saved >= 380) {
+        return Math.min(saved, Math.max(380, Math.round(window.innerWidth * 0.5)));
+      }
+    } catch { /* private mode 등 무시 */ }
+    return Math.max(380, Math.round(window.innerWidth * 0.3));
+  });
   const previewWidthRef = useRef(previewWidth);
   useEffect(() => { previewWidthRef.current = previewWidth; }, [previewWidth]);
+  // 조절된 너비 저장 (드래그 중 과도한 동기 쓰기 방지 디바운스)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { localStorage.setItem(PREVIEW_WIDTH_KEY, String(previewWidth)); } catch { /* 무시 */ }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [previewWidth]);
   const isResizingRef = useRef(false);
   const handlePreviewClose = useCallback(() => {
     setPreviewFilePath(null);
