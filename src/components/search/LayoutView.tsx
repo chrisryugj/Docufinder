@@ -160,10 +160,20 @@ export const LayoutView = memo(function LayoutView({
   }, [zoom, fit]);
 
   // 줌 — Ctrl/⌘+휠(트랙패드 핀치도 이 이벤트로 도착). 일반 휠은 스크롤(문서 뷰어 관례).
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    zoomToPoint(currentZoom() - e.deltaY * 0.0015, e.clientX, e.clientY);
+  // 네이티브 non-passive 리스너로 붙인다 — React 의 onWheel 은 passive 로 등록돼
+  // preventDefault 가 무시된다(defaultPrevented=false 실측). 그러면 Ctrl/⌘+휠이 컴포넌트
+  // 줌과 동시에 웹뷰 전체 브라우저 줌으로 새어나가, 미리보기가 영역에 맞게 표시되지 않고
+  // 확대·축소가 어긋난다.
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // 일반 휠 = 네이티브 스크롤
+      e.preventDefault();
+      zoomToPoint(currentZoom() - e.deltaY * 0.0015, e.clientX, e.clientY);
+    };
+    sc.addEventListener("wheel", handler, { passive: false });
+    return () => sc.removeEventListener("wheel", handler);
   }, [zoomToPoint, currentZoom]);
 
   // ± 버튼 — 컨테이너 중앙 기준 줌
@@ -210,8 +220,8 @@ export const LayoutView = memo(function LayoutView({
   }, []);
   const endPan = useCallback(() => { panRef.current = null; }, []);
 
-  // 뷰어(팝업) 모드 — Esc 로 닫기. capture 로 전역 단축키보다 먼저 소비해
-  // 뒤 미리보기(찾기/프리뷰 닫힘)까지 번지지 않게 한다.
+  // 뷰어(팝업) 모드 — Esc 로 닫기 + Cmd/Ctrl +/-/0 줌. capture 로 전역 단축키·웹뷰
+  // 브라우저 줌보다 먼저 소비해 뒤 미리보기나 앱 전체 확대로 번지지 않게 한다.
   useEffect(() => {
     if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
@@ -219,11 +229,25 @@ export const LayoutView = memo(function LayoutView({
         e.stopPropagation();
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomBy(ZOOM_STEP);
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomBy(-ZOOM_STEP);
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setFit("page");
+        setZoom(1);
+        zoomAnchorRef.current = null;
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, [onClose, zoomBy]);
 
   // 찾기 매치 — SVG <text> 내용에서 findTerm 포함 요소 수집·강조
   useEffect(() => {
@@ -341,7 +365,6 @@ export const LayoutView = memo(function LayoutView({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        onWheel={onWheel}
         onDoubleClick={onClose ? onDoubleClick : undefined}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
