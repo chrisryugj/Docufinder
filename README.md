@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.1.2-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.2.0-blue.svg" alt="Version" /></a>
   <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri-2.10-24C8D8.svg" alt="Tauri 2" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
 </p>
@@ -44,6 +44,8 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 
 ### 문서 미리보기 & 크게 보기
 결과를 클릭하면 문서를 미리보기로 렌더합니다. 병합·중첩된 표도 원본 구조 그대로 표시하고, 전체화면 팝업 뷰어에서 커서 기준 휠 줌·더블클릭 확대·너비/페이지 맞춤으로 크게 볼 수 있습니다. Ctrl+F로 문서 안에서 바로 찾기도 됩니다.
+
+**원본 레이아웃 보기 (v3.2)** — 텍스트 미리보기 외에 원본 조판 그대로 보는 뷰(단축키 2)를 지원합니다. `.hwpx`(kordoc SVG — 글꼴·가로문서·다구역까지 충실 렌더), `.pdf`(원본 페이지 이미지), **`.hwp`(rhwp 네이티브 렌더 — 한컴 설치 없이)** 삼종 모두.
 
 ### 문서 비교
 같은 문서의 버전이 여러 개일 때, 결과 우클릭 → '비교 대상으로 선택' 후 다른 결과와 비교하면 두 문서의 달라진 부분을 나란히 보여줍니다.
