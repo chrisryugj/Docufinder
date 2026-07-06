@@ -41,8 +41,48 @@ export const PdfLayoutView = memo(function PdfLayoutView({
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [fitWidth, setFitWidth] = useState(true);
+  const [zoom, setZoom] = useState(1); // fit=null(수동 줌)일 때 컨테이너 너비 대비 배율
+  // 맞춤 모드 — "page"=전체 페이지가 보이게(기본, 중앙정렬), "width"=너비 맞춤, null=수동 줌.
+  // 컨테이너 크기를 ResizeObserver 로 추적해 창/패널 리사이즈에 실시간 추종 (LayoutView 와 동일 모델).
+  const [fit, setFit] = useState<"width" | "page" | null>("page");
+  const [avail, setAvail] = useState<{ w: number; h: number } | null>(null);
+  const [pageDims, setPageDims] = useState<{ w: number; h: number } | null>(null);
+
+  // 핸들러 스테일 클로저 방지 미러
+  const zoomRef = useRef(zoom);
+  const fitRef = useRef(fit);
+  const availRef = useRef(avail);
+  const pageDimsRef = useRef(pageDims);
+  zoomRef.current = zoom;
+  fitRef.current = fit;
+  availRef.current = avail;
+  pageDimsRef.current = pageDims;
+
+  // 현재 실효 줌(컨테이너 너비 대비 배율) — 맞춤 모드에서 ±/휠 줌 시작점
+  const currentZoom = useCallback(() => {
+    const f = fitRef.current;
+    if (f === "width") return 1;
+    if (f === "page") {
+      const a = availRef.current, dm = pageDimsRef.current;
+      if (a && dm && a.w > 0 && dm.h > 0) return Math.min(a.w, a.h * (dm.w / dm.h)) / a.w;
+      return 1;
+    }
+    return zoomRef.current;
+  }, []);
+
+  // 컨테이너 크기 추적 — 맞춤 모드의 실시간 리사이즈 추종 근거
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const update = () => {
+      const w = sc.clientWidth - 32, h = sc.clientHeight - 24; // px-4/py-3 패딩
+      setAvail((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(sc);
+    return () => ro.disconnect();
+  }, []);
 
   // 파일이 바뀌면 첫 페이지로 리셋
   useEffect(() => {
@@ -62,6 +102,8 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         if (reqRef.current !== req) return;
         setDataUrl(res.data_url);
         setPageCount(Math.max(1, res.page_count));
+        // 페이지 원본 치수 — 페이지맞춤 폭 계산용 (가로/세로 혼재 문서는 페이지마다 갱신)
+        setPageDims(res.width > 0 && res.height > 0 ? { w: res.width, h: res.height } : null);
         scrollRef.current?.scrollTo(0, 0);
       })
       .catch((e) => {
@@ -96,19 +138,38 @@ export const PdfLayoutView = memo(function PdfLayoutView({
   }, [onClose]);
 
   const zoomBy = useCallback((d: number) => {
-    setFitWidth(false);
-    setZoom((z) => clampZoom((fitWidth ? 1 : z) + d));
-  }, [fitWidth]);
+    const z = clampZoom(currentZoom() + d);
+    setFit(null);
+    setZoom(z);
+  }, [currentZoom]);
 
   // Ctrl/⌘+휠 = 줌 (문서 뷰어 관례), 일반 휠 = 스크롤
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    setFitWidth(false);
-    setZoom((z) => clampZoom((fitWidth ? 1 : z) - e.deltaY * 0.0015));
-  }, [fitWidth]);
+    const z = clampZoom(currentZoom() - e.deltaY * 0.0015);
+    setFit(null);
+    setZoom(z);
+  }, [currentZoom]);
 
-  const widthStyle = fitWidth ? "100%" : `${(zoom * 100).toFixed(0)}%`;
+  // 맞춤 토글 — 페이지 맞춤 ↔ 너비 맞춤 순환 (수동 줌 상태에선 페이지 맞춤 복귀)
+  const toggleFit = useCallback(() => {
+    setZoom(1);
+    setFit((f) => (f === "page" ? "width" : "page"));
+  }, []);
+
+  // 맞춤 폭 계산 — page: 페이지가 컨테이너 높이에 들어오는 px 폭(너비 상한), width: 100%,
+  // 수동 줌: 컨테이너 너비 대비 %. mx-auto 로 중앙정렬.
+  const fitPageW =
+    avail && pageDims && pageDims.h > 0
+      ? Math.max(120, Math.min(avail.w, avail.h * (pageDims.w / pageDims.h)))
+      : null;
+  const widthStyle =
+    fit === "width" || (fit === "page" && fitPageW === null)
+      ? "100%"
+      : fit === "page"
+        ? `${Math.round(fitPageW!)}px`
+        : `${(zoom * 100).toFixed(0)}%`;
 
   return (
     <div className="flex flex-col h-full">
@@ -132,11 +193,11 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         <button onClick={() => zoomBy(-ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="축소" aria-label="축소">
           <ZoomOut size={13} />
         </button>
-        <span className="tabular-nums select-none w-9 text-center">{fitWidth ? "맞춤" : `${Math.round(zoom * 100)}%`}</span>
+        <span className="tabular-nums select-none w-9 text-center">{fit === "page" ? "맞춤" : fit === "width" ? "너비" : `${Math.round(zoom * 100)}%`}</span>
         <button onClick={() => zoomBy(ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="확대" aria-label="확대">
           <ZoomIn size={13} />
         </button>
-        <button onClick={() => { setFitWidth(true); setZoom(1); }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="너비 맞춤" aria-label="너비 맞춤">
+        <button onClick={toggleFit} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fit === "page" ? "너비 맞춤" : "페이지 맞춤"} aria-label={fit === "page" ? "너비 맞춤" : "페이지 맞춤"}>
           <Maximize2 size={13} />
         </button>
 
@@ -172,7 +233,7 @@ export const PdfLayoutView = memo(function PdfLayoutView({
               alt={`PDF 페이지 ${page}`}
               draggable={false}
               className="mx-auto block shadow-sm select-none"
-              style={{ width: widthStyle, maxWidth: fitWidth ? "100%" : "none", height: "auto", backgroundColor: "white" }}
+              style={{ width: widthStyle, maxWidth: fit !== null ? "100%" : "none", height: "auto", backgroundColor: "white" }}
             />
           )
         )}

@@ -899,6 +899,16 @@ function AppContent() {
                 className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
                 style={{ width: Math.max(Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH }}
               >
+                {/* overlay 모드에도 리사이즈 핸들 — push 에서 넓히다 overlay 로 전환되면
+                    핸들이 사라져 다시 줄일 수 없던 버그 수정. 좁히면 push 모드로 자동 복귀. */}
+                <div
+                  onMouseDown={ui.handleResizeStart}
+                  className="absolute inset-y-0 left-0 w-1 z-10 cursor-col-resize hover:bg-[var(--color-accent)] transition-colors"
+                  style={{ backgroundColor: "var(--color-border)" }}
+                  title="드래그하여 너비 조절"
+                >
+                  <div className="absolute inset-y-0 -left-1 -right-1" />
+                </div>
                 <Suspense fallback={null}>
                   <PreviewPanel
                     filePath={ui.previewFilePath}

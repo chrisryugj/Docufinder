@@ -742,11 +742,16 @@ export const PreviewPanel = memo(function PreviewPanel({
       const el = findJumpTarget(root, jumpTarget.anchors, jumpTarget.page);
       jumpDoneRef.current = jumpTarget.token;
       if (el) {
-        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        // 먼 타깃은 즉시 점프 — 장문(hwp/hwpx 수십 페이지) 문서에서 smooth 가 문서
+        // 전체를 몇 초간 훑어 내려가는 "혼자 스크롤되는" 증상을 막는다. 가까울 때만 smooth.
+        const dist = Math.abs(
+          el.getBoundingClientRect().top - root.getBoundingClientRect().top - root.clientHeight / 2,
+        );
+        el.scrollIntoView({ block: "center", behavior: dist > root.clientHeight * 1.5 ? "auto" : "smooth" });
         el.classList.add("cite-flash");
         window.setTimeout(() => el.classList.remove("cite-flash"), 2200);
       } else {
-        root.scrollTo({ top: 0, behavior: "smooth" });
+        root.scrollTo({ top: 0, behavior: root.scrollTop > root.clientHeight * 1.5 ? "auto" : "smooth" });
       }
     });
     return () => cancelAnimationFrame(raf);

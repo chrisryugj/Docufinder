@@ -36,8 +36,14 @@ export const LayoutView = memo(function LayoutView({
   const hostRef = useRef<HTMLDivElement>(null); // dangerouslySetInnerHTML 대상
   const matchesRef = useRef<SVGTextElement[]>([]);
 
-  const [zoom, setZoom] = useState(1); // 1 = fit-width
-  const [fitWidth, setFitWidth] = useState(true);
+  const [zoom, setZoom] = useState(1); // fit=null(수동 줌)일 때 컨테이너 너비 대비 배율
+  // 맞춤 모드 — "page"=전체 페이지가 보이게(기본, 중앙정렬), "width"=너비 맞춤, null=수동 줌.
+  // 둘 다 컨테이너 크기를 ResizeObserver 로 추적해 창/패널 리사이즈에 실시간 추종한다.
+  const [fit, setFit] = useState<"width" | "page" | null>("page");
+  // 스크롤 컨테이너 내용 영역 크기 (px-4/py-3 패딩 제외) — 맞춤 계산용
+  const [avail, setAvail] = useState<{ w: number; h: number } | null>(null);
+  // 첫 페이지 높이/host 너비 비 — SVG 는 비례 스케일이라 이 비율은 줌과 무관(스케일 불변)
+  const [pageRatio, setPageRatio] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(1);
   const [matchIdx, setMatchIdx] = useState(0);
@@ -45,15 +51,56 @@ export const LayoutView = memo(function LayoutView({
 
   // 커서 기준 줌 보정용 — 핸들러 스테일 클로저 방지(렌더마다 최신값 미러)
   const zoomRef = useRef(zoom);
-  const fitWidthRef = useRef(fitWidth);
+  const fitRef = useRef(fit);
+  const availRef = useRef(avail);
+  const pageRatioRef = useRef(pageRatio);
   zoomRef.current = zoom;
-  fitWidthRef.current = fitWidth;
+  fitRef.current = fit;
+  availRef.current = avail;
+  pageRatioRef.current = pageRatio;
   const zoomAnchorRef = useRef<{ fx: number; fy: number; cx: number; cy: number } | null>(null);
+
+  // 현재 실효 줌(컨테이너 너비 대비 배율) — 맞춤 모드에서 ±/휠 줌 시작점으로 쓴다
+  const currentZoom = useCallback(() => {
+    const f = fitRef.current;
+    if (f === "width") return 1;
+    if (f === "page") {
+      const a = availRef.current, r = pageRatioRef.current;
+      if (a && r && a.w > 0) return Math.min(a.w, a.h / r) / a.w;
+      return 1;
+    }
+    return zoomRef.current;
+  }, []);
+
+  // 컨테이너 크기 추적 — 맞춤 모드가 창/패널 리사이즈에 실시간 추종하는 근거
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const update = () => {
+      const w = sc.clientWidth - 32, h = sc.clientHeight - 24; // px-4/py-3 패딩
+      setAvail((prev) => (prev && prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(sc);
+    return () => ro.disconnect();
+  }, []);
 
   // 페이지 수 (data-page 그룹)
   useEffect(() => {
     setPageCount(Math.max(1, (svg.match(/data-page="/g) ?? []).length));
     setPage(1);
+  }, [svg]);
+
+  // 첫 페이지 종횡비 측정 — data-page 는 SVG <g> 라 offsetHeight 가 없어(HTML 전용)
+  // getBoundingClientRect 로 잰다. 비율은 스케일 불변이라 svg 당 1회면 충분.
+  useLayoutEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const pg = host.querySelector("[data-page]") ?? host.querySelector("svg");
+    const hw = host.getBoundingClientRect().width;
+    const ph = pg?.getBoundingClientRect().height ?? 0;
+    setPageRatio(hw > 0 && ph > 0 ? ph / hw : null);
   }, [svg]);
 
   // 페이지 점프
@@ -67,13 +114,14 @@ export const LayoutView = memo(function LayoutView({
   }, [pageCount]);
 
   // 스크롤 → 현재 페이지 감지 (뷰포트 중앙에 걸친 페이지)
+  // data-page 는 SVG <g> — offsetTop 이 없어(undefined) getBoundingClientRect 로 비교한다.
   const onScroll = useCallback(() => {
     const host = hostRef.current, sc = scrollRef.current;
     if (!host || !sc) return;
-    const mid = sc.scrollTop + sc.clientHeight / 2;
+    const mid = sc.getBoundingClientRect().top + sc.clientHeight / 2;
     let cur = 1;
-    host.querySelectorAll<HTMLElement>("[data-page]").forEach((el) => {
-      if (el.offsetTop <= mid) cur = Number(el.getAttribute("data-page")) || cur;
+    host.querySelectorAll<Element>("[data-page]").forEach((el) => {
+      if (el.getBoundingClientRect().top <= mid) cur = Number(el.getAttribute("data-page")) || cur;
     });
     setPage(cur);
   }, []);
@@ -93,7 +141,7 @@ export const LayoutView = memo(function LayoutView({
       cx: clientX - rect.left,
       cy: clientY - rect.top,
     };
-    setFitWidth(false);
+    setFit(null);
     setZoom(clampZoom(nextZoom));
   }, []);
 
@@ -109,30 +157,28 @@ export const LayoutView = memo(function LayoutView({
     sc.scrollLeft = hostLeft + a.fx * host.offsetWidth - a.cx;
     sc.scrollTop = hostTop + a.fy * host.offsetHeight - a.cy;
     zoomAnchorRef.current = null;
-  }, [zoom, fitWidth]);
+  }, [zoom, fit]);
 
   // 줌 — Ctrl/⌘+휠(트랙패드 핀치도 이 이벤트로 도착). 일반 휠은 스크롤(문서 뷰어 관례).
   const onWheel = useCallback((e: React.WheelEvent) => {
     if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
-    const cur = fitWidthRef.current ? 1 : zoomRef.current;
-    zoomToPoint(cur - e.deltaY * 0.0015, e.clientX, e.clientY);
-  }, [zoomToPoint]);
+    zoomToPoint(currentZoom() - e.deltaY * 0.0015, e.clientX, e.clientY);
+  }, [zoomToPoint, currentZoom]);
 
   // ± 버튼 — 컨테이너 중앙 기준 줌
   const zoomBy = useCallback((d: number) => {
     const sc = scrollRef.current;
     if (!sc) return;
     const rect = sc.getBoundingClientRect();
-    const cur = fitWidthRef.current ? 1 : zoomRef.current;
-    zoomToPoint(cur + d, rect.left + rect.width / 2, rect.top + rect.height / 2);
-  }, [zoomToPoint]);
+    zoomToPoint(currentZoom() + d, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }, [zoomToPoint, currentZoom]);
 
-  // 더블클릭 줌 토글 — 뷰어(팝업) 모드에서만(onClose 게이트). 확대 상태면 너비맞춤 원복,
+  // 더블클릭 줌 토글 — 뷰어(팝업) 모드에서만(onClose 게이트). 확대 상태면 페이지맞춤 원복,
   // 아니면 그 지점 2× 확대. 인라인엔 미부착 — SVG <text> 단어 더블클릭 선택 보존.
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
-    if (!fitWidthRef.current && zoomRef.current > 1.01) {
-      setFitWidth(true);
+    if (fitRef.current === null && zoomRef.current > 1.01) {
+      setFit("page");
       setZoom(1);
       zoomAnchorRef.current = null;
     } else {
@@ -140,21 +186,11 @@ export const LayoutView = memo(function LayoutView({
     }
   }, [zoomToPoint]);
 
-  // 페이지 맞춤 — 첫 페이지 높이를 컨테이너에 맞춰 줌 계산(너비맞춤 ↔ 페이지맞춤 순환용).
-  const fitPage = useCallback(() => {
-    const sc = scrollRef.current, host = hostRef.current;
-    if (!sc || !host) return;
-    const pageEl = host.querySelector<HTMLElement>("[data-page]") ?? host;
-    const pageH = pageEl.offsetHeight;
-    if (pageH <= 0) return;
-    const contH = sc.clientHeight - 24; // px-4 py-3 세로 여백
-    const cur = fitWidthRef.current ? 1 : zoomRef.current;
-    setFitWidth(false);
-    setZoom(clampZoom(cur * (contH / pageH)));
+  // 맞춤 토글 — 페이지 맞춤 ↔ 너비 맞춤 순환 (수동 줌 상태에선 페이지 맞춤 복귀)
+  const toggleFit = useCallback(() => {
     zoomAnchorRef.current = null;
-    requestAnimationFrame(() => {
-      sc.scrollTop = 0;
-    });
+    setZoom(1);
+    setFit((f) => (f === "page" ? "width" : "page"));
   }, []);
 
   // 드래그 팬 (줌 상태에서 종이 끌어 이동)
@@ -204,12 +240,19 @@ export const LayoutView = memo(function LayoutView({
     setMatchIdx(0);
   }, [findTerm, svg]);
 
-  // 활성 매치 강조 + 스크롤
+  // 활성 매치 강조 + 스크롤 — 먼 매치는 즉시 점프(수십 페이지를 smooth 로 훑는 장시간
+  // 스크롤 방지), 가까운 매치만 smooth.
   useEffect(() => {
     const m = matchesRef.current;
     if (m.length === 0) return;
     m.forEach((t, i) => t.setAttribute("data-find", i === matchIdx ? "active" : "1"));
-    m[matchIdx]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const target = m[matchIdx], sc = scrollRef.current;
+    if (target) {
+      const far = sc
+        ? Math.abs(target.getBoundingClientRect().top - sc.getBoundingClientRect().top - sc.clientHeight / 2) > sc.clientHeight * 2
+        : false;
+      target.scrollIntoView({ behavior: far ? "auto" : "smooth", block: "center" });
+    }
     // findTerm·svg 도 의존성에 포함: 매치 수가 이전과 같은 새 검색어(예: 3건→3건)는
     // matchIdx·matchCount 가 안 바뀌어 active 강조·스크롤이 갱신되지 않는다. 수집 effect가
     // 먼저(선언순) 실행돼 matchesRef 를 재구성한 뒤 이 effect가 읽으므로 순서 안전.
@@ -219,7 +262,16 @@ export const LayoutView = memo(function LayoutView({
     setMatchIdx((i) => (matchCount > 0 ? (i + dir + matchCount) % matchCount : 0));
   }, [matchCount]);
 
-  const widthStyle = fitWidth ? "100%" : `${(zoom * 100).toFixed(0)}%`;
+  // 맞춤 폭 계산 — page: 첫 페이지가 컨테이너 높이에 들어오는 px 폭(너비 상한), width: 100%,
+  // 수동 줌: 컨테이너 너비 대비 % (컨테이너가 넓어지면 비례해서 넓어진다). mx-auto 로 중앙정렬.
+  const fitPageW =
+    avail && pageRatio ? Math.max(120, Math.min(avail.w, avail.h / pageRatio)) : null;
+  const widthStyle =
+    fit === "width" || (fit === "page" && fitPageW === null)
+      ? "100%"
+      : fit === "page"
+        ? `${Math.round(fitPageW!)}px`
+        : `${(zoom * 100).toFixed(0)}%`;
 
   return (
     <div className="flex flex-col h-full">
@@ -250,11 +302,11 @@ export const LayoutView = memo(function LayoutView({
         <button onClick={() => zoomBy(-ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="축소" aria-label="축소">
           <ZoomOut size={13} />
         </button>
-        <span className="tabular-nums select-none w-9 text-center">{fitWidth ? "맞춤" : `${Math.round(zoom * 100)}%`}</span>
+        <span className="tabular-nums select-none w-9 text-center">{fit === "page" ? "맞춤" : fit === "width" ? "너비" : `${Math.round(zoom * 100)}%`}</span>
         <button onClick={() => zoomBy(ZOOM_STEP)} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title="확대" aria-label="확대">
           <ZoomIn size={13} />
         </button>
-        <button onClick={() => { if (fitWidth) fitPage(); else { setFitWidth(true); setZoom(1); zoomAnchorRef.current = null; } }} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fitWidth ? "페이지 맞춤" : "너비 맞춤"} aria-label={fitWidth ? "페이지 맞춤" : "너비 맞춤"}>
+        <button onClick={toggleFit} className="p-1 rounded hover:bg-[var(--color-bg-tertiary)]" title={fit === "page" ? "너비 맞춤" : "페이지 맞춤"} aria-label={fit === "page" ? "너비 맞춤" : "페이지 맞춤"}>
           <Maximize2 size={13} />
         </button>
 
@@ -301,7 +353,7 @@ export const LayoutView = memo(function LayoutView({
         <div
           ref={hostRef}
           className="layout-svg-host mx-auto"
-          style={{ width: widthStyle, maxWidth: fitWidth ? "100%" : "none" }}
+          style={{ width: widthStyle, maxWidth: fit !== null ? "100%" : "none" }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       </div>
