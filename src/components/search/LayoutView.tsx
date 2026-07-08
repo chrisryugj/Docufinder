@@ -18,6 +18,22 @@ const ZOOM_STEP = 0.2;
 const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 /**
+ * 한 페이지의 높이/폭 비를 SVG 소스에서 직접 파싱한다(kordoc 렌더 전용).
+ * 페이지는 세로로 쌓이므로 viewBox 의 W 는 곧 페이지 폭이고, kordoc 은 페이지 클립
+ * `<clipPath id="pgclip"><rect … height="841.88"/>` 에 페이지 높이를 굽는다.
+ * 이 둘이면 DOM 측정 없이 첫 렌더부터 정확한 비율을 얻는다. 형식이 안 맞으면 null 을
+ * 반환해 호출부가 getBoundingClientRect 측정으로 폴백하게 한다(rhwp HWP 등).
+ */
+function pageRatioFromSvg(svg: string): number | null {
+  const vb = /viewBox="0 0 ([\d.]+) [\d.]+"/.exec(svg);
+  const clip = /<clipPath id="pgclip"><rect[^>]*\bheight="([\d.]+)"/.exec(svg);
+  if (!vb || !clip) return null;
+  const w = parseFloat(vb[1]);
+  const h = parseFloat(clip[1]);
+  return w > 0 && h > 0 ? h / w : null;
+}
+
+/**
  * 레이아웃(조판 SVG) 뷰어 — 인라인 SVG 로 삽입해 줌/팬·페이지 네비·찾기 매치 이동을 연다.
  * `<img>` 격리 대신 인라인이지만, SVG 는 kordoc 이 생성한 신뢰 소스이고 스크립트/외부
  * 리소스를 포함하지 않는다(텍스트·도형·이미지 data URI 뿐). DOM 접근이 열려야 페이지
@@ -92,9 +108,18 @@ export const LayoutView = memo(function LayoutView({
     setPage(1);
   }, [svg]);
 
-  // 첫 페이지 종횡비 측정 — data-page 는 SVG <g> 라 offsetHeight 가 없어(HTML 전용)
-  // getBoundingClientRect 로 잰다. 비율은 스케일 불변이라 svg 당 1회면 충분.
+  // 첫 페이지 종횡비 — "맞춤" 초기 표시가 창에 정확히 들어가는지를 좌우하는 핵심 값.
+  // 1순위: SVG 소스에서 직접 파싱(결정적) — kordoc(HWPX/DOCX/PDF) 는 페이지 폭을 viewBox W,
+  //   페이지 높이를 `<clipPath id="pgclip"><rect height=…>` 로 굽는다. 이 둘로 비율을 바로 얻으면
+  //   렌더 타이밍·폰트 로드·컨테이너 리사이즈와 무관하게 첫 프레임부터 정확한 맞춤이 나온다.
+  // 2순위: DOM 측정(fallback) — pgclip 이 없는 rhwp(HWP) 등. data-page 는 SVG <g> 라
+  //   offsetHeight 가 없어(HTML 전용) getBoundingClientRect 로 잰다. 비율은 스케일 불변.
   useLayoutEffect(() => {
+    const parsed = pageRatioFromSvg(svg);
+    if (parsed) {
+      setPageRatio(parsed);
+      return;
+    }
     const host = hostRef.current;
     if (!host) return;
     const pg = host.querySelector("[data-page]") ?? host.querySelector("svg");
