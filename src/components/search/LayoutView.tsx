@@ -19,14 +19,16 @@ const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 /**
  * 한 페이지의 높이/폭 비를 SVG 소스에서 직접 파싱한다(kordoc 렌더 전용).
- * 페이지는 세로로 쌓이므로 viewBox 의 W 는 곧 페이지 폭이고, kordoc 은 페이지 클립
- * `<clipPath id="pgclip"><rect … height="841.88"/>` 에 페이지 높이를 굽는다.
- * 이 둘이면 DOM 측정 없이 첫 렌더부터 정확한 비율을 얻는다. 형식이 안 맞으면 null 을
- * 반환해 호출부가 getBoundingClientRect 측정으로 폴백하게 한다(rhwp HWP 등).
+ * 페이지는 세로로 쌓이므로 viewBox 의 W 는 곧 표시 폭이고, kordoc 은 구역별 페이지 클립
+ * `<clipPath id="pgclip0"><rect … height="841.88"/>` 에 페이지 높이를 굽는다(v3.16+
+ * 다구역 렌더부터 pgclip 뒤에 구역 인덱스가 붙는다 — `\d*` 로 신구 형식 모두 수용, 첫
+ * 매치 = 1구역). 비율 기준은 DOM 폴백과 동일한 `첫 페이지 높이 / 전체 표시 폭`이다.
+ * 형식이 안 맞으면 null 을 반환해 호출부가 getBoundingClientRect 측정으로 폴백하게
+ * 한다(rhwp HWP 등).
  */
 function pageRatioFromSvg(svg: string): number | null {
   const vb = /viewBox="0 0 ([\d.]+) [\d.]+"/.exec(svg);
-  const clip = /<clipPath id="pgclip"><rect[^>]*\bheight="([\d.]+)"/.exec(svg);
+  const clip = /<clipPath id="pgclip\d*"><rect[^>]*\bheight="([\d.]+)"/.exec(svg);
   if (!vb || !clip) return null;
   const w = parseFloat(vb[1]);
   const h = parseFloat(clip[1]);
@@ -88,8 +90,11 @@ export const LayoutView = memo(function LayoutView({
     return zoomRef.current;
   }, []);
 
-  // 컨테이너 크기 추적 — 맞춤 모드가 창/패널 리사이즈에 실시간 추종하는 근거
-  useEffect(() => {
+  // 컨테이너 크기 추적 — 맞춤 모드가 창/패널 리사이즈에 실시간 추종하는 근거.
+  // useLayoutEffect: passive effect 면 avail 이 페인트 뒤에나 세팅돼 첫 프레임이 무조건
+  // 100%(너비맞춤)로 그려졌다가 페이지맞춤으로 스냅한다(수십 페이지 SVG 재레이아웃 깜빡임).
+  // 페인트 전에 재면 pageRatio(역시 layout effect)와 함께 첫 프레임부터 맞춤 폭이 나온다.
+  useLayoutEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
     const update = () => {
@@ -109,8 +114,8 @@ export const LayoutView = memo(function LayoutView({
   }, [svg]);
 
   // 첫 페이지 종횡비 — "맞춤" 초기 표시가 창에 정확히 들어가는지를 좌우하는 핵심 값.
-  // 1순위: SVG 소스에서 직접 파싱(결정적) — kordoc(HWPX/DOCX/PDF) 는 페이지 폭을 viewBox W,
-  //   페이지 높이를 `<clipPath id="pgclip"><rect height=…>` 로 굽는다. 이 둘로 비율을 바로 얻으면
+  // 1순위: SVG 소스에서 직접 파싱(결정적) — kordoc 은 표시 폭을 viewBox W, 페이지 높이를
+  //   `<clipPath id="pgclip0"><rect height=…>` 로 굽는다. 이 둘로 비율을 바로 얻으면
   //   렌더 타이밍·폰트 로드·컨테이너 리사이즈와 무관하게 첫 프레임부터 정확한 맞춤이 나온다.
   // 2순위: DOM 측정(fallback) — pgclip 이 없는 rhwp(HWP) 등. data-page 는 SVG <g> 라
   //   offsetHeight 가 없어(HTML 전용) getBoundingClientRect 로 잰다. 비율은 스케일 불변.

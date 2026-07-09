@@ -1,0 +1,40 @@
+import { useState } from "react";
+import ReactDOM from "react-dom/client";
+import "./harness.css";
+import { LayoutView } from "../src/components/search/LayoutView";
+import { PdfLayoutView } from "../src/components/search/PdfLayoutView";
+import svgRaw from "./test-render.svg?raw";
+
+// 컴포넌트 핸들러(타깃)가 처리한 뒤 버블 단계에서 defaultPrevented 를 기록 —
+// passive onWheel 결함(v3.2.2/이번 PDF 수정)의 실효 검증 프로브.
+declare global {
+  interface Window {
+    __wheelPrevented: boolean[];
+    __closed: boolean;
+    __setMode: (m: "svg" | "pdf") => void;
+    __setPdfFile: (p: string) => void;
+    __invokeCalls: Array<{ cmd: string; args: unknown }>;
+  }
+}
+window.__wheelPrevented = [];
+window.__closed = false;
+document.addEventListener("wheel", (e) => window.__wheelPrevented.push(e.defaultPrevented));
+
+function App() {
+  // 실앱은 팝업 뷰어가 한 번에 하나만 뜬다 — 키보드(window) 리스너 교차 방지 위해 단일 마운트
+  const [mode, setMode] = useState<"svg" | "pdf">("svg");
+  const [pdfFile, setPdfFile] = useState("/fake/a.pdf");
+  window.__setMode = setMode;
+  window.__setPdfFile = setPdfFile;
+  return (
+    <div id="stage" style={{ width: 800, height: 600 }}>
+      {mode === "svg" ? (
+        <LayoutView svg={svgRaw} onClose={() => { window.__closed = true; }} />
+      ) : (
+        <PdfLayoutView filePath={pdfFile} onClose={() => { window.__closed = true; }} />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<App />);
