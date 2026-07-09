@@ -1,4 +1,4 @@
-import { memo, useRef, useState, useEffect, useCallback } from "react";
+import { memo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Expand, X, Loader2 } from "lucide-react";
 
@@ -70,8 +70,9 @@ export const PdfLayoutView = memo(function PdfLayoutView({
     return zoomRef.current;
   }, []);
 
-  // 컨테이너 크기 추적 — 맞춤 모드의 실시간 리사이즈 추종 근거
-  useEffect(() => {
+  // 컨테이너 크기 추적 — 맞춤 모드의 실시간 리사이즈 추종 근거.
+  // useLayoutEffect: 페인트 전에 재야 첫 프레임부터 맞춤 폭이 나온다 (LayoutView 와 동일).
+  useLayoutEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
     const update = () => {
@@ -84,11 +85,16 @@ export const PdfLayoutView = memo(function PdfLayoutView({
     return () => ro.disconnect();
   }, []);
 
-  // 파일이 바뀌면 첫 페이지로 리셋
-  useEffect(() => {
+  // 파일 전환은 렌더 중에 즉시 재설정 — effect 로 하면 이전 page 값으로 새 파일을 한 번
+  // 요청하고(대형 PDF pdfium 렌더 낭비, req 토큰으로 폐기되나 로딩 지연), 첫 응답 전까지
+  // 이전 파일의 pageCount 로 범위 밖 네비 → "PDF 렌더 실패" 표시가 가능한 창구간이 생긴다.
+  const [lastFile, setLastFile] = useState(filePath);
+  if (lastFile !== filePath) {
+    setLastFile(filePath);
     setPage(1);
+    setPageCount(1);
     setDataUrl(null);
-  }, [filePath]);
+  }
 
   // 현재 페이지 렌더 요청 — 파일/페이지 변경 시. 늦은 응답은 req 토큰으로 폐기.
   const reqRef = useRef(0);
@@ -123,7 +129,14 @@ export const PdfLayoutView = memo(function PdfLayoutView({
     });
   }, [pageCount]);
 
-  // 뷰어(팝업) 모드 — Esc 로 닫기 (capture 로 전역 단축키보다 먼저 소비)
+  const zoomBy = useCallback((d: number) => {
+    const z = clampZoom(currentZoom() + d);
+    setFit(null);
+    setZoom(z);
+  }, [currentZoom]);
+
+  // 뷰어(팝업) 모드 — Esc 닫기 + Cmd/Ctrl +/-/0 줌 (LayoutView 와 동일 계약).
+  // capture 로 전역 단축키·웹뷰 브라우저 줌보다 먼저 소비해 앱 전체 확대로 번지지 않게 한다.
   useEffect(() => {
     if (!onClose) return;
     const onKey = (e: KeyboardEvent) => {
@@ -131,26 +144,54 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         e.stopPropagation();
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        zoomBy(ZOOM_STEP);
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomBy(-ZOOM_STEP);
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setFit("page");
+        setZoom(1);
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, [onClose, zoomBy]);
 
-  const zoomBy = useCallback((d: number) => {
-    const z = clampZoom(currentZoom() + d);
-    setFit(null);
-    setZoom(z);
+  // 줌 — Ctrl/⌘+휠(트랙패드 핀치). 네이티브 non-passive 리스너로 붙인다 — React 의
+  // onWheel 은 passive 로 등록돼 preventDefault 가 무시되고(defaultPrevented=false 실측,
+  // v3.2.2 LayoutView 와 동일 결함), 컴포넌트 줌과 웹뷰 전체 브라우저 줌이 이중으로 걸려
+  // 뷰어를 닫아도 앱 UI 가 확대된 채 남는다.
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return; // 일반 휠 = 네이티브 스크롤
+      e.preventDefault();
+      const z = clampZoom(currentZoom() - e.deltaY * 0.0015);
+      setFit(null);
+      setZoom(z);
+    };
+    sc.addEventListener("wheel", handler, { passive: false });
+    return () => sc.removeEventListener("wheel", handler);
   }, [currentZoom]);
 
-  // Ctrl/⌘+휠 = 줌 (문서 뷰어 관례), 일반 휠 = 스크롤
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
-    e.preventDefault();
-    const z = clampZoom(currentZoom() - e.deltaY * 0.0015);
-    setFit(null);
-    setZoom(z);
-  }, [currentZoom]);
+  // 더블클릭 줌 토글 — 뷰어(팝업) 모드에서만(LayoutView·도움말 계약과 동일). 확대 상태면
+  // 페이지맞춤 원복, 아니면 2×. 페이지가 이미지라 텍스트 선택 충돌은 없지만 계약을 맞춘다.
+  const onDoubleClick = useCallback(() => {
+    if (fitRef.current === null && zoomRef.current > 1.01) {
+      setFit("page");
+      setZoom(1);
+    } else {
+      setFit(null);
+      setZoom(clampZoom(2));
+    }
+  }, []);
 
   // 맞춤 토글 — 페이지 맞춤 ↔ 너비 맞춤 순환 (수동 줌 상태에선 페이지 맞춤 복귀)
   const toggleFit = useCallback(() => {
@@ -215,10 +256,10 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         )}
       </div>
 
-      {/* 페이지 이미지 스크롤 영역 */}
+      {/* 페이지 이미지 스크롤 영역 — 휠 줌은 네이티브 non-passive 리스너(위 effect)로 부착 */}
       <div
         ref={scrollRef}
-        onWheel={onWheel}
+        onDoubleClick={onClose ? onDoubleClick : undefined}
         className="flex-1 overflow-auto px-4 py-3"
         style={{ backgroundColor: "var(--color-bg-tertiary)" }}
       >

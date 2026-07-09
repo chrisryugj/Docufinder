@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v3.17.0 (렌더 per-run 폰트·다구역·landscape 회전·페이지분할 + 결재란 reflow 겹침 해소) — 2026-07-06
+      # 현재: v3.18.1 (서식 프로필 앵커 정합 + MCP 인라인 회귀 복원 + 표 셀 이미지 유실·중첩표 보존 수정) — 2026-07-10
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 361b26ee2b30558095b87e04570939383f95bfde
+          ref: 3022c2a5176e8aa218fb2e2208f3d1c3d1a522b8
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -222,7 +222,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 361b26ee2b30558095b87e04570939383f95bfde
+          ref: 3022c2a5176e8aa218fb2e2208f3d1c3d1a522b8
 
       - name: Build kordoc dist
         working-directory: kordoc-src
