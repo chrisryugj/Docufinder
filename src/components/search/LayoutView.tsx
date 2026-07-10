@@ -327,15 +327,15 @@ export const LayoutView = memo(function LayoutView({
         ? `${Math.round(fitPageW!)}px`
         : `${(zoom * 100).toFixed(0)}%`;
 
+  // SVG 반응형 크기(.layout-svg-host svg)·찾기 매치 강조 스타일은 components.css 에 있다.
+  // 여기 JSX <style> 로 두면 안 된다 — 패키징 앱 CSP(Tauri nonce 주입으로 'unsafe-inline'
+  // 무효)가 런타임 삽입 <style> 을 차단해, dev 에선 멀쩡하고 앱에서만 줌·맞춤이 죽는다.
+  //
+  // 루트 크기: 인라인(PreviewPanel flex-col 형제)에선 flex-1/min-h-0 로 남은 공간만 차지
+  // (h-full 단독이면 패널 전체 높이를 먹어 헤더+툴바만큼 아래로 밀려 하단이 잘린다),
+  // 팝업(블록 래퍼 자식)에선 flex-* 가 무효라 h-full 로 래퍼를 채운다 — 둘 다 성립.
   return (
-    <div className="flex flex-col h-full">
-      {/* 컴포넌트 스코프 SVG 스타일 — 반응형 크기 + 찾기 매치 강조 */}
-      <style>{`
-        .layout-svg-host svg { width: 100%; height: auto; display: block; }
-        .layout-svg-host text[data-find] { fill: #b45309; }
-        .layout-svg-host text[data-find="active"] { fill: #dc2626; font-weight: 700; }
-      `}</style>
-
+    <div className="flex flex-col h-full flex-1 min-h-0">
       {/* 툴바 — 페이지 네비 · 줌 · 매치 이동 (에디토리얼 미니멀, hairline) */}
       <div
         className="flex items-center gap-1 px-2 py-1 border-b text-[11px]"

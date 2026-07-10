@@ -84,7 +84,7 @@ Anything/
 | `pnpm tauri:build` | MSI 설치파일 생성 |
 | `pnpm run download-model` | ONNX 모델 다운로드 |
 | `./scripts/release.sh X.Y.Z` | 릴리즈 — 로컬 CI 검증 통과 시에만 태그 생성+푸시 |
-| `pnpm exec vite --config vite.harness.config.ts` | 뷰어 UI 하니스 — 실컴포넌트를 헤드리스 WebKit으로 실구동 검증 ([harness/README.md](harness/README.md)) |
+| `pnpm exec vite build --config vite.harness.config.ts && pnpm exec vite preview --config vite.harness.config.ts` | 뷰어 UI 하니스 — 반드시 build+preview 로(빌드 산출물에만 앱과 같은 CSP 주입, dev 서버는 CSP 검증 불가) ([harness/README.md](harness/README.md)) |
 
 ## 개발 Phase
 

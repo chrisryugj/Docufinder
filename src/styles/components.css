@@ -695,3 +695,21 @@ mark.hl-filename {
   border-left: 3px solid var(--color-border);
   color: var(--color-text-secondary);
 }
+
+/* ─── 원본 레이아웃 뷰어 (LayoutView) — SVG 반응형 크기 + 찾기 매치 강조 ───
+   반드시 번들 CSS 에 있어야 한다: 패키징 앱의 CSP 는 Tauri 가 index.html <style> 에
+   nonce 를 주입하면서 style-src 의 'unsafe-inline' 이 무효화되어(CSP3), JS 가 런타임에
+   삽입하는 <style> 태그를 차단한다. 컴포넌트 JSX <style> 로 두면 dev/하니스에선 돌고
+   패키징 앱에서만 svg 가 고유 크기(pt)로 굳어 줌·맞춤이 전혀 안 듣는다. */
+.layout-svg-host svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.layout-svg-host text[data-find] {
+  fill: #b45309;
+}
+.layout-svg-host text[data-find="active"] {
+  fill: #dc2626;
+  font-weight: 700;
+}

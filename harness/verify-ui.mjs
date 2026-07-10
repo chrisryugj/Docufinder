@@ -41,6 +41,18 @@ await page.waitForTimeout(200);
   t("L1 첫 페이지가 컨테이너 높이에 들어옴", m.pg1H <= m.availH + 3, `pg1H=${m.pg1H.toFixed(1)} availH=${m.availH}`);
 }
 
+// L1.5: SVG 스케일 CSS 실효 — svg 렌더 폭이 host 폭을 따른다. 이 CSS 가 죽으면(패키징 앱
+// CSP 가 런타임 <style> 차단하던 v3.2.x 부류) svg 는 고유 pt 크기로 굳어 줌·맞춤이 라벨만
+// 바뀌고 그림은 불변이 된다. 하니스는 build+preview(CSP 주입)로 돌 때 이 부류를 잡는다.
+{
+  const m = await page.evaluate(() => {
+    const host = document.querySelector(".layout-svg-host");
+    const svg = host.querySelector("svg");
+    return { hostW: host.getBoundingClientRect().width, svgW: svg.getBoundingClientRect().width };
+  });
+  t("L1.5 svg 폭 = host 폭 (스케일 CSS 실효)", Math.abs(m.svgW - m.hostW) < 2, `svg=${m.svgW.toFixed(1)} host=${m.hostW.toFixed(1)}`);
+}
+
 // L2: Ctrl+휠 줌 — 컴포넌트 줌 작동 + preventDefault 실효(브라우저 줌 누수 차단)
 {
   const before = await host.evaluate((el) => el.getBoundingClientRect().width);
@@ -146,6 +158,29 @@ await page.waitForTimeout(200);
   await page.waitForTimeout(100);
   const closed = await page.evaluate(() => window.__closed);
   t("L9 Esc 닫기 콜백", closed === true);
+}
+
+// ─── LayoutView 인라인 모드 (PreviewPanel flex-col 형제 배치) ──────
+// 팝업(#stage 직속)과 달리 헤더·툴바·푸터가 세로 공간을 나눠 갖는다. 루트가 h-full 단독이면
+// 패널 전체 높이를 먹고 크롬 높이만큼 아래로 밀려 맞춤 페이지 하단·푸터가 잘린다(v3.2.4 결함).
+{
+  await page.evaluate(() => window.__setMode("inline"));
+  await host.waitFor({ state: "visible" });
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => {
+    const stage = document.querySelector("#stage");
+    const sc = document.querySelector("#stage .overflow-auto");
+    const pg = document.querySelector('[data-page="1"]');
+    return {
+      stageBottom: stage.getBoundingClientRect().bottom,
+      scBottom: sc.getBoundingClientRect().bottom,
+      scH: sc.clientHeight,
+      pg1H: pg.getBoundingClientRect().height,
+    };
+  });
+  // 푸터(27px)가 스크롤 영역 아래 보여야 하므로 뷰어 하단은 스테이지 하단보다 위
+  t("I1 인라인 뷰어가 패널 안에 들어옴(하단 미절단)", m.scBottom <= m.stageBottom - 25, `scBottom=${m.scBottom.toFixed(0)} stageBottom=${m.stageBottom.toFixed(0)}`);
+  t("I1 인라인 맞춤 페이지가 보이는 높이에 들어옴", m.pg1H <= m.scH - 24 + 3, `pg1H=${m.pg1H.toFixed(1)} 가용=${m.scH - 24}`);
 }
 
 // ─── PdfLayoutView ──────────────────────────────────
