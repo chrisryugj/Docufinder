@@ -1,5 +1,38 @@
 # Changelog
 
+## [3.2.5] - 2026-07-10
+
+**원본 레이아웃 줌·맞춤이 패키징 앱에서만 전혀 안 듣던 진짜 원인(CSP) 수정**
+
+v3.2.1~3.2.4 네 차례의 줌·맞춤 수정이 전부 dev/하니스에서만 검증돼 통과하고 설치 앱에서는
+그대로 깨져 있던 근본 원인을 실증·수정. 유저 실파일(결재문서본문 HWPX)로 증상 재현 →
+CSP 주입 시 svg 가 고유 크기(595.28pt=793.7px)로 굳는 것을 실측 확인.
+
+### 🐛 버그 수정
+
+- **줌·맞춤이 라벨만 바뀌고 그림은 불변이던 문제 (패키징 앱 전용)** — LayoutView 가
+  `.layout-svg-host svg { width:100%; height:auto }` 를 JSX 런타임 `<style>` 태그로
+  주입했는데, Tauri 는 index.html 의 `<style>` 에 nonce 를 넣고 style-src 에 nonce/hash 를
+  추가한다(tauri-utils `inject_nonce_token`). CSP3 규칙상 nonce/hash 가 있으면
+  `'unsafe-inline'` 이 무효화되므로 **JS 가 런타임에 삽입하는 `<style>` 은 패키징 앱에서
+  차단**("Refused to apply a stylesheet") — svg 가 host 폭을 무시하고 고유 pt 크기로
+  렌더돼 확대·축소·페이지맞춤·너비맞춤 전부 시각 효과 0, 찾기 매치 강조도 사망.
+  dev 서버·하니스에는 CSP 가 없어 v3.2.1~3.2.4 검증을 전부 통과해 보였다.
+  스타일을 번들 CSS(`components.css`, style-src 'self')로 이동. (`LayoutView.tsx`)
+- **인라인 미리보기에서 뷰어가 패널 하단을 뚫고 나가던 문제** — LayoutView 루트가
+  `h-full`(패널 전체 높이)이라 PreviewPanel flex-col 안에서 헤더+툴바 높이만큼 아래로
+  밀려 맞춤 페이지 하단·경로 푸터가 잘렸다. `flex-1 min-h-0` 병기로 인라인(플렉스
+  형제)에선 남은 공간만, 팝업(블록 래퍼)에선 h-full 로 채움 — 둘 다 성립. (`LayoutView.tsx`)
+
+### 🧪 하니스
+
+- **build+preview 로 전환 + 패키징 앱과 같은 CSP(meta) 주입** — dev 서버는 vite 가 CSS 를
+  런타임 `<style>` 로 꽂아 CSP 검증이 원리적으로 불가능. 빌드 산출물에만 CSP 를 넣어
+  "dev 에선 돌고 앱에서만 죽는" 부류를 하니스가 잡게 함. (`vite.harness.config.ts`)
+- **검증 30→33항목**: svg 폭=host 폭(스케일 CSS 실효 — CSP 차단 시 여기서 실패),
+  인라인 배치(PreviewPanel flex-col 형제)에서 하단 미절단·맞춤 페이지 가시 높이 수용.
+  33/33 PASS. (`harness/`)
+
 ## [3.2.4] - 2026-07-10
 
 **원본 레이아웃 뷰어 수정 3종 + PDF 뷰어 계약 정합 + kordoc 3.18.1**
