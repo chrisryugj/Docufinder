@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v4.0.4 (공문서 엔진 v4 통합 — 프로필 0.3.0·reflow 개체 흐름·옵션 SSOT·셀 강조 왕복) — 2026-07-12
+      # 현재: v4.0.5 (인라인 강조 외래·gongmun 일반화 + 리스트 depth 왕복) — 2026-07-12
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 862dec3c6c992e255b161d996146cea3a2d27b13
+          ref: 510d27fd595b1248fb0776d42b4fa25db3d3ad2b
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -222,7 +222,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 862dec3c6c992e255b161d996146cea3a2d27b13
+          ref: 510d27fd595b1248fb0776d42b4fa25db3d3ad2b
 
       - name: Build kordoc dist
         working-directory: kordoc-src
