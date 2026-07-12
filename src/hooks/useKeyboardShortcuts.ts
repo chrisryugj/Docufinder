@@ -103,8 +103,12 @@ export function useKeyboardShortcuts(
       // Enter: 선택된 파일 열기
       // - 포커스된 요소가 이미 Enter를 처리(preventDefault)했으면 중복 열기 금지
       //   (예: 파일명 매치 행에 포커스 + 내용 결과 선택 상태 → 파일 2개 동시 실행 방지)
+      // - 버튼·링크류에 포커스가 있으면 그 컨트롤의 Enter(네이티브 활성화) 몫 —
+      //   경로 세그먼트 버튼에서 Enter 시 폴더 열기 + 선택 파일 열기가 겹치는 것 방지
       if (e.key === "Enter") {
         if (e.defaultPrevented) return;
+        const focused = document.activeElement as HTMLElement | null;
+        if (focused && focused.closest("button, a, [role='button'], [contenteditable='true']")) return;
         h.onEnter?.();
         return;
       }

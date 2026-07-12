@@ -7,8 +7,7 @@ import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
 import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { WelcomeHero } from "./WelcomeHero";
-import { cleanPath } from "../../utils/cleanPath";
-import { formatPathTail } from "../../utils/searchTextUtils";
+import { PathBreadcrumb } from "./PathBreadcrumb";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
@@ -1091,6 +1090,8 @@ function FilenameResultItem({
       }}
       title={openOnSingleClick ? undefined : "두 번 클릭: 열기 · 한 번 클릭: 미리보기"}
       onKeyDown={(e) => {
+        // 내부 버튼(경로 세그먼트 등)에 포커스가 있으면 그 컨트롤의 Enter를 가로채지 않는다
+        if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpenFile(result.file_path);
@@ -1104,10 +1105,15 @@ function FilenameResultItem({
         <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
           <HighlightedFilename filename={result.file_name} query={query} />
         </div>
+        {/* 내용 매치와 동일한 세그먼트 브레드크럼 — 중간 경로는 해당 폴더 열기,
+            말단(파일이 든) 폴더는 탐색기에서 파일 선택(reveal) */}
         {showPath && (
-          <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }} title={cleanPath(result.file_path)}>
-            {formatPathTail(cleanPath(folderPath), 72)}
-          </div>
+          <PathBreadcrumb
+            filePath={result.file_path}
+            folderPath={folderPath}
+            onOpenFolder={onOpenFolder}
+            revealLast
+          />
         )}
       </div>
       {result.modified_at && (

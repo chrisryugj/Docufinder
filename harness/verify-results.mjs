@@ -77,6 +77,20 @@ const filename0 = page.locator('#search-result-0 [draggable="true"]');
   t("C5 경로 복사 버튼 → 복사 1회·열기 없음", count(c, "copy") === 1 && count(c, "open") === 0, JSON.stringify(c));
 }
 
+// C6: 경로 세그먼트 클릭 → 해당 폴더 열기 (구분자·절대경로 접두 보존 — v3.2.8 수정 검증)
+{
+  await reset();
+  await page.locator("#search-result-0").getByTitle("/Users/me/Documents/업무자료 열기", { exact: true }).click();
+  await page.waitForTimeout(100);
+  let c = await calls();
+  t("C6 유닉스 중간 세그먼트 → 절대경로 폴더 열기", count(c, "folder") === 1 && c.find((x) => x.type === "folder")?.p === "/Users/me/Documents/업무자료", JSON.stringify(c));
+  await reset();
+  await page.locator("#search-result-1").getByTitle("C:\\문서 열기", { exact: true }).click();
+  await page.waitForTimeout(100);
+  c = await calls();
+  t("C6 윈도우 중간 세그먼트 → 폴더 열기", count(c, "folder") === 1 && c.find((x) => x.type === "folder")?.p === "C:\\문서", JSON.stringify(c));
+}
+
 // ─── 저장 위치 표시 ─────────────────────────────────────
 // P1: 기본(넓게) 보기 — 경로 브레드크럼 표시
 {
@@ -115,25 +129,48 @@ const filename0 = page.locator('#search-result-0 [draggable="true"]');
 
 // ─── 파일명 매치 섹션 ───────────────────────────────────
 const filenameItem = page.locator('div[role="button"]', { hasText: "예산안.xlsx" }).first();
+// 클릭 표적은 파일명 텍스트로 고정 — 브레드크럼 줄이 생겨 행 중심점이 세그먼트 버튼에 걸릴 수 있음
+const filenameTitle = filenameItem.locator("div.font-medium");
 
 // F1: 두 번 클릭 모드 — 한 번 클릭은 인앱 미리보기, 두 번 클릭은 외부 열기
 {
   await reset();
-  await filenameItem.click();
+  await filenameTitle.click();
   await page.waitForTimeout(100);
   let c = await calls();
   t("F1 파일명 매치 한 번 클릭 → 미리보기·열기 없음", count(c, "preview") === 1 && count(c, "open") === 0, JSON.stringify(c));
   await reset();
-  await filenameItem.dblclick();
+  await filenameTitle.dblclick();
   await page.waitForTimeout(100);
   c = await calls();
   t("F1 파일명 매치 두 번 클릭 → 열기 1회", count(c, "open") === 1, JSON.stringify(c.filter((x) => x.type === "open")));
 }
 
-// F2: 경로가 폴더 기준으로 표시 (파일명 중복 제거 + 꼬리 우선)
+// F2: 경로가 폴더 기준 브레드크럼으로 표시 (파일명 중복 제거)
 {
   const text = await filenameItem.innerText();
   t("F2 파일명 매치: 폴더 경로 표시", text.includes("장기보관용자료함"), text.slice(0, 80));
+}
+
+// F4: 말단 폴더 세그먼트 클릭 → 파일 위치 열기(reveal) — 열기·미리보기 오발 없음
+{
+  await reset();
+  await filenameItem.getByTitle("파일 위치 열기 (탐색기에서 파일 선택)").click();
+  await page.waitForTimeout(100);
+  const c = await calls();
+  const ok = count(c, "folder") === 1
+    && c.find((x) => x.type === "folder")?.p === "/Users/me/Downloads/장기보관용자료함/예산안.xlsx"
+    && count(c, "open") === 0 && count(c, "preview") === 0;
+  t("F4 파일명 매치 말단 세그먼트 → reveal(파일 선택)", ok, JSON.stringify(c));
+}
+
+// F5: 중간 세그먼트 클릭 → 해당 폴더 열기 (내용 매치 로직 이식 확인)
+{
+  await reset();
+  await filenameItem.getByTitle("/Users/me/Downloads 열기", { exact: true }).click();
+  await page.waitForTimeout(100);
+  const c = await calls();
+  t("F5 파일명 매치 중간 세그먼트 → 해당 폴더 열기", count(c, "folder") === 1 && c.find((x) => x.type === "folder")?.p === "/Users/me/Downloads" && count(c, "open") === 0, JSON.stringify(c));
 }
 
 // F3: 복사본 배지("N곳") 더블클릭 → 행 열기로 오발 없음 (내부 버튼 제외 규칙)
@@ -186,7 +223,7 @@ const filenameItem = page.locator('div[role="button"]', { hasText: "예산안.xl
   t("S1 한번클릭모드: 카드 선택으로 버블 안 됨", count(c, "select") === 0, JSON.stringify(c));
 
   await reset();
-  await filenameItem.click();
+  await filenameTitle.click();
   await page.waitForTimeout(100);
   c = await calls();
   t("S2 한번클릭모드: 파일명 매치 한 번 클릭 → 즉시 열기", count(c, "open") === 1 && count(c, "preview") === 0, JSON.stringify(c));

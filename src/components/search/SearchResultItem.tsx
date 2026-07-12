@@ -4,7 +4,8 @@ import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search, AlertTriangle } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext, formatPathSegments, formatPathTail, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
+import { PathBreadcrumb } from "./PathBreadcrumb";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -369,41 +370,12 @@ export const SearchResultItem = memo(function SearchResultItem({
       {showPath && (
         <div className={`flex items-center justify-between pl-6 ${isCompact ? "mt-1" : "mt-1.5"}`}>
           {/* Breadcrumb path (컴팩트: 말단 폴더가 보이는 한 줄, 클릭 시 파일 위치 열기) */}
-          {isCompact ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onOpenFolder?.(result.file_path); }}
-              className="text-xs truncate flex-1 min-w-0 text-left px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
-              title={`${result.file_path.replace(/^\\\\\?\\/, "")}\n클릭: 파일 위치 열기`}
-            >
-              {formatPathTail(folderPath)}
-            </button>
-          ) : (
-          <div
-            className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
-            title={result.file_path.replace(/^\\\\\?\\/, "")}
-          >
-            {formatPathSegments(folderPath).map((seg, i, arr) => (
-              <div key={i} className="flex items-center leading-none">
-                {seg.fullPath ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
-                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
-                    title={`${seg.fullPath} 열기`}
-                  >
-                    {seg.label}
-                  </button>
-                ) : (
-                  <span className="text-xs px-0.5 py-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    {seg.label}
-                  </span>
-                )}
-                {i < arr.length - 1 && (
-                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
-                )}
-              </div>
-            ))}
-          </div>
-          )}
+          <PathBreadcrumb
+            filePath={result.file_path}
+            folderPath={folderPath}
+            onOpenFolder={onOpenFolder}
+            compact={isCompact}
+          />
 
           {/* Action buttons — muted 단색, hover 시 착색 (btn-icon-hover, ux-audit-8) */}
           <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
