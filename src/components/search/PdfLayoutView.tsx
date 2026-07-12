@@ -53,10 +53,24 @@ export const PdfLayoutView = memo(function PdfLayoutView({
   const fitRef = useRef(fit);
   const availRef = useRef(avail);
   const pageDimsRef = useRef(pageDims);
+  const pageRef = useRef(page);
+  const pageCountRef = useRef(pageCount);
   zoomRef.current = zoom;
   fitRef.current = fit;
   availRef.current = avail;
   pageDimsRef.current = pageDims;
+  pageRef.current = page;
+  pageCountRef.current = pageCount;
+
+  // ── 휠 페이지 넘김 상태 ──
+  // 경계(맨 위/아래)에서 같은 방향으로 임계만큼 더 굴리면 이전/다음 페이지 (브라우저
+  // PDF 뷰어 관례). 관성 스크롤이 여러 페이지를 연달아 넘기지 않도록, 넘김 직후엔
+  // 휠 입력이 REARM_GAP 만큼 끊겨야(새 제스처) 다음 넘김이 무장된다.
+  const flipAccumRef = useRef(0);
+  const flipArmedRef = useRef(true);
+  const lastWheelAtRef = useRef(0);
+  // 이전 페이지로 넘길 때는 이미지 로드 후 하단으로 정렬 (읽던 흐름 유지)
+  const pendingScrollBottomRef = useRef(false);
 
   // 현재 실효 줌(컨테이너 너비 대비 배율) — 맞춤 모드에서 ±/휠 줌 시작점
   const currentZoom = useCallback(() => {
@@ -94,6 +108,9 @@ export const PdfLayoutView = memo(function PdfLayoutView({
     setPage(1);
     setPageCount(1);
     setDataUrl(null);
+    flipAccumRef.current = 0;
+    flipArmedRef.current = true;
+    pendingScrollBottomRef.current = false;
   }
 
   // 현재 페이지 렌더 요청 — 파일/페이지 변경 시. 늦은 응답은 req 토큰으로 폐기.
@@ -110,7 +127,8 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         setPageCount(Math.max(1, res.page_count));
         // 페이지 원본 치수 — 페이지맞춤 폭 계산용 (가로/세로 혼재 문서는 페이지마다 갱신)
         setPageDims(res.width > 0 && res.height > 0 ? { w: res.width, h: res.height } : null);
-        scrollRef.current?.scrollTo(0, 0);
+        // 이전 페이지로의 휠 넘김은 이미지 onLoad 에서 하단 정렬 — 여기서 상단 리셋 금지
+        if (!pendingScrollBottomRef.current) scrollRef.current?.scrollTo(0, 0);
       })
       .catch((e) => {
         if (reqRef.current !== req) return;
@@ -167,15 +185,47 @@ export const PdfLayoutView = memo(function PdfLayoutView({
   // onWheel 은 passive 로 등록돼 preventDefault 가 무시되고(defaultPrevented=false 실측,
   // v3.2.2 LayoutView 와 동일 결함), 컴포넌트 줌과 웹뷰 전체 브라우저 줌이 이중으로 걸려
   // 뷰어를 닫아도 앱 UI 가 확대된 채 남는다.
+  const FLIP_THRESHOLD = 60; // 경계에서 넘김까지 누적 deltaY (마우스 휠 1노치≈100)
+  const REARM_GAP_MS = 180; // 넘김 후 재무장에 필요한 휠 무입력 간격 (관성 잔여 차단)
   useEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
     const handler = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // 일반 휠 = 네이티브 스크롤
-      e.preventDefault();
-      const z = clampZoom(currentZoom() - e.deltaY * 0.0015);
-      setFit(null);
-      setZoom(z);
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const z = clampZoom(currentZoom() - e.deltaY * 0.0015);
+        setFit(null);
+        setZoom(z);
+        return;
+      }
+      // 일반 휠 = 네이티브 스크롤 + 경계에서 페이지 넘김
+      const now = performance.now();
+      const gapOk = now - lastWheelAtRef.current > REARM_GAP_MS;
+      lastWheelAtRef.current = now;
+      if (!flipArmedRef.current) {
+        if (!gapOk) return; // 직전 넘김의 관성 잔여 — 무시
+        flipArmedRef.current = true;
+      }
+      const atTop = sc.scrollTop <= 1;
+      const atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 1;
+      if (e.deltaY > 0 && atBottom && pageRef.current < pageCountRef.current) {
+        flipAccumRef.current = Math.max(0, flipAccumRef.current) + e.deltaY;
+        if (flipAccumRef.current >= FLIP_THRESHOLD) {
+          flipAccumRef.current = 0;
+          flipArmedRef.current = false;
+          setPage((c) => Math.min(pageCountRef.current, c + 1));
+        }
+      } else if (e.deltaY < 0 && atTop && pageRef.current > 1) {
+        flipAccumRef.current = Math.min(0, flipAccumRef.current) + e.deltaY;
+        if (flipAccumRef.current <= -FLIP_THRESHOLD) {
+          flipAccumRef.current = 0;
+          flipArmedRef.current = false;
+          pendingScrollBottomRef.current = true;
+          setPage((c) => Math.max(1, c - 1));
+        }
+      } else {
+        flipAccumRef.current = 0; // 경계 밖 스크롤 — 누적 리셋
+      }
     };
     sc.addEventListener("wheel", handler, { passive: false });
     return () => sc.removeEventListener("wheel", handler);
@@ -256,12 +306,13 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         )}
       </div>
 
-      {/* 페이지 이미지 스크롤 영역 — 휠 줌은 네이티브 non-passive 리스너(위 effect)로 부착 */}
+      {/* 페이지 이미지 스크롤 영역 — 휠 줌·페이지 넘김은 네이티브 non-passive 리스너(위 effect).
+          overscroll contain: 경계 휠이 뒤 결과 리스트로 체이닝되지 않게 (인라인 모드) */}
       <div
         ref={scrollRef}
         onDoubleClick={onClose ? onDoubleClick : undefined}
         className="flex-1 overflow-auto px-4 py-3"
-        style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        style={{ backgroundColor: "var(--color-bg-tertiary)", overscrollBehavior: "contain" }}
       >
         {error ? (
           <div className="flex items-center justify-center h-full text-[13px] text-center px-6" style={{ color: "var(--color-text-muted)" }}>
@@ -273,6 +324,14 @@ export const PdfLayoutView = memo(function PdfLayoutView({
               src={dataUrl}
               alt={`PDF 페이지 ${page}`}
               draggable={false}
+              onLoad={() => {
+                // 휠로 이전 페이지 진입 — 실높이 확정 후 하단 정렬 (읽던 흐름 유지)
+                if (pendingScrollBottomRef.current) {
+                  pendingScrollBottomRef.current = false;
+                  const sc = scrollRef.current;
+                  sc?.scrollTo(0, sc.scrollHeight);
+                }
+              }}
               className="mx-auto block shadow-sm select-none"
               style={{ width: widthStyle, maxWidth: fit !== null ? "100%" : "none", height: "auto", backgroundColor: "white" }}
             />
