@@ -101,7 +101,10 @@ export function useKeyboardShortcuts(
       if (isInputFocused) return;
 
       // Enter: 선택된 파일 열기
+      // - 포커스된 요소가 이미 Enter를 처리(preventDefault)했으면 중복 열기 금지
+      //   (예: 파일명 매치 행에 포커스 + 내용 결과 선택 상태 → 파일 2개 동시 실행 방지)
       if (e.key === "Enter") {
+        if (e.defaultPrevented) return;
         h.onEnter?.();
         return;
       }

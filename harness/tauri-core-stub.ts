@@ -2,6 +2,14 @@
  * @tauri-apps/api/core 스텁 — 하니스에서 PdfLayoutView 의 render_pdf_page 를
  * 브라우저 단독으로 흉내낸다. 호출 기록은 window.__invokeCalls 로 검증용 노출.
  */
+
+/** tauri-plugin-drag 가 import 하는 Channel 최소 스텁 (하니스에선 미사용) */
+export class Channel<T = unknown> {
+  onmessage: (response: T) => void = () => {};
+  toJSON(): string {
+    return "__CHANNEL__:0";
+  }
+}
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const w = window as unknown as { __invokeCalls?: Array<{ cmd: string; args: unknown }> };
   (w.__invokeCalls ||= []).push({ cmd, args });

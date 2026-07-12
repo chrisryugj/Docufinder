@@ -4,7 +4,7 @@ import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { ExternalLink, ChevronDown, ClipboardCopy, FolderOpen, Search, AlertTriangle } from "lucide-react";
 import type { SearchResult } from "../../types/search";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext, formatPathSegments, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, formatPathSegments, formatPathTail, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
@@ -37,6 +37,10 @@ interface SearchResultItemProps {
   query?: string;
   onFindSimilar?: (filePath: string) => void;
   category?: string;
+  /** false: 두 번 클릭으로 열기 (한 번 클릭은 카드 선택·미리보기) */
+  openOnSingleClick?: boolean;
+  /** 저장 위치(경로) 줄 표시 — 컴팩트 보기에선 꼬리 우선 축약 한 줄 */
+  showPath?: boolean;
 }
 
 /** Get file-type stripe CSS class */
@@ -70,6 +74,8 @@ export const SearchResultItem = memo(function SearchResultItem({
   query = "",
   onFindSimilar,
   category,
+  openOnSingleClick = true,
+  showPath = true,
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -191,11 +197,26 @@ export const SearchResultItem = memo(function SearchResultItem({
           draggable
           onDragStart={handleDragStart}
           onClick={(e) => {
+            // 두 번 클릭 모드: 한 번 클릭은 카드 래퍼로 버블 → 선택·미리보기
+            if (!openOnSingleClick) return;
             // 카드 래퍼(미리보기 선택)로 버블되면 외부 열기와 미리보기가 동시에 일어난다
             e.stopPropagation();
             onOpenFile(result.file_path, result.page_number);
           }}
-          title={result.page_number ? `${result.page_number}페이지로 열기 · 끌어서 다른 앱으로` : "파일 열기 · 끌어서 다른 앱으로"}
+          onDoubleClick={(e) => {
+            if (openOnSingleClick) return;
+            e.stopPropagation();
+            onOpenFile(result.file_path, result.page_number);
+          }}
+          onMouseDown={(e) => {
+            // 더블클릭 시 파일명 텍스트 선택 방지 (드래그아웃·단일 클릭은 유지)
+            if (e.detail >= 2) e.preventDefault();
+          }}
+          title={
+            openOnSingleClick
+              ? (result.page_number ? `${result.page_number}페이지로 열기 · 끌어서 다른 앱으로` : "파일 열기 · 끌어서 다른 앱으로")
+              : (result.page_number ? `두 번 클릭: ${result.page_number}페이지로 열기 · 한 번 클릭: 미리보기` : "두 번 클릭: 열기 · 한 번 클릭: 미리보기")
+          }
         >
           <FileIcon fileName={result.file_name} size="sm" />
           <span
@@ -342,10 +363,21 @@ export const SearchResultItem = memo(function SearchResultItem({
         </div>
       </div>
 
-      {/* Row 3: Path + action buttons (pl-6 = Row 1 FileIcon 정렬) */}
-      {!isCompact && (
-        <div className="flex items-center justify-between mt-1.5 pl-6">
-          {/* Breadcrumb path */}
+      {/* Row 3: Path + action buttons (pl-6 = Row 1 FileIcon 정렬).
+          컴팩트 보기도 저장 위치는 표시 — 꼬리 우선 축약 한 줄 (사용자 피드백:
+          "어디 저장돼 있는지 보려고 한 번 더 눌러야" 해소). showPath=false면 줄 전체 숨김. */}
+      {showPath && (
+        <div className={`flex items-center justify-between pl-6 ${isCompact ? "mt-1" : "mt-1.5"}`}>
+          {/* Breadcrumb path (컴팩트: 말단 폴더가 보이는 한 줄, 클릭 시 파일 위치 열기) */}
+          {isCompact ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenFolder?.(result.file_path); }}
+              className="text-xs truncate flex-1 min-w-0 text-left px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
+              title={`${result.file_path.replace(/^\\\\\?\\/, "")}\n클릭: 파일 위치 열기`}
+            >
+              {formatPathTail(folderPath)}
+            </button>
+          ) : (
           <div
             className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
             title={result.file_path.replace(/^\\\\\?\\/, "")}
@@ -371,6 +403,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               </div>
             ))}
           </div>
+          )}
 
           {/* Action buttons — muted 단색, hover 시 착색 (btn-icon-hover, ux-audit-8) */}
           <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">

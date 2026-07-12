@@ -40,6 +40,27 @@ export function stripHtmlTags(text: string): string {
     .replace(/\s{2,}/g, " ");
 }
 
+/**
+ * 경로 꼬리 우선 축약 — "…\상위\말단폴더" 형태로 뒤(말단)부터 채운다.
+ * 한 줄 표시에서 끝 생략(truncate)이 정작 중요한 말단 폴더명을 잘라먹는 문제 방지.
+ * 단일 세그먼트가 예산을 넘으면 그대로 반환하고 CSS truncate에 맡긴다.
+ */
+export function formatPathTail(path: string, maxChars = 44): string {
+  const clean = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
+  if (clean.length <= maxChars) return clean;
+  const sep = clean.includes("\\") ? "\\" : "/";
+  const parts = clean.split(/[/\\]/).filter(Boolean);
+  let out = "";
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const candidate = out ? parts[i] + sep + out : parts[i];
+    if (out && candidate.length > maxChars - 2) {
+      return `…${sep}${out}`;
+    }
+    out = candidate;
+  }
+  return clean;
+}
+
 export function formatPathSegments(path: string): { label: string; fullPath: string }[] {
   const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
   const parts = cleanPath.split(/[/\\]/).filter(Boolean);

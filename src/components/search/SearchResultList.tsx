@@ -8,6 +8,7 @@ import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { WelcomeHero } from "./WelcomeHero";
 import { cleanPath } from "../../utils/cleanPath";
+import { formatPathTail } from "../../utils/searchTextUtils";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
@@ -86,9 +87,22 @@ interface SearchResultListProps {
   onFocusSearch?: () => void;
   /** 0건 제안: 파일명 검색으로 전환 */
   onSwitchToFilenameSearch?: () => void;
+  /** 한 번 클릭으로 파일 열기 (false: 두 번 클릭으로 열기, 한 번 클릭은 선택·미리보기) */
+  openOnSingleClick?: boolean;
+  /** 결과 카드에 저장 위치(경로) 표시 */
+  showResultPath?: boolean;
+  /** 파일명 매치: 두 번 클릭 모드에서 한 번 클릭 시 인앱 미리보기 열기 */
+  onPreviewFile?: (path: string) => void;
 }
 
 const DEFAULT_RESULTS_PER_PAGE = 50;
+
+/** 래퍼 더블클릭 열기에서 제외할 대상 — 자체 클릭 동작(버튼·토글·링크)이 있는 *내부* 요소.
+ *  핸들러가 걸린 요소 자신(예: role=button인 파일명 매치 행)은 제외 대상이 아니다. */
+function isInteractiveTarget(e: React.MouseEvent): boolean {
+  const hit = (e.target as HTMLElement).closest("button, [role='button'], a");
+  return !!hit && hit !== e.currentTarget;
+}
 
 interface PendingScrollAnchor {
   itemId: string;
@@ -137,6 +151,9 @@ export const SearchResultList = memo(function SearchResultList({
   onRetryWithoutFilters,
   onFocusSearch,
   onSwitchToFilenameSearch,
+  openOnSingleClick = true,
+  showResultPath = true,
+  onPreviewFile,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -305,6 +322,9 @@ export const SearchResultList = memo(function SearchResultList({
           onOpenFile={onOpenFile}
           onCopyPath={onCopyPath}
           onOpenFolder={onOpenFolder}
+          openOnSingleClick={openOnSingleClick}
+          onPreviewFile={onPreviewFile}
+          showPath={showResultPath}
         />
 
         {/* 결과 목록 */}
@@ -329,6 +349,10 @@ export const SearchResultList = memo(function SearchResultList({
                           pointerSelectRef.current = true;
                           selectForPreview();
                         }}
+                        onDoubleClick={openOnSingleClick ? undefined : (e) => {
+                          if (isInteractiveTarget(e)) return;
+                          onOpenFile(result.file_path, result.page_number);
+                        }}
                       >
                         <SearchResultItem
                           result={result}
@@ -343,6 +367,8 @@ export const SearchResultList = memo(function SearchResultList({
                           query={highlightQuery}
                           onFindSimilar={onFindSimilar}
                           category={categories?.[group.file_path]}
+                          openOnSingleClick={openOnSingleClick}
+                          showPath={showResultPath}
                         />
                       </div>
                     );
@@ -358,6 +384,10 @@ export const SearchResultList = memo(function SearchResultList({
                         pointerSelectRef.current = true;
                         selectForPreview();
                       }}
+                      onDoubleClick={openOnSingleClick ? undefined : (e) => {
+                        if (isInteractiveTarget(e)) return;
+                        onOpenFile(group.file_path);
+                      }}
                     >
                       <GroupedSearchResultItem
                         domId={`grouped-search-result-${index}`}
@@ -370,6 +400,8 @@ export const SearchResultList = memo(function SearchResultList({
                         isExpanded={expandedGroups.has(group.file_path)}
                         onToggleExpand={handleToggleGroupByIndex}
                         index={index}
+                        openOnSingleClick={openOnSingleClick}
+                        showPath={showResultPath}
                       />
                     </div>
                   );
@@ -399,6 +431,10 @@ export const SearchResultList = memo(function SearchResultList({
                       pointerSelectRef.current = true;
                       onSelectResult?.(index);
                     }}
+                    onDoubleClick={openOnSingleClick ? undefined : (e) => {
+                      if (isInteractiveTarget(e)) return;
+                      onOpenFile(result.file_path, result.page_number);
+                    }}
                   >
                     <SearchResultItem
                       result={result}
@@ -414,6 +450,8 @@ export const SearchResultList = memo(function SearchResultList({
                       query={highlightQuery}
                       onFindSimilar={onFindSimilar}
                       category={categories?.[result.file_path]}
+                      openOnSingleClick={openOnSingleClick}
+                      showPath={showResultPath}
                     />
                   </div>
                 ))}
@@ -865,6 +903,9 @@ function FilenameResultsSection({
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  openOnSingleClick = true,
+  onPreviewFile,
+  showPath = true,
 }: {
   filenameResults: SearchResult[];
   contentResultCount: number;
@@ -875,6 +916,9 @@ function FilenameResultsSection({
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  openOnSingleClick?: boolean;
+  onPreviewFile?: (path: string) => void;
+  showPath?: boolean;
 }) {
   if (filenameResults.length === 0) return null;
 
@@ -942,6 +986,9 @@ function FilenameResultsSection({
                         onCopyPath={onCopyPath}
                         onOpenFolder={onOpenFolder}
                         copies={group}
+                        openOnSingleClick={openOnSingleClick}
+                        onPreviewFile={onPreviewFile}
+                        showPath={showPath}
                       />
                     );
                   }
@@ -954,6 +1001,9 @@ function FilenameResultsSection({
                       onOpenFile={onOpenFile}
                       onCopyPath={onCopyPath}
                       onOpenFolder={onOpenFolder}
+                      openOnSingleClick={openOnSingleClick}
+                      onPreviewFile={onPreviewFile}
+                      showPath={showPath}
                     />
                   ));
                 })
@@ -1002,6 +1052,9 @@ function FilenameResultItem({
   onCopyPath,
   onOpenFolder,
   copies,
+  openOnSingleClick = true,
+  onPreviewFile,
+  showPath = true,
 }: {
   result: SearchResult;
   query: string;
@@ -1009,8 +1062,12 @@ function FilenameResultItem({
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   copies?: SearchResult[];
+  openOnSingleClick?: boolean;
+  onPreviewFile?: (path: string) => void;
+  showPath?: boolean;
 }) {
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
+  const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
 
   return (
     <div
@@ -1018,7 +1075,21 @@ function FilenameResultItem({
       style={{ backgroundColor: "var(--color-bg-secondary)" }}
       role="button"
       tabIndex={0}
-      onClick={() => onOpenFile(result.file_path)}
+      onClick={() => {
+        // 두 번 클릭 모드: 한 번 클릭은 인앱 미리보기 (훑어보다 파일이 연달아 열리는 사고 방지)
+        if (openOnSingleClick) onOpenFile(result.file_path);
+        else onPreviewFile?.(result.file_path);
+      }}
+      onDoubleClick={openOnSingleClick ? undefined : (e) => {
+        // 복사본 배지 등 내부 버튼 더블클릭이 행 열기로 오발되지 않게 (래퍼와 동일 규칙)
+        if (isInteractiveTarget(e)) return;
+        onOpenFile(result.file_path);
+      }}
+      onMouseDown={(e) => {
+        // 더블클릭 시 텍스트 선택 방지
+        if (e.detail >= 2) e.preventDefault();
+      }}
+      title={openOnSingleClick ? undefined : "두 번 클릭: 열기 · 한 번 클릭: 미리보기"}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -1033,9 +1104,11 @@ function FilenameResultItem({
         <div className="font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
           <HighlightedFilename filename={result.file_name} query={query} />
         </div>
-        <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
-          {cleanPath(result.file_path)}
-        </div>
+        {showPath && (
+          <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }} title={cleanPath(result.file_path)}>
+            {formatPathTail(cleanPath(folderPath), 72)}
+          </div>
+        )}
       </div>
       {result.modified_at && (
         <span

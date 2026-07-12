@@ -5,7 +5,7 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext, formatPathSegments, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, formatPathSegments, formatPathTail, stripHtmlTags } from "../../utils/searchTextUtils";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { MatchDensityBar } from "./MatchDensityBar";
 
@@ -24,6 +24,10 @@ interface GroupedSearchResultItemProps {
   onToggleExpand?: (index: number) => void;
   /** 리스트 내 index — onToggleExpand 인자로 전달 (기본 0) */
   index?: number;
+  /** false: 두 번 클릭으로 열기 (한 번 클릭은 카드 선택·미리보기) */
+  openOnSingleClick?: boolean;
+  /** 저장 위치(경로) 줄 표시 — 컴팩트 보기에선 꼬리 우선 축약 한 줄 */
+  showPath?: boolean;
 }
 
 /**
@@ -44,6 +48,8 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   isExpanded = false,
   onToggleExpand,
   index = 0,
+  openOnSingleClick = true,
+  showPath = true,
 }: GroupedSearchResultItemProps) {
   const fileExt = group.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = group.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -157,11 +163,22 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         <div
           className={`flex items-center cursor-pointer flex-1 min-w-0 group/filename hover-accent-text ${isCompact ? "gap-2" : "gap-2.5"}`}
           onClick={(e) => {
+            // 두 번 클릭 모드: 한 번 클릭은 외곽 래퍼로 버블 → 선택·미리보기
+            if (!openOnSingleClick) return;
             // 외곽 래퍼(selectForPreview)로 버블되면 외부 열기와 미리보기가 동시에 일어난다
             e.stopPropagation();
             onOpenFile(group.file_path);
           }}
-          title="파일 열기 (우클릭: 더 많은 옵션)"
+          onDoubleClick={(e) => {
+            if (openOnSingleClick) return;
+            e.stopPropagation();
+            onOpenFile(group.file_path);
+          }}
+          onMouseDown={(e) => {
+            // 더블클릭 시 파일명 텍스트 선택 방지
+            if (e.detail >= 2) e.preventDefault();
+          }}
+          title={openOnSingleClick ? "파일 열기 (우클릭: 더 많은 옵션)" : "두 번 클릭: 열기 · 한 번 클릭: 미리보기 (우클릭: 더 많은 옵션)"}
         >
           <FileIcon fileName={group.file_name} size={isCompact ? "sm" : "md"} />
           <span className={`truncate font-semibold ${isCompact ? "text-sm" : "text-base"}`}>
@@ -266,8 +283,12 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
           <div
             key={`${chunk.chunk_index}-${idx}`}
             className={`flex rounded cursor-pointer result-item-hover ${isCompact ? "gap-1.5 p-1" : "gap-2 p-1.5"}`}
+            // role=button: 래퍼의 더블클릭 열기 대상에서 제외 (토글 2회+열기 오동작 방지)
+            role={hasMore ? "button" : undefined}
             onClick={() => { if (hasMore) onToggleExpand?.(index); }}
-            title={hasMore ? (isExpanded ? "클릭: 접기" : "클릭: 모든 매칭 펼치기") : "파일명 클릭: 외부 실행"}
+            title={hasMore
+              ? (isExpanded ? "클릭: 접기" : "클릭: 모든 매칭 펼치기")
+              : (openOnSingleClick ? "파일명 클릭: 외부 실행" : "파일명 두 번 클릭: 외부 실행")}
           >
             {/* Location */}
             <div className="flex-shrink-0 w-12 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
@@ -329,9 +350,18 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         )}
       </div>
 
-      {/* 경로 + 액션 버튼 — SearchResultItem Row 3와 동일 */}
-      {!isCompact && (
-        <div className="flex items-center justify-between mt-2">
+      {/* 경로 + 액션 버튼 — SearchResultItem Row 3와 동일. 컴팩트 보기도 저장 위치 표시 */}
+      {showPath && (
+        <div className={`flex items-center justify-between ${isCompact ? "mt-1.5" : "mt-2"}`}>
+          {isCompact ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenFolder?.(group.file_path); }}
+              className="text-xs truncate flex-1 min-w-0 text-left px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
+              title={`${group.file_path.replace(/^\\\\\?\\/, "")}\n클릭: 파일 위치 열기`}
+            >
+              {formatPathTail(folderPath)}
+            </button>
+          ) : (
           <div
             className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
             title={group.file_path.replace(/^\\\\\?\\/, "")}
@@ -357,6 +387,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
