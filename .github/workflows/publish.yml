@@ -280,15 +280,22 @@ jobs:
             echo "no dmg artifact found"; exit 1
           fi
           TAG="${{ github.ref_name }}"
-          # Release 가 아직 없으면 (Windows job 보다 먼저 끝났거나 Windows job 실패한 경우)
-          # mac 단독 release 생성. 이미 있으면 추가 업로드만.
-          if ! gh release view "$TAG" --json id >/dev/null 2>&1; then
-            echo "Release $TAG 없음 → 새로 생성"
-            gh release create "$TAG" \
-              --title "Anything $TAG" \
-              --generate-notes \
-              "$DMG"
-          else
-            echo "Release $TAG 존재 → dmg 추가 업로드"
-            gh release upload "$TAG" "$DMG" --clobber
-          fi
+          # Windows job(tauri-action)의 release 생성과 레이스 주의 — 우리가 만든 draft 를
+          # tauri-action 이 대체하면 create 의 asset 업로드가 404 로 죽는다 (v3.2.8 실사고:
+          # view=없음 → create 시작 → 그 사이 Windows 가 release 생성 → 우리 draft 소멸).
+          # 실패 시 잠시 대기 후 재판정 — 두 번째 시도부턴 상대가 만든 release 로 upload 수렴.
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$TAG" --json id >/dev/null 2>&1; then
+              echo "[$attempt] Release $TAG 존재 → dmg 추가 업로드"
+              gh release upload "$TAG" "$DMG" --clobber && exit 0
+            else
+              echo "[$attempt] Release $TAG 없음 → 새로 생성"
+              gh release create "$TAG" \
+                --title "Anything $TAG" \
+                --generate-notes \
+                "$DMG" && exit 0
+            fi
+            echo "[$attempt] 실패 — 20초 후 재시도"
+            sleep 20
+          done
+          echo "5회 시도 모두 실패"; exit 1
