@@ -31,6 +31,11 @@ export const VIEW_DENSITY_OPTIONS = [
   { value: "compact", label: "컴팩트 (좁게)" },
 ];
 
+export const OPEN_CLICK_OPTIONS = [
+  { value: "double", label: "두 번 클릭 (기본)" },
+  { value: "single", label: "한 번 클릭" },
+];
+
 export const VECTOR_INDEXING_MODE_OPTIONS = [
   { value: "manual", label: "수동" },
   { value: "auto", label: "자동" },

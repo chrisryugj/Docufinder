@@ -89,7 +89,9 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
       <div className="space-y-2">
         <p>
           검색 결과를 클릭하면 오른쪽에 <strong>미리보기 패널</strong>이 열려
-          파일을 직접 열지 않고도 내용을 확인할 수 있어요.
+          파일을 직접 열지 않고도 내용을 확인할 수 있어요. 파일 자체를 열려면{" "}
+          <strong>두 번 클릭</strong>하거나 <kbd>Enter</kbd>를 누르세요
+          (설정 &gt; 일반에서 한 번 클릭으로 변경 가능).
         </p>
         <p className="text-[12px] opacity-80">
           미리보기 위쪽 버튼으로 <strong>찾기</strong>(<kbd>Ctrl</kbd>+<kbd>F</kbd>로

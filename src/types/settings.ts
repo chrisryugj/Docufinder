@@ -83,4 +83,12 @@ export interface Settings {
    * 시스템 폴더는 자동 벡터(시맨틱) 인덱싱 스킵 — 필요 시 설정에서 수동 시작.
    */
   allow_system_folders: boolean;
+  /**
+   * 검색 결과 한 번 클릭으로 파일 열기.
+   * false(기본): 두 번 클릭(또는 Enter)으로 열기, 한 번 클릭은 선택·미리보기.
+   * true: 한 번 클릭으로 즉시 열기 (v3.2.6 이전 동작).
+   */
+  open_on_single_click: boolean;
+  /** 검색 결과 카드에 저장 위치(폴더 경로) 표시. 컴팩트 보기에서도 표시된다. */
+  show_result_path: boolean;
 }

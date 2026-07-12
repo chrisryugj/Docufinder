@@ -118,6 +118,21 @@ pub struct Settings {
     /// 시스템 폴더는 파일 수가 많고 본문이 의미 없는(바이너리) 경우가 많아, 활성화돼도 자동 벡터 인덱싱은 스킵.
     #[serde(default)]
     pub allow_system_folders: bool,
+
+    /// 검색 결과 한 번 클릭으로 파일 열기.
+    /// false(기본): 두 번 클릭(또는 Enter)으로 열기, 한 번 클릭은 선택·미리보기 —
+    /// 훑어보며 습관적으로 클릭할 때 파일이 연달아 열리는 사고 방지 (탐색기 관례).
+    /// true: 한 번 클릭으로 즉시 열기 (v3.2.6 이전 동작).
+    #[serde(default)]
+    pub open_on_single_click: bool,
+
+    /// 검색 결과 카드에 저장 위치(폴더 경로) 표시. 컴팩트 보기에서도 표시된다.
+    #[serde(default = "default_show_result_path")]
+    pub show_result_path: bool,
+}
+
+fn default_show_result_path() -> bool {
+    true
 }
 
 fn default_skip_cloud_body_indexing() -> bool {
@@ -255,6 +270,8 @@ impl Default for Settings {
             formula_ocr_enabled: false,
             skip_cloud_body_indexing: default_skip_cloud_body_indexing(),
             allow_system_folders: false,
+            open_on_single_click: false,
+            show_result_path: true,
         }
     }
 }
@@ -866,6 +883,18 @@ pub async fn update_settings(
 #[cfg(test)]
 mod tests {
     use super::OCR_CANDIDATE_FOLDERS_SQL;
+
+    /// 구버전 settings.json(신규 필드 없음) 업그레이드 시 의도한 기본값이 적용되는지 —
+    /// 열기 방식은 두 번 클릭(open_on_single_click=false), 경로 표시는 켜짐.
+    #[test]
+    fn settings_new_fields_default_on_upgrade() {
+        let s: super::Settings = serde_json::from_str(
+            r#"{"search_mode":"keyword","max_results":50,"chunk_size":512,"chunk_overlap":64,"theme":"dark"}"#,
+        )
+        .unwrap();
+        assert!(!s.open_on_single_click);
+        assert!(s.show_result_path);
+    }
 
     /// 드라이브 루트(`C:\`·`/`) 감시 폴더가 OCR 재인덱싱 후보 조회에서 매칭되는지 —
     /// 정규화 없이는 `C:\`+`\` = `C:\\` 가 되어 어떤 파일과도 불일치했다(리뷰 #2).

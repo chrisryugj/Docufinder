@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Dropdown } from "../../ui/Dropdown";
+import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import type { TabProps } from "./types";
 import {
@@ -8,6 +9,7 @@ import {
   MAX_RESULTS_OPTIONS,
   RESULTS_PER_PAGE_OPTIONS,
   VIEW_DENSITY_OPTIONS,
+  OPEN_CLICK_OPTIONS,
   UI_ZOOM_OPTIONS,
 } from "./types";
 
@@ -118,6 +120,34 @@ export function GeneralTab({ settings, onChange }: TabProps) {
       <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
         UI 크기를 조절하면 글자와 인터페이스 전체가 확대/축소됩니다
       </p>
+
+      {/* 파일 열기 방식 */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+            파일 열기 방식
+          </label>
+          <Dropdown
+            options={OPEN_CLICK_OPTIONS}
+            value={settings.open_on_single_click ? "single" : "double"}
+            onChange={(value) => onChange("open_on_single_click", value === "single")}
+            placeholder="열기 방식 선택"
+          />
+        </div>
+      </div>
+      <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+        {settings.open_on_single_click
+          ? "검색 결과를 한 번 클릭하면 바로 파일이 열립니다"
+          : "한 번 클릭은 선택·미리보기, 두 번 클릭(또는 Enter)으로 파일을 엽니다"}
+      </p>
+
+      {/* 저장 위치 표시 */}
+      <SettingsToggle
+        label="결과에 저장 위치 표시"
+        description="검색 결과 카드에 폴더 경로와 액션 버튼 줄(경로 복사·위치 열기)을 표시합니다 (컴팩트 보기 포함). 경로 클릭 시 탐색기에서 열립니다. 끄면 우클릭 메뉴로 대체"
+        checked={settings.show_result_path ?? true}
+        onChange={(checked) => onChange("show_result_path", checked)}
+      />
     </div>
   );
 }

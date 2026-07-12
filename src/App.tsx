@@ -98,7 +98,7 @@ function AppContent() {
   // ── App Settings (cross-cutting) ──
   const {
     viewDensity, semanticEnabled, vectorIndexingMode,
-    resultsPerPage, applySettings,
+    resultsPerPage, openOnSingleClick, showResultPath, applySettings,
   } = useAppSettings({
     setSearchMode: search.setSearchMode,
     setMinConfidence: search.setMinConfidence,
@@ -851,6 +851,9 @@ function AppContent() {
                     onRetryWithoutFilters={handleRetryWithoutFilters}
                     onFocusSearch={handleFocusSearch}
                     onSwitchToFilenameSearch={handleSwitchToFilenameSearch}
+                    openOnSingleClick={openOnSingleClick}
+                    showResultPath={showResultPath}
+                    onPreviewFile={ui.setPreviewFilePath}
                   />
                 )}
               </div>

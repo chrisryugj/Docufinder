@@ -435,6 +435,10 @@ function TipsSection() {
 
       <div className="space-y-2">
         <FeatureBox
+          title="파일 열기 방식"
+          description="기본은 한 번 클릭 = 미리보기, 두 번 클릭(또는 Enter) = 파일 열기예요. 설정 → 일반 → '파일 열기 방식'에서 '한 번 클릭'으로 바꿀 수 있어요."
+        />
+        <FeatureBox
           title="즐겨찾기 폴더"
           description="자주 검색하는 폴더는 사이드바에서 우클릭 → 즐겨찾기로 등록하세요. 목록 상단에 고정됩니다."
         />

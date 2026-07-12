@@ -24,6 +24,8 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
   const [vectorIndexingMode, setVectorIndexingMode] =
     useState<VectorIndexingMode>("manual");
   const [resultsPerPage, setResultsPerPage] = useState(50);
+  const [openOnSingleClick, setOpenOnSingleClick] = useState(false);
+  const [showResultPath, setShowResultPath] = useState(true);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
     const root = document.documentElement;
@@ -64,6 +66,8 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
         setSemanticEnabled(settings.semantic_search_enabled ?? false);
         setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
         setResultsPerPage(settings.results_per_page ?? 50);
+        setOpenOnSingleClick(settings.open_on_single_click ?? false);
+        setShowResultPath(settings.show_result_path ?? true);
         setErrorReportingEnabled(settings.error_reporting_enabled ?? false);
 
         applyHighlightColors(settings);
@@ -83,6 +87,8 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
       setSemanticEnabled(settings.semantic_search_enabled ?? false);
       setVectorIndexingMode(settings.vector_indexing_mode ?? "manual");
       setResultsPerPage(settings.results_per_page ?? 50);
+      setOpenOnSingleClick(settings.open_on_single_click ?? false);
+      setShowResultPath(settings.show_result_path ?? true);
       setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
       applyHighlightColors(settings);
     },
@@ -96,6 +102,8 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
     setSemanticEnabled,
     vectorIndexingMode,
     resultsPerPage,
+    openOnSingleClick,
+    showResultPath,
     applySettings,
   };
 }
