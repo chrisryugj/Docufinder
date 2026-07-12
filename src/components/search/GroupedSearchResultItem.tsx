@@ -5,7 +5,8 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
 import { HighlightedText } from "./HighlightedText";
-import { buildPreviewContext, formatPathSegments, formatPathTail, stripHtmlTags } from "../../utils/searchTextUtils";
+import { buildPreviewContext, stripHtmlTags } from "../../utils/searchTextUtils";
+import { PathBreadcrumb } from "./PathBreadcrumb";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { MatchDensityBar } from "./MatchDensityBar";
 
@@ -353,41 +354,12 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
       {/* 경로 + 액션 버튼 — SearchResultItem Row 3와 동일. 컴팩트 보기도 저장 위치 표시 */}
       {showPath && (
         <div className={`flex items-center justify-between ${isCompact ? "mt-1.5" : "mt-2"}`}>
-          {isCompact ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onOpenFolder?.(group.file_path); }}
-              className="text-xs truncate flex-1 min-w-0 text-left px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
-              title={`${group.file_path.replace(/^\\\\\?\\/, "")}\n클릭: 파일 위치 열기`}
-            >
-              {formatPathTail(folderPath)}
-            </button>
-          ) : (
-          <div
-            className="flex flex-wrap items-center gap-0.5 flex-1 min-w-0"
-            title={group.file_path.replace(/^\\\\\?\\/, "")}
-          >
-            {formatPathSegments(folderPath).map((seg, i, arr) => (
-              <div key={i} className="flex items-center leading-none">
-                {seg.fullPath ? (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onOpenFolder?.(seg.fullPath); }}
-                    className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
-                    title={`${seg.fullPath} 열기`}
-                  >
-                    {seg.label}
-                  </button>
-                ) : (
-                  <span className="text-xs px-0.5 py-0.5 clr-muted">
-                    {seg.label}
-                  </span>
-                )}
-                {i < arr.length - 1 && (
-                  <span className="text-[11px] mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
-                )}
-              </div>
-            ))}
-          </div>
-          )}
+          <PathBreadcrumb
+            filePath={group.file_path}
+            folderPath={folderPath}
+            onOpenFolder={onOpenFolder}
+            compact={isCompact}
+          />
         </div>
       )}
 
