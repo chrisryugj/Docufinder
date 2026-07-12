@@ -19,11 +19,11 @@ pnpm exec vite preview --config vite.harness.config.ts
 pnpm exec vite --config vite.harness.config.ts
 
 # 2. 검증 (playwright 필요 — 임의 위치에 npm i playwright && npx playwright install webkit)
-node harness/verify-ui.mjs        # 뷰어 33항목
+node harness/verify-ui.mjs        # 뷰어 38항목
 node harness/verify-results.mjs   # 검색 결과 클릭 UX 26항목 (?view=results 마운트)
 ```
 
-## 검증 항목 (33)
+## 검증 항목 — 뷰어 (38, verify-ui.mjs)
 
 - **LayoutView(팝업)**: 초기 페이지 맞춤 폭 정확도(첫 프레임), **svg 폭=host 폭(스케일
   CSS 실효 — CSP 가 런타임 <style> 을 차단하면 여기서 잡힌다)**, Ctrl/⌘+휠 줌 +
@@ -33,7 +33,8 @@ node harness/verify-results.mjs   # 검색 결과 클릭 UX 26항목 (?view=resu
   들어오고(하단 미절단) 맞춤 페이지가 보이는 높이에 들어옴
 - **PdfLayoutView**: 초기 렌더 요청 1회(page 0), 페이지 맞춤 폭, 휠/키보드/더블클릭 줌
   (v3.2.4 에서 SVG 뷰와 동일 계약으로 정합), 페이지 네비, **파일 전환 시 이전 페이지
-  번호로의 낭비 요청·stale pageCount 없음**, Esc 닫기
+  번호로의 낭비 요청·stale pageCount 없음**, **휠 페이지 넘김(v3.2.9): 경계 휠다운/휠업
+  넘김·마지막 페이지 유지·이전 페이지 하단 정렬 진입**, Esc 닫기
 
 ## 검증 항목 — 검색 결과 리스트 (26, verify-results.mjs)
 

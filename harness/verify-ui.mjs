@@ -270,6 +270,54 @@ await page.waitForTimeout(200);
   t("P6 라벨 1/3 리셋 + 에러 없음", label === "1/3" && errVisible === 0, `label=${label}`);
 }
 
+// P8: 휠 페이지 넘김 — 경계에서 계속 굴리면 다음/이전 페이지 (v3.2.9).
+// 현재 상태: b.pdf, 1/3, 페이지 맞춤(전체가 화면에 들어옴 → 항상 상·하단 경계).
+{
+  const sc = await page.locator("#stage .overflow-auto").boundingBox();
+  await page.mouse.move(sc.x + sc.width / 2, sc.y + sc.height / 2);
+  await page.evaluate(() => (window.__invokeCalls = []));
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(350);
+  let label = await page.locator("#stage .tabular-nums").first().innerText();
+  const calls = await page.evaluate(() => window.__invokeCalls);
+  t("P8 경계 휠다운 → 다음 페이지", label === "2/3" && calls.some((c) => c.args.page === 1), `label=${label}`);
+  await page.waitForTimeout(250); // 재무장 갭(180ms) 경과
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(350);
+  label = await page.locator("#stage .tabular-nums").first().innerText();
+  t("P8 재무장 후 휠다운 → 3/3", label === "3/3", `label=${label}`);
+  await page.waitForTimeout(250);
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(300);
+  label = await page.locator("#stage .tabular-nums").first().innerText();
+  t("P8 마지막 페이지에서 휠다운 → 유지", label === "3/3", `label=${label}`);
+}
+
+// P9: 휠업 ← 이전 페이지 + 확대 상태에선 하단 정렬로 진입 (읽던 흐름 유지)
+{
+  // 확대해 세로 오버플로 생성 → 이전 페이지 진입 시 하단 정렬이 관측 가능해짐
+  for (let i = 0; i < 4; i++) await page.locator('button[title="확대"]').click();
+  await page.waitForTimeout(300);
+  // 확대 버튼 클릭이 커서를 툴바로 옮김 — 휠 표적을 스크롤러로 복귀
+  const scBox = await page.locator("#stage .overflow-auto").boundingBox();
+  await page.mouse.move(scBox.x + scBox.width / 2, scBox.y + scBox.height / 2);
+  const overflow = await page.evaluate(() => {
+    const sc = document.querySelector("#stage .overflow-auto");
+    return sc.scrollHeight > sc.clientHeight + 10;
+  });
+  await page.evaluate(() => document.querySelector("#stage .overflow-auto").scrollTo(0, 0));
+  await page.waitForTimeout(250);
+  await page.mouse.wheel(0, -120);
+  await page.waitForTimeout(500); // 렌더 + 이미지 onLoad 하단 정렬
+  const label = await page.locator("#stage .tabular-nums").first().innerText();
+  const nearBottom = await page.evaluate(() => {
+    const sc = document.querySelector("#stage .overflow-auto");
+    return sc.scrollHeight - sc.clientHeight - sc.scrollTop < 3;
+  });
+  t("P9 상단 경계 휠업 → 이전 페이지", label === "2/3", `label=${label}`);
+  t("P9 이전 페이지는 하단 정렬 진입", overflow && nearBottom, `overflow=${overflow} nearBottom=${nearBottom}`);
+}
+
 // P7: Esc 닫기
 {
   await page.keyboard.press("Escape");

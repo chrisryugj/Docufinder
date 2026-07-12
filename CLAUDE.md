@@ -114,7 +114,7 @@ Anything/
 | 법령 참조 링크 | 정규식 기반 법령 자동 감지 → law.go.kr 링크 |
 | 미리보기 찾기 (v3.0) | Ctrl+F 인앱 찾기 바 — 매치 카운트 + 이전/다음 |
 | 문서 비교 (v3.0) | 우클릭 '비교 대상으로 선택' → 임의 두 문서 청크 diff |
-| 팝업 뷰어 / 줌 | 미리보기 전체화면 오버레이 — 커서 기준 휠 줌·더블클릭 토글·너비↔페이지 맞춤 (search/LayoutView.tsx) |
+| 팝업 뷰어 / 줌 | 미리보기 전체화면 오버레이 — 커서 기준 휠 줌·더블클릭 토글·너비↔페이지 맞춤, PDF는 경계 휠로 페이지 넘김 (search/LayoutView.tsx, PdfLayoutView.tsx) |
 | 표 네이티브 렌더 | kordoc HTML 표(병합·중첩)를 rehype-raw 로 그대로 렌더 + rehype-sanitize XSS 차단 |
 | 복사 깨짐 배지 | CID/PUA 폰트 손상 문서(pdf·hwp·hwpx)에 복사 시 글자 깨짐 경고 배지 (indexer/pipeline.rs) |
 | 네이티브 드래그아웃 | 검색 결과 파일을 다른 앱/웹으로 끌어 놓기 (tauri-plugin-drag) |
