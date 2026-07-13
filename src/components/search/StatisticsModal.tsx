@@ -38,15 +38,21 @@ function formatDate(ts: number): string {
   return d.toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-/** 파일 유형 → 한글 레이블 */
+/** 파일 유형 → 한글 레이블 (문서 타입만; 나머지는 확장자 대문자로 표기) */
 const TYPE_LABELS: Record<string, string> = {
   txt: "텍스트", md: "마크다운", hwpx: "한글", hwp: "한글(구)",
   docx: "워드", doc: "워드(구)", pptx: "파워포인트", ppt: "파워포인트(구)",
   xlsx: "엑셀", xls: "엑셀(구)", pdf: "PDF",
 };
 
-/** 파일 유형별 차트 색상 */
-// DESIGN.md File Type Colors 와 동일한 CSS 변수 사용 (라이트/다크 자동 대응).
+/** 확장자 → 표시 레이블. 빈 확장자는 "기타", 미매핑 확장자는 대문자 그대로. */
+function labelFor(ext: string): string {
+  const key = ext.toLowerCase();
+  if (!key) return "기타";
+  return TYPE_LABELS[key] ?? ext.toUpperCase();
+}
+
+/** 문서 타입 차트 색상 — DESIGN.md File Type Colors CSS 변수 (라이트/다크 자동). */
 const TYPE_COLORS: Record<string, string> = {
   hwpx: "var(--color-file-hwpx)", hwp: "var(--color-file-hwpx)",
   docx: "var(--color-file-docx)", doc: "var(--color-file-docx)",
@@ -55,7 +61,37 @@ const TYPE_COLORS: Record<string, string> = {
   pdf: "var(--color-file-pdf)",
   txt: "var(--color-file-txt)", md: "var(--color-file-txt)",
 };
-const DEFAULT_COLOR = "var(--color-text-muted)";
+
+/** 코드·이미지·미디어 등 비문서 확장자 고정 색상 — 문서앱이라도 폴더에 섞여 인덱싱된다. */
+const EXT_COLORS: Record<string, string> = {
+  js: "#F7DF1E", jsx: "#F7DF1E", mjs: "#F7DF1E", cjs: "#F7DF1E",
+  ts: "#3178C6", tsx: "#3178C6",
+  json: "#8B8B8B", yaml: "#CB171E", yml: "#CB171E", toml: "#9C4221",
+  py: "#3776AB", rs: "#DEA584", go: "#00ADD8", java: "#B07219",
+  c: "#555555", cpp: "#F34B7D", h: "#555555", cs: "#178600",
+  rb: "#701516", php: "#4F5D95", sh: "#89E051", lua: "#000080",
+  html: "#E34C26", css: "#563D7C", scss: "#C6538C", vue: "#41B883",
+  png: "#0EA5E9", jpg: "#0EA5E9", jpeg: "#0EA5E9", gif: "#0EA5E9",
+  webp: "#0EA5E9", svg: "#FFB13B", bmp: "#0EA5E9", ico: "#0EA5E9",
+  mp4: "#EC4899", mov: "#EC4899", avi: "#EC4899", mkv: "#EC4899",
+  mp3: "#A855F7", wav: "#A855F7", flac: "#A855F7",
+  zip: "#F59E0B", z01: "#F59E0B", z02: "#F59E0B", rar: "#F59E0B",
+  "7z": "#F59E0B", tar: "#F59E0B", gz: "#F59E0B",
+};
+
+/** 미매핑 확장자용 안정적 해시 색상 — 명·채도 고정이라 라이트/다크 양쪽에서 판독. */
+function hashColor(ext: string): string {
+  let h = 0;
+  for (let i = 0; i < ext.length; i++) h = (h * 31 + ext.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 52% 55%)`;
+}
+
+/** 확장자 → 차트 색상. 문서 변수 → 비문서 팔레트 → 해시 fallback 순. */
+function colorFor(ext: string): string {
+  const key = ext.toLowerCase();
+  if (!key) return "var(--color-text-muted)";
+  return TYPE_COLORS[key] ?? EXT_COLORS[key] ?? hashColor(key);
+}
 
 /** 도넛 차트 (SVG) */
 function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClick?: (label: string) => void }) {
@@ -71,7 +107,7 @@ function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClic
     return data.map((entry) => {
       const pct = entry.count / total;
       const dashLen = pct * circumference;
-      const seg = { label: entry.label, dashLen, dashOffset: -acc, color: TYPE_COLORS[entry.label] || DEFAULT_COLOR };
+      const seg = { label: entry.label, dashLen, dashOffset: -acc, color: colorFor(entry.label) };
       acc += dashLen;
       return seg;
     });
@@ -110,10 +146,10 @@ function DonutChart({ data, onSegmentClick }: { data: StatEntry[]; onSegmentClic
           >
             <span
               className="w-2.5 h-2.5 rounded-sm shrink-0"
-              style={{ backgroundColor: TYPE_COLORS[entry.label] || DEFAULT_COLOR }}
+              style={{ backgroundColor: colorFor(entry.label) }}
             />
             <span className="truncate" style={{ color: "var(--color-text-secondary)" }}>
-              {TYPE_LABELS[entry.label] || entry.label}
+              {labelFor(entry.label)}
             </span>
             <span className="tabular-nums ml-auto font-medium" style={{ color: "var(--color-text-primary)" }}>
               {entry.count.toLocaleString()}
@@ -374,24 +410,28 @@ export const StatisticsModal = memo(function StatisticsModal({
         </div>
       ) : tab === "docs" && stats ? (
         <div className="space-y-6">
-          {/* 요약 카드 */}
-          <div className="grid grid-cols-3 gap-3">
+          {/* 요약 — 한 줄 인라인 바 */}
+          <div
+            className="flex items-center justify-around gap-2 px-4 py-2.5 rounded-lg"
+            style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+          >
             {[
               { label: "총 문서", value: stats.total_files.toLocaleString() },
               { label: "인덱싱 완료", value: stats.indexed_files.toLocaleString() },
               { label: "총 크기", value: formatSize(stats.total_size) },
-            ].map((card) => (
-              <div
-                key={card.label}
-                className="text-center px-3 py-2.5 rounded-lg"
-                style={{ backgroundColor: "var(--color-bg-tertiary)" }}
-              >
-                <div className="text-lg font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
-                  {card.value}
-                </div>
-                <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                  {card.label}
-                </div>
+            ].map((card, i) => (
+              <div key={card.label} className="flex items-center gap-2 min-w-0">
+                {i > 0 && (
+                  <span className="text-[var(--color-border)] select-none" aria-hidden>|</span>
+                )}
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-base font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+                    {card.value}
+                  </span>
+                  <span className="text-[10px] shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                    {card.label}
+                  </span>
+                </span>
               </div>
             ))}
           </div>
