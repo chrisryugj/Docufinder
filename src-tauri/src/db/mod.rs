@@ -1131,13 +1131,21 @@ pub fn get_file_type_distribution(conn: &Connection) -> Result<Vec<(String, i64)
 }
 
 /// 연도별 문서 수 (modified_at 기준)
+///
+/// 파일시스템 mtime 이 깨진 문서(2100년 등 미래·음수 타임스탬프)는 실제 연도로
+/// 볼 수 없으므로 '미분류' 로 묶는다. 하루(86400s) 여유는 클럭 스큐 방어.
 pub fn get_year_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
     let mut stmt = conn.prepare(
-        "SELECT COALESCE(strftime('%Y', datetime(modified_at, 'unixepoch')), '미분류') as year,
+        "SELECT CASE
+                  WHEN modified_at IS NULL OR modified_at <= 0
+                    OR modified_at > CAST(strftime('%s', 'now') AS INTEGER) + 86400
+                  THEN '미분류'
+                  ELSE strftime('%Y', datetime(modified_at, 'unixepoch'))
+                END as year,
                 COUNT(*) as cnt
          FROM files
          GROUP BY year
-         ORDER BY year DESC",
+         ORDER BY (year = '미분류'), year DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -1146,10 +1154,15 @@ pub fn get_year_distribution(conn: &Connection) -> Result<Vec<(String, i64)>> {
 }
 
 /// 최근 수정된 문서 Top N
+///
+/// 미래·음수 타임스탬프(깨진 mtime)는 정렬 최상위를 오염시키므로 제외한다 —
+/// 이걸 걸러야 실제 최근 문서가 노출된다. 하루 여유는 클럭 스큐 방어.
 pub fn get_recent_files(conn: &Connection, limit: usize) -> Result<Vec<(String, String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT path, name, modified_at FROM files
          WHERE modified_at IS NOT NULL
+           AND modified_at > 0
+           AND modified_at <= CAST(strftime('%s', 'now') AS INTEGER) + 86400
          ORDER BY modified_at DESC
          LIMIT ?1",
     )?;
