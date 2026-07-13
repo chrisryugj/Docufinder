@@ -5,12 +5,15 @@
 <h1 align="center">Anything</h1>
 
 <p align="center">
-  <b>내 PC 문서를 통째로 검색하는 로컬 검색 엔진</b><br/>
-  파일명 몰라도, 열어보지 않아도. 문서 안의 <i>내용</i>으로 찾습니다.
+  <b>내 PC 문서를 통째로 뒤지는 100% 로컬 검색 엔진</b><br/>
+  파일명을 몰라도, 열어보지 않아도 — 문서 <i>안의 내용</i>으로 찾습니다.<br/>
+  한글(HWP/HWPX)·워드·엑셀·PDF·이미지까지, 전부 내 컴퓨터 안에서.
 </p>
 
 <p align="center">
-  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/download-Windows-0078D4?style=for-the-badge&logo=windows" alt="Download" /></a>
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/Windows-x64-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download for Windows" /></a>
+  &nbsp;
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/macOS-Apple%20Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for macOS" /></a>
 </p>
 
 <p align="center">
