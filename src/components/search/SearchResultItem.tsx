@@ -13,6 +13,8 @@ import { Tooltip } from "../ui/Tooltip";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { LineageBadge } from "./LineageBadge";
+import type { FilenameVisible } from "../../hooks/useFilenameColumns";
+import { formatFileSize } from "../../utils/formatFileSize";
 
 // 네이티브 드래그아웃용 프리뷰 아이콘 경로 — 앱당 1회만 백엔드에서 가져와 캐시.
 // startDrag(icon) 가 동기 경로를 요구하므로 드래그 전에 미리 확보해 둔다.
@@ -44,6 +46,10 @@ interface SearchResultItemProps {
   showPath?: boolean;
   /** 수정 날짜/시간을 절대값으로 상시 표시 (false: 상대시간 "3일 전", 절대값은 툴팁) */
   showAbsoluteTime?: boolean;
+  /** 파일명 컬럼뷰: grid 컬럼 정의(표시 컬럼 기반) */
+  filenameGridTemplate?: string;
+  /** 파일명 컬럼뷰: 경로·크기·수정일시 표시 여부 */
+  filenameVisible?: FilenameVisible;
 }
 
 /** Get file-type stripe CSS class */
@@ -80,6 +86,8 @@ export const SearchResultItem = memo(function SearchResultItem({
   openOnSingleClick = true,
   showPath = true,
   showAbsoluteTime = true,
+  filenameGridTemplate,
+  filenameVisible,
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -97,6 +105,8 @@ export const SearchResultItem = memo(function SearchResultItem({
   //   (대소문자 무관 비교: serde 직렬화 호환성 — useSearch.ts keywordOnly 필터와 동일 패턴)
   const matchType = (result.match_type ?? "").toLowerCase();
   const showConfidence = matchType === "semantic" || matchType === "hybrid";
+  // 파일명 검색 모드 결과 — 한 줄 컬럼 레이아웃으로 렌더 (내용 스니펫 없음)
+  const isFilenameMatch = matchType === "filename";
 
   // Modified date
   const modifiedAtMs = result.modified_at ? result.modified_at * 1000 : null;
@@ -166,6 +176,125 @@ export const SearchResultItem = memo(function SearchResultItem({
     },
     [result.file_path, onOpenFolder]
   );
+
+  // ── 파일명 검색 모드 — Everything식 한 줄 컬럼 (이름 | 경로 가변 | 수정일시 | 유형) ──
+  // 내용 스니펫이 없어 3행 카드가 "파일명 반복 + 세로 경로"로 낭비되던 것을 정리.
+  // 경로는 오른쪽 수평 공간을 가변으로 채우고(flex-1), 좁아지면 compact 축약.
+  if (isFilenameMatch) {
+    const timePrimary = showAbsoluteTime ? absoluteDate : relativeTime;
+    const timeTooltip = showAbsoluteTime ? relativeTime : absoluteDate;
+    const fnGrid = filenameGridTemplate ?? "var(--fn-name) var(--fn-path) var(--fn-size) var(--fn-time) minmax(60px, 1fr)";
+    const fnVis = filenameVisible ?? { path: true, size: true, time: true };
+    return (
+      <div
+        id={`search-result-${index}`}
+        className={`search-result-item result-card group ${getStripeClass(result.file_name)}`}
+        style={{
+          "--item-index": index,
+          padding: "0.4rem 0.625rem",
+          ...(isSelected && {
+            backgroundColor: "var(--color-accent-light)",
+            outline: "1.5px solid var(--color-accent)",
+            outlineOffset: "-1.5px",
+            borderRadius: "var(--radius-card)",
+          }),
+        } as React.CSSProperties}
+        role="option"
+        aria-selected={isSelected}
+        aria-label={`${result.file_name} 검색 결과`}
+        tabIndex={isSelected ? 0 : -1}
+        onContextMenu={handleContextMenu}
+        data-context-menu
+      >
+        <div className="grid items-center gap-2 min-w-0" style={{ gridTemplateColumns: fnGrid }}>
+          {/* 이름 — 드래그·클릭 열기 (Shift 드래그 = 이동) */}
+          <div
+            className="flex items-center gap-2 min-w-0 cursor-pointer hover-accent-text"
+            draggable
+            onDragStart={handleDragStart}
+            onClick={(e) => {
+              if (!openOnSingleClick) return;
+              e.stopPropagation();
+              onOpenFile(result.file_path, result.page_number);
+            }}
+            onDoubleClick={(e) => {
+              if (openOnSingleClick) return;
+              e.stopPropagation();
+              onOpenFile(result.file_path, result.page_number);
+            }}
+            onMouseDown={(e) => { if (e.detail >= 2) e.preventDefault(); }}
+            title={openOnSingleClick ? "파일 열기 · 끌어서 다른 앱으로 (Shift=이동)" : "두 번 클릭: 열기 · 한 번 클릭: 미리보기"}
+          >
+            <FileIcon fileName={result.file_name} size="sm" />
+            <span className="truncate" style={{ fontWeight: 600, fontSize: "var(--text-base)", letterSpacing: "-0.015em" }}>
+              <HighlightedFilename filename={result.file_name} query={query} />
+            </span>
+          </div>
+
+          {/* 경로 */}
+          {fnVis.path && (
+            <div className="min-w-0">
+              <PathBreadcrumb
+                filePath={result.file_path}
+                folderPath={folderPath}
+                onOpenFolder={onOpenFolder}
+                compact
+              />
+            </div>
+          )}
+
+          {/* 크기 (우측 정렬 — 숫자) */}
+          {fnVis.size && (
+            <div className="min-w-0 text-right pr-1">
+              <span className="block truncate text-[11px] tabular-nums leading-none" style={{ color: "var(--color-text-muted)" }}>
+                {formatFileSize(result.size)}
+              </span>
+            </div>
+          )}
+
+          {/* 수정일시 */}
+          {fnVis.time && (
+            <div className="min-w-0">
+              {relativeTime && (
+                <Tooltip content={timeTooltip} position="bottom" delay={200}>
+                  <span className="block truncate text-[11px] tabular-nums leading-none" style={{ color: "var(--color-text-muted)" }}>
+                    {timePrimary}
+                  </span>
+                </Tooltip>
+              )}
+            </div>
+          )}
+
+          {/* 유형 + 액션(hover) */}
+          <div className="flex items-center gap-2 min-w-0">
+            <Badge variant={getFileTypeBadgeVariant(result.file_name)} aria-label={`파일 형식: ${fileExt.toUpperCase()}`}>
+              {fileExt.toUpperCase()}
+            </Badge>
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <button onClick={handleCopyPath} className="p-1 rounded btn-icon-hover" title="경로 복사" aria-label="파일 경로 복사">
+                <ClipboardCopy className="w-3.5 h-3.5" />
+              </button>
+              {onOpenFolder && (
+                <button onClick={handleRevealFile} className="p-1 rounded btn-icon-hover" title="파일 위치 열기 (탐색기에서 선택)" aria-label="파일 위치 열기">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <ResultContextMenu
+          filePath={result.file_path}
+          pageNumber={result.page_number}
+          onOpenFile={onOpenFile}
+          onCopyPath={onCopyPath}
+          onOpenFolder={onOpenFolder}
+          contextMenu={contextMenu}
+          closeContextMenu={closeContextMenu}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
