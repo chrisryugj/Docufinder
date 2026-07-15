@@ -18,6 +18,8 @@ export interface SearchResult {
   snippet?: string;
   /** 파일 수정 시간 (Unix timestamp, 초) */
   modified_at: number | null;
+  /** 파일 크기 (바이트). 파일명 검색 결과에만 채워짐 */
+  size?: number | null;
   /** 같은 경로에 원본 HWP 파일이 존재하는 HWPX */
   has_hwp_pair?: boolean;
   /** 해당 파일의 전체 청크 개수 (히트맵 절대 스케일용, 0이면 미제공) */

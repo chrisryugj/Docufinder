@@ -106,6 +106,7 @@ impl SearchService {
                     location_hint: None,
                     snippet: None,
                     modified_at: row.get(4)?,
+                    size: None,
                     has_hwp_pair: false,
                     total_chunks: 0,
                     lineage_id: None,

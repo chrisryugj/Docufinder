@@ -1,9 +1,12 @@
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, memo } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef, memo } from "react";
 import { List, LayoutGrid, ClipboardCopy, FileDown, ChevronRight, FileText, FileSearch, Frown, PenLine, ArrowLeftRight, Filter, ChevronDown, FolderPlus } from "lucide-react";
 import type { SearchResult, GroupedSearchResult, ViewMode, RecentSearch, ParsedQueryInfo } from "../../types/search";
 import type { ViewDensity } from "../../types/settings";
 import { SearchResultItem } from "./SearchResultItem";
 import { GroupedSearchResultItem } from "./GroupedSearchResultItem";
+import { FilenameColumnHeader } from "./FilenameColumnHeader";
+import { useFilenameColumns, type FilenameSort, type ResizableCol } from "../../hooks/useFilenameColumns";
+import { formatFileSize } from "../../utils/formatFileSize";
 import { SearchResultSkeleton } from "./SearchResultSkeleton";
 import { HighlightedFilename } from "./HighlightedFilename";
 import { WelcomeHero } from "./WelcomeHero";
@@ -13,6 +16,30 @@ import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { FilenameCopiesBadge } from "./FilenameCopiesBadge";
+
+/** 파일명 컬럼 정렬 비교자 (이름/경로/크기/수정일시/유형) */
+function compareFilename(a: SearchResult, b: SearchResult, sort: FilenameSort): number {
+  const mul = sort.dir === "asc" ? 1 : -1;
+  const ext = (r: SearchResult) => (r.file_name.split(".").pop() || "").toLowerCase();
+  switch (sort.field) {
+    case "name": return mul * a.file_name.localeCompare(b.file_name, "ko");
+    case "path": return mul * a.file_path.localeCompare(b.file_path, "ko");
+    case "size": return mul * ((a.size ?? 0) - (b.size ?? 0));
+    case "time": return mul * ((a.modified_at ?? 0) - (b.modified_at ?? 0));
+    case "type": return mul * (ext(a).localeCompare(ext(b)) || a.file_name.localeCompare(b.file_name, "ko"));
+    default: return 0;
+  }
+}
+
+// 컬럼 자동 맞춤용 텍스트 폭 측정 (canvas 재사용)
+let measureCanvas: HTMLCanvasElement | null = null;
+function measureText(text: string, font: string): number {
+  if (!measureCanvas) measureCanvas = document.createElement("canvas");
+  const ctx = measureCanvas.getContext("2d");
+  if (!ctx) return 0;
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
 
 interface SearchResultListProps {
   results: SearchResult[];
@@ -164,6 +191,44 @@ export const SearchResultList = memo(function SearchResultList({
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(pageSize);
   const isCompact = viewDensity === "compact";
+  // 파일명 검색 모드 — Everything식 컬럼(정렬 + 개별 너비 조절 + 기억)
+  const isFilenameMode = searchMode === "filename";
+  const { widths, visible, sort, gridTemplate, startResize, setColumnWidth, resetWidths, toggleSort, toggleColumn } = useFilenameColumns();
+  // 컬럼 정렬 — 원본 인덱스(i)를 보존해 선택·미리보기·키보드 인덱스 정합성 유지
+  const flatResults = useMemo(() => {
+    const withIdx = results.map((r, i) => ({ r, i }));
+    if (isFilenameMode && sort) {
+      withIdx.sort((a, b) => compareFilename(a.r, b.r, sort));
+    }
+    return withIdx;
+  }, [results, isFilenameMode, sort]);
+
+  // 컬럼 경계 더블클릭 자동 맞춤 — 상위 결과의 해당 컬럼 최장 텍스트에 맞춰 너비 설정
+  const autoFitColumn = useCallback((col: ResizableCol) => {
+    const nameFont = "600 15px system-ui, sans-serif";
+    const metaFont = "11px system-ui, sans-serif";
+    const timeText = (r: SearchResult) => {
+      if (!r.modified_at) return "";
+      const ms = r.modified_at * 1000;
+      return showAbsoluteTime
+        ? new Date(ms).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+        : formatRelativeTime(ms);
+    };
+    let max = 0;
+    for (const r of results.slice(0, 300)) {
+      let text = "";
+      let font = metaFont;
+      switch (col) {
+        case "name": text = r.file_name; font = nameFont; break;
+        case "path": text = r.file_path; break;
+        case "size": text = formatFileSize(r.size); break;
+        case "time": text = timeText(r); break;
+      }
+      const w = measureText(text, font);
+      if (w > max) max = w;
+    }
+    setColumnWidth(col, max + (col === "name" ? 44 : 20));
+  }, [results, showAbsoluteTime, setColumnWidth]);
   const listRef = useRef<HTMLDivElement>(null);
   const pendingScrollAnchorRef = useRef<PendingScrollAnchor | null>(null);
   const pointerSelectRef = useRef(false);
@@ -422,8 +487,28 @@ export const SearchResultList = memo(function SearchResultList({
           ) : (
             // 플랫 뷰
             <>
-              <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "space-y-0.5" : "space-y-1.5"}`}>
-                {results.slice(0, visibleCount).map((result, index) => (
+              <div
+                style={isFilenameMode ? ({
+                  "--fn-name": `${widths.name}px`,
+                  "--fn-path": `${widths.path}px`,
+                  "--fn-size": `${widths.size}px`,
+                  "--fn-time": `${widths.time}px`,
+                } as React.CSSProperties) : undefined}
+              >
+                {isFilenameMode && (
+                  <FilenameColumnHeader
+                    gridTemplate={gridTemplate}
+                    visible={visible}
+                    sort={sort}
+                    onSort={toggleSort}
+                    startResize={startResize}
+                    onAutoFit={autoFitColumn}
+                    toggleColumn={toggleColumn}
+                    resetWidths={resetWidths}
+                  />
+                )}
+                <div ref={listRef} role="listbox" aria-label="검색 결과" aria-activedescendant={selectedIndex != null && selectedIndex >= 0 ? `search-result-${selectedIndex}` : undefined} className={`result-list-divided ${isCompact ? "space-y-0.5" : "space-y-1.5"}`}>
+                {flatResults.slice(0, visibleCount).map(({ r: result, i: index }) => (
                   <div
                     key={`${result.file_path}-${result.chunk_index ?? 0}-${result.start_offset ?? index}`}
                     className={`group ${index < 10 ? "stagger-item" : ""}`}
@@ -457,9 +542,12 @@ export const SearchResultList = memo(function SearchResultList({
                       openOnSingleClick={openOnSingleClick}
                       showPath={showResultPath}
                       showAbsoluteTime={showAbsoluteTime}
+                      filenameGridTemplate={gridTemplate}
+                      filenameVisible={visible}
                     />
                   </div>
                 ))}
+                </div>
               </div>
               {results.length > visibleCount && (
                 <ShowMoreButton

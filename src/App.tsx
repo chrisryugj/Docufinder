@@ -560,7 +560,7 @@ function AppContent() {
   // ── Render ──
 
   return (
-    <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '2560px' }}>
+    <div className="h-screen relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}>
       {/* Skip-to-main-content for keyboard/screen reader users */}
       <a
         href="#main-content"
