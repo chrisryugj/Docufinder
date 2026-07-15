@@ -90,6 +90,8 @@ interface SearchResultListProps {
   openOnSingleClick?: boolean;
   /** 결과 카드에 저장 위치(경로) 표시 */
   showResultPath?: boolean;
+  /** 결과 카드에 수정 날짜/시간을 절대값으로 상시 표시 (false: 상대시간, 절대값은 툴팁) */
+  showAbsoluteTime?: boolean;
   /** 파일명 매치: 두 번 클릭 모드에서 한 번 클릭 시 인앱 미리보기 열기 */
   onPreviewFile?: (path: string) => void;
 }
@@ -152,6 +154,7 @@ export const SearchResultList = memo(function SearchResultList({
   onSwitchToFilenameSearch,
   openOnSingleClick = true,
   showResultPath = true,
+  showAbsoluteTime = true,
   onPreviewFile,
 }: SearchResultListProps) {
   const pageSize = resultsPerPage || DEFAULT_RESULTS_PER_PAGE;
@@ -324,6 +327,7 @@ export const SearchResultList = memo(function SearchResultList({
           openOnSingleClick={openOnSingleClick}
           onPreviewFile={onPreviewFile}
           showPath={showResultPath}
+          showAbsoluteTime={showAbsoluteTime}
         />
 
         {/* 결과 목록 */}
@@ -368,6 +372,7 @@ export const SearchResultList = memo(function SearchResultList({
                           category={categories?.[group.file_path]}
                           openOnSingleClick={openOnSingleClick}
                           showPath={showResultPath}
+                          showAbsoluteTime={showAbsoluteTime}
                         />
                       </div>
                     );
@@ -451,6 +456,7 @@ export const SearchResultList = memo(function SearchResultList({
                       category={categories?.[result.file_path]}
                       openOnSingleClick={openOnSingleClick}
                       showPath={showResultPath}
+                      showAbsoluteTime={showAbsoluteTime}
                     />
                   </div>
                 ))}
@@ -905,6 +911,7 @@ function FilenameResultsSection({
   openOnSingleClick = true,
   onPreviewFile,
   showPath = true,
+  showAbsoluteTime = true,
 }: {
   filenameResults: SearchResult[];
   contentResultCount: number;
@@ -918,6 +925,7 @@ function FilenameResultsSection({
   openOnSingleClick?: boolean;
   onPreviewFile?: (path: string) => void;
   showPath?: boolean;
+  showAbsoluteTime?: boolean;
 }) {
   if (filenameResults.length === 0) return null;
 
@@ -988,6 +996,7 @@ function FilenameResultsSection({
                         openOnSingleClick={openOnSingleClick}
                         onPreviewFile={onPreviewFile}
                         showPath={showPath}
+                        showAbsoluteTime={showAbsoluteTime}
                       />
                     );
                   }
@@ -1003,6 +1012,7 @@ function FilenameResultsSection({
                       openOnSingleClick={openOnSingleClick}
                       onPreviewFile={onPreviewFile}
                       showPath={showPath}
+                      showAbsoluteTime={showAbsoluteTime}
                     />
                   ));
                 })
@@ -1054,6 +1064,7 @@ function FilenameResultItem({
   openOnSingleClick = true,
   onPreviewFile,
   showPath = true,
+  showAbsoluteTime = true,
 }: {
   result: SearchResult;
   query: string;
@@ -1064,6 +1075,7 @@ function FilenameResultItem({
   openOnSingleClick?: boolean;
   onPreviewFile?: (path: string) => void;
   showPath?: boolean;
+  showAbsoluteTime?: boolean;
 }) {
   const { contextMenu, handleContextMenu, closeContextMenu } = useContextMenu();
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
@@ -1120,9 +1132,18 @@ function FilenameResultItem({
         <span
           className="text-[10px] flex-shrink-0 tabular-nums"
           style={{ color: "var(--color-text-muted)" }}
-          title={new Date(result.modified_at * 1000).toLocaleString("ko-KR")}
+          title={
+            showAbsoluteTime
+              ? formatRelativeTime(result.modified_at * 1000)
+              : new Date(result.modified_at * 1000).toLocaleString("ko-KR")
+          }
         >
-          {formatRelativeTime(result.modified_at * 1000)}
+          {showAbsoluteTime
+            ? new Date(result.modified_at * 1000).toLocaleString("ko-KR", {
+                year: "numeric", month: "2-digit", day: "2-digit",
+                hour: "2-digit", minute: "2-digit",
+              })
+            : formatRelativeTime(result.modified_at * 1000)}
         </span>
       )}
       {result.has_hwp_pair && (

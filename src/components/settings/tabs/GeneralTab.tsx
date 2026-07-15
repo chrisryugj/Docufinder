@@ -148,6 +148,14 @@ export function GeneralTab({ settings, onChange }: TabProps) {
         checked={settings.show_result_path ?? true}
         onChange={(checked) => onChange("show_result_path", checked)}
       />
+
+      {/* 수정 날짜/시간 표시 형식 */}
+      <SettingsToggle
+        label="수정 날짜·시간 표시"
+        description="검색 결과에 파일 수정 시각을 날짜·시간(예: 2026. 07. 15. 14:30)으로 표시합니다. 끄면 상대시간(예: 3일 전)으로 표시하고, 정확한 날짜·시간은 마우스를 올리면 나타납니다."
+        checked={settings.show_absolute_time ?? true}
+        onChange={(checked) => onChange("show_absolute_time", checked)}
+      />
     </div>
   );
 }

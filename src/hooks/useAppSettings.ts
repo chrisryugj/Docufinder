@@ -26,6 +26,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
   const [resultsPerPage, setResultsPerPage] = useState(50);
   const [openOnSingleClick, setOpenOnSingleClick] = useState(false);
   const [showResultPath, setShowResultPath] = useState(true);
+  const [showAbsoluteTime, setShowAbsoluteTime] = useState(true);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
     const root = document.documentElement;
@@ -68,6 +69,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
         setResultsPerPage(settings.results_per_page ?? 50);
         setOpenOnSingleClick(settings.open_on_single_click ?? false);
         setShowResultPath(settings.show_result_path ?? true);
+        setShowAbsoluteTime(settings.show_absolute_time ?? true);
         setErrorReportingEnabled(settings.error_reporting_enabled ?? false);
 
         applyHighlightColors(settings);
@@ -89,6 +91,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
       setResultsPerPage(settings.results_per_page ?? 50);
       setOpenOnSingleClick(settings.open_on_single_click ?? false);
       setShowResultPath(settings.show_result_path ?? true);
+      setShowAbsoluteTime(settings.show_absolute_time ?? true);
       setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
       applyHighlightColors(settings);
     },
@@ -104,6 +107,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
     resultsPerPage,
     openOnSingleClick,
     showResultPath,
+    showAbsoluteTime,
     applySettings,
   };
 }

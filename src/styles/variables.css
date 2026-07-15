@@ -164,7 +164,8 @@
   --text-hero: 2.75rem;   /* 44px — 히어로 */
 
   /* Layout Constraints */
-  --content-max-width: 820px;  /* 검색 결과 최대 너비 */
+  /* 창이 넓어지면 콘텐츠도 함께 확장(좁은 창 820px 가독성 유지 → 넓은 창 최대 1400px) */
+  --content-max-width: clamp(820px, 62vw, 1400px);
 
   /* Micro-typography & Fluid Space */
   --space-fluid-screen: clamp(2rem, 5vw, 4rem);

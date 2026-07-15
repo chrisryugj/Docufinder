@@ -98,7 +98,7 @@ function AppContent() {
   // ── App Settings (cross-cutting) ──
   const {
     viewDensity, semanticEnabled, vectorIndexingMode,
-    resultsPerPage, openOnSingleClick, showResultPath, applySettings,
+    resultsPerPage, openOnSingleClick, showResultPath, showAbsoluteTime, applySettings,
   } = useAppSettings({
     setSearchMode: search.setSearchMode,
     setMinConfidence: search.setMinConfidence,
@@ -560,7 +560,7 @@ function AppContent() {
   // ── Render ──
 
   return (
-    <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '1920px' }}>
+    <div className="h-screen mx-auto relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)', maxWidth: '2560px' }}>
       {/* Skip-to-main-content for keyboard/screen reader users */}
       <a
         href="#main-content"
@@ -853,6 +853,7 @@ function AppContent() {
                     onSwitchToFilenameSearch={handleSwitchToFilenameSearch}
                     openOnSingleClick={openOnSingleClick}
                     showResultPath={showResultPath}
+                    showAbsoluteTime={showAbsoluteTime}
                     onPreviewFile={ui.setPreviewFilePath}
                   />
                 )}
