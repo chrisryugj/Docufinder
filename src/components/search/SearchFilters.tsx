@@ -106,8 +106,35 @@ export const SearchFilters = memo(function SearchFilters({
       aria-label="검색 필터"
       data-tour="search-filters"
     >
-      {/* 고급 옵션 토글 — 검색모드/매칭모드/세부토글/프리셋을 접어 첫 화면 압도감 완화 */}
-      {(onSearchModeChange || onKeywordMatchModeChange || (onSavePreset && onApplyPreset)) && (
+      {/* 검색 모드 (키워드 / 파일명) — 필터바 최전면에 항상 노출.
+          '파일명' = Everything식 즉시 파일명 검색으로 원클릭 전환 (고급옵션에 숨기지 않음). */}
+      {onSearchModeChange && (
+        <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          {SEARCH_MODES.map((m) => {
+            const isActive = searchMode === m.value;
+            return (
+              <button
+                key={m.value}
+                onClick={() => onSearchModeChange(m.value)}
+                className="px-2 py-0.5 text-xs transition-colors"
+                style={{
+                  backgroundColor: isActive ? "var(--color-bg-tertiary)" : "transparent",
+                  color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                  fontWeight: isActive ? 600 : 500,
+                }}
+                title={m.desc}
+                aria-pressed={isActive}
+                aria-label={m.desc}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 고급 옵션 토글 — 매칭모드/세부토글/프리셋을 접어 첫 화면 압도감 완화 */}
+      {(onKeywordMatchModeChange || (onSavePreset && onApplyPreset)) && (
         <button
           onClick={() => setShowAdvanced((v) => !v)}
           className="flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-medium transition-colors"
@@ -131,32 +158,6 @@ export const SearchFilters = memo(function SearchFilters({
           )}
           <span className="text-[9px]" style={{ display: "inline-block", transform: showAdvanced ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
         </button>
-      )}
-
-      {/* 검색 모드 (키워드 통합 / 파일명만) — 고급 옵션. 검색바 드롭다운에서 흡수 */}
-      {onSearchModeChange && showAdvanced && (
-        <div className="flex items-center rounded border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-          {SEARCH_MODES.map((m) => {
-            const isActive = searchMode === m.value;
-            return (
-              <button
-                key={m.value}
-                onClick={() => onSearchModeChange(m.value)}
-                className="px-2 py-0.5 text-xs transition-colors"
-                style={{
-                  backgroundColor: isActive ? "var(--color-bg-tertiary)" : "transparent",
-                  color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)",
-                  fontWeight: isActive ? 600 : 500,
-                }}
-                title={m.desc}
-                aria-pressed={isActive}
-                aria-label={m.desc}
-              >
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
       )}
 
       {/* 키워드 매칭 모드 (AND/OR/EXACT) — 고급 옵션 */}

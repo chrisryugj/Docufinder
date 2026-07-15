@@ -129,9 +129,18 @@ pub struct Settings {
     /// 검색 결과 카드에 저장 위치(폴더 경로) 표시. 컴팩트 보기에서도 표시된다.
     #[serde(default = "default_show_result_path")]
     pub show_result_path: bool,
+
+    /// 검색 결과 카드에 수정 날짜/시간을 절대값(YYYY. MM. DD. HH:MM)으로 상시 표시.
+    /// false면 상대시간("3일 전")을 표시하고 절대 날짜/시간은 툴팁으로 노출.
+    #[serde(default = "default_show_absolute_time")]
+    pub show_absolute_time: bool,
 }
 
 fn default_show_result_path() -> bool {
+    true
+}
+
+fn default_show_absolute_time() -> bool {
     true
 }
 
@@ -272,6 +281,7 @@ impl Default for Settings {
             allow_system_folders: false,
             open_on_single_click: false,
             show_result_path: true,
+            show_absolute_time: true,
         }
     }
 }
@@ -894,6 +904,7 @@ mod tests {
         .unwrap();
         assert!(!s.open_on_single_click);
         assert!(s.show_result_path);
+        assert!(s.show_absolute_time);
     }
 
     /// 드라이브 루트(`C:\`·`/`) 감시 폴더가 OCR 재인덱싱 후보 조회에서 매칭되는지 —

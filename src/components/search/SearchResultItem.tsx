@@ -42,6 +42,8 @@ interface SearchResultItemProps {
   openOnSingleClick?: boolean;
   /** 저장 위치(경로) 줄 표시 — 컴팩트 보기에선 꼬리 우선 축약 한 줄 */
   showPath?: boolean;
+  /** 수정 날짜/시간을 절대값으로 상시 표시 (false: 상대시간 "3일 전", 절대값은 툴팁) */
+  showAbsoluteTime?: boolean;
 }
 
 /** Get file-type stripe CSS class */
@@ -77,15 +79,17 @@ export const SearchResultItem = memo(function SearchResultItem({
   category,
   openOnSingleClick = true,
   showPath = true,
+  showAbsoluteTime = true,
 }: SearchResultItemProps) {
   const fileExt = result.file_name.split(".").pop()?.toLowerCase() || "";
   const folderPath = result.file_path.replace(/[/\\][^/\\]+$/, "");
 
-  // 네이티브 드래그아웃 — 파일명을 다른 앱/웹페이지로 끌어다 놓기 (탐색기 드래그처럼)
+  // 네이티브 드래그아웃 — 파일을 다른 앱/폴더로 끌어다 놓기 (탐색기 드래그처럼)
+  // Shift를 누른 채 드래그하면 복사 대신 이동(원본 옮김) — 탐색기 관례와 동일.
   useEffect(() => { ensureDragIcon(); }, []);
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.preventDefault(); // 브라우저 기본 드래그 대신 네이티브 드래그아웃 사용
-    startDrag({ item: [result.file_path], icon: dragIconPath, mode: "copy" }).catch(() => {});
+    startDrag({ item: [result.file_path], icon: dragIconPath, mode: e.shiftKey ? "move" : "copy" }).catch(() => {});
   }, [result.file_path]);
 
   // 신뢰도 %는 시맨틱/하이브리드 매칭에서만 노출 (ux-audit-8)
@@ -257,14 +261,14 @@ export const SearchResultItem = memo(function SearchResultItem({
             );
           })()}
 
-          {/* Relative time */}
+          {/* 수정 시각 — 기본은 절대 날짜/시간 상시, 툴팁에 상대시간. 토글 off면 반대 */}
           {relativeTime && (
-            <Tooltip content={absoluteDate} position="bottom" delay={200}>
+            <Tooltip content={showAbsoluteTime ? relativeTime : absoluteDate} position="bottom" delay={200}>
               <span
                 className="text-[11px] tabular-nums leading-none"
                 style={{ color: "var(--color-text-muted)" }}
               >
-                {relativeTime}
+                {showAbsoluteTime ? absoluteDate : relativeTime}
               </span>
             </Tooltip>
           )}

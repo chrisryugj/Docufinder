@@ -91,4 +91,9 @@ export interface Settings {
   open_on_single_click: boolean;
   /** 검색 결과 카드에 저장 위치(폴더 경로) 표시. 컴팩트 보기에서도 표시된다. */
   show_result_path: boolean;
+  /**
+   * 검색 결과 카드에 수정 날짜/시간을 절대값(YYYY. MM. DD. HH:MM)으로 상시 표시.
+   * false면 상대시간("3일 전")을 표시하고 절대 날짜/시간은 툴팁으로 노출.
+   */
+  show_absolute_time: boolean;
 }
