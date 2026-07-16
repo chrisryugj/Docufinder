@@ -489,6 +489,10 @@ export const SearchResultList = memo(function SearchResultList({
             <>
               <div
                 ref={isFilenameMode ? filenameContainerRef : undefined}
+                // overflow-x-clip: 컨테이너가 컬럼 MIN 총합보다 좁으면 트랙이 넘치는데,
+                // 그 페인팅을 래퍼 경계에서 자른다 (clip은 스크롤 컨테이너를 만들지
+                // 않아 sticky 헤더 유지 — hidden 금지)
+                className={isFilenameMode ? "overflow-x-clip" : undefined}
                 style={isFilenameMode ? ({
                   "--fn-name": `${widths.name}px`,
                   "--fn-path": `${widths.path}px`,
