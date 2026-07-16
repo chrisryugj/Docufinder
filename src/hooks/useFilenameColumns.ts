@@ -108,8 +108,9 @@ function loadVisible(): FilenameVisible {
 }
 
 export function useFilenameColumns() {
-  // 결과 리스트 래퍼 — 리사이즈/맞춤 계산의 기준 폭. SearchResultList가 ref를 붙인다.
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 결과 리스트 래퍼 — 리사이즈/맞춤 계산의 기준 폭. SearchResultList가 콜백 ref를 붙인다.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
   const [widths, setWidths] = useState<FilenameColumnWidths>(loadWidths);
   const widthsRef = useRef(widths);
@@ -180,14 +181,22 @@ export function useFilenameColumns() {
     });
   }, []);
 
-  // 컨테이너 폭 변화(창 리사이즈·사이드바 토글 등) 감지 → 오버플로우 시 맞춤
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => fitToContainer());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [fitToContainer]);
+  // 콜백 ref — 노드가 붙는 시점(모드 전환 포함)에 ResizeObserver를 (재)연결.
+  // useRef + useEffect([]) 로는 키워드→파일명 전환 시 노드가 뒤늦게 생겨 옵저버가 안 붙는다.
+  const setContainer = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      roRef.current?.disconnect();
+      roRef.current = null;
+      if (node && typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => fitToContainer());
+        ro.observe(node);
+        roRef.current = ro;
+        fitToContainer(); // 붙는 즉시 현재 폭에 맞춤
+      }
+    },
+    [fitToContainer]
+  );
 
   // 컬럼 표시/숨김 토글로 예산이 바뀌면 재맞춤(폭 변화가 없어 ResizeObserver가 안 뜀)
   useEffect(() => {
@@ -244,7 +253,7 @@ export function useFilenameColumns() {
   const gridTemplate = buildFilenameGridTemplate(visible);
 
   return {
-    containerRef,
+    containerRef: setContainer,
     widths,
     visible,
     sort,
