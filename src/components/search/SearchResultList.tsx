@@ -193,7 +193,7 @@ export const SearchResultList = memo(function SearchResultList({
   const isCompact = viewDensity === "compact";
   // 파일명 검색 모드 — Everything식 컬럼(정렬 + 개별 너비 조절 + 기억)
   const isFilenameMode = searchMode === "filename";
-  const { widths, visible, sort, gridTemplate, startResize, setColumnWidth, resetWidths, toggleSort, toggleColumn } = useFilenameColumns();
+  const { containerRef: filenameContainerRef, widths, visible, sort, gridTemplate, startResize, setColumnWidth, resetWidths, toggleSort, toggleColumn } = useFilenameColumns();
   // 컬럼 정렬 — 원본 인덱스(i)를 보존해 선택·미리보기·키보드 인덱스 정합성 유지
   const flatResults = useMemo(() => {
     const withIdx = results.map((r, i) => ({ r, i }));
@@ -488,6 +488,7 @@ export const SearchResultList = memo(function SearchResultList({
             // 플랫 뷰
             <>
               <div
+                ref={isFilenameMode ? filenameContainerRef : undefined}
                 style={isFilenameMode ? ({
                   "--fn-name": `${widths.name}px`,
                   "--fn-path": `${widths.path}px`,
