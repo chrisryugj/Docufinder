@@ -28,14 +28,36 @@ const MIN: FilenameColumnWidths = { name: 120, path: 140, size: 64, time: 96 };
 const MAX = 900;
 const DEFAULT_VISIBLE: FilenameVisible = { path: true, size: true, time: true };
 
+// 헤더/행 레이아웃 상수 — 컨테이너 폭에서 리사이즈 컬럼이 쓸 수 있는 공간을 산출할 때 사용.
+const TYPE_MIN = 60; // 유형 컬럼(minmax) 최소폭 — 항상 이만큼은 오른쪽 끝에 남긴다
+const COL_GAP = 8; // gap-2
+const PAD_X = 20; // px-2.5 좌우 합
+const RESIZABLE_COLS: ResizableCol[] = ["name", "path", "size", "time"];
+
 /** 헤더와 각 행이 공유하는 grid 컬럼 정의 — 표시 컬럼만 포함(이름 첫째, 유형 1fr 마지막) */
 export function buildFilenameGridTemplate(visible: FilenameVisible): string {
   const parts = ["var(--fn-name)"];
   if (visible.path) parts.push("var(--fn-path)");
   if (visible.size) parts.push("var(--fn-size)");
   if (visible.time) parts.push("var(--fn-time)");
-  parts.push("minmax(60px, 1fr)"); // 유형 + 액션
+  parts.push(`minmax(${TYPE_MIN}px, 1fr)`); // 유형 + 액션 — 남는 공간을 채워 창 폭에 맞춘다
   return parts.join(" ");
+}
+
+/** 표시 중인 리사이즈 컬럼 너비 합 (숨긴 컬럼은 grid에서 빠지므로 제외) */
+function sumFixed(w: FilenameColumnWidths, visible: FilenameVisible): number {
+  let s = w.name;
+  if (visible.path) s += w.path;
+  if (visible.size) s += w.size;
+  if (visible.time) s += w.time;
+  return s;
+}
+
+/** 유형 컬럼 최소폭을 남기고 리사이즈 컬럼들이 총합으로 쓸 수 있는 최대 px */
+function fixedBudget(containerW: number, visible: FilenameVisible): number {
+  const cols = 1 + (visible.path ? 1 : 0) + (visible.size ? 1 : 0) + (visible.time ? 1 : 0) + 1;
+  const gaps = (cols - 1) * COL_GAP;
+  return containerW - PAD_X - gaps - TYPE_MIN;
 }
 
 function sane(v: unknown, def: number, min: number): number {
@@ -86,6 +108,9 @@ function loadVisible(): FilenameVisible {
 }
 
 export function useFilenameColumns() {
+  // 결과 리스트 래퍼 — 리사이즈/맞춤 계산의 기준 폭. SearchResultList가 ref를 붙인다.
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const [widths, setWidths] = useState<FilenameColumnWidths>(loadWidths);
   const widthsRef = useRef(widths);
   useEffect(() => {
@@ -113,6 +138,10 @@ export function useFilenameColumns() {
   }, [sort]);
 
   const [visible, setVisible] = useState<FilenameVisible>(loadVisible);
+  const visibleRef = useRef(visible);
+  useEffect(() => {
+    visibleRef.current = visible;
+  }, [visible]);
   useEffect(() => {
     try {
       localStorage.setItem(VISIBLE_KEY, JSON.stringify(visible));
@@ -121,7 +150,51 @@ export function useFilenameColumns() {
     }
   }, [visible]);
 
-  // 헤더 컬럼 경계 드래그 → 해당 컬럼 너비 조정
+  // 한 컬럼의 최대 허용폭 — 유형 컬럼 최소폭이 남도록(=총폭이 창 폭을 넘지 않도록) 제한.
+  // 컨테이너가 아직 없으면 기존 MAX 상한만 적용.
+  const clampToBudget = useCallback((col: ResizableCol, w: FilenameColumnWidths): number => {
+    const el = containerRef.current;
+    if (!el) return MAX;
+    const others = sumFixed(w, visibleRef.current) - w[col];
+    return Math.max(MIN[col], Math.min(MAX, fixedBudget(el.clientWidth, visibleRef.current) - others));
+  }, []);
+
+  // 창이 좁아져 리사이즈 컬럼 총합이 예산을 초과하면 비율로 축소해 총폭=창폭 유지.
+  const fitToContainer = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setWidths((prev) => {
+      const budget = fixedBudget(el.clientWidth, visibleRef.current);
+      const total = sumFixed(prev, visibleRef.current);
+      if (budget <= 0 || total <= budget) return prev; // 여유 있으면 그대로
+      const scale = budget / total;
+      let changed = false;
+      const next = { ...prev };
+      for (const k of RESIZABLE_COLS) {
+        if (k !== "name" && !visibleRef.current[k as ToggleableCol]) continue; // 숨긴 컬럼은 손대지 않음
+        const scaled = Math.max(MIN[k], Math.round(prev[k] * scale));
+        if (scaled !== prev[k]) changed = true;
+        next[k] = scaled;
+      }
+      return changed ? next : prev; // 전부 MIN이라 더 못 줄이면 그대로(오버플로우 불가피)
+    });
+  }, []);
+
+  // 컨테이너 폭 변화(창 리사이즈·사이드바 토글 등) 감지 → 오버플로우 시 맞춤
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => fitToContainer());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [fitToContainer]);
+
+  // 컬럼 표시/숨김 토글로 예산이 바뀌면 재맞춤(폭 변화가 없어 ResizeObserver가 안 뜀)
+  useEffect(() => {
+    fitToContainer();
+  }, [visible, fitToContainer]);
+
+  // 헤더 컬럼 경계 드래그 → 해당 컬럼 너비 조정 (유형 컬럼이 오른쪽 끝에 남도록 clamp)
   const startResize = useCallback((col: ResizableCol, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -130,7 +203,8 @@ export function useFilenameColumns() {
     const min = MIN[col];
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
-      setWidths((prev) => ({ ...prev, [col]: Math.max(min, Math.min(MAX, startW + delta)) }));
+      const max = clampToBudget(col, widthsRef.current);
+      setWidths((prev) => ({ ...prev, [col]: Math.max(min, Math.min(max, startW + delta)) }));
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -142,12 +216,15 @@ export function useFilenameColumns() {
     document.addEventListener("mouseup", onUp);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
-  }, []);
+  }, [clampToBudget]);
 
-  // 컬럼 경계 더블클릭 자동맞춤에서 사용 — 측정한 px로 너비 설정
+  // 컬럼 경계 더블클릭 자동맞춤에서 사용 — 측정한 px로 너비 설정(창 폭 예산 내로 clamp)
   const setColumnWidth = useCallback((col: ResizableCol, px: number) => {
-    setWidths((prev) => ({ ...prev, [col]: Math.max(MIN[col], Math.min(MAX, Math.round(px))) }));
-  }, []);
+    setWidths((prev) => {
+      const target = Math.max(MIN[col], Math.min(MAX, Math.round(px)));
+      return { ...prev, [col]: Math.min(target, clampToBudget(col, prev)) };
+    });
+  }, [clampToBudget]);
 
   const resetWidths = useCallback(() => setWidths({ ...DEFAULTS }), []);
 
@@ -167,6 +244,7 @@ export function useFilenameColumns() {
   const gridTemplate = buildFilenameGridTemplate(visible);
 
   return {
+    containerRef,
     widths,
     visible,
     sort,
