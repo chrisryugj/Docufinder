@@ -231,9 +231,10 @@ export const SearchResultItem = memo(function SearchResultItem({
             </span>
           </div>
 
-          {/* 경로 */}
+          {/* 경로 — flex 셀 필수: compact 버튼(inline-block + nowrap)은 block 부모에선
+              max-content로 커져 truncate가 안 걸리고 옆 컬럼 위로 칠해진다 */}
           {fnVis.path && (
-            <div className="min-w-0">
+            <div className="min-w-0 flex">
               <PathBreadcrumb
                 filePath={result.file_path}
                 folderPath={folderPath}
@@ -252,25 +253,33 @@ export const SearchResultItem = memo(function SearchResultItem({
             </div>
           )}
 
-          {/* 수정일시 */}
+          {/* 수정일시 — Tooltip 래퍼(inline-flex + nowrap)는 셀보다 커져 옆 컬럼을
+              침범하므로 이름 셀과 같은 네이티브 title로 보조 표기를 제공 */}
           {fnVis.time && (
             <div className="min-w-0">
               {relativeTime && (
-                <Tooltip content={timeTooltip} position="bottom" delay={200}>
-                  <span className="block truncate text-[11px] tabular-nums leading-none" style={{ color: "var(--color-text-muted)" }}>
-                    {timePrimary}
-                  </span>
-                </Tooltip>
+                <span
+                  className="block truncate text-[11px] tabular-nums leading-none"
+                  style={{ color: "var(--color-text-muted)" }}
+                  title={timeTooltip ?? undefined}
+                >
+                  {timePrimary}
+                </span>
               )}
             </div>
           )}
 
-          {/* 유형 + 액션(hover) */}
-          <div className="flex items-center gap-2 min-w-0">
-            <Badge variant={getFileTypeBadgeVariant(result.file_name)} aria-label={`파일 형식: ${fileExt.toUpperCase()}`}>
+          {/* 유형 + 액션(hover) — 액션은 absolute 오버레이로 셀 흐름에서 제거해
+              유형 컬럼이 최소폭일 때도 뱃지 공간을 밀지 않는다. 배경은 행 hover/선택
+              배경과 동일색으로 깔아 좁을 때도 깨끗하게 덮는다(VS Code식). */}
+          <div className="relative flex items-center min-w-0">
+            <Badge className="shrink-0" variant={getFileTypeBadgeVariant(result.file_name)} aria-label={`파일 형식: ${fileExt.toUpperCase()}`}>
               {fileExt.toUpperCase()}
             </Badge>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <div
+              className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity"
+              style={{ backgroundColor: isSelected ? "var(--color-accent-light)" : "var(--color-bg-secondary)" }}
+            >
               <button onClick={handleCopyPath} className="p-1 rounded btn-icon-hover" title="경로 복사" aria-label="파일 경로 복사">
                 <ClipboardCopy className="w-3.5 h-3.5" />
               </button>

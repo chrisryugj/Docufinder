@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 
 /**
  * 파일명 검색 결과의 Everything식 컬럼 상태.
  * - 너비: 이름·경로·크기·수정일시 개별 리사이즈 (type은 남는 공간이라 제외)
+ *   선호 폭(사용자가 정한 값, 영속)과 표시 폭(컨테이너 폭에 맞춘 렌더값)을 분리 —
+ *   창을 좁혀도 선호 폭은 불변이라 다시 넓히면 자동 복원된다. (v3.3.5)
  * - 표시: 경로·크기·수정일시 토글 (이름·유형은 항상 표시)
  * - 정렬: 컬럼 클릭 오름/내림
  * 전부 localStorage에 기억한다.
@@ -60,6 +62,39 @@ function fixedBudget(containerW: number, visible: FilenameVisible): number {
   return containerW - PAD_X - gaps - TYPE_MIN;
 }
 
+/**
+ * 선호 폭 총합이 예산을 초과할 때의 표시 폭 — 비율 축소하되 MIN에 걸린 컬럼의
+ * 부족분은 남은 컬럼이 더 줄어 흡수한다(미재분배 시 트랙 총합이 예산을 넘어
+ * 컬럼이 컨테이너 밖으로 삐져나간다). 전부 MIN이면 오버플로 불가피 — 표시는
+ * 리스트 래퍼의 overflow clip이 막는다.
+ */
+function shrinkToBudget(
+  pref: FilenameColumnWidths,
+  visible: FilenameVisible,
+  budget: number
+): FilenameColumnWidths {
+  const cols = RESIZABLE_COLS.filter((k) => k === "name" || visible[k as ToggleableCol]);
+  const next = { ...pref };
+  const atMin = new Set<ResizableCol>();
+  for (;;) {
+    const free = cols.filter((k) => !atMin.has(k));
+    const fixed = cols.length === free.length ? 0 : [...atMin].reduce((s, k) => s + MIN[k], 0);
+    const freeSum = free.reduce((s, k) => s + pref[k], 0);
+    const scale = freeSum > 0 ? (budget - fixed) / freeSum : 0;
+    const newlyMin = free.filter((k) => pref[k] * scale < MIN[k]);
+    if (newlyMin.length === 0) {
+      for (const k of free) next[k] = Math.floor(pref[k] * scale);
+      for (const k of atMin) next[k] = MIN[k];
+      return next;
+    }
+    for (const k of newlyMin) atMin.add(k);
+    if (atMin.size === cols.length) {
+      for (const k of cols) next[k] = MIN[k];
+      return next;
+    }
+  }
+}
+
 function sane(v: unknown, def: number, min: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? Math.max(min, Math.min(MAX, n)) : def;
@@ -112,21 +147,23 @@ export function useFilenameColumns() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
 
-  const [widths, setWidths] = useState<FilenameColumnWidths>(loadWidths);
-  const widthsRef = useRef(widths);
+  // 선호 폭 — 사용자가 드래그/자동맞춤/초기화로 정한 값. 이것만 영속된다.
+  // 창 축소에 따른 맞춤은 아래 표시 폭(widths) 계산에서만 일어난다.
+  const [prefWidths, setPrefWidths] = useState<FilenameColumnWidths>(loadWidths);
+  const widthsRef = useRef(prefWidths);
   useEffect(() => {
-    widthsRef.current = widths;
-  }, [widths]);
+    widthsRef.current = prefWidths;
+  }, [prefWidths]);
   useEffect(() => {
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(WIDTH_KEY, JSON.stringify(widths));
+        localStorage.setItem(WIDTH_KEY, JSON.stringify(prefWidths));
       } catch {
         /* private mode 등 무시 */
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [widths]);
+  }, [prefWidths]);
 
   const [sort, setSort] = useState<FilenameSort | null>(loadSort);
   useEffect(() => {
@@ -160,48 +197,32 @@ export function useFilenameColumns() {
     return Math.max(MIN[col], Math.min(MAX, fixedBudget(el.clientWidth, visibleRef.current) - others));
   }, []);
 
-  // 창이 좁아져 리사이즈 컬럼 총합이 예산을 초과하면 비율로 축소해 총폭=창폭 유지.
-  const fitToContainer = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    setWidths((prev) => {
-      const budget = fixedBudget(el.clientWidth, visibleRef.current);
-      const total = sumFixed(prev, visibleRef.current);
-      if (budget <= 0 || total <= budget) return prev; // 여유 있으면 그대로
-      const scale = budget / total;
-      let changed = false;
-      const next = { ...prev };
-      for (const k of RESIZABLE_COLS) {
-        if (k !== "name" && !visibleRef.current[k as ToggleableCol]) continue; // 숨긴 컬럼은 손대지 않음
-        const scaled = Math.max(MIN[k], Math.round(prev[k] * scale));
-        if (scaled !== prev[k]) changed = true;
-        next[k] = scaled;
-      }
-      return changed ? next : prev; // 전부 MIN이라 더 못 줄이면 그대로(오버플로우 불가피)
-    });
-  }, []);
+  // 컨테이너 폭 — ResizeObserver가 갱신. 표시 폭 재계산 트리거 전용(선호 폭은 불변).
+  const [containerW, setContainerW] = useState<number | null>(null);
+
+  // 표시 폭 — 선호 폭 총합이 예산을 초과하면 비율 축소(MIN 하한), 여유 있으면 선호 폭
+  // 그대로. 선호 폭을 건드리지 않으므로 창 축소→재확대 왕복이 자동 복원된다.
+  const widths = useMemo(() => {
+    if (containerW == null) return prefWidths;
+    const budget = fixedBudget(containerW, visible);
+    const total = sumFixed(prefWidths, visible);
+    if (budget <= 0 || total <= budget) return prefWidths;
+    return shrinkToBudget(prefWidths, visible, budget);
+  }, [prefWidths, containerW, visible]);
 
   // 콜백 ref — 노드가 붙는 시점(모드 전환 포함)에 ResizeObserver를 (재)연결.
   // useRef + useEffect([]) 로는 키워드→파일명 전환 시 노드가 뒤늦게 생겨 옵저버가 안 붙는다.
-  const setContainer = useCallback(
-    (node: HTMLDivElement | null) => {
-      containerRef.current = node;
-      roRef.current?.disconnect();
-      roRef.current = null;
-      if (node && typeof ResizeObserver !== "undefined") {
-        const ro = new ResizeObserver(() => fitToContainer());
-        ro.observe(node);
-        roRef.current = ro;
-        fitToContainer(); // 붙는 즉시 현재 폭에 맞춤
-      }
-    },
-    [fitToContainer]
-  );
-
-  // 컬럼 표시/숨김 토글로 예산이 바뀌면 재맞춤(폭 변화가 없어 ResizeObserver가 안 뜀)
-  useEffect(() => {
-    fitToContainer();
-  }, [visible, fitToContainer]);
+  const setContainer = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node;
+    roRef.current?.disconnect();
+    roRef.current = null;
+    if (node && typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => setContainerW(node.clientWidth));
+      ro.observe(node);
+      roRef.current = ro;
+      setContainerW(node.clientWidth); // 붙는 즉시 현재 폭 반영
+    }
+  }, []);
 
   // 헤더 컬럼 경계 드래그 → 해당 컬럼 너비 조정 (유형 컬럼이 오른쪽 끝에 남도록 clamp)
   const startResize = useCallback((col: ResizableCol, e: React.MouseEvent) => {
@@ -213,7 +234,7 @@ export function useFilenameColumns() {
     const onMove = (ev: MouseEvent) => {
       const delta = ev.clientX - startX;
       const max = clampToBudget(col, widthsRef.current);
-      setWidths((prev) => ({ ...prev, [col]: Math.max(min, Math.min(max, startW + delta)) }));
+      setPrefWidths((prev) => ({ ...prev, [col]: Math.max(min, Math.min(max, startW + delta)) }));
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -229,13 +250,13 @@ export function useFilenameColumns() {
 
   // 컬럼 경계 더블클릭 자동맞춤에서 사용 — 측정한 px로 너비 설정(창 폭 예산 내로 clamp)
   const setColumnWidth = useCallback((col: ResizableCol, px: number) => {
-    setWidths((prev) => {
+    setPrefWidths((prev) => {
       const target = Math.max(MIN[col], Math.min(MAX, Math.round(px)));
       return { ...prev, [col]: Math.min(target, clampToBudget(col, prev)) };
     });
   }, [clampToBudget]);
 
-  const resetWidths = useCallback(() => setWidths({ ...DEFAULTS }), []);
+  const resetWidths = useCallback(() => setPrefWidths({ ...DEFAULTS }), []);
 
   // 컬럼 헤더 클릭 정렬 — 같은 컬럼 재클릭 시 방향 토글 (날짜/크기는 첫 클릭 내림차순)
   const toggleSort = useCallback((field: FilenameSortField) => {

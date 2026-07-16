@@ -19,8 +19,9 @@ pnpm exec vite preview --config vite.harness.config.ts
 pnpm exec vite --config vite.harness.config.ts
 
 # 2. 검증 (playwright 필요 — 임의 위치에 npm i playwright && npx playwright install webkit)
-node harness/verify-ui.mjs        # 뷰어 38항목
-node harness/verify-results.mjs   # 검색 결과 클릭 UX 26항목 (?view=results 마운트)
+node harness/verify-ui.mjs               # 뷰어 38항목
+node harness/verify-results.mjs          # 검색 결과 클릭 UX 26항목 (?view=results 마운트)
+node harness/verify-filename-columns.mjs # 파일명 컬럼 레이아웃 25항목 (/filename.html 마운트)
 ```
 
 ## 검증 항목 — 뷰어 (38, verify-ui.mjs)
@@ -50,6 +51,21 @@ v3.2.7 열기 방식 설정(`open_on_single_click`)·저장 위치 표시(`show_
   보임), 경로 클릭=위치 열기(reveal), 표시 끔 동작. 파일명 매치는 브레드크럼 이식 +
   말단 세그먼트=reveal(탐색기에서 파일 선택), 중간 세그먼트=해당 폴더 열기
 - **한 번 클릭 모드**: 구버전 즉시 열기 복원 + 카드 선택 버블 차단
+
+## 검증 항목 — 파일명 컬럼 레이아웃 (25, verify-filename-columns.mjs)
+
+v3.3.5 창 축소 시 컬럼 겹침·재확대 미복원 수리의 실브라우저 계측. `/filename.html`
+(filename-main.tsx)로 파일명 매치 20건을 마운트하고 `window.__setStageWidth`로
+컨테이너 폭을 좁혔다 넓히며 검증한다.
+
+- **축소(540px)**: 행별 셀 콘텐츠(경로 버튼·크기·시간·뱃지) bounding box 비중첩,
+  트랙+gap+pad 총합이 컨테이너 안
+- **한계 밑(420px < MIN 총합)**: 비중첩 유지 + 래퍼 `overflow-x: clip`으로 넘친
+  트랙 페인팅 차단
+- **재확대**: 선호 폭(기본값·드래그로 정한 값 모두) 복원 + localStorage 영속 폭이
+  축소로 오염되지 않음
+- **유형 셀**: hover 전 액션 숨김·뱃지 온전, hover 시 액션이 유형 셀 영역 안(옆
+  컬럼 미침범), 여유 폭에선 뱃지 미침범 / 최소폭 근처에선 불투명 배경으로 덮음
 
 알려진 관찰(비수정): 줌 변경 직후 페이지 표시가 다음 스크롤 이벤트까지 이전 값일 수
 있음 — 표시만의 문제로 네비 자체는 정상.
