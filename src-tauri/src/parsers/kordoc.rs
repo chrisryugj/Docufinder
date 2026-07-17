@@ -1234,7 +1234,7 @@ mod tests {
         eprintln!(
             "E2E ok — chunks {}, 첫 청크: {:?}",
             doc.chunks.len(),
-            &doc.chunks[0].content.chars().take(60).collect::<String>()
+            doc.chunks[0].content.chars().take(60).collect::<String>()
         );
     }
 
