@@ -52,6 +52,10 @@ pub struct ParsedDocument {
     pub content: String,
     pub metadata: DocumentMetadata,
     pub chunks: Vec<DocumentChunk>,
+    /// 파서가 "원본 텍스트층이 깨졌다"고 판정한 힌트 (kordoc pageQuality 신호 —
+    /// high_pua·garbled_hangul 등). OCR 로 본문을 채워 chunks 가 깨끗해져도 원본을
+    /// 열어 복사하면 깨지므로, 파이프라인 garbled 판정에 OR 로 반영된다.
+    pub garbled_hint: bool,
 }
 
 #[derive(Debug)]
@@ -86,9 +90,33 @@ pub struct DocumentChunk {
 /// 들고 다녀 피크 메모리가 배가된다 (T2-5). 전문이 필요한 소비자가 생기면
 /// `parse_file_inner` 기반 별도 진입점을 추가할 것.
 ///
-/// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능
+/// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능.
+/// PDF 는 OCR 켜짐 시 kordoc `--ocr`(품질 신호 페이지만 정밀 인식, kordoc v4.2+)로
+/// 위임된다 — 정상 PDF 에는 비용 0, kordoc 실패 시 Rust 파서+자체 OCR fallback.
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
-    let mut doc = parse_file_inner(path, ocr)?;
+    let kordoc_ocr = if ocr.is_some() {
+        kordoc::KordocOcrMode::Auto
+    } else {
+        kordoc::KordocOcrMode::Off
+    };
+    parse_file_normalized(path, ocr, kordoc_ocr)
+}
+
+/// "OCR로 다시 읽기" 전용 — PDF 를 kordoc `--ocr-force`(전 페이지 강제 재인식)로 파싱.
+/// 품질 신호가 못 잡은 문서를 사용자가 명시적으로 재인식시킬 때 사용.
+pub fn parse_file_force_ocr(
+    path: &Path,
+    ocr: Option<&OcrEngine>,
+) -> Result<ParsedDocument, ParseError> {
+    parse_file_normalized(path, ocr, kordoc::KordocOcrMode::Force)
+}
+
+fn parse_file_normalized(
+    path: &Path,
+    ocr: Option<&OcrEngine>,
+    kordoc_ocr: kordoc::KordocOcrMode,
+) -> Result<ParsedDocument, ParseError> {
+    let mut doc = parse_file_inner(path, ocr, kordoc_ocr)?;
     doc.content = String::new();
     for chunk in &mut doc.chunks {
         chunk.content = crate::utils::normalize_text(&chunk.content);
@@ -97,7 +125,11 @@ pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument
 }
 
 /// `parse_file` 의 파서 디스패치 본체 (정규화 전 원본 텍스트 반환).
-fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
+fn parse_file_inner(
+    path: &Path,
+    ocr: Option<&OcrEngine>,
+    kordoc_ocr: kordoc::KordocOcrMode,
+) -> Result<ParsedDocument, ParseError> {
     // breadcrumb: 어떤 파일이 처리 중인지 글로벌 추적 (panic / native crash 진단용).
     // RAII Guard 라 정상/패닉 양쪽 모두에서 자동 clear. 각 파서 내부에서 더 좁은 stage 로
     // 덮어쓸 수 있다 (예: parse_xlsx, parse_hwpx).
@@ -145,7 +177,7 @@ fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocume
         // #17 크래시(0xc0000409) 의 강한 의심 원인: 스캔 PDF 다수 폴더에서 PDF 마다
         // node.exe 자식 spawn 누적 → 자식 프로세스/파이프/스레드 누수 → CRT 레벨
         // __fastfail. v2.5.6 의 사후 분기는 같은 파일 재시도만 막아 효과 미미했다.
-        if extension == "pdf" && ocr.is_none() {
+        if extension == "pdf" && ocr.is_none() && kordoc_ocr == kordoc::KordocOcrMode::Off {
             let streak = SCANNED_PDF_STREAK.load(Ordering::Relaxed);
             // Circuit breaker: 연속 임계치 초과 시 sniff 도 건너뛰고 즉시 스킵.
             if streak >= SCANNED_PDF_BREAKER_THRESHOLD {
@@ -161,7 +193,17 @@ fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocume
             }
         }
 
-        match kordoc::parse(path) {
+        // PDF + OCR 켜짐 → kordoc 내장 OCR 위임 (스캔·깨진 텍스트층 페이지만 정밀 인식,
+        // 표 구조 복원 포함). 그 외 포맷은 kordoc 이 ocr 플래그를 무시하므로 Off 로.
+        let kordoc_opts = kordoc::KordocOptions {
+            formula_ocr: extension == "pdf" && kordoc::is_formula_ocr_enabled(),
+            ocr: if extension == "pdf" {
+                kordoc_ocr
+            } else {
+                kordoc::KordocOcrMode::Off
+            },
+        };
+        match kordoc::parse_with_options(path, kordoc_opts) {
             Ok(doc) => {
                 if extension == "pdf" {
                     SCANNED_PDF_STREAK.store(0, Ordering::Relaxed);
@@ -170,7 +212,12 @@ fn parse_file_inner(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocume
             }
             Err(e) => {
                 // kordoc 사후 분기 (sniff 가 false negative 였을 때의 안전망).
-                if extension == "pdf" && ocr.is_none() && e.to_string().contains("이미지 기반 PDF")
+                // kordoc OCR 을 시도한 경우(Auto/Force)는 스킵하지 않고 Rust 파서
+                // (+자체 OCR)로 폴백한다 — kordoc OCR 모델 미설치/다운로드 실패 대비.
+                if extension == "pdf"
+                    && ocr.is_none()
+                    && kordoc_ocr == kordoc::KordocOcrMode::Off
+                    && e.to_string().contains("이미지 기반 PDF")
                 {
                     SCANNED_PDF_STREAK.fetch_add(1, Ordering::Relaxed);
                     return Err(ParseError::ParseError(

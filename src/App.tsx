@@ -216,6 +216,7 @@ function AppContent() {
     handleAddFolder: rawHandleAddFolder,
     handleAddFolderByPath: rawHandleAddFolderByPath,
     handleRemoveFolder,
+    handleOcrReindex,
   } = useFileActions({
     query: search.query,
     addSearch: search.addSearch,
@@ -840,6 +841,7 @@ function AppContent() {
                     onAddFolder={handleAddFolder}
                     onSelectResult={handleSelectResult}
                     onFindSimilar={semanticEnabled ? search.handleFindSimilar : undefined}
+                    onOcrReindex={handleOcrReindex}
                     categories={categories}
                     paradigm={search.paradigm}
                     nlSubmitted={search.nlSubmitted}

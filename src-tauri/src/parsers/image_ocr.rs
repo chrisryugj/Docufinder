@@ -35,5 +35,6 @@ pub fn parse(path: &Path, ocr: &OcrEngine) -> Result<ParsedDocument, ParseError>
             page_count: Some(1),
         },
         chunks,
+        garbled_hint: false,
     })
 }

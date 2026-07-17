@@ -32,11 +32,26 @@ const NODE_BIN: &str = "node.exe";
 #[cfg(not(target_os = "windows"))]
 const NODE_BIN: &str = "node";
 
+/// kordoc 텍스트 OCR 모드 (kordoc v4.2.0+, PDF 전용)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum KordocOcrMode {
+    /// OCR 안 함 (기본)
+    #[default]
+    Off,
+    /// `--ocr`: 품질 신호가 OCR 을 권하는 페이지만 인식 (스캔·글꼴 매핑 깨짐).
+    /// 정상 PDF 에는 비용 0 (대상 페이지 없으면 모델 로드도 안 함).
+    Auto,
+    /// `--ocr-force`: 전 페이지 강제 재인식 ("OCR로 다시 읽기" 버튼용)
+    Force,
+}
+
 /// kordoc 호출 옵션
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KordocOptions {
     /// PDF 수식 OCR 활성화 (--formula-ocr)
     pub formula_ocr: bool,
+    /// PDF 텍스트 OCR (내장 PP-OCRv5 korean — 첫 사용 시 모델 ~18MB 자동 다운로드)
+    pub ocr: KordocOcrMode,
 }
 
 /// 전역 수식 OCR 토글. Settings 에서 변경될 때 set_formula_ocr_enabled 로 갱신.
@@ -65,7 +80,10 @@ fn options_for_path(path: &Path) -> KordocOptions {
         .unwrap_or("")
         .to_ascii_lowercase();
     if ext == "pdf" && is_formula_ocr_enabled() {
-        KordocOptions { formula_ocr: true }
+        KordocOptions {
+            formula_ocr: true,
+            ..KordocOptions::default()
+        }
     } else {
         KordocOptions::default()
     }
@@ -74,6 +92,7 @@ fn options_for_path(path: &Path) -> KordocOptions {
 // ─── JSON 응답 구조체 ─────────────────────────────────
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct KordocResponse {
     success: bool,
     markdown: Option<String>,
@@ -81,6 +100,25 @@ struct KordocResponse {
     #[serde(default)]
     warnings: Vec<KordocWarning>,
     error: Option<String>,
+    /// PDF 전용 — 텍스트층 부재 (kordoc v2.9+)
+    #[serde(default)]
+    is_image_based: Option<bool>,
+    /// PDF 전용 — 페이지별 품질 신호 (kordoc v2.9+, ocrReason 은 v4.2 갱신)
+    #[serde(default)]
+    page_quality: Vec<KordocPageQuality>,
+}
+
+/// kordoc 페이지 품질 신호 (필요 필드만 역직렬화)
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KordocPageQuality {
+    #[serde(default)]
+    needs_ocr: bool,
+    /// "low_text" | "high_pua" | "high_control" | "high_replacement" | "garbled_hangul"
+    ocr_reason: Option<String>,
+    /// OCR 이 실제 적용되어 본문이 대체됨 (kordoc v4.2+)
+    #[serde(default)]
+    ocr_applied: bool,
 }
 
 #[derive(Deserialize)]
@@ -95,6 +133,8 @@ struct KordocMetadata {
 #[derive(Deserialize)]
 struct KordocWarning {
     message: String,
+    /// 구조화 경고 코드 (NEEDS_OCR·OCR_APPLIED·OCR_FAILED 등, kordoc v3.0+)
+    code: Option<String>,
 }
 
 // ─── kordoc CLI 경로 해석 ─────────────────────────────
@@ -199,13 +239,42 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         ));
     }
 
+    // 구조화 신호 (kordoc v4.2+): NEEDS_OCR/OCR_APPLIED 경고 코드 + 페이지 품질.
+    let has_needs_ocr = resp
+        .warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some("NEEDS_OCR"));
+    let ocr_applied = resp
+        .warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some("OCR_APPLIED"));
+    // 원본 텍스트층이 "깨진" 신호 — 스캔(low_text)은 제외 (복사할 텍스트 자체가 없음).
+    // OCR 로 본문을 채웠어도 원본을 열어 복사하면 깨진다는 사실은 그대로라 유지.
+    let garbled_hint = resp.page_quality.iter().any(|p| {
+        (p.needs_ocr || p.ocr_applied)
+            && matches!(
+                p.ocr_reason.as_deref(),
+                Some("high_pua" | "high_control" | "high_replacement" | "garbled_hangul")
+            )
+    });
+
     let markdown = resp.markdown.unwrap_or_default();
     if markdown.trim().is_empty() {
+        // 이미지 기반 PDF 를 구조화 신호로 판별 — 종전 stderr 문자열 매칭 대체.
+        // 에러 문자열의 "이미지 기반 PDF" 태그는 parse_file 의 스킵 분기 계약.
+        if resp.is_image_based == Some(true) || has_needs_ocr {
+            return Err(ParseError::ParseError(
+                "kordoc: 이미지 기반 PDF (NEEDS_OCR — 본문 없음)".to_string(),
+            ));
+        }
         return Err(ParseError::ParseError(
             "kordoc: 추출된 텍스트 없음".to_string(),
         ));
     }
 
+    if ocr_applied {
+        tracing::info!("kordoc OCR 적용됨 [{}]", path.display());
+    }
     for w in &resp.warnings {
         debug!("kordoc warning [{}]: {}", path.display(), w.message);
     }
@@ -236,6 +305,7 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         content,
         metadata,
         chunks,
+        garbled_hint,
     })
 }
 
@@ -856,17 +926,6 @@ fn call_kordoc_sync(
     let file_owned = crate::utils::network_path::simplify(file_path);
     let file_str = file_owned.to_string_lossy();
 
-    debug!(
-        "kordoc: {} {} --format json --silent{}",
-        cli_path.display(),
-        file_str,
-        if opts.formula_ocr {
-            " --formula-ocr"
-        } else {
-            ""
-        }
-    );
-
     let mut args: Vec<std::ffi::OsString> = vec![
         file_str.as_ref().into(),
         "--format".into(),
@@ -876,8 +935,20 @@ fn call_kordoc_sync(
     if opts.formula_ocr {
         args.push("--formula-ocr".into());
     }
+    match opts.ocr {
+        KordocOcrMode::Off => {}
+        KordocOcrMode::Auto => args.push("--ocr".into()),
+        KordocOcrMode::Force => args.push("--ocr-force".into()),
+    }
 
-    let timeout_secs = if opts.formula_ocr {
+    debug!(
+        "kordoc: {} {:?}",
+        cli_path.display(),
+        args.iter().map(|a| a.to_string_lossy()).collect::<Vec<_>>()
+    );
+
+    // 텍스트 OCR 도 수식 OCR 과 같은 사유(모델 로드 + 페이지별 ONNX 추론)로 장시간 타임아웃.
+    let timeout_secs = if opts.formula_ocr || opts.ocr != KordocOcrMode::Off {
         KORDOC_FORMULA_TIMEOUT_SECS
     } else {
         KORDOC_TIMEOUT_SECS
@@ -1099,5 +1170,82 @@ mod tests {
         let md = "<table><tr><td></td><td>값</td><td>   </td></tr></table>";
         let out = html_tables_to_text(md);
         assert_eq!(out.trim(), "값", "빈 셀은 스킵: {out:?}");
+    }
+
+    /// kordoc v4.2.0 JSON 계약 — 구조화 신호(warnings.code / isImageBased /
+    /// pageQuality.ocrReason·ocrApplied) 역직렬화. 필드 추가/이름 변경 회귀 방지.
+    #[test]
+    fn kordoc_response_v42_signals_deserialize() {
+        let json = r#"{
+            "success": true,
+            "fileType": "pdf",
+            "markdown": "본문",
+            "metadata": {"pageCount": 2},
+            "warnings": [
+                {"message": "이미지 기반 PDF", "code": "NEEDS_OCR"},
+                {"page": 2, "message": "2개 페이지에 OCR 적용", "code": "OCR_APPLIED"}
+            ],
+            "isImageBased": true,
+            "pageQuality": [
+                {"page": 1, "textChars": 0, "needsOcr": true, "ocrReason": "low_text", "ocrApplied": true},
+                {"page": 2, "textChars": 500, "needsOcr": true, "ocrReason": "garbled_hangul"}
+            ],
+            "qualitySummary": {"needsOcr": true, "ocrCandidatePages": [1, 2]}
+        }"#;
+        let resp: KordocResponse = serde_json::from_str(json).expect("역직렬화");
+        assert!(resp.success);
+        assert_eq!(resp.is_image_based, Some(true));
+        assert_eq!(
+            resp.warnings
+                .iter()
+                .filter_map(|w| w.code.as_deref())
+                .collect::<Vec<_>>(),
+            vec!["NEEDS_OCR", "OCR_APPLIED"]
+        );
+        assert!(resp.page_quality[0].ocr_applied);
+        assert!(!resp.page_quality[1].ocr_applied);
+        assert_eq!(
+            resp.page_quality[1].ocr_reason.as_deref(),
+            Some("garbled_hangul")
+        );
+    }
+
+    /// 실 kordoc CLI + OCR 모델 E2E (로컬 전용 — 환경변수 없으면 skip).
+    ///
+    /// 실행: KORDOC_CLI_PATH=<kordoc/dist/cli.js> KORDOC_E2E_SCAN_PDF=<scan.pdf> \
+    ///       (선택) KORDOC_MODEL_CACHE=<models dir> \
+    ///       cargo test kordoc_ocr_e2e -- --ignored --nocapture
+    #[test]
+    #[ignore = "실 kordoc CLI·OCR 모델 필요 (로컬 전용)"]
+    fn kordoc_ocr_e2e_scanned_pdf() {
+        let Ok(pdf) = std::env::var("KORDOC_E2E_SCAN_PDF") else {
+            eprintln!("KORDOC_E2E_SCAN_PDF 미설정 — skip");
+            return;
+        };
+        let doc = parse_with_options(
+            Path::new(&pdf),
+            KordocOptions {
+                formula_ocr: false,
+                ocr: KordocOcrMode::Auto,
+            },
+        )
+        .expect("스캔 PDF OCR 파싱");
+        assert!(!doc.chunks.is_empty(), "OCR 본문이 청크로 추출돼야 함");
+        eprintln!(
+            "E2E ok — chunks {}, 첫 청크: {:?}",
+            doc.chunks.len(),
+            &doc.chunks[0].content.chars().take(60).collect::<String>()
+        );
+    }
+
+    /// 구버전 kordoc JSON (code/pageQuality 없음)도 그대로 파싱돼야 한다 — 하위호환.
+    #[test]
+    fn kordoc_response_legacy_shape_still_parses() {
+        let json = r#"{"success": true, "markdown": "본문", "metadata": null,
+            "warnings": [{"message": "경고만 있음"}], "error": null}"#;
+        let resp: KordocResponse = serde_json::from_str(json).expect("역직렬화");
+        assert!(resp.warnings[0].code.is_none());
+        assert!(resp.page_quality.is_empty());
+        assert_eq!(resp.is_image_based, None);
     }
 }

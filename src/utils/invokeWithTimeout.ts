@@ -6,6 +6,8 @@ export const IPC_TIMEOUT = {
   SEARCH: 30_000,
   FILE_ACTION: 5_000,
   SETTINGS: 10_000,
+  /** 단일 파일 강제 OCR 재인덱싱 — 모델 첫 다운로드 + 페이지별 추론으로 장시간 */
+  OCR_REINDEX: 900_000,
 } as const;
 
 class IpcTimeoutError extends Error {

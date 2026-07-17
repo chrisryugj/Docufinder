@@ -89,6 +89,7 @@ interface SearchResultListProps {
   onSelectResult?: (index: number) => void;
   /** 유사 문서 찾기 콜백 */
   onFindSimilar?: (filePath: string) => void;
+  onOcrReindex?: (filePath: string) => void;
   /** 폴더 추가 콜백 */
   onAddFolder?: () => void;
   /** 파일별 카테고리 맵 */
@@ -167,6 +168,7 @@ export const SearchResultList = memo(function SearchResultList({
   semanticEnabled,
   onSelectResult,
   onFindSimilar,
+  onOcrReindex,
   onAddFolder,
   categories,
   paradigm = "instant",
@@ -434,6 +436,7 @@ export const SearchResultList = memo(function SearchResultList({
                           refineKeywords={refineKeywords}
                           query={highlightQuery}
                           onFindSimilar={onFindSimilar}
+                          onOcrReindex={onOcrReindex}
                           category={categories?.[group.file_path]}
                           openOnSingleClick={openOnSingleClick}
                           showPath={showResultPath}
@@ -543,6 +546,7 @@ export const SearchResultList = memo(function SearchResultList({
                       refineKeywords={refineKeywords}
                       query={highlightQuery}
                       onFindSimilar={onFindSimilar}
+                      onOcrReindex={onOcrReindex}
                       category={categories?.[result.file_path]}
                       openOnSingleClick={openOnSingleClick}
                       showPath={showResultPath}

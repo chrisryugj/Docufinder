@@ -4,11 +4,13 @@
 
 mod batch;
 mod data;
+mod file;
 mod folder;
 mod init;
 
 pub use batch::*;
 pub use data::*;
+pub use file::*;
 pub use folder::*;
 pub use init::*;
 
