@@ -26,6 +26,11 @@
   <img src="docs/promo.gif" alt="Anything - 문서 내용 검색 데모" width="820" />
 </p>
 
+<p align="center">
+  <a href="https://youtu.be/xuCGvqG6_SE"><img src="https://img.youtube.com/vi/xuCGvqG6_SE/mqdefault.jpg" width="320" alt="Anything 시연 영상" /></a><br/>
+  <b>▶ 시연 영상 보기</b>
+</p>
+
 ---
 
 ## 이런 걸 할 수 있습니다
