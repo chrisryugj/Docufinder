@@ -353,6 +353,12 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
         tracing::warn!("PDF file has no text content: {:?}", path);
     }
 
+    // 원본 텍스트층이 깨진 페이지가 있었는가 — OCR 이 본문을 대체해 chunks 가
+    // 깨끗해져도 원본 복사 시 깨짐은 그대로이므로 배지 판정용 힌트로 전달.
+    let garbled_hint = cleaned_pages
+        .iter()
+        .any(|p| !p.is_empty() && looks_like_garbage_text(p));
+
     Ok(ParsedDocument {
         content: all_text,
         metadata: DocumentMetadata {
@@ -362,6 +368,7 @@ pub fn parse(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, Par
             page_count: Some(page_count),
         },
         chunks,
+        garbled_hint,
     })
 }
 

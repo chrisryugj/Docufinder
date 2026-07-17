@@ -146,6 +146,34 @@ export function useFileActions({
     [removeFolder, invalidateSearch, showToast, updateToast, refreshVectorStatus]
   );
 
+  const handleOcrReindex = useCallback(
+    async (filePath: string) => {
+      const name = filePath.split(/[\\/]/).pop() ?? filePath;
+      const toastId = showToast(
+        `"${name}" OCR로 다시 읽는 중... (첫 사용 시 모델 다운로드로 오래 걸릴 수 있어요)`,
+        "loading"
+      );
+      try {
+        const res = await invokeWithTimeout<{ message?: string }>(
+          "reindex_file",
+          { path: filePath },
+          IPC_TIMEOUT.OCR_REINDEX
+        );
+        updateToast(toastId, {
+          message: res?.message ?? "OCR 재인덱싱 완료 — 다시 검색하면 반영됩니다",
+          type: "success",
+        });
+        invalidateSearch();
+      } catch (e) {
+        updateToast(toastId, {
+          message: `OCR 재인덱싱 실패: ${e instanceof Error ? e.message : String(e)}`,
+          type: "error",
+        });
+      }
+    },
+    [showToast, updateToast, invalidateSearch]
+  );
+
   return {
     handleOpenFile,
     handleCopyPath,
@@ -153,6 +181,7 @@ export function useFileActions({
     handleAddFolder,
     handleAddFolderByPath,
     handleRemoveFolder,
+    handleOcrReindex,
   };
 }
 

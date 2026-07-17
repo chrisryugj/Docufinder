@@ -39,6 +39,7 @@ interface SearchResultItemProps {
   refineKeywords?: string[];
   query?: string;
   onFindSimilar?: (filePath: string) => void;
+  onOcrReindex?: (filePath: string) => void;
   category?: string;
   /** false: 두 번 클릭으로 열기 (한 번 클릭은 카드 선택·미리보기) */
   openOnSingleClick?: boolean;
@@ -82,6 +83,7 @@ export const SearchResultItem = memo(function SearchResultItem({
   refineKeywords,
   query = "",
   onFindSimilar,
+  onOcrReindex,
   category,
   openOnSingleClick = true,
   showPath = true,
@@ -298,6 +300,8 @@ export const SearchResultItem = memo(function SearchResultItem({
           onOpenFile={onOpenFile}
           onCopyPath={onCopyPath}
           onOpenFolder={onOpenFolder}
+          onFindSimilar={onFindSimilar}
+          onOcrReindex={onOcrReindex}
           contextMenu={contextMenu}
           closeContextMenu={closeContextMenu}
         />

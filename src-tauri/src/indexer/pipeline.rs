@@ -776,13 +776,18 @@ pub(crate) fn save_document_to_db_fts_only_no_tx(
     // PUA 를 걸러내지 않는다). 그 외 타입(docx/xlsx/txt 등)은 판정 생략 → 중/일 문서 오탐
     // 배지를 원천 차단(항상 false = 깨끗함).
     let garbled_flag = if matches!(file_type.as_str(), "pdf" | "hwp" | "hwpx") {
-        let joined: String = document
-            .chunks
-            .iter()
-            .map(|c| c.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n");
-        crate::parsers::pdf::looks_like_garbage_text(&joined)
+        // 파서 힌트 OR — OCR 이 본문을 대체하면 chunks 는 깨끗해져 아래 판정이 놓치지만,
+        // 원본 텍스트층이 깨졌다는 사실(복사 시 깨짐)은 그대로다 (kordoc pageQuality /
+        // Rust PDF 파서의 페이지별 판정에서 전달).
+        document.garbled_hint || {
+            let joined: String = document
+                .chunks
+                .iter()
+                .map(|c| c.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            crate::parsers::pdf::looks_like_garbage_text(&joined)
+        }
     } else {
         false
     };
@@ -1066,7 +1071,24 @@ pub(crate) fn index_file_fts_only_no_tx(
     ocr_engine: Option<&OcrEngine>,
     vector_index: Option<&crate::search::vector::VectorIndex>,
 ) -> Result<IndexResult, IndexError> {
-    let document = match parse_file(path, ocr_engine) {
+    index_file_fts_only_no_tx_opts(conn, path, ocr_engine, vector_index, false)
+}
+
+/// `force_ocr`: PDF 를 kordoc `--ocr-force`(전 페이지 강제 재인식)로 파싱 —
+/// "OCR로 다시 읽기" 단건 재인덱싱 전용.
+pub(crate) fn index_file_fts_only_no_tx_opts(
+    conn: &Connection,
+    path: &Path,
+    ocr_engine: Option<&OcrEngine>,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
+    force_ocr: bool,
+) -> Result<IndexResult, IndexError> {
+    let parsed = if force_ocr {
+        crate::parsers::parse_file_force_ocr(path, ocr_engine)
+    } else {
+        parse_file(path, ocr_engine)
+    };
+    let document = match parsed {
         Ok(doc) => doc,
         Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
             // 클라우드 placeholder: 본문 hydrate 회피, 메타데이터만 저장.
@@ -1163,6 +1185,7 @@ mod stale_vector_tests {
                 page_end: None,
                 location_hint: None,
             }],
+            garbled_hint: false,
         }
     }
 

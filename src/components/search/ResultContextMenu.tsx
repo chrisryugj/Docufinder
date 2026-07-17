@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare } from "lucide-react";
+import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare, ScanText } from "lucide-react";
 
 // 코드 스플리팅: 비교 모달은 '○○와 비교' 클릭 시에만 로딩 (LineageBadge 패턴)
 const VersionDiffModal = lazy(() =>
@@ -56,7 +56,11 @@ interface ResultContextMenuProps {
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
   onFindSimilar?: (filePath: string) => void;
+  onOcrReindex?: (filePath: string) => void;
 }
+
+/** OCR 재인식이 의미 있는 파일 — PDF(kordoc 강제 OCR) + 이미지(자체 엔진) */
+const OCR_ELIGIBLE_RE = /\.(pdf|jpe?g|png|bmp|tiff?)$/i;
 
 /** 컨텍스트 메뉴 표시를 위한 훅 */
 export function useContextMenu() {
@@ -102,6 +106,7 @@ export function ResultContextMenu({
   onCopyPath,
   onOpenFolder,
   onFindSimilar,
+  onOcrReindex,
   contextMenu,
   closeContextMenu,
 }: ResultContextMenuProps & {
@@ -268,6 +273,19 @@ export function ResultContextMenu({
         <span className="flex-1">유사 문서 찾기</span>
         {!onFindSimilar && <span className="text-[10px] opacity-60">시맨틱 OFF</span>}
       </button>
+
+      {/* OCR 재인식 — 스캔본·복사 시 깨지는 문서를 강제 OCR 로 다시 인덱싱 */}
+      {onOcrReindex && OCR_ELIGIBLE_RE.test(filePath) && (
+        <button
+          role="menuitem"
+          onClick={(e) => { e.stopPropagation(); closeContextMenu(); onOcrReindex(filePath); }}
+          className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          title="스캔본이나 글자가 깨져 보이는 문서를 OCR로 다시 읽어 검색 인덱스를 갱신합니다 (첫 사용 시 모델 자동 다운로드)"
+        >
+          <ScanText className="w-4 h-4 clr-info" />
+          <span className="flex-1">OCR로 다시 읽기</span>
+        </button>
+      )}
 
       {/* 임의 두 문서 비교 (D4): 기준 선택 → 다른 파일 우클릭 시 '○○와 비교' */}
       <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />

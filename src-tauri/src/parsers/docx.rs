@@ -93,6 +93,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             },
         },
         chunks,
+        garbled_hint: false,
     })
 }
 

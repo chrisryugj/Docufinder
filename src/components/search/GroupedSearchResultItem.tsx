@@ -16,6 +16,7 @@ interface GroupedSearchResultItemProps {
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
   onOpenFolder?: (path: string) => void;
+  onOcrReindex?: (filePath: string) => void;
   isCompact?: boolean;
   /** 검색어 - snippet 없을 때 클라이언트 하이라이트용 */
   searchQuery?: string;
@@ -44,6 +45,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   onOpenFile,
   onCopyPath,
   onOpenFolder,
+  onOcrReindex,
   isCompact = false,
   searchQuery,
   isExpanded = false,
@@ -369,6 +371,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         onOpenFile={onOpenFile}
         onCopyPath={onCopyPath}
         onOpenFolder={onOpenFolder}
+        onOcrReindex={onOcrReindex}
         contextMenu={contextMenu}
         closeContextMenu={closeContextMenu}
       />

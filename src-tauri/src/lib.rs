@@ -1386,6 +1386,7 @@ pub fn run() {
             commands::index::toggle_favorite,
             commands::index::cancel_indexing,
             commands::index::reindex_folder,
+            commands::index::reindex_file,
             commands::index::resume_indexing,
             commands::index::reset_folder_indexing,
             commands::index::get_vector_indexing_status,

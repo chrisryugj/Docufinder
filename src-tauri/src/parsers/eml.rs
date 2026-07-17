@@ -85,6 +85,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
             page_count: None,
         },
         chunks,
+        garbled_hint: false,
     })
 }
 
