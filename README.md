@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.3.0-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.4.0-blue.svg" alt="Version" /></a>
   <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri-2.10-24C8D8.svg" alt="Tauri 2" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
 </p>
@@ -41,10 +41,10 @@
 Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **즉시** 찾습니다. 인덱싱이 끝나기 전에도 사용 가능. 결과는 **정렬 가능한 컬럼 뷰**(이름·경로·크기·수정일·유형)로 표시됩니다 — 컬럼을 클릭해 정렬하고, 경계를 드래그해 너비를 조절(더블클릭 시 자동 맞춤)하며, 헤더 우클릭으로 컬럼을 켜고 끌 수 있습니다. 너비·정렬·표시 설정은 자동 저장됩니다.
 
 ### AI 질의응답 (선택)
-"2026년 예산 얼마야?", "연차 조건이 뭐야?" 같은 자연어 질문을 하면 인덱싱된 문서에서 관련 부분을 찾아 답변합니다. **근거 문서 + 페이지**까지 표시. Gemini API 키가 필요하며, 없어도 검색은 정상 동작합니다.
+"2026년 예산 얼마야?", "연차 조건이 뭐야?" 같은 자연어 질문을 하면 인덱싱된 문서에서 관련 부분을 찾아 답변합니다. **근거 문서 + 페이지**까지 표시. Gemini 또는 OpenAI 호환 서버(사내·오프라인 LLM 포함)의 API 키가 필요하며, 없어도 검색은 정상 동작합니다.
 
 ### AI 문서 요약 (선택)
-파일 우클릭 → 요약. 계약서, 보고서, 회의록 등 문서 타입에 맞춰 핵심만 뽑아줍니다. 인터넷 없이도 오프라인 요약(TextRank) 가능.
+파일 우클릭 → 요약. 계약서, 보고서, 회의록 등 문서 타입에 맞춰 핵심만 뽑아줍니다. 요약은 AI 제공자(Gemini 또는 OpenAI 호환 서버)를 호출하므로 API 키 설정이 필요합니다.
 
 ### 실시간 동기화
 파일을 추가/수정/삭제하면 자동으로 반영됩니다. 수동 재인덱싱 필요 없음.
@@ -117,7 +117,7 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 - 아래쪽 **"실행"** 버튼 클릭
 
 **2. "스마트 앱 컨트롤이 차단" (Windows 11)**
-- 파일 탐색기에서 MSI 파일 **우클릭 → 속성**
+- 파일 탐색기에서 설치 파일(.exe) **우클릭 → 속성**
 - 하단 **"차단 해제"** 체크 후 적용
 - 다시 더블클릭으로 실행
 
@@ -205,9 +205,8 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | 임베딩 (KoSimCSE) | 로컬 ONNX 모델 | 없음 |
 | OCR (PaddleOCR) | 로컬 ONNX 모델 | 없음 |
 | 파일명 검색 | 로컬 인메모리 캐시 | 없음 |
-| AI 질의응답 | **Gemini API** | 질문 + 관련 청크만 전송 |
-| AI 요약 (온라인) | **Gemini API** | 문서 텍스트 전송 |
-| AI 요약 (오프라인) | 로컬 TextRank | 없음 |
+| AI 질의응답 | **Gemini / OpenAI 호환** | 질문 + 관련 청크만 전송 |
+| AI 요약 | **Gemini / OpenAI 호환** | 문서 텍스트 전송 |
 
 - **원본 파일은 절대 복사되지 않습니다** — 인덱스만 생성
 - **AI 기능은 설정에서 완전히 비활성화** 가능 → 순수 로컬 검색 도구로 동작
@@ -246,7 +245,7 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | 검색 | SQLite FTS5 + usearch HNSW + RRF 병합 |
 | 한국어 처리 | Lindera 2.0 형태소 분석 |
 | 임베딩 | ONNX Runtime, KoSimCSE-roberta (768차원) |
-| AI | Gemini API (RAG) |
+| AI | Gemini · OpenAI 호환 provider (RAG) |
 | OCR | PaddleOCR ONNX + PP-DocLayout 레이아웃 분석 |
 | HWP 파싱 | [kordoc](https://www.npmjs.com/package/kordoc) (번들 포함) |
 
@@ -258,12 +257,11 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 pnpm install          # 의존성 설치
 pnpm run download-model  # ONNX 모델 다운로드 (첫 빌드 시)
 pnpm tauri:dev        # 개발 모드
-pnpm tauri:build      # 프로덕션 빌드 (MSI)
+pnpm tauri:build      # 프로덕션 빌드 (NSIS 설치파일 .exe)
 ```
 
 **빌드 요구사항**: Windows 10/11 x64 · Node.js 22 LTS + pnpm 10 · Rust 1.92+ · Visual Studio Build Tools 2022
 
-자세한 내용은 [BUILD_GUIDE.md](BUILD_GUIDE.md) · [DEPLOYMENT.md](DEPLOYMENT.md)를 참고하세요.
 
 ---
 

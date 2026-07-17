@@ -360,7 +360,7 @@ function AdvancedSection() {
       <SubTitle>문서 요약</SubTitle>
       <Paragraph>
         검색 결과를 클릭하면 미리보기 패널에서 '요약' 버튼으로 문서 핵심 내용을 자동 추출해요.
-        TextRank 알고리즘 기반으로 오프라인에서 동작하며, 외부 API가 필요 없어요.
+        요약은 설정한 AI 제공자(Gemini 또는 OpenAI 호환 서버)를 호출하므로 API 키가 필요해요.
       </Paragraph>
 
       <SubTitle>북마크</SubTitle>
