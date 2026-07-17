@@ -23,12 +23,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/promo.gif" alt="Anything - 문서 내용 검색 데모" width="820" />
+  <a href="https://youtu.be/xuCGvqG6_SE"><img src="docs/video-demo.jpg" alt="Anything(문서내용검색) 활용하기 — 영상 보기" width="820" /></a>
 </p>
 
 <p align="center">
-  <a href="https://youtu.be/xuCGvqG6_SE"><img src="https://img.youtube.com/vi/xuCGvqG6_SE/mqdefault.jpg" width="320" alt="Anything 시연 영상" /></a><br/>
-  <b>▶ 시연 영상 보기</b>
+  <sub>▶ 클릭하면 유튜브에서 재생됩니다.</sub>
 </p>
 
 ---
