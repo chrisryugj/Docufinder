@@ -90,9 +90,11 @@ pub struct DocumentChunk {
 /// 들고 다녀 피크 메모리가 배가된다 (T2-5). 전문이 필요한 소비자가 생기면
 /// `parse_file_inner` 기반 별도 진입점을 추가할 것.
 ///
-/// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/bmp/tiff)도 텍스트 추출 가능.
+/// `ocr`: OCR 엔진이 있으면 이미지 파일(jpg/png/webp/bmp/tiff)도 텍스트 추출 가능.
 /// PDF 는 OCR 켜짐 시 kordoc `--ocr`(품질 신호 페이지만 정밀 인식, kordoc v4.2+)로
 /// 위임된다 — 정상 PDF 에는 비용 0, kordoc 실패 시 Rust 파서+자체 OCR fallback.
+/// 이미지(png/jpg/webp)도 OCR 켜짐 시 kordoc 직접 입력(v4.2.1+, 표 괘선 복원)을
+/// 우선 시도하고 실패 시 자체 OCR 엔진으로 fallback (bmp/tiff 는 자체 엔진 전용).
 pub fn parse_file(path: &Path, ocr: Option<&OcrEngine>) -> Result<ParsedDocument, ParseError> {
     let kordoc_ocr = if ocr.is_some() {
         kordoc::KordocOcrMode::Auto
@@ -171,8 +173,12 @@ fn parse_file_inner(
     // (이전엔 .hwp 가 fallback 진입 시 generic "Unsupported file type: hwp (kordoc 필요)" 로
     // 덮어써서 사용자가 진짜 원인을 알 수 없었다 — 이슈 #22 의 "kordoc 필요" false 메시지)
     let kordoc_formats = ["hwp", "hwpx", "docx", "pdf"];
+    // 이미지(png/jpg/webp)는 OCR 옵션이 켜져 있을 때만 kordoc 직접 입력(v4.2.1+)으로
+    // 우선 시도 — 표 괘선 복원 포함. 실패 시 아래 자체 OCR 엔진 분기가 fallback.
+    let is_kordoc_image = kordoc::KORDOC_IMAGE_EXTENSIONS.contains(&extension.as_str())
+        && (ocr.is_some() || kordoc_ocr != kordoc::KordocOcrMode::Off);
     let mut kordoc_err: Option<ParseError> = None;
-    if kordoc_formats.contains(&extension.as_str()) && kordoc::is_available() {
+    if (kordoc_formats.contains(&extension.as_str()) || is_kordoc_image) && kordoc::is_available() {
         // PDF 사전 sniff — 이미지 PDF + OCR off 인 경우 kordoc spawn 자체를 회피.
         // #17 크래시(0xc0000409) 의 강한 의심 원인: 스캔 PDF 다수 폴더에서 PDF 마다
         // node.exe 자식 spawn 누적 → 자식 프로세스/파이프/스레드 누수 → CRT 레벨
@@ -194,10 +200,11 @@ fn parse_file_inner(
         }
 
         // PDF + OCR 켜짐 → kordoc 내장 OCR 위임 (스캔·깨진 텍스트층 페이지만 정밀 인식,
-        // 표 구조 복원 포함). 그 외 포맷은 kordoc 이 ocr 플래그를 무시하므로 Off 로.
+        // 표 구조 복원 포함). 이미지는 kordoc 이 OCR 을 상시 적용하므로 모드를 그대로
+        // 전달해 장시간 타임아웃만 취한다. 그 외 포맷은 ocr 플래그를 무시하므로 Off 로.
         let kordoc_opts = kordoc::KordocOptions {
             formula_ocr: extension == "pdf" && kordoc::is_formula_ocr_enabled(),
-            ocr: if extension == "pdf" {
+            ocr: if extension == "pdf" || is_kordoc_image {
                 kordoc_ocr
             } else {
                 kordoc::KordocOcrMode::Off
@@ -249,8 +256,14 @@ fn parse_file_inner(
         "pptx" => parse_with_timeout(path, 30, "PPTX", pptx::parse),
         "xlsx" | "xls" => parse_with_timeout(path, 15, "XLS/XLSX", xlsx::parse),
         "pdf" => pdf::parse(path, ocr),
-        ext if ocr.is_some() && crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
-            image_ocr::parse(path, ocr.unwrap())
+        ext if crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
+            match ocr {
+                // 자체 OCR 엔진 fallback (bmp/tiff 는 이 경로 전용, webp 는 디코딩 불가로 실패)
+                Some(engine) => image_ocr::parse(path, engine),
+                // 엔진 없이 kordoc 만 시도한 경우(OCR로 다시 읽기 등) 실제 원인 보존
+                None => Err(kordoc_err
+                    .unwrap_or_else(|| ParseError::UnsupportedFileType(extension.clone()))),
+            }
         }
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }

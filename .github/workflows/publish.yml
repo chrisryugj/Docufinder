@@ -54,7 +54,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4f68c6c88c63e6457e0013b1cae844d45525d6c8
+          ref: b0b11fcc6b8eff4c60f17d78fe3cecb19c137cea
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -222,7 +222,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4f68c6c88c63e6457e0013b1cae844d45525d6c8
+          ref: b0b11fcc6b8eff4c60f17d78fe3cecb19c137cea
 
       - name: Build kordoc dist
         working-directory: kordoc-src

@@ -20,8 +20,9 @@ pub const SUPPORTED_EXTENSIONS: &[&str] = &[
     "txt", "md", "hwpx", "hwp", "docx", "pptx", "xlsx", "xls", "pdf", "eml",
 ];
 
-/// OCR 대상 이미지 확장자 (ocr_enabled 설정 시에만 인덱싱)
-pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "bmp", "tiff", "tif"];
+/// OCR 대상 이미지 확장자 (ocr_enabled 설정 시에만 인덱싱).
+/// webp 는 kordoc 직접 입력(v4.2.1+) 전용 — 자체 OCR 엔진(image crate)은 디코딩 불가.
+pub const OCR_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif"];
 
 /// 메타데이터(파일명) 저장에서 제외할 확장자
 ///
