@@ -32,7 +32,11 @@ const NODE_BIN: &str = "node.exe";
 #[cfg(not(target_os = "windows"))]
 const NODE_BIN: &str = "node";
 
-/// kordoc 텍스트 OCR 모드 (kordoc v4.2.0+, PDF 전용)
+/// kordoc 이 직접 파싱하는 이미지 확장자 (kordoc v4.2.1+ — 내장 OCR 자동 적용 + 표 괘선 복원).
+/// bmp/tiff 는 kordoc 미지원 — 자체 OCR 엔진(image_ocr) 전용으로 남는다.
+pub const KORDOC_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp"];
+
+/// kordoc 텍스트 OCR 모드 (kordoc v4.2.0+, PDF·이미지)
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum KordocOcrMode {
     /// OCR 안 함 (기본)

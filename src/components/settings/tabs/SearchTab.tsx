@@ -325,7 +325,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
       <div>
         <SettingsToggle
           label="OCR (이미지 텍스트 인식)"
-          description="이미지 파일(JPG, PNG, BMP, TIFF)과 스캔 PDF(이미지 기반)에서 텍스트 추출 (PaddleOCR, ~15MB 모델)"
+          description="이미지 파일(JPG, PNG, WebP, BMP, TIFF)과 스캔 PDF(이미지 기반)에서 텍스트 추출 — 표 서식 이미지는 표 구조까지 복원 (PaddleOCR, ~15MB 모델)"
           checked={settings.ocr_enabled ?? false}
           onChange={(v) => {
             onChange("ocr_enabled", v);
