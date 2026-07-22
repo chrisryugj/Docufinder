@@ -124,12 +124,14 @@ jobs:
       - name: Create placeholders for macOS Tauri build
         working-directory: src-tauri
         run: |
-          mkdir -p models/kosimcse-roberta-multitask resources/onnxruntime resources/kordoc resources/paddleocr
+          mkdir -p models/kosimcse-roberta-multitask resources/onnxruntime resources/kordoc resources/paddleocr resources/pdfium
           touch models/kosimcse-roberta-multitask/.gitkeep
           touch resources/node
           chmod +x resources/node
           touch resources/kordoc/.gitkeep
           touch resources/onnxruntime/libonnxruntime.dylib
+          # pdfium mac dylib 은 .gitignore(setup-macos-resources.sh 가 실제 생성) — CI 검증용 placeholder
+          touch resources/pdfium/libpdfium.dylib
           : > resources/paddleocr/det.onnx
           : > resources/paddleocr/rec.onnx
           : > resources/paddleocr/dict.txt
