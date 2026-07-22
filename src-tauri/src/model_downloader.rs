@@ -113,6 +113,21 @@ const CONNECT_TIMEOUT_SECS: u64 = 30;
 const READ_TIMEOUT_SECS: u64 = 600; // 10분 (대용량 모델)
 const MAX_FILE_SIZE: u64 = 600 * 1024 * 1024; // 600MB 상한
 
+/// 오프라인(망분리) 배포용 강제 스위치.
+///
+/// `DOCUFINDER_OFFLINE=1`(또는 `true`) 이면 모든 런타임 네트워크 다운로드를 즉시 차단한다.
+/// 정상 배포는 필수 자산(onnxruntime·paddleocr·pdfium)을 MSI 에 번들하므로 `seed_bundled_models`
+/// 가 먼저 채워 다운로드 경로 자체를 타지 않지만, seed 실패 같은 엣지에서 네트워크를 건드리면
+/// 내부망 EDR(ZombieZERO 등) 이 "실행 중 외부 바이너리 다운로드" 를 dropper 로 오탐해 프로세스를
+/// 격리한다. 이 스위치는 그 마지막 네트워크 시도까지 원천 봉쇄한다. 호출부는 반환된 Err 를
+/// graceful 처리(기능만 비활성, 앱은 계속 부팅)하므로 부작용이 없다.
+fn offline_mode() -> bool {
+    matches!(
+        std::env::var("DOCUFINDER_OFFLINE").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE")
+    )
+}
+
 /// 모델 다운로드 결과
 #[derive(Debug)]
 pub struct DownloadResult {
@@ -543,6 +558,12 @@ fn compute_sha256(path: &Path) -> Result<String, String> {
 
 /// 타임아웃 + 크기 제한 포함 파일 다운로드
 fn download_file_with_timeout(url: &str, dest: &Path) -> Result<(), String> {
+    if offline_mode() {
+        return Err(format!(
+            "오프라인 모드(DOCUFINDER_OFFLINE) — 네트워크 다운로드 차단됨: {}",
+            url
+        ));
+    }
     let config = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(CONNECT_TIMEOUT_SECS)))
         .timeout_recv_body(Some(Duration::from_secs(READ_TIMEOUT_SECS)))
@@ -596,6 +617,9 @@ fn download_file_with_timeout(url: &str, dest: &Path) -> Result<(), String> {
 /// ONNX Runtime ZIP 다운로드 및 압축 해제 (Windows 전용)
 #[cfg(target_os = "windows")]
 fn download_onnx_runtime(dest_dir: &Path) -> Result<(), String> {
+    if offline_mode() {
+        return Err("오프라인 모드(DOCUFINDER_OFFLINE) — ONNX Runtime 다운로드 차단됨".to_string());
+    }
     let config = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(CONNECT_TIMEOUT_SECS)))
         .timeout_recv_body(Some(Duration::from_secs(READ_TIMEOUT_SECS)))
