@@ -9,6 +9,7 @@
       "resources/paddleocr/rec.onnx",
       "resources/paddleocr/dict.txt",
       "resources/onnxruntime/onnxruntime.dll",
+      "resources/pdfium/pdfium.dll",
       "resources/webview2-runtime/**/*",
       "icons/tray-icon.png"
     ]

@@ -10,6 +10,7 @@
       "resources/paddleocr/rec.onnx",
       "resources/paddleocr/dict.txt",
       "resources/onnxruntime/libonnxruntime.dylib",
+      "resources/pdfium/libpdfium.dylib",
       "icons/tray-icon.png"
     ],
     "macOS": {

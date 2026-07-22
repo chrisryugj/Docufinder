@@ -58,6 +58,8 @@ src-tauri/resources/node.exe
 src-tauri/resources/node
 src-tauri/resources/kordoc/
 src-tauri/resources/onnxruntime/libonnxruntime.dylib
+# pdfium mac dylib — setup-macos-resources.sh 가 생성 (Windows pdfium.dll 은 git-track)
+src-tauri/resources/pdfium/libpdfium.dylib
 # WebView2 fixed runtime — CI 빌드 시 setup-webview2-runtime.ps1 가 생성 (~500MB)
 src-tauri/webview2-runtime/
 src-tauri/resources/webview2-runtime/
