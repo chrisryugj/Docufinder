@@ -130,6 +130,10 @@ impl OcrEngine {
             .map(|n| n.get().clamp(2, 4))
             .unwrap_or(2);
 
+        // 단계별 로그 — 환경에 따라 ONNX 세션 빌드(= ONNX Runtime 동적 라이브러리 로드) 에서
+        // 멈추는 사례가 있어(이슈 #35), 어느 단계에서 걸렸는지 로그만으로 판별되게 한다.
+        tracing::info!("OCR 초기화 [1/3] det 세션 생성 시작 (ONNX Runtime 로드)");
+
         let det_session = Session::builder()
             .map_err(|e| OcrError::ModelLoad(e.to_string()))?
             .with_execution_providers([ort::ep::CPU::default().build()])
@@ -141,6 +145,8 @@ impl OcrEngine {
             .commit_from_file(&det_path)
             .map_err(|e| OcrError::ModelLoad(format!("Detection session: {}", e)))?;
 
+        tracing::info!("OCR 초기화 [2/3] det 세션 완료 — rec 세션 생성 시작");
+
         let rec_session = Session::builder()
             .map_err(|e| OcrError::ModelLoad(e.to_string()))?
             .with_execution_providers([ort::ep::CPU::default().build()])
@@ -151,6 +157,8 @@ impl OcrEngine {
             .map_err(|e| OcrError::ModelLoad(e.to_string()))?
             .commit_from_file(&rec_path)
             .map_err(|e| OcrError::ModelLoad(format!("Recognition session: {}", e)))?;
+
+        tracing::info!("OCR 초기화 [3/3] rec 세션 완료 — 사전 로드");
 
         // 사전 로드
         let dict_content = std::fs::read_to_string(&dict_path)

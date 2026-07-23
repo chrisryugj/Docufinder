@@ -76,8 +76,9 @@ pub struct IndexContext {
     pub on_incremental_update: Option<Arc<dyn Fn(usize) + Send + Sync>>,
     /// 벡터 워커 트리거 콜백 (watcher 증분 인덱싱 후 벡터 백필 시작)
     pub on_vector_trigger: Option<Arc<dyn Fn() + Send + Sync>>,
-    /// OCR 엔진 (이미지 파일 텍스트 인식)
-    pub ocr_engine: Option<Arc<OcrEngine>>,
+    /// OCR 엔진 (이미지 파일 텍스트 인식) — embedder/vector_index 와 같은 공유 OnceCell.
+    /// WatchManager 생성 시점에 아직 워밍업 전이어도, 준비되는 즉시 `.get()` 으로 반영된다.
+    pub ocr_engine: Arc<OnceCell<Arc<OcrEngine>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -529,7 +530,7 @@ impl WatchManager {
                     .unwrap_or("")
                     .to_lowercase();
                 let is_ocr_image =
-                    ctx.ocr_engine.is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
+                    ctx.ocr_engine.get().is_some() && OCR_IMAGE_EXTENSIONS.contains(&ext.as_str());
 
                 if SUPPORTED_EXTENSIONS.contains(&ext.as_str()) || is_ocr_image {
                     // Modify 이벤트는 속성/메타데이터 변경만으로도 발생하므로,
@@ -539,7 +540,7 @@ impl WatchManager {
                         tracing::debug!("[WatchManager] Unchanged, skip reparse: {:?}", path);
                         continue;
                     }
-                    let ocr_ref = ctx.ocr_engine.as_deref();
+                    let ocr_ref = ctx.ocr_engine.get().map(|a| a.as_ref());
                     let vi_ref = ctx.vector_index.get().map(|a| a.as_ref());
                     match pipeline::index_file_fts_only_no_tx(&conn, path, ocr_ref, vi_ref) {
                         Ok(result) => {

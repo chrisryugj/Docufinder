@@ -1222,6 +1222,35 @@ pub fn run() {
             // Store app container
             app.manage(RwLock::new(container));
 
+            // OCR 엔진 워밍업 — ONNX 세션 빌드를 여기서 **한 번만** 끝내둔다.
+            // 다른 경로(get_watch_manager·index_service)는 blocking 초기화 대신
+            // ocr_engine_if_ready peek 을 쓰므로, 이 빌드가 지연되거나 멈춰도 폴더 트리·검색·
+            // 인덱싱은 그대로 동작한다(스캔 문서 OCR 만 비활성). 컨테이너 락은 read 전용
+            // (쓰는 곳이 없음)이라 오래 잡아도 다른 커맨드를 굶기지 않는다.
+            if setup_settings.ocr_enabled {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let Some(container_state) = app_handle.try_state::<RwLock<AppContainer>>()
+                    else {
+                        return;
+                    };
+                    let Ok(container) = container_state.read() else {
+                        return;
+                    };
+                    let started = std::time::Instant::now();
+                    match container.get_ocr_engine() {
+                        Ok(_) => tracing::info!(
+                            "OCR 엔진 워밍업 완료 ({}ms)",
+                            started.elapsed().as_millis()
+                        ),
+                        Err(e) => tracing::warn!(
+                            "OCR 엔진 워밍업 실패 — 스캔 문서 OCR 만 비활성됩니다: {}",
+                            e
+                        ),
+                    }
+                });
+            }
+
             // 감시 폴더 자동 복원 (위에서 이동) — OCR 엔진 빌드가 창 표시를 막지 않도록 분리.
             {
                 let app_handle = app.handle().clone();
