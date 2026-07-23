@@ -46,7 +46,10 @@ pub struct AppContainer {
     vector_worker: Arc<RwLock<VectorWorker>>,
     tokenizer: OnceCell<Arc<dyn TextTokenizer>>,
     /// OCR 엔진 (PaddleOCR ONNX)
-    ocr_engine: OnceCell<Arc<OcrEngine>>,
+    /// embedder/vector_index 와 같은 이유로 `Arc<OnceCell>` 공유 — WatchManager 생성 시점에
+    /// 아직 워밍업 전이라도, 이후 준비되면 WatchManager 가 매번 `.get()` 으로 최신 상태를
+    /// 읽는다. Option 으로 캡처하면 생성 순서에 따라 OCR 이 영구히 꺼진 채로 굳는다.
+    ocr_engine: Arc<OnceCell<Arc<OcrEngine>>>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
     /// 배치 인덱싱 컨트롤러 (멀티 폴더 순차 실행 상태)
@@ -174,7 +177,7 @@ impl AppContainer {
             watch_manager: OnceCell::new(),
             vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
             tokenizer: OnceCell::new(),
-            ocr_engine: OnceCell::new(),
+            ocr_engine: Arc::new(OnceCell::new()),
             filename_cache: Arc::new(FilenameCache::new()),
             batch_controller: Arc::new(BatchController::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -248,9 +251,14 @@ impl AppContainer {
     /// IndexService 생성 - 공유된 vector_worker 사용
     pub fn index_service(&self) -> IndexService {
         let settings = self.get_settings();
-        // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
+        // OCR 엔진: 준비된 경우에만 전달 — 여기서 blocking 초기화하지 않는다
+        // (근거는 ocr_engine_if_ready 주석). 아직 워밍업 전이면 이번 인덱싱만 OCR 없이 진행.
         let ocr = if settings.ocr_enabled {
-            self.get_ocr_engine().ok()
+            let ready = self.ocr_engine_if_ready();
+            if ready.is_none() {
+                tracing::warn!("OCR 엔진이 아직 준비되지 않아 이번 인덱싱은 OCR 없이 진행합니다");
+            }
+            ready
         } else {
             None
         };
@@ -403,12 +411,11 @@ impl AppContainer {
                 let watch_pause_handle = WatchPauseHandle::new();
                 // 벡터 인덱싱은 AI RAG 전용 → incremental update 후 자동 벡터 트리거 비활성화
                 let vector_trigger: Option<Arc<dyn Fn() + Send + Sync>> = None;
-                // OCR 엔진: ocr_enabled + 모델 파일 존재 시에만 전달
-                let ocr = if self.get_settings().ocr_enabled {
-                    self.get_ocr_engine().ok()
-                } else {
-                    None
-                };
+                // OCR 엔진: OnceCell 을 **공유** — 여기서 blocking 초기화하지 않는다.
+                // WatchManager 는 폴더 목록 조회(get_folders_with_info) 등 UI 경로가 함께 쓰는
+                // OnceCell 이라, 여기서 OCR 빌드를 기다리면 폴더 트리가 통째로 안 뜬다(이슈 #35).
+                // 공유이므로 생성 시점에 아직 워밍업 전이어도 준비되는 즉시 반영된다.
+                let ocr = self.ocr_engine.clone();
                 // 벡터/임베더 OnceCell을 **공유** — WatchManager 생성 시점에
                 // OnceCell이 비어있어도, 이후 검색 등으로 init되면 WatchManager도
                 // 매번 .get()으로 최신 상태를 읽는다 (orphan 벡터 방지)
@@ -456,6 +463,17 @@ impl AppContainer {
                     .map_err(|e| ApiError::IndexingFailed(format!("OCR 엔진 초기화 실패: {}", e)))
             })
             .cloned()
+    }
+
+    /// 이미 초기화된 OCR 엔진만 반환 — **절대 blocking 초기화하지 않는다**.
+    ///
+    /// `get_ocr_engine` 은 OnceCell 초기화라, 초기화가 오래 걸리거나 멈추면 같은 OnceCell 을
+    /// 기다리는 **모든** 호출자가 함께 멈춘다. OCR 은 ONNX 세션 빌드라 환경(내부망 EDR 의
+    /// DLL 로드 검사 등)에 따라 수십 초 이상 걸릴 수 있어, UI 경로가 그 지연에 얽히면 앱이
+    /// 멈춘 것처럼 보인다(이슈 #35). 워밍업은 setup 의 전용 스레드가 담당하고, 그 외에는
+    /// 이 peek 으로 준비된 경우에만 사용한다.
+    pub fn ocr_engine_if_ready(&self) -> Option<Arc<OcrEngine>> {
+        self.ocr_engine.get().cloned()
     }
 
     /// OCR 모델 사용 가능 여부
