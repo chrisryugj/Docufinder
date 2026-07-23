@@ -924,22 +924,39 @@ pub fn run() {
             // container.rs OnceCell 내부(멀티스레드 가능)에서 호출하던 것을 여기로 이동
             // SAFETY: setup()은 main 스레드에서 실행되며, ort 라이브러리 초기화 전임.
             // Rust 1.81+ deprecated이나 프로세스 초기화 시점이므로 안전함.
+            // DLL(onnxruntime·pdfium) 은 **번들(설치본) 경로가 있으면 거기서 직접 로드**한다.
+            // AppData 복사본을 로드하면 내부망 EDR(ZombieZERO 등) 이 "이 프로세스가 런타임에 쓴
+            // PE 를 로드" 하는 상관을 dropper 로 오탐해 프로세스를 격리한다(이슈 #35). 설치
+            // 프로그램이 놓은 서명된 번들 파일에서 로드하면 그 상관이 끊겨 오탐이 사라진다.
+            // 번들이 없으면(dev·미번들 플랫폼) 기존 AppData seed/다운로드 경로로 fallback.
             {
-                let dll_path = models_dir
-                    .join("kosimcse-roberta-multitask")
-                    .join(model_downloader::dylib_filename());
+                let ort_lib = model_downloader::dylib_filename();
+                let bundled_ort = resource_dir
+                    .as_ref()
+                    .map(|r| r.join("resources").join("onnxruntime").join(ort_lib));
+                let dll_path = match bundled_ort {
+                    Some(p) if p.exists() => p,
+                    _ => models_dir
+                        .join("kosimcse-roberta-multitask")
+                        .join(ort_lib),
+                };
                 unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll_path) };
                 tracing::info!("ORT_DYLIB_PATH set to {:?}", dll_path);
             }
 
             // PDFIUM_DYLIB_PATH 설정: 스캔/이미지 PDF 페이지 래스터화 fallback 용 (parsers/pdf.rs).
-            // ORT_DYLIB_PATH 와 동일하게 models/pdfium/<lib> 를 가리키게 하되, 외부에서 이미
-            // 명시 설정돼 있으면 그 값을 존중한다. 파일이 없으면 pdf.rs 가 조용히 기능 비활성한다
-            // (크래시 없음 — 기존 born-digital/JPEG 스캔 경로는 그대로 동작).
+            // ORT_DYLIB_PATH 와 동일하게 번들 경로 우선, 없으면 models/pdfium/<lib> fallback.
+            // 외부에서 이미 명시 설정돼 있으면 그 값을 존중한다. 파일이 없으면 pdf.rs 가 조용히
+            // 기능 비활성한다(크래시 없음 — 기존 born-digital/JPEG 스캔 경로는 그대로 동작).
             if std::env::var_os("PDFIUM_DYLIB_PATH").is_none() {
-                let pdfium_path = models_dir
-                    .join("pdfium")
-                    .join(model_downloader::pdfium_lib_filename());
+                let pdfium_lib = model_downloader::pdfium_lib_filename();
+                let bundled_pdfium = resource_dir
+                    .as_ref()
+                    .map(|r| r.join("resources").join("pdfium").join(pdfium_lib));
+                let pdfium_path = match bundled_pdfium {
+                    Some(p) if p.exists() => p,
+                    _ => models_dir.join("pdfium").join(pdfium_lib),
+                };
                 unsafe { std::env::set_var("PDFIUM_DYLIB_PATH", &pdfium_path) };
                 tracing::info!("PDFIUM_DYLIB_PATH set to {:?}", pdfium_path);
             }
@@ -1147,8 +1164,11 @@ pub fn run() {
                 }));
             }
 
-            // 기존 감시 폴더들 자동 감시 복원
-            resume_watchers(&container);
+            // 기존 감시 폴더들 자동 감시 복원 — app.manage 이후 백그라운드 스레드로 실행한다.
+            // resume_watchers 는 get_watch_manager 를 통해 OCR 엔진(ort 세션)을 즉시 빌드하는데,
+            // 내부망 EDR 이 그 로드를 격리하거나(프로세스 kill) ort 로드가 지연되면, setup 메인
+            // 스레드에서 동기 실행 시 창 표시 자체가 막힌다(이슈 #35). 백그라운드로 빼면 OCR
+            // 초기화가 늦거나 실패해도 창은 뜨고 키워드 검색은 동작한다. (아래 이동됨)
 
             // ⚡ 디스크 타입 사전 감지 (C:, D: — PowerShell 호출 1-3초를 앱 시작 시 흡수)
             tauri::async_runtime::spawn(async {
@@ -1201,6 +1221,20 @@ pub fn run() {
 
             // Store app container
             app.manage(RwLock::new(container));
+
+            // 감시 폴더 자동 복원 (위에서 이동) — OCR 엔진 빌드가 창 표시를 막지 않도록 분리.
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(container_state) =
+                        app_handle.try_state::<RwLock<AppContainer>>()
+                    {
+                        if let Ok(container) = container_state.read() {
+                            resume_watchers(&container);
+                        }
+                    }
+                });
+            }
 
             // 🔄 주기 sync task 시작 (v2.5.2) — watcher 이벤트 누락 보완.
             // lib.rs setup 에서 1회만 spawn. AtomicBool shutdown 신호는
