@@ -1,6 +1,7 @@
 pub mod access_diag;
 pub mod cloud_detect;
 pub mod disk_info;
+pub mod dll_diag;
 pub mod elevation;
 pub mod filename_normalize;
 pub mod folder_scope;

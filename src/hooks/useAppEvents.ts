@@ -108,13 +108,19 @@ export function useAppEvents({
             cb.updateToast(layoutToastId, { message: "레이아웃 분석 모델 다운로드 완료!", type: "success" });
           }
           break;
-        case "failed-layout":
+        case "failed-layout": {
+          // 레이아웃 분석은 선택 기능이고 모델이 설치본에 없다(온라인에서만 내려받음).
+          // 인터넷이 막힌 환경에서 OCR 을 켜면 여기서 실패하는데, 그때 "실패" 만 뜨면
+          // OCR 자체가 안 되는 걸로 읽힌다 — 영향 범위를 문구에 명시한다. (이슈 #35)
+          const layoutMsg =
+            "레이아웃 분석 모델을 받지 못했습니다. OCR 본체는 정상 동작하며, 이 선택 기능만 꺼집니다.";
           if (layoutToastId) {
-            cb.updateToast(layoutToastId, { message: "레이아웃 분석 모델 다운로드 실패. 재시작하면 다시 시도합니다.", type: "error" }, 8000);
+            cb.updateToast(layoutToastId, { message: layoutMsg, type: "info" }, 8000);
           } else {
-            cb.showToast("레이아웃 분석 모델 다운로드 실패. 설정에서 다시 시도하세요.", "error", 8000);
+            cb.showToast(layoutMsg, "info", 8000);
           }
           break;
+        }
       }
     }).then((fn) => { unlistenFn = fn; });
 

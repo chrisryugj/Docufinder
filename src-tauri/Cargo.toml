@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.4.6"
+version = "3.4.7"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -126,7 +126,9 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Registry",
     "Win32_NetworkManagement_WNet",
     # 이슈 #33: kordoc Node 사이드카 자식을 Job Object 에 묶어 앱 종료/크래시 시 자동 정리
-    "Win32_System_JobObjects"
+    "Win32_System_JobObjects",
+    # 이슈 #35: ONNX Runtime DLL 로드 실패 원인(GetLastError) 진단
+    "Win32_System_LibraryLoader"
 ] }
 # Fixed-version WebView2 Runtime 지원 (이슈 #24): registry 미등록 환경에서도
 # EBWebView 폴더만 있으면 ICoreWebView2Environment 를 직접 만들어 wry 에 inject.
