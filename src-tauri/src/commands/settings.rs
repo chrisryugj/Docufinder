@@ -812,7 +812,7 @@ pub async fn update_settings(
         // 세션에서는 엔진을 만드는 경로가 없어 재시작 전까지 OCR 이 동작하지 않는다
         // (이슈 #35 — v3.4.5 회귀). 멱등이라 이미 준비/진행 중이면 no-op.
         if let Ok(container) = state.read() {
-            container.spawn_ocr_warmup();
+            container.spawn_ocr_warmup_forced();
         }
 
         let models_dir = app_data_dir.join("models");
@@ -841,7 +841,7 @@ pub async fn update_settings(
                         // 모델이 방금 채워졌으니 엔진도 지금 준비한다(위 워밍업은 실패했을 것).
                         if let Some(state) = warmup_app.try_state::<RwLock<AppContainer>>() {
                             if let Ok(container) = state.read() {
-                                container.spawn_ocr_warmup();
+                                container.spawn_ocr_warmup_forced();
                             }
                         }
                     }

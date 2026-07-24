@@ -16,8 +16,13 @@ use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 use crate::ApiError;
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
+
+/// OCR 워밍업 자동 재시도 상한. ONNX Runtime 로드가 막힌 환경(보안솔루션·런타임 누락)에서는
+/// 매 인덱싱마다 재시도해도 결과가 같아 로그만 오염된다(이슈 #35). 사용자가 설정에서 OCR 을
+/// 다시 켜면 리셋된다.
+const MAX_AUTO_OCR_WARMUP_ATTEMPTS: u32 = 3;
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
 type VectorProgressState = Arc<RwLock<Option<VectorProgressCallback>>>;
@@ -52,6 +57,8 @@ pub struct AppContainer {
     ocr_engine: Arc<OnceCell<Arc<OcrEngine>>>,
     /// OCR 워밍업 진행 중 플래그 — 중복 ONNX 세션 빌드 방지(`spawn_ocr_warmup`)
     ocr_warmup_running: Arc<AtomicBool>,
+    /// OCR 워밍업 연속 실패 횟수 — 자동 재시도 폭주 차단(`MAX_AUTO_OCR_WARMUP_ATTEMPTS`)
+    ocr_warmup_failures: Arc<AtomicU32>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
     /// 배치 인덱싱 컨트롤러 (멀티 폴더 순차 실행 상태)
@@ -181,6 +188,7 @@ impl AppContainer {
             tokenizer: OnceCell::new(),
             ocr_engine: Arc::new(OnceCell::new()),
             ocr_warmup_running: Arc::new(AtomicBool::new(false)),
+            ocr_warmup_failures: Arc::new(AtomicU32::new(0)),
             filename_cache: Arc::new(FilenameCache::new()),
             batch_controller: Arc::new(BatchController::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -492,9 +500,27 @@ impl AppContainer {
     /// - 이미 준비됐거나 워밍업이 진행 중이면 no-op
     /// - 실패하면 진행 플래그를 되돌려, 다음 인덱싱·설정 변경에서 자연히 재시도된다
     /// - 컨테이너 락을 잡지 않는다(OnceCell/경로만 clone) — 수십 초 걸려도 UI 무관
+    /// - 자동 재시도는 [`MAX_AUTO_OCR_WARMUP_ATTEMPTS`] 회까지만. ONNX Runtime 로드가
+    ///   아예 막힌 환경에서는 매번 실패가 확정이라, 인덱싱마다 다시 시도하면 로그만
+    ///   수십 줄 오염된다(이슈 #35 실사례). 사용자가 설정을 다시 켜면 리셋된다.
     pub fn spawn_ocr_warmup(&self) {
+        self.warmup_ocr(false);
+    }
+
+    /// 사용자의 명시적 액션(설정에서 OCR 켜기·모델 다운로드 완료) 용 — 실패 누적을
+    /// 리셋하고 다시 시도한다. 환경이 바뀌었을 수 있으니 자동 캡에 걸리지 않는다.
+    pub fn spawn_ocr_warmup_forced(&self) {
+        self.warmup_ocr(true);
+    }
+
+    fn warmup_ocr(&self, force: bool) {
         if self.ocr_engine.get().is_some() {
             return;
+        }
+        if force {
+            self.ocr_warmup_failures.store(0, Ordering::Release);
+        } else if self.ocr_warmup_failures.load(Ordering::Acquire) >= MAX_AUTO_OCR_WARMUP_ATTEMPTS {
+            return; // 이 환경에서는 실패가 확정 — 사용자가 다시 켤 때까지 조용히 둔다
         }
         if self.ocr_warmup_running.swap(true, Ordering::AcqRel) {
             return; // 이미 워밍업 중
@@ -502,6 +528,7 @@ impl AppContainer {
 
         let cell = self.ocr_engine.clone();
         let running = self.ocr_warmup_running.clone();
+        let failures = self.ocr_warmup_failures.clone();
         let ocr_dir = self.models_dir.join("paddleocr");
         let layout_enabled = self.get_settings().ocr_layout_enabled;
 
@@ -518,16 +545,32 @@ impl AppContainer {
 
             match result {
                 Ok(Ok(())) => {
-                    tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis())
+                    failures.store(0, Ordering::Release);
+                    tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis());
+                    return;
                 }
                 Ok(Err(e)) => tracing::warn!(
-                    "OCR 엔진 워밍업 실패 — 스캔 문서 OCR 만 비활성됩니다 (다음 인덱싱·설정 변경 때 재시도): {}",
+                    "OCR 엔진 워밍업 실패 — 스캔 문서 OCR 만 비활성됩니다: {}",
                     e
                 ),
-                Err(_) => tracing::warn!(
-                    "OCR 엔진 워밍업 중단(panic) — ONNX Runtime 로드가 막힌 환경일 수 있습니다. \
-                     스캔 문서 OCR 만 비활성되며 다음 인덱싱·설정 변경 때 재시도합니다"
-                ),
+                Err(_) => {
+                    tracing::warn!(
+                        "OCR 엔진 워밍업 중단(panic) — ONNX Runtime 로드가 막힌 환경일 수 있습니다. \
+                         스캔 문서 OCR 만 비활성됩니다"
+                    );
+                    // 로드가 왜 막혔는지(보안솔루션 차단·VC++ 재배포 누락·파일 손상)를
+                    // GetLastError 로 특정해 남긴다 — 프로세스당 1회. (이슈 #35)
+                    crate::utils::dll_diag::diagnose_onnxruntime_once();
+                }
+            }
+
+            let n = failures.fetch_add(1, Ordering::AcqRel) + 1;
+            if n >= MAX_AUTO_OCR_WARMUP_ATTEMPTS {
+                tracing::warn!(
+                    "OCR 엔진 준비를 {}회 연속 실패해 자동 재시도를 멈춥니다 — \
+                     설정에서 OCR 을 껐다 켜면 다시 시도합니다",
+                    n
+                );
             }
         });
     }
