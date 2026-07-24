@@ -814,8 +814,12 @@ mod tests {
             ("dict.txt", OCR_DICT_KO_SHA256),
         ] {
             let path = dir.join(name);
-            if !path.exists() {
-                eprintln!("skip: 번들 {} 없음", name);
+            // CI(mac gate)는 tauri 리소스 검증용으로 이 파일들을 0바이트로 비워둔다
+            // (.github/workflows/ci.yml "Create placeholders"). 실물일 때만 검사한다 —
+            // 실제 CRLF 오염이 일어나는 Windows gate 에서는 실물이 그대로 있다.
+            let real = fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false);
+            if !real {
+                eprintln!("skip: 번들 {} 실물 없음 (CI placeholder)", name);
                 continue;
             }
             let actual = compute_sha256(&path).expect("sha256");
