@@ -8,6 +8,7 @@ use crate::constants::BLOCKED_PATH_PATTERNS;
 use crate::db;
 use crate::indexer::pipeline::{
     self, FolderIndexResult, FtsProgressCallback, MetadataScanProgress, MetadataScanResult,
+    SharedOcrEngine,
 };
 use crate::indexer::vector_worker::{VectorIndexingStatus, VectorProgressCallback, VectorWorker};
 use crate::search::vector::VectorIndex;
@@ -25,7 +26,8 @@ pub struct IndexService {
     vector_index: Option<Arc<VectorIndex>>,
     vector_worker: Arc<RwLock<VectorWorker>>,
     cancel_flag: Arc<AtomicBool>,
-    ocr_engine: Option<Arc<crate::ocr::OcrEngine>>,
+    /// 공유 OnceCell — 워밍업이 인덱싱 도중 끝나도 남은 파일부터 OCR 이 반영된다(이슈 #35).
+    ocr_engine: SharedOcrEngine,
 }
 
 impl IndexService {
@@ -36,7 +38,7 @@ impl IndexService {
         vector_index: Option<Arc<VectorIndex>>,
         vector_worker: Arc<RwLock<VectorWorker>>,
         cancel_flag: Arc<AtomicBool>,
-        ocr_engine: Option<Arc<crate::ocr::OcrEngine>>,
+        ocr_engine: SharedOcrEngine,
     ) -> Self {
         Self {
             db_path,

@@ -262,17 +262,20 @@ impl AppContainer {
     /// IndexService 생성 - 공유된 vector_worker 사용
     pub fn index_service(&self) -> IndexService {
         let settings = self.get_settings();
-        // OCR 엔진: 준비된 경우에만 전달 — 여기서 blocking 초기화하지 않는다
-        // (근거는 ocr_engine_if_ready 주석). 아직 워밍업 전이면 이번 인덱싱만 OCR 없이 진행.
+        // OCR 엔진: WatchManager 와 같이 **셀을 공유**한다 — 여기서 blocking 초기화하지
+        // 않고(근거는 ocr_engine_if_ready 주석), 스냅샷도 뜨지 않는다. 스냅샷으로 넘기면
+        // 워밍업이 몇백 ms 뒤에 끝나도 이 배치는 마지막 파일까지 OCR 없이 돌아, 대량 폴더를
+        // 통째로 다시 인덱싱해야 했다(이슈 #35). 이제 준비되는 즉시 남은 파일부터 걸린다.
         let ocr = if settings.ocr_enabled {
-            let ready = self.ocr_engine_if_ready();
-            if ready.is_none() {
-                tracing::warn!("OCR 엔진이 아직 준비되지 않아 이번 인덱싱은 OCR 없이 진행합니다");
+            if self.ocr_engine.get().is_none() {
+                tracing::info!(
+                    "OCR 엔진 준비 전 — 워밍업을 걸고 준비되는 대로 인덱싱에 반영합니다"
+                );
                 // 준비 안 됐으면 여기서 워밍업을 걸어둔다 — 안 그러면 시작 시점에
                 // OCR 이 꺼져 있던 세션은 엔진을 만드는 경로가 없어 영영 OCR 없이 돈다.
                 self.spawn_ocr_warmup();
             }
-            ready
+            Some(self.ocr_engine.clone())
         } else {
             None
         };

@@ -738,10 +738,15 @@ pub async fn update_settings(
 
     // 인메모리 캐시 갱신 (API 키 포함)
     settings.ai_api_key = api_key_for_cache;
-    {
+    // 캐시를 덮기 **전** 의 OCR 토글 — 아래 워밍업이 "사용자가 방금 켰다"(전이)와
+    // "켠 채로 다른 설정을 저장했다"를 구분하는 데 쓴다. 설정 모달은 300ms 디바운스
+    // 자동저장이라 이 커맨드는 토글 하나 바꿀 때마다 들어온다.
+    let ocr_was_enabled = {
         let container = state.read()?;
+        let prev = container.get_settings().ocr_enabled;
         container.update_settings_cache(settings.clone());
-    }
+        prev
+    };
 
     // 전역 formula OCR 토글 — kordoc 사이드카 호출 시 --formula-ocr 플래그 전파용
     crate::parsers::kordoc::set_formula_ocr_enabled(settings.formula_ocr_enabled);
@@ -811,8 +816,16 @@ pub async fn update_settings(
         // 런타임 토글 ON → 엔진 워밍업. 이게 없으면 앱이 ocr_enabled:false 로 시작한
         // 세션에서는 엔진을 만드는 경로가 없어 재시작 전까지 OCR 이 동작하지 않는다
         // (이슈 #35 — v3.4.5 회귀). 멱등이라 이미 준비/진행 중이면 no-op.
+        //
+        // forced(실패 카운터 리셋)는 **방금 켠 경우에만**. 켜 둔 채로 다른 설정을 저장할
+        // 때마다 리셋하면 ONNX 로드가 막힌 환경에서 v3.4.7 이 넣은 자동 재시도 캡
+        // (MAX_AUTO_OCR_WARMUP_ATTEMPTS)이 무력화돼 경고가 다시 쌓인다.
         if let Ok(container) = state.read() {
-            container.spawn_ocr_warmup_forced();
+            if ocr_was_enabled {
+                container.spawn_ocr_warmup();
+            } else {
+                container.spawn_ocr_warmup_forced();
+            }
         }
 
         let models_dir = app_data_dir.join("models");

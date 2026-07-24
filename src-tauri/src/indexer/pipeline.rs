@@ -14,7 +14,7 @@ use crate::parsers::{parse_file, ParsedDocument};
 use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
 
 use crossbeam_channel::{bounded, RecvTimeoutError};
-use once_cell::sync::Lazy;
+use once_cell::sync::{Lazy, OnceCell};
 use rayon::prelude::*;
 use rusqlite::Connection;
 use std::fs;
@@ -25,6 +25,15 @@ use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
 use super::collector::{collect_files, save_file_metadata_only};
+
+/// 인덱싱 경로가 공유하는 OCR 엔진 핸들.
+///
+/// `None` = OCR 설정이 꺼짐. `Some(cell)` = 켜짐 — 다만 **아직 준비 전일 수 있다**.
+/// 워밍업은 백그라운드라(이슈 #35) 인덱싱이 먼저 시작될 수 있어서, 파일마다 `.get()` 으로
+/// 최신 상태를 읽는다. `Option<Arc<OcrEngine>>` 스냅샷으로 캡처하면 워밍업이 몇백 ms 뒤에
+/// 끝나도 그 배치는 마지막 파일까지 OCR 없이 돌고, 복구하려면 재인덱싱해야 했다.
+/// WatchManager(`IndexContext`)가 같은 이유로 이미 쓰던 방식이다.
+pub type SharedOcrEngine = Option<Arc<OnceCell<Arc<OcrEngine>>>>;
 
 /// FTS 인덱싱 시 형태소 토큰 생성용 글로벌 토크나이저 (lazy init)
 pub(crate) static FTS_TOKENIZER: Lazy<Option<LinderaKoTokenizer>> =
@@ -151,7 +160,7 @@ pub fn index_folder_fts_only(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     excluded_dirs: &[String],
-    ocr_engine: Option<Arc<OcrEngine>>,
+    ocr_engine: SharedOcrEngine,
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
@@ -178,7 +187,7 @@ pub fn resume_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     excluded_dirs: &[String],
-    ocr_engine: Option<Arc<OcrEngine>>,
+    ocr_engine: SharedOcrEngine,
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     index_folder_fts_impl(
@@ -205,7 +214,7 @@ fn index_folder_fts_impl(
     max_file_size_mb: u64,
     skip_indexed: bool,
     excluded_dirs: &[String],
-    ocr_engine: Option<Arc<OcrEngine>>,
+    ocr_engine: SharedOcrEngine,
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<FolderIndexResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
@@ -429,8 +438,9 @@ fn index_folder_fts_impl(
             }
         };
 
-        // OCR 엔진 참조 (Arc clone은 move 전에 완료)
-        let ocr_ref = ocr_engine.as_ref();
+        // OCR 엔진 셀 참조 — 실제 엔진은 파일마다 아래에서 `.get()` 으로 읽는다
+        // (워밍업이 인덱싱 도중 끝나도 남은 파일부터 즉시 반영된다).
+        let ocr_cell = ocr_engine.as_deref();
 
         pool.install(|| {
             let _ = file_paths.par_iter().try_for_each(|path| {
@@ -439,7 +449,7 @@ fn index_folder_fts_impl(
                 }
 
                 let path_clone = path.clone();
-                let ocr_deref = ocr_ref.map(|e| e.as_ref());
+                let ocr_deref = ocr_cell.and_then(|c| c.get()).map(|e| e.as_ref());
                 let result =
                     match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
                         Ok(Ok(doc)) => {
