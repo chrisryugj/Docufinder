@@ -794,3 +794,38 @@ fn seed_one(src: &Path, dest: &Path, expected_hash: &str, label: &str) {
         Err(e) => tracing::warn!("seed: 번들 {} 복사 실패: {}", label, e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 번들 리소스의 SHA-256 이 선언 상수와 일치해야 한다.
+    ///
+    /// 이슈 #35 실측: `dict.txt` 가 `.gitattributes` 에 없어 Windows 러너 체크아웃에서
+    /// LF→CRLF 로 바뀌었고(47,451 → 59,396 bytes), 그 결과 (1) `seed_one` 이 매 부팅
+    /// 삭제·재복사(= OCR 초기화와 레이스) (2) `ensure_ocr_models` 검증은 항상 실패했다.
+    /// 이 테스트는 Windows CI 에서 그 변환을 즉시 잡는다.
+    #[test]
+    fn bundled_ocr_resources_match_declared_hashes() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/paddleocr");
+        for (name, expected) in [
+            ("det.onnx", OCR_DET_SHA256),
+            ("rec.onnx", OCR_REC_KO_SHA256),
+            ("dict.txt", OCR_DICT_KO_SHA256),
+        ] {
+            let path = dir.join(name);
+            if !path.exists() {
+                eprintln!("skip: 번들 {} 없음", name);
+                continue;
+            }
+            let actual = compute_sha256(&path).expect("sha256");
+            assert_eq!(
+                actual,
+                expected,
+                "번들 {} 의 해시가 선언과 다르다 (체크아웃 개행 변환 의심): {} bytes",
+                name,
+                std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+            );
+        }
+    }
+}

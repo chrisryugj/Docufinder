@@ -50,6 +50,8 @@ pub struct AppContainer {
     /// 아직 워밍업 전이라도, 이후 준비되면 WatchManager 가 매번 `.get()` 으로 최신 상태를
     /// 읽는다. Option 으로 캡처하면 생성 순서에 따라 OCR 이 영구히 꺼진 채로 굳는다.
     ocr_engine: Arc<OnceCell<Arc<OcrEngine>>>,
+    /// OCR 워밍업 진행 중 플래그 — 중복 ONNX 세션 빌드 방지(`spawn_ocr_warmup`)
+    ocr_warmup_running: Arc<AtomicBool>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
     /// 배치 인덱싱 컨트롤러 (멀티 폴더 순차 실행 상태)
@@ -178,6 +180,7 @@ impl AppContainer {
             vector_worker: Arc::new(RwLock::new(VectorWorker::new())),
             tokenizer: OnceCell::new(),
             ocr_engine: Arc::new(OnceCell::new()),
+            ocr_warmup_running: Arc::new(AtomicBool::new(false)),
             filename_cache: Arc::new(FilenameCache::new()),
             batch_controller: Arc::new(BatchController::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -257,6 +260,9 @@ impl AppContainer {
             let ready = self.ocr_engine_if_ready();
             if ready.is_none() {
                 tracing::warn!("OCR 엔진이 아직 준비되지 않아 이번 인덱싱은 OCR 없이 진행합니다");
+                // 준비 안 됐으면 여기서 워밍업을 걸어둔다 — 안 그러면 시작 시점에
+                // OCR 이 꺼져 있던 세션은 엔진을 만드는 경로가 없어 영영 OCR 없이 돈다.
+                self.spawn_ocr_warmup();
             }
             ready
         } else {
@@ -470,10 +476,48 @@ impl AppContainer {
     /// `get_ocr_engine` 은 OnceCell 초기화라, 초기화가 오래 걸리거나 멈추면 같은 OnceCell 을
     /// 기다리는 **모든** 호출자가 함께 멈춘다. OCR 은 ONNX 세션 빌드라 환경(내부망 EDR 의
     /// DLL 로드 검사 등)에 따라 수십 초 이상 걸릴 수 있어, UI 경로가 그 지연에 얽히면 앱이
-    /// 멈춘 것처럼 보인다(이슈 #35). 워밍업은 setup 의 전용 스레드가 담당하고, 그 외에는
+    /// 멈춘 것처럼 보인다(이슈 #35). 워밍업은 `spawn_ocr_warmup` 이 담당하고, 그 외에는
     /// 이 peek 으로 준비된 경우에만 사용한다.
     pub fn ocr_engine_if_ready(&self) -> Option<Arc<OcrEngine>> {
         self.ocr_engine.get().cloned()
+    }
+
+    /// OCR 엔진을 백그라운드에서 준비한다(멱등, 논블로킹).
+    ///
+    /// v3.4.5 는 UI 굶김을 막으려 blocking 초기화 호출을 전부 peek 으로 바꿨는데,
+    /// 그 결과 **엔진을 실제로 만드는 경로가 시작 워밍업 하나뿐** 이 됐다. 그래서
+    /// `ocr_enabled:false` 로 켠 앱에서 설정으로 OCR 을 켜면 재시작 전까지 OCR 이
+    /// 영영 동작하지 않았다(이슈 #35). 초기화 실패도 마찬가지로 재시도 경로가 없었다.
+    ///
+    /// - 이미 준비됐거나 워밍업이 진행 중이면 no-op
+    /// - 실패하면 진행 플래그를 되돌려, 다음 인덱싱·설정 변경에서 자연히 재시도된다
+    /// - 컨테이너 락을 잡지 않는다(OnceCell/경로만 clone) — 수십 초 걸려도 UI 무관
+    pub fn spawn_ocr_warmup(&self) {
+        if self.ocr_engine.get().is_some() {
+            return;
+        }
+        if self.ocr_warmup_running.swap(true, Ordering::AcqRel) {
+            return; // 이미 워밍업 중
+        }
+
+        let cell = self.ocr_engine.clone();
+        let running = self.ocr_warmup_running.clone();
+        let ocr_dir = self.models_dir.join("paddleocr");
+        let layout_enabled = self.get_settings().ocr_layout_enabled;
+
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let result =
+                cell.get_or_try_init(|| OcrEngine::new(&ocr_dir, layout_enabled).map(Arc::new));
+            match result {
+                Ok(_) => tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis()),
+                Err(e) => tracing::warn!(
+                    "OCR 엔진 워밍업 실패 — 스캔 문서 OCR 만 비활성됩니다 (다음 인덱싱·설정 변경 때 재시도): {}",
+                    e
+                ),
+            }
+            running.store(false, Ordering::Release);
+        });
     }
 
     /// OCR 모델 사용 가능 여부
@@ -515,5 +559,97 @@ impl AppContainer {
         self.filename_cache
             .load_from_db(&conn)
             .map_err(|e| ApiError::DatabaseQuery(format!("Failed to load filename cache: {}", e)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn resources_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources")
+    }
+
+    fn ort_dylib() -> PathBuf {
+        let lib = if cfg!(target_os = "windows") {
+            "onnxruntime.dll"
+        } else if cfg!(target_os = "macos") {
+            "libonnxruntime.dylib"
+        } else {
+            "libonnxruntime.so"
+        };
+        resources_dir().join("onnxruntime").join(lib)
+    }
+
+    fn wait_ready(container: &AppContainer, timeout: Duration) -> bool {
+        let started = Instant::now();
+        while started.elapsed() < timeout {
+            if container.ocr_engine_if_ready().is_some() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
+    /// 이슈 #35 회귀: 워밍업이 실패해도 **재시도** 되어야 한다.
+    ///
+    /// v3.4.5 는 OCR 초기화 경로가 시작 워밍업 하나뿐이라, 그 한 번이 실패하면
+    /// (모델 seed 레이스·설정이 나중에 켜짐) 재시작 전까지 OCR 이 영영 죽었다.
+    #[test]
+    fn ocr_warmup_failure_is_retryable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let container = AppContainer::new(tmp.path()); // models/paddleocr 없음
+
+        container.spawn_ocr_warmup();
+        assert!(
+            !wait_ready(&container, Duration::from_secs(3)),
+            "모델이 없는데 엔진이 준비됐다고 보고하면 안 된다"
+        );
+
+        let ocr_src = resources_dir().join("paddleocr");
+        if !ocr_src.join("det.onnx").exists() || !ort_dylib().exists() {
+            eprintln!("skip: 번들 OCR 모델/ONNX Runtime 없음 — 재시도 경로만 부분 검증");
+            return;
+        }
+
+        // 모델을 채우고 다시 걸면 준비돼야 한다 = 진행 플래그가 실패로 굳지 않았다.
+        let ocr_dst = tmp.path().join("models").join("paddleocr");
+        fs_copy_models(&ocr_src, &ocr_dst);
+        unsafe { std::env::set_var("ORT_DYLIB_PATH", ort_dylib()) };
+
+        container.spawn_ocr_warmup();
+        assert!(
+            wait_ready(&container, Duration::from_secs(120)),
+            "실패 후 재호출한 워밍업이 엔진을 만들지 못했다 — 진행 플래그가 굳었다"
+        );
+    }
+
+    /// 이슈 #35 회귀: 시작 시 OCR 이 꺼져 있던 세션도 인덱싱 경로에서 워밍업이 걸려야 한다.
+    /// (index_service 는 peek 만 하므로, 워밍업을 스스로 걸지 않으면 OCR 없이 영구 동작)
+    #[test]
+    fn index_service_triggers_warmup_when_ocr_not_ready() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let container = AppContainer::new(tmp.path());
+        {
+            let mut s = container.settings_cache.write().unwrap();
+            s.ocr_enabled = true;
+        }
+        assert!(container.ocr_engine_if_ready().is_none());
+
+        let _ = container.index_service();
+        assert!(
+            container.ocr_warmup_running.load(Ordering::Acquire)
+                || container.ocr_engine_if_ready().is_some(),
+            "OCR 이 준비 안 된 상태의 index_service 가 워밍업을 걸지 않았다"
+        );
+    }
+
+    fn fs_copy_models(src: &Path, dst: &Path) {
+        std::fs::create_dir_all(dst).unwrap();
+        for name in ["det.onnx", "rec.onnx", "dict.txt"] {
+            std::fs::copy(src.join(name), dst.join(name)).unwrap();
+        }
     }
 }

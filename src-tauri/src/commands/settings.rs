@@ -808,21 +808,42 @@ pub async fn update_settings(
 
     // OCR 활성화 시 모델이 없으면 백그라운드 다운로드 시작
     if settings.ocr_enabled {
+        // 런타임 토글 ON → 엔진 워밍업. 이게 없으면 앱이 ocr_enabled:false 로 시작한
+        // 세션에서는 엔진을 만드는 경로가 없어 재시작 전까지 OCR 이 동작하지 않는다
+        // (이슈 #35 — v3.4.5 회귀). 멱등이라 이미 준비/진행 중이면 no-op.
+        if let Ok(container) = state.read() {
+            container.spawn_ocr_warmup();
+        }
+
         let models_dir = app_data_dir.join("models");
         let ocr_dir = models_dir.join("paddleocr");
         let det_exists = ocr_dir.join("det.onnx").exists();
         let rec_exists = ocr_dir.join("rec.onnx").exists();
         if !det_exists || !rec_exists {
             let download_app = app.clone();
+            let resource_dir = app.path().resource_dir().ok();
             tauri::async_runtime::spawn(async move {
                 let _ = download_app.emit("model-download-status", "downloading-ocr");
+                let warmup_app = download_app.clone();
                 match tokio::task::spawn_blocking(move || {
+                    // 설치본 번들을 먼저 적용 — 폐쇄망에서는 토글만 켜도 동작해야 한다.
+                    // (기존엔 곧장 huggingface 다운로드라 즉시 "OCR 모델 다운로드 실패".)
+                    // seed 는 해시 동일 시 no-op 이라 온라인 환경에도 무해하다.
+                    if let Some(dir) = resource_dir {
+                        model_downloader::seed_bundled_models(&dir, &models_dir);
+                    }
                     model_downloader::ensure_ocr_models(&models_dir)
                 })
                 .await
                 {
                     Ok(Ok(_)) => {
                         let _ = download_app.emit("model-download-status", "completed-ocr");
+                        // 모델이 방금 채워졌으니 엔진도 지금 준비한다(위 워밍업은 실패했을 것).
+                        if let Some(state) = warmup_app.try_state::<RwLock<AppContainer>>() {
+                            if let Ok(container) = state.read() {
+                                container.spawn_ocr_warmup();
+                            }
+                        }
                     }
                     _ => {
                         let _ = download_app.emit("model-download-status", "failed-ocr");

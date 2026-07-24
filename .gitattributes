@@ -10,3 +10,9 @@
 *.png binary
 *.ico binary
 *.onnx binary
+
+# OCR 사전 — 순수 텍스트라 Windows 러너(autocrlf) 체크아웃에서 LF→CRLF 로 바뀐다.
+# 그러면 번들본 SHA 가 model_downloader 의 OCR_DICT_KO_SHA256 과 영영 불일치해
+# 매 부팅마다 삭제·재복사되고(= OCR 초기화와 레이스), 다운로드 검증 경로는 실패한다.
+# 실측: 47,451 bytes(11,945줄) → Windows 설치본 59,396 bytes (이슈 #35).
+src-tauri/resources/paddleocr/dict.txt binary
