@@ -507,16 +507,28 @@ impl AppContainer {
 
         std::thread::spawn(move || {
             let started = std::time::Instant::now();
-            let result =
-                cell.get_or_try_init(|| OcrEngine::new(&ocr_dir, layout_enabled).map(Arc::new));
+            // ort 는 동적 라이브러리 로드 실패를 Err 가 아니라 **panic** 으로 알린다
+            // (보안솔루션이 DLL 로드를 막는 환경이 정확히 이 경로). 잡지 않으면 이 스레드가
+            // 죽으면서 진행 플래그가 true 로 굳어 재시도가 영영 막힌다.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cell.get_or_try_init(|| OcrEngine::new(&ocr_dir, layout_enabled).map(Arc::new))
+                    .map(|_| ())
+            }));
+            running.store(false, Ordering::Release);
+
             match result {
-                Ok(_) => tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis()),
-                Err(e) => tracing::warn!(
+                Ok(Ok(())) => {
+                    tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis())
+                }
+                Ok(Err(e)) => tracing::warn!(
                     "OCR 엔진 워밍업 실패 — 스캔 문서 OCR 만 비활성됩니다 (다음 인덱싱·설정 변경 때 재시도): {}",
                     e
                 ),
+                Err(_) => tracing::warn!(
+                    "OCR 엔진 워밍업 중단(panic) — ONNX Runtime 로드가 막힌 환경일 수 있습니다. \
+                     스캔 문서 OCR 만 비활성되며 다음 인덱싱·설정 변경 때 재시도합니다"
+                ),
             }
-            running.store(false, Ordering::Release);
         });
     }
 
@@ -582,6 +594,13 @@ mod tests {
         resources_dir().join("onnxruntime").join(lib)
     }
 
+    /// 실물 파일인지 (CI placeholder 는 0바이트)
+    fn is_real_file(path: &Path) -> bool {
+        std::fs::metadata(path)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false)
+    }
+
     fn wait_ready(container: &AppContainer, timeout: Duration) -> bool {
         let started = Instant::now();
         while started.elapsed() < timeout {
@@ -608,9 +627,12 @@ mod tests {
             "모델이 없는데 엔진이 준비됐다고 보고하면 안 된다"
         );
 
+        // 실물 리소스가 있을 때만 "다시 걸면 준비된다" 까지 검증한다.
+        // CI(mac gate)는 tauri 리소스 검증용으로 이 파일들을 0바이트로 비워두므로
+        // (.github/workflows/ci.yml "Create placeholders"), 크기까지 봐야 한다.
         let ocr_src = resources_dir().join("paddleocr");
-        if !ocr_src.join("det.onnx").exists() || !ort_dylib().exists() {
-            eprintln!("skip: 번들 OCR 모델/ONNX Runtime 없음 — 재시도 경로만 부분 검증");
+        if !is_real_file(&ocr_src.join("det.onnx")) || !is_real_file(&ort_dylib()) {
+            eprintln!("skip: 번들 OCR 모델/ONNX Runtime 실물 없음 — 재시도 경로만 부분 검증");
             return;
         }
 
