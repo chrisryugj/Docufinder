@@ -770,7 +770,7 @@ pub fn seed_bundled_models(resource_dir: &Path, models_dir: &Path) {
     }
 }
 
-/// 번들 파일 1개를 dest 로 복사. 이미 동일 해시면 skip, 해시 다르면 덮어씀.
+/// 번들 파일 1개를 dest 로 복사. 이미 같은 파일이면 skip, 다르면 덮어씀.
 /// 번들 원본이 없거나 복사 실패해도 warn 만 남기고 진행 — 다운로드 fallback 이 따라온다.
 fn seed_one(src: &Path, dest: &Path, expected_hash: &str, label: &str) {
     if !src.exists() {
@@ -783,10 +783,8 @@ fn seed_one(src: &Path, dest: &Path, expected_hash: &str, label: &str) {
     }
 
     if dest.exists() {
-        if let Ok(h) = compute_sha256(dest) {
-            if h == expected_hash {
-                return; // 이미 최신
-            }
+        if is_same_seed(src, dest, expected_hash) {
+            return; // 이미 최신
         }
         let _ = fs::remove_file(dest);
     }
@@ -800,6 +798,36 @@ fn seed_one(src: &Path, dest: &Path, expected_hash: &str, label: &str) {
         ),
         Err(e) => tracing::warn!("seed: 번들 {} 복사 실패: {}", label, e),
     }
+}
+
+/// dest 가 이미 번들 원본과 같은 파일인지 — **크기 우선** 판정.
+///
+/// 종전에는 `compute_sha256(dest) == expected_hash` 만 봤는데, 해시를 고정하지 않은 자산
+/// (pdfium·macOS dylib)은 `expected_hash` 가 빈 문자열이라 이 비교가 영원히 거짓이었다.
+/// 그래서 매 부팅마다 7.2MB 를 지웠다 다시 썼다 — 이슈 #35 로그에 `seed: 번들 pdfium dylib
+/// 적용 완료` 가 실행마다 찍힌 게 그 증거다. v3.4.4 부터 로드 경로는 번들 원본이라 이 사본은
+/// 쓰이지도 않는데, "프로세스가 방금 디스크에 쓴 PE" 라는 EDR dropper 오탐 패턴만 남겼다.
+///
+/// 크기가 같으면 최신으로 본다 — 개행 변환 오염(dict.txt 47,451→59,396)이나 버전 교체는
+/// 크기가 함께 바뀌므로 그대로 잡힌다. 해시 상수가 있으면 거기서 한 번 더 정확히 확인한다.
+fn is_same_seed(src: &Path, dest: &Path, expected_hash: &str) -> bool {
+    let src_len = match fs::metadata(src) {
+        Ok(m) => m.len(),
+        Err(_) => return false,
+    };
+    let dest_len = match fs::metadata(dest) {
+        Ok(m) => m.len(),
+        Err(_) => return false,
+    };
+    if src_len != dest_len {
+        return false;
+    }
+    if expected_hash.is_empty() {
+        return true;
+    }
+    compute_sha256(dest)
+        .map(|h| h == expected_hash)
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -838,5 +866,72 @@ mod tests {
                 std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
             );
         }
+    }
+
+    /// 번들 네이티브 라이브러리 무결성.
+    ///
+    /// v3.4.4 부터 `ORT_DYLIB_PATH`/`PDFIUM_DYLIB_PATH` 는 **설치본 번들** 을 직접 가리킨다.
+    /// 그래서 이 두 파일의 체크아웃 변환·손상은 곧장 기동 실패가 된다(이슈 #35).
+    /// `.gitattributes` 의 binary 지정과 짝을 이루는 게이트다.
+    #[test]
+    fn bundled_native_libs_are_intact() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources");
+        let is_real = |p: &Path| fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false);
+
+        // 해시 상수가 Windows 타깃에서만 컴파일된다 — 체크아웃 변환이 실제로 일어나는
+        // 곳도 Windows 러너이므로 게이트로서 충분하다.
+        #[cfg(target_os = "windows")]
+        {
+            let ort = root.join("onnxruntime").join("onnxruntime.dll");
+            if is_real(&ort) {
+                assert_eq!(
+                    compute_sha256(&ort).expect("sha256"),
+                    ONNX_RUNTIME_DLL_SHA256,
+                    "번들 onnxruntime.dll 해시가 선언과 다르다"
+                );
+            } else {
+                eprintln!("skip: 번들 onnxruntime.dll 실물 없음 (CI placeholder)");
+            }
+        }
+
+        // pdfium 은 해시를 고정하지 않는다(플랫폼별 파일이 서로 다른 경로로 준비된다).
+        // 최소한 0바이트·잘림 손상은 잡는다 — 실제 7.2MB 다.
+        let pdfium = root.join("pdfium").join("pdfium.dll");
+        if is_real(&pdfium) {
+            let len = fs::metadata(&pdfium).map(|m| m.len()).unwrap_or(0);
+            assert!(len > 1_000_000, "번들 pdfium.dll 이 잘렸다: {} bytes", len);
+        } else {
+            eprintln!("skip: 번들 pdfium.dll 실물 없음 (CI placeholder)");
+        }
+    }
+
+    /// 이슈 #35 회귀: 해시를 고정하지 않은 자산(pdfium·macOS dylib)도 seed 가 멱등이어야 한다.
+    ///
+    /// 종전 판정은 `compute_sha256(dest) == ""` 라 **항상 거짓** → 매 부팅 삭제·재복사였다.
+    /// 로드되지도 않는 사본을 매번 다시 쓰면 EDR 이 dropper 로 오탐할 빌미만 남는다.
+    #[test]
+    fn seed_one_skips_when_bundle_already_applied() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let src = tmp.path().join("bundled.bin");
+        let dest = tmp.path().join("models").join("seeded.bin");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::write(&src, b"pdfium-ish payload").unwrap();
+
+        seed_one(&src, &dest, "", "테스트 자산");
+        assert_eq!(fs::read(&dest).unwrap(), b"pdfium-ish payload");
+
+        // 크기가 같은 다른 내용으로 바꿔 둔다 — 재복사가 일어나면 원본으로 덮어써진다.
+        fs::write(&dest, b"PDFIUM-ISH PAYLOAD").unwrap();
+        seed_one(&src, &dest, "", "테스트 자산");
+        assert_eq!(
+            fs::read(&dest).unwrap(),
+            b"PDFIUM-ISH PAYLOAD",
+            "해시 미고정 자산이 매 호출 재복사됐다 (이슈 #35)"
+        );
+
+        // 크기가 다르면(= 변환 오염·버전 교체) 다시 채운다.
+        fs::write(&dest, b"stale").unwrap();
+        seed_one(&src, &dest, "", "테스트 자산");
+        assert_eq!(fs::read(&dest).unwrap(), b"pdfium-ish payload");
     }
 }

@@ -8,9 +8,9 @@ use crate::indexer::collector::save_file_metadata_only;
 use crate::indexer::exclusions::is_excluded_dir;
 use crate::indexer::pipeline::{
     save_document_to_db_fts_only_no_tx, FtsIndexingProgress, FtsProgressCallback, IndexError,
-    ParseResult, CHANNEL_BUFFER_SIZE, FTS_TOKENIZER, MAX_INDEXING_ERRORS, TRANSACTION_BATCH_SIZE,
+    ParseResult, SharedOcrEngine, CHANNEL_BUFFER_SIZE, FTS_TOKENIZER, MAX_INDEXING_ERRORS,
+    TRANSACTION_BATCH_SIZE,
 };
-use crate::ocr::OcrEngine;
 use crate::parsers::parse_file;
 use crate::tokenizer::TextTokenizer;
 use crate::utils::idle_detector;
@@ -49,7 +49,7 @@ pub fn sync_folder_fts(
     progress_callback: Option<FtsProgressCallback>,
     max_file_size_mb: u64,
     excluded_dirs: &[String],
-    ocr_engine: Option<Arc<OcrEngine>>,
+    ocr_engine: SharedOcrEngine,
     vector_index: Option<Arc<crate::search::vector::VectorIndex>>,
 ) -> Result<SyncResult, IndexError> {
     use crate::utils::disk_info::{detect_disk_type, DiskSettings};
@@ -379,7 +379,8 @@ pub fn sync_folder_fts(
             }
         };
 
-        let ocr_ref = ocr_engine.as_ref();
+        // 파일마다 `.get()` — 워밍업이 동기화 도중 끝나도 남은 파일부터 반영된다(이슈 #35).
+        let ocr_cell = ocr_engine.as_deref();
 
         pool.install(|| {
             let _ = to_index.par_iter().try_for_each(|path| {
@@ -388,7 +389,7 @@ pub fn sync_folder_fts(
                 }
 
                 let path_clone = path.clone();
-                let ocr_deref = ocr_ref.map(|e| e.as_ref());
+                let ocr_deref = ocr_cell.and_then(|c| c.get()).map(|e| e.as_ref());
                 let result =
                     match catch_unwind(AssertUnwindSafe(|| parse_file(&path_clone, ocr_deref))) {
                         Ok(Ok(doc)) => {

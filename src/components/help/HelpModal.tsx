@@ -411,6 +411,11 @@ function AdvancedSection() {
         설정 → 검색 탭에서 'PDF 수식 OCR'을 켜면 PDF 속 수학 수식을 LaTeX로 추출해 검색하고, 미리보기에서 수식 모양 그대로 렌더해줘요. 최초 1회 모델(약 155MB)을 자동 다운로드해요.
       </Paragraph>
 
+      <SubTitle>망분리(폐쇄망) 환경</SubTitle>
+      <Paragraph>
+        OCR에 필요한 파일은 설치본에 모두 들어 있어서 인터넷 없이도 동작해요. 네트워크 시도 자체를 막고 싶으면 시스템 환경변수 'DOCUFINDER_OFFLINE'을 '1'로 설정하세요 — 평소에는 설정할 필요 없어요. 이 경우 '레이아웃 분석'(온라인 전용 선택 기능)만 꺼지고 OCR과 검색은 그대로예요.
+      </Paragraph>
+
       <SubTitle>자동 문서 분류</SubTitle>
       <Paragraph>
         인덱싱된 문서를 내용 기반으로 자동 분류해요. 검색 결과에서 문서 유형 태그를 확인할 수 있어요.

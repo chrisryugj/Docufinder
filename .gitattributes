@@ -11,6 +11,13 @@
 *.ico binary
 *.onnx binary
 
+# 네이티브 라이브러리 — v3.4.4 부터 설치본 번들을 앱이 **직접 로드**한다
+# (ORT_DYLIB_PATH / PDFIUM_DYLIB_PATH). 체크아웃 변환이 섞이면 곧장 기동 실패다.
+# git 의 자동 바이너리 판정에 맡기지 않고 명시한다 (이슈 #35).
+*.dll binary
+*.dylib binary
+*.so binary
+
 # OCR 사전 — 순수 텍스트라 Windows 러너(autocrlf) 체크아웃에서 LF→CRLF 로 바뀐다.
 # 그러면 번들본 SHA 가 model_downloader 의 OCR_DICT_KO_SHA256 과 영영 불일치해
 # 매 부팅마다 삭제·재복사되고(= OCR 초기화와 레이스), 다운로드 검증 경로는 실패한다.

@@ -1183,10 +1183,11 @@ pub fn run() {
             }
 
             // 기존 감시 폴더들 자동 감시 복원 — app.manage 이후 백그라운드 스레드로 실행한다.
-            // resume_watchers 는 get_watch_manager 를 통해 OCR 엔진(ort 세션)을 즉시 빌드하는데,
-            // 내부망 EDR 이 그 로드를 격리하거나(프로세스 kill) ort 로드가 지연되면, setup 메인
-            // 스레드에서 동기 실행 시 창 표시 자체가 막힌다(이슈 #35). 백그라운드로 빼면 OCR
-            // 초기화가 늦거나 실패해도 창은 뜨고 키워드 검색은 동작한다. (아래 이동됨)
+            // v3.4.5 이전에는 resume_watchers 가 get_watch_manager 를 통해 OCR 엔진(ort 세션)을
+            // 즉시 빌드해서, 내부망 EDR 이 그 로드를 격리하거나 ort 로드가 지연되면 setup 메인
+            // 스레드가 물려 창 표시 자체가 막혔다(이슈 #35). 지금은 OCR 셀을 공유만 하지만,
+            // WatchManager 생성은 감시 폴더 수만큼 파일시스템을 훑으므로 백그라운드가 맞다.
+            // (아래로 이동됨)
 
             // ⚡ 디스크 타입 사전 감지 (C:, D: — PowerShell 호출 1-3초를 앱 시작 시 흡수)
             tauri::async_runtime::spawn(async {

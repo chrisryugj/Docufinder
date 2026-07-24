@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
-# macOS arm64 빌드 리소스 셋업 — node, kordoc, onnxruntime dylib 을 src-tauri/resources/ 에 채운다.
+# macOS arm64 빌드 리소스 셋업 — node, kordoc, dylib 들을 src-tauri/resources/ 에 채운다.
 # - Node v20 darwin-arm64
 # - kordoc dist + node_modules (prod)
 # - ONNX Runtime v1.23.0 osx-arm64 dylib
+# - pdfium mac-arm64 dylib (스캔 PDF 래스터화)
+#
+# 이 셋은 .gitignore 대상이라 새 체크아웃에는 없다 — 안 돌리면 tauri build.rs 의 리소스
+# 검증이 "resource path ... doesn't exist" 로 실패한다(cargo test 포함).
 #
 # 사용:
 #   bash scripts/setup-macos-resources.sh
@@ -24,7 +28,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$RES_DIR/onnxruntime" "$RES_DIR/paddleocr" "$RES_DIR/pdfium"
 
-echo "==> [1/3] Node ${NODE_VERSION} darwin-arm64"
+echo "==> [1/4] Node ${NODE_VERSION} darwin-arm64"
 NODE_DEST="$RES_DIR/node"
 if [[ -x "$NODE_DEST" ]] && "$NODE_DEST" --version 2>/dev/null | grep -q "${NODE_VERSION}"; then
     echo "  skip — already $("$NODE_DEST" --version)"
@@ -38,7 +42,7 @@ else
     echo "  -> $("$NODE_DEST" --version)"
 fi
 
-echo "==> [2/3] kordoc bundle"
+echo "==> [2/4] kordoc bundle"
 KORDOC_DEST="$RES_DIR/kordoc"
 KORDOC_SRC="${KORDOC_DIR:-}"
 if [[ -z "$KORDOC_SRC" ]]; then
@@ -89,9 +93,12 @@ find "$KORDOC_DEST/node_modules" -type f \( \
     -o -name 'LICENSE*' -o -name 'CHANGELOG*' -o -name '*.map' \
     -o -name 'tsconfig*' \) -delete 2>/dev/null || true
 
-echo "==> [3/3] ONNX Runtime ${ORT_VERSION} osx-arm64"
+echo "==> [3/4] ONNX Runtime ${ORT_VERSION} osx-arm64"
 DYLIB_DEST="$RES_DIR/onnxruntime/libonnxruntime.dylib"
-if [[ -f "$DYLIB_DEST" ]]; then
+# -s (크기 > 0): CI 는 tauri 리소스 검증용으로 0바이트 placeholder 를 touch 한다
+# (.github/workflows/ci.yml). -f 로만 보면 그 빈 파일을 실물로 착각해 skip 하고,
+# 0바이트 dylib 이 그대로 번들에 들어간다.
+if [[ -s "$DYLIB_DEST" ]]; then
     echo "  skip — already exists ($(du -h "$DYLIB_DEST" | cut -f1))"
 else
     ORT_TGZ="$TMP_DIR/ort.tgz"
@@ -115,7 +122,8 @@ codesign --verify "$DYLIB_DEST" || { echo "ERROR: dylib 서명 검증 실패" >&
 
 echo "==> [4/4] pdfium ${PDFIUM_TAG} mac-arm64"
 PDFIUM_DEST="$RES_DIR/pdfium/libpdfium.dylib"
-if [[ -f "$PDFIUM_DEST" ]]; then
+# -s: 위 ONNX Runtime 과 같은 이유 — 0바이트 placeholder 를 실물로 착각하지 않는다.
+if [[ -s "$PDFIUM_DEST" ]]; then
     echo "  skip — already exists ($(du -h "$PDFIUM_DEST" | cut -f1))"
 else
     PDFIUM_TGZ="$TMP_DIR/pdfium-mac.tgz"
