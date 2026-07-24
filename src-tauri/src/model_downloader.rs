@@ -335,6 +335,13 @@ pub fn ensure_layout_model(models_dir: &Path) -> Result<bool, String> {
         return Ok(false);
     }
 
+    // 레이아웃 분석은 온라인 전용 선택 기능(번들 미포함). 폐쇄망 스위치가 켜져 있으면
+    // 시도조차 하지 않는다 — OCR 본체는 이미 번들로 동작하므로 영향이 없다(이슈 #35).
+    if offline_mode() {
+        tracing::info!("오프라인 모드 — 레이아웃 분석 모델(선택 기능) 다운로드를 건너뜁니다");
+        return Ok(false);
+    }
+
     tracing::info!("PP-DocLayout 레이아웃 모델 다운로드 중...");
     download_file_optional_hash(OCR_LAYOUT_URL, &layout_path, OCR_LAYOUT_SHA256)?;
     tracing::info!("PP-DocLayout 레이아웃 모델 다운로드 완료");

@@ -892,12 +892,17 @@ pub async fn update_settings(
                         Ok(Ok(_)) => {
                             let _ = layout_app.emit("model-download-status", "completed-layout");
                         }
+                        // 레이아웃 분석은 온라인 전용 선택 기능 — 실패해도 OCR 본체는 정상.
+                        // 폐쇄망에서 흔한 실패라 warn 이 아니라 info 로 남긴다(이슈 #35).
                         Ok(Err(e)) => {
-                            tracing::warn!("레이아웃 모델 다운로드 실패: {}", e);
+                            tracing::info!(
+                                "레이아웃 분석 모델(선택 기능) 미적용 — OCR 본체는 정상 동작합니다: {}",
+                                e
+                            );
                             let _ = layout_app.emit("model-download-status", "failed-layout");
                         }
                         Err(e) => {
-                            tracing::warn!("레이아웃 모델 다운로드 태스크 오류: {}", e);
+                            tracing::info!("레이아웃 분석 모델 태스크 종료(선택 기능): {}", e);
                             let _ = layout_app.emit("model-download-status", "failed-layout");
                         }
                     }
