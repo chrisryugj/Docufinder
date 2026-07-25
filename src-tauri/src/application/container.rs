@@ -544,11 +544,13 @@ impl AppContainer {
                 cell.get_or_try_init(|| OcrEngine::new(&ocr_dir, layout_enabled).map(Arc::new))
                     .map(|_| ())
             }));
-            running.store(false, Ordering::Release);
 
+            // 진행 플래그 해제는 실패 카운터를 갱신한 **뒤**. 먼저 내리면 그 틈에 들어온
+            // 워밍업 요청이 아직 0인 카운터를 보고 통과해, 자동 재시도 상한을 넘길 수 있다.
             match result {
                 Ok(Ok(())) => {
                     failures.store(0, Ordering::Release);
+                    running.store(false, Ordering::Release);
                     tracing::info!("OCR 엔진 워밍업 완료 ({}ms)", started.elapsed().as_millis());
                     return;
                 }
@@ -568,6 +570,7 @@ impl AppContainer {
             }
 
             let n = failures.fetch_add(1, Ordering::AcqRel) + 1;
+            running.store(false, Ordering::Release);
             if n >= MAX_AUTO_OCR_WARMUP_ATTEMPTS {
                 tracing::warn!(
                     "OCR 엔진 준비를 {}회 연속 실패해 자동 재시도를 멈춥니다 — \
@@ -707,9 +710,26 @@ mod tests {
         assert!(container.ocr_engine_if_ready().is_none());
 
         let _ = container.index_service();
+
+        // 워밍업의 "흔적" 을 본다 — 진행 중이거나, 이미 끝나 성공(엔진 준비)했거나,
+        // 실패해서 카운터가 올라갔거나. 스레드가 이 줄보다 먼저 완주할 수 있어서
+        // (모델이 없으니 곧장 실패한다) `running` 만 보면 레이스다 — Windows CI 에서
+        // 실제로 그 순서가 나 테스트가 깨졌다(v3.4.8 게이트).
+        let started = Instant::now();
+        let triggered = loop {
+            if container.ocr_warmup_running.load(Ordering::Acquire)
+                || container.ocr_engine_if_ready().is_some()
+                || container.ocr_warmup_failures.load(Ordering::Acquire) > 0
+            {
+                break true;
+            }
+            if started.elapsed() > Duration::from_secs(10) {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
         assert!(
-            container.ocr_warmup_running.load(Ordering::Acquire)
-                || container.ocr_engine_if_ready().is_some(),
+            triggered,
             "OCR 이 준비 안 된 상태의 index_service 가 워밍업을 걸지 않았다"
         );
     }
