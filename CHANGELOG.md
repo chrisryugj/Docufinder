@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.4.9] - 2026-07-26
+
+**한글 파일명 검색이 NFC/NFD 표기 차이로 조용히 실패하던 문제 (외부 기여 #36)**
+
+macOS 는 파일명을 NFD(분해형)로 저장할 수 있는데 IME 가 만드는 검색어는 NFC 다. 화면상 완전히 같은 한글이 바이트로는 달라 서로 매칭되지 않았고, **본문 텍스트가 없는 이미지는 파일명 검색 의존도가 높아** 특히 두드러졌다. FTS 본문 경로는 이미 `normalize_text`(NFC)를 쓰고 있었는데 파일명 경로만 빠져 있었다.
+
+### Fixed
+
+- **파일명 캐시·SQLite 폴백 NFC 정규화 (#36, @yulepapa)**: 캐시 엔트리 키와 검색어를 소문자화 전에 NFC 로 맞추고(`normalize_filename_search_key`), 캐시가 잘려 SQLite 폴백을 타는 경우엔 NFC·NFD 두 정규형을 모두 조회한다. 기존 DB 마이그레이션 불필요 — 캐시는 로드 시 정규화되고 폴백은 두 형태를 다 본다 (`src/search/filename_cache.rs`, `src/search/filename.rs`, `src/indexer/manager.rs`)
+- **SQLite 폴백의 비ASCII 대문자 검색 회귀**: LIKE 패턴을 Rust 로 소문자화하면 비교 상대인 DB `name` 원본과 어긋난다. SQLite `LIKE` 는 ASCII 대소문자를 자체적으로 무시하므로 소문자화는 ASCII 에 무익하고 비ASCII(`ÉTÉ.txt`)에는 종전에 되던 검색을 잃게 한다 — NFC 정규화만 적용하도록 되돌렸다 (`src/search/filename.rs`)
+- **NL 파서 파일명 필터의 정규화 누락**: `smart_apply_filename_filter` 가 소문자화만 해서, 캐시가 NFD 파일명을 제대로 찾아와도 **이 후처리 필터가 결과를 다시 떨어뜨렸다.** 캐시와 같은 정규화로 통일 (`src/application/services/search_service/helpers.rs`)
+
+회귀 테스트 8건 추가(NFC↔NFD 양방향 · 비ASCII 대문자 · ASCII 대소문자 유지 · 필터 양방향). 로컬 282 passed + fmt·clippy 클린.
+
 ## [3.4.8] - 2026-07-25
 
 **v3.4.3~3.4.7 프로덕션 리뷰 후속 — 이슈 #35 대응에서 놓친 잔여 결함 정리**
