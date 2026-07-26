@@ -669,7 +669,8 @@ impl WatchManager {
                     file_id: row.get(0)?,
                     path_lower: path_lower.into_boxed_str(),
                     path: path.into_boxed_str(),
-                    name_lower: name.to_lowercase().into_boxed_str(),
+                    name_lower: crate::search::filename_cache::normalize_filename_search_key(&name)
+                        .into_boxed_str(),
                     file_type: file_type.into_boxed_str(),
                     size: row.get(4)?,
                     modified_at: row.get(5)?,
