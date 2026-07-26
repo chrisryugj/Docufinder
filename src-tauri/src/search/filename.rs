@@ -4,8 +4,13 @@ use unicode_normalization::UnicodeNormalization;
 
 /// DB에는 기존 버전이 저장한 NFC/NFD 파일명이 섞여 있을 수 있다.
 /// 캐시가 잘려 SQLite 폴백을 쓰는 경우에도 두 정규형을 모두 조회한다.
+///
+/// ⚠ 소문자화는 하지 않는다. 캐시 경로는 양쪽(엔트리·검색어)을 Rust 로 소문자화해
+/// 맞추지만, 여기선 비교 상대가 **DB 의 `name` 원본**이라 한쪽만 접으면 어긋난다.
+/// SQLite `LIKE` 는 ASCII 대소문자를 자체적으로 무시하므로 ASCII 는 그대로 매칭되고,
+/// 비ASCII(예: `ÉTÉ.txt`)는 소문자화하면 오히려 매칭을 잃는다.
 fn canonical_variants(value: &str) -> Vec<String> {
-    let nfc = crate::search::filename_cache::normalize_filename_search_key(value);
+    let nfc = crate::utils::normalize_text(value);
     let nfd: String = nfc.nfd().collect();
     if nfc == nfd {
         vec![nfc]
@@ -170,5 +175,21 @@ mod tests {
 
         let results = search(&conn, decomposed_query, 10, None).unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    /// SQLite LIKE 는 ASCII 대소문자만 무시한다. 검색어를 Rust 로 소문자화하면
+    /// DB 의 원본 대문자 파일명과 어긋나 비ASCII 검색이 조용히 실패한다.
+    #[test]
+    fn finds_non_ascii_uppercase_filename() {
+        let conn = test_db("ÉTÉ.txt");
+        assert_eq!(search(&conn, "ÉTÉ", 10, None).unwrap().len(), 1);
+    }
+
+    /// ASCII 대소문자 무시는 SQLite LIKE 가 처리 — 소문자화를 뺀 뒤에도 유지돼야 한다.
+    #[test]
+    fn ascii_case_insensitive_still_works() {
+        let conn = test_db("Report.txt");
+        assert_eq!(search(&conn, "report", 10, None).unwrap().len(), 1);
+        assert_eq!(search(&conn, "REPORT", 10, None).unwrap().len(), 1);
     }
 }

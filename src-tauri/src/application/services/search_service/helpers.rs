@@ -453,11 +453,15 @@ fn kst_to_utc(kst: &chrono::FixedOffset, dt: chrono::NaiveDateTime) -> i64 {
 }
 
 /// 파일명 필터 적용 (파일명에 지정 텍스트 포함 여부, case-insensitive)
+///
+/// 파일명은 macOS 에서 NFD 로 저장될 수 있고 필터는 IME 가 만든 NFC 다. 소문자화만 하면
+/// 화면상 같은 한글이 어긋나 **캐시가 이미 찾아낸 결과를 이 후처리 필터가 다시 떨어뜨린다**
+/// (filename_cache 와 같은 정규화를 써야 한다).
 pub fn smart_apply_filename_filter(r: &SearchResult, filename: &Option<String>) -> bool {
     let Some(filter) = filename else { return true };
-    let name_lower = r.file_name.to_lowercase();
-    let filter_lower = filter.to_lowercase();
-    name_lower.contains(&filter_lower)
+    let name_key = crate::search::filename_cache::normalize_filename_search_key(&r.file_name);
+    let filter_key = crate::search::filename_cache::normalize_filename_search_key(filter);
+    name_key.contains(&filter_key)
 }
 
 /// 정규화된 파일타입 그룹 키 → 실제 매칭할 확장자 목록.
@@ -562,6 +566,28 @@ mod tests {
             version_count: 0,
             garbled: false,
         }
+    }
+
+    /// 회귀: macOS 는 파일명을 NFD 로 저장하고 IME 검색어는 NFC 라, 소문자화만 하면
+    /// 캐시가 찾아낸 결과를 이 후처리 필터가 다시 떨어뜨린다.
+    #[test]
+    fn filename_filter_matches_across_nfc_nfd() {
+        let nfd_name = "\u{1100}\u{1169}\u{110b}\u{1163}\u{11bc}\u{110b}\u{1175}.jpg";
+        let r = dummy(nfd_name, None);
+        assert!(smart_apply_filename_filter(&r, &Some("고양이".to_string())));
+
+        let r2 = dummy("고양이.jpg", None);
+        let nfd_filter = "\u{1100}\u{1169}\u{110b}\u{1163}\u{11bc}\u{110b}\u{1175}".to_string();
+        assert!(smart_apply_filename_filter(&r2, &Some(nfd_filter)));
+    }
+
+    #[test]
+    fn filename_filter_still_rejects_non_match() {
+        let r = dummy("보고서.hwpx", None);
+        assert!(!smart_apply_filename_filter(
+            &r,
+            &Some("고양이".to_string())
+        ));
     }
 
     #[test]
