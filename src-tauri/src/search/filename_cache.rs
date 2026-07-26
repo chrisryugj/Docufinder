@@ -7,6 +7,14 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+/// 파일명 검색용 키를 생성한다.
+///
+/// macOS 파일명은 화면상 같은 한글도 NFD(분해형)로 저장될 수 있으므로,
+/// 캐시 값과 쿼리를 모두 NFC로 맞춘 뒤 소문자화해야 부분 문자열 검색이 일관된다.
+pub(crate) fn normalize_filename_search_key(value: &str) -> String {
+    crate::utils::normalize_text(value).to_lowercase()
+}
+
 /// 캐시 최대 엔트리 수 (~750MB 상한, 24GB RAM 환경 기준)
 ///
 /// 대용량 연구/아카이브 인덱싱 사용자 (100만 파일 이상) 지원을 위해 v2.6.9 에서
@@ -102,7 +110,7 @@ impl FilenameCache {
                 file_id: row.get(0)?,
                 path_lower: path_lower.into_boxed_str(),
                 path: path.into_boxed_str(),
-                name_lower: name.to_lowercase().into_boxed_str(),
+                name_lower: normalize_filename_search_key(&name).into_boxed_str(),
                 file_type: file_type.into_boxed_str(),
                 size: row.get(4)?,
                 modified_at: row.get(5)?,
@@ -167,7 +175,7 @@ impl FilenameCache {
         // 검색어들 (AND 조건)
         let terms: Vec<String> = trimmed
             .split_whitespace()
-            .map(|s| s.to_lowercase())
+            .map(normalize_filename_search_key)
             .collect();
 
         if terms.is_empty() {
@@ -287,7 +295,7 @@ mod tests {
             file_id: id,
             path_lower: path_lower.into_boxed_str(),
             path: path.into_boxed_str(),
-            name_lower: name.to_lowercase().into_boxed_str(),
+            name_lower: normalize_filename_search_key(name).into_boxed_str(),
             file_type: "txt".to_string().into_boxed_str(),
             size: 1000,
             modified_at: 0,
@@ -323,6 +331,26 @@ mod tests {
         assert_eq!(results.len(), 1);
 
         let results = cache.search("REPORT", 10);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_search_normalizes_decomposed_hangul_filename() {
+        let cache = FilenameCache::new();
+        let decomposed = "\u{1100}\u{1169}\u{110b}\u{1163}\u{11bc}\u{110b}\u{1175}.jpg";
+        cache.upsert(create_test_entry(1, decomposed));
+
+        let results = cache.search("고양이", 10);
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_search_normalizes_decomposed_hangul_query() {
+        let cache = FilenameCache::new();
+        cache.upsert(create_test_entry(1, "고양이.jpg"));
+        let decomposed_query = "\u{1100}\u{1169}\u{110b}\u{1163}\u{11bc}\u{110b}\u{1175}";
+
+        let results = cache.search(decomposed_query, 10);
         assert_eq!(results.len(), 1);
     }
 
