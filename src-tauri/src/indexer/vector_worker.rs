@@ -730,6 +730,30 @@ fn run_prefetch_thread(
     tracing::debug!("[Prefetch] Thread completed");
 }
 
+/// Windows 스레드 우선순위 설정
+#[cfg(target_os = "windows")]
+fn set_thread_priority(intensity: &IndexingIntensity) {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_IDLE,
+        THREAD_PRIORITY_NORMAL,
+    };
+
+    let priority = match intensity {
+        IndexingIntensity::Fast => THREAD_PRIORITY_NORMAL,
+        IndexingIntensity::Balanced => THREAD_PRIORITY_BELOW_NORMAL,
+        IndexingIntensity::Background => THREAD_PRIORITY_IDLE,
+    };
+
+    unsafe {
+        let handle = GetCurrentThread();
+        if SetThreadPriority(handle, priority) == 0 {
+            tracing::warn!("[VectorWorker] Failed to set thread priority");
+        } else {
+            tracing::info!("[VectorWorker] Thread priority set to {:?}", intensity);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -794,29 +818,5 @@ mod tests {
             &mut buf,
         );
         assert_eq!(buf, vec![10]);
-    }
-}
-
-/// Windows 스레드 우선순위 설정
-#[cfg(target_os = "windows")]
-fn set_thread_priority(intensity: &IndexingIntensity) {
-    use windows_sys::Win32::System::Threading::{
-        GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL, THREAD_PRIORITY_IDLE,
-        THREAD_PRIORITY_NORMAL,
-    };
-
-    let priority = match intensity {
-        IndexingIntensity::Fast => THREAD_PRIORITY_NORMAL,
-        IndexingIntensity::Balanced => THREAD_PRIORITY_BELOW_NORMAL,
-        IndexingIntensity::Background => THREAD_PRIORITY_IDLE,
-    };
-
-    unsafe {
-        let handle = GetCurrentThread();
-        if SetThreadPriority(handle, priority) == 0 {
-            tracing::warn!("[VectorWorker] Failed to set thread priority");
-        } else {
-            tracing::info!("[VectorWorker] Thread priority set to {:?}", intensity);
-        }
     }
 }
