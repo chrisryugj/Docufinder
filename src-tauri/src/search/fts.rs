@@ -532,7 +532,19 @@ pub struct FtsResult {
     pub modified_at: Option<i64>,
 }
 
+/// LIKE 폴백이 본문을 스캔할 파일 수 상한 (최근 수정순, scope·meta 필터 적용 후).
+///
+/// `LIKE '%가%'` 는 인덱스를 못 타 매칭이 희소하면 chunks 전체 본문을 풀스캔한다.
+/// 결과는 어차피 `ORDER BY modified_at DESC LIMIT n` 상위만 반환하므로,
+/// 스캔 대상을 "최근 수정된 N개 파일의 청크"로 제한하면 일반 케이스(최근 문서에서
+/// limit 를 채움)의 결과는 동일하고, 희소 매칭 케이스의 폭주만 차단된다.
+/// (idx_files_modified 가 있어 최근 N개 파일 선별은 저렴 — migration v15)
+const LIKE_FALLBACK_MAX_FILES: usize = 5_000;
+
 /// 짧은 쿼리용 LIKE 폴백 검색 (FTS5가 못 잡는 한글 1~2자 대응)
+///
+/// 폭주 방지: 스캔 대상을 최근 수정순 `LIKE_FALLBACK_MAX_FILES` 개 파일로 제한
+/// (그보다 오래된 파일에만 존재하는 매칭은 폴백에서 반환되지 않음 — 의도된 트레이드오프).
 fn search_like_fallback(
     conn: &Connection,
     query: &str,
@@ -557,6 +569,8 @@ fn search_like_fallback(
 
     let (meta_clause, mut meta_params) = build_meta_clause(filter);
 
+    // scope·meta 필터는 파일 선별 서브쿼리 안에서 적용 — 상한 N개가 "필터 통과
+    // 파일 중 최근 N개"가 되어, 스코프 검색에서 상한이 엉뚱하게 소진되지 않는다.
     let sql = format!(
         "SELECT
             c.id, f.path, f.name, c.chunk_index, c.content,
@@ -565,8 +579,13 @@ fn search_like_fallback(
             '' as snippet, f.modified_at
          FROM chunks c
          JOIN files f ON f.id = c.file_id
-         WHERE c.content LIKE ? ESCAPE '\\'
-         {scope}{meta}
+         WHERE c.file_id IN (
+             SELECT f.id FROM files f
+             WHERE 1=1 {scope}{meta}
+             ORDER BY f.modified_at DESC
+             LIMIT ?
+         )
+           AND c.content LIKE ? ESCAPE '\\'
          ORDER BY f.modified_at DESC
          LIMIT ?",
         scope = scope_clause,
@@ -593,13 +612,14 @@ fn search_like_fallback(
         })
     };
 
-    // 바인드 순서: LIKE 패턴 → [scope 패턴] → [meta 파라미터] → limit
+    // 바인드 순서: [scope 패턴] → [meta 파라미터] → 파일 상한 → LIKE 패턴 → limit
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-    params.push(Box::new(like_pattern));
     if let Some(pattern) = scope_pattern {
         params.push(Box::new(pattern));
     }
     params.append(&mut meta_params);
+    params.push(Box::new(LIKE_FALLBACK_MAX_FILES as i64));
+    params.push(Box::new(like_pattern));
     params.push(Box::new(limit as i64));
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -608,4 +628,114 @@ fn search_like_fallback(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// LIKE 폴백이 참조하는 컬럼만 갖춘 최소 스키마 (마이그레이션 비의존)
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE files (
+                id INTEGER PRIMARY KEY, path TEXT, name TEXT,
+                file_type TEXT, size INTEGER, modified_at INTEGER
+             );
+             CREATE TABLE chunks (
+                id INTEGER PRIMARY KEY, file_id INTEGER, chunk_index INTEGER,
+                content TEXT, start_offset INTEGER, end_offset INTEGER,
+                page_number INTEGER, page_end INTEGER, location_hint TEXT
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert_file(conn: &Connection, path: &str, modified_at: i64, content: &str) {
+        conn.execute(
+            "INSERT INTO files (path, name, file_type, size, modified_at)
+             VALUES (?1, ?2, 'txt', 10, ?3)",
+            rusqlite::params![path, path, modified_at],
+        )
+        .unwrap();
+        let file_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO chunks (file_id, chunk_index, content, start_offset, end_offset)
+             VALUES (?1, 0, ?2, 0, 100)",
+            rusqlite::params![file_id, content],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn like_fallback_matches_and_orders_by_mtime_desc() {
+        let conn = test_conn();
+        insert_file(&conn, r"C:\docs\old.txt", 100, "가나다");
+        insert_file(&conn, r"C:\docs\new.txt", 200, "가정통신문");
+        insert_file(&conn, r"C:\docs\none.txt", 300, "관계없음");
+
+        let r = search_like_fallback(&conn, "가", 10, None, &MetaFilter::default()).unwrap();
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].file_path, r"C:\docs\new.txt"); // 최근 수정순
+        assert_eq!(r[1].file_path, r"C:\docs\old.txt");
+    }
+
+    #[test]
+    fn like_fallback_escapes_wildcards() {
+        let conn = test_conn();
+        insert_file(&conn, r"C:\docs\pct.txt", 100, "100% 달성");
+        insert_file(&conn, r"C:\docs\plain.txt", 200, "가나다");
+
+        // `%` 는 리터럴 — 전 청크 매칭 오탐이 아니라 % 포함 문서만
+        let r = search_like_fallback(&conn, "%", 10, None, &MetaFilter::default()).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].file_path, r"C:\docs\pct.txt");
+    }
+
+    #[test]
+    fn like_fallback_scan_capped_to_recent_files() {
+        let conn = test_conn();
+        // 매칭은 가장 오래된 파일 1개에만 존재, 그 위로 상한만큼 무매칭 최근 파일
+        insert_file(&conn, r"C:\docs\ancient.txt", 1, "가나다");
+        for i in 0..LIKE_FALLBACK_MAX_FILES {
+            insert_file(
+                &conn,
+                &format!(r"C:\docs\recent{}.txt", i),
+                1000 + i as i64,
+                "무관한 내용",
+            );
+        }
+
+        // 상한 밖(최근 N개에 못 든 파일)의 매칭은 스캔되지 않음 — 폭주 방지 트레이드오프
+        let r = search_like_fallback(&conn, "가", 10, None, &MetaFilter::default()).unwrap();
+        assert!(r.is_empty());
+
+        // 파일 하나를 지워 상한 안으로 들어오면 다시 매칭
+        conn.execute("DELETE FROM files WHERE path = ?", [r"C:\docs\recent0.txt"])
+            .unwrap();
+        let r = search_like_fallback(&conn, "가", 10, None, &MetaFilter::default()).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].file_path, r"C:\docs\ancient.txt");
+    }
+
+    #[test]
+    fn like_fallback_cap_counts_files_within_scope() {
+        let conn = test_conn();
+        // 스코프 밖 최근 파일이 아무리 많아도 스코프 안 파일의 상한을 잠식하지 않는다
+        insert_file(&conn, r"C:\target\hit.txt", 1, "가나다");
+        for i in 0..50 {
+            insert_file(
+                &conn,
+                &format!(r"C:\other\recent{}.txt", i),
+                1000 + i as i64,
+                "가나다",
+            );
+        }
+
+        let r = search_like_fallback(&conn, "가", 10, Some(r"C:\target"), &MetaFilter::default())
+            .unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].file_path, r"C:\target\hit.txt");
+    }
 }

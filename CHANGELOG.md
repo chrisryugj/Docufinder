@@ -1,5 +1,53 @@
 # Changelog
 
+## [3.5.0] - 2026-07-29
+
+**프로덕션 전면 리뷰 정비 — rhwp v0.8.2 업그레이드, 감시 사망 버그 2건, 미리보기·검색 성능, kordoc v4.3.0 반영**
+
+### 🐛 수정 (P1)
+
+- **데이터 초기화 후 실시간 감시가 전면 죽던 문제** — `clear_all_data` 가 감시를 pause 한 채
+  성공/실패 어느 경로에서도 resume 하지 않아 `pause_count` 가 영구 누수됐다. 이후 추가한
+  모든 폴더의 실시간 감시·주기 동기화가 **앱 재시작 전까지 동작하지 않았다.** 성공/실패
+  무관 resume 으로 짝을 복원 (`commands/index/data.rs`)
+- **데이터 초기화 후 DB 파일 크기가 회수되지 않던 문제** — DROP 은 페이지를 freelist 로
+  반납할 뿐이라 수십 GB 인덱스를 초기화해도 디스크는 그대로였다. `wal_checkpoint(TRUNCATE)
+  + VACUUM` 추가, 실패해도 초기화 자체는 성공 처리 (`db/mod.rs`)
+- **startup sync 의 감시 복구가 DB 연결 실패 시 누락되던 경로 분리** (`commands/index/init.rs`)
+
+### ⚡ 성능
+
+- **rhwp v0.7.17 → v0.8.2** — HWP 원본 레이아웃 미리보기 엔진 업그레이드: BinData 지연
+  로딩(파싱 RSS 244→49MB), fuzz 방어 6건(WMF/EMF/표 그리드/CFB 패닉·무한루프), 초대형 표
+  O(n²) 셀 측정 제거, 바탕쪽 개체 배치·TAC 인라인 표 outMargin 등 조판 정합 다수.
+  API 불변 — rev 범프만으로 수용 (`Cargo.toml`)
+- **PDF 미리보기 이중 파싱 캐시** — 매 미리보기마다 kordoc 전체 파싱 + DB 청크 로드를 둘 다
+  수행하던 판별 휴리스틱을 path+mtime 키로 캐시. 재방문 시 한쪽만 로드 (`commands/preview.rs`)
+- **1-2자 검색 LIKE 폴백 풀스캔 상한** — 전 청크 스캔을 "최근 수정 5,000개 파일의 청크"로
+  제한 (한글 1자 검색이 대형 DB에서 수 초 걸리던 최악 케이스 제거, `search/fts.rs`)
+- **미리보기 경로 검증 spawn_blocking 이동 + 북마크 즉시 반환** — 죽은 네트워크 경로(UNC)가
+  섞이면 북마크 조회가 분 단위로 멈추던 문제: 목록 먼저 반환, 고아 정리는 백그라운드
+  (`commands/preview.rs`)
+
+### 🎨 UI/UX
+
+- **UIContext memoization** — 토스트 하나에 전 소비 컴포넌트가 리렌더되던 낭비 제거
+- **하드코딩 hex 58→13건 토큰화** — 통계 차트·diff 모달 색을 `--chart-*`/`--diff-add/del`
+  테마 토큰으로 수렴 (다크 모드 대비 검증 일원화)
+
+### 🔧 정비
+
+- **kordoc v4.2.3→v4.3.0 반영** (publish.yml SHA 갱신) — Windows/mac job 이 서로 다른
+  SHA 를 고정하던 드리프트도 수정. 기안문 서식 채우기·빈 문단 보존(#57)·에러 계약 수리가
+  사이드카에 반영됨
+- **이슈 #35 footgun 데드코드 제거** — blocking `get_ocr_engine` API, `initialize_app` 의
+  도달 불가 110줄 블록 삭제
+- **메타데이터 저장 정책 통일** — 크기 초과로 파싱 제외된 docx/xlsx/hwpx 가 파일명 검색에서
+  누락되던 화이트리스트를 블랙리스트 기준으로 통일 (`indexer/pipeline.rs`)
+- **OCR dict.txt CRLF 체크아웃 정정** — .gitattributes binary 지정 이전 체크아웃 잔재
+
+검증: cargo test 275 passed + clippy 클린 + tsc·vite build 클린. 신규 회귀 테스트 4건(fts).
+
 ## [3.4.9] - 2026-07-26
 
 **한글 파일명 검색이 NFC/NFD 표기 차이로 조용히 실패하던 문제 (외부 기여 #36)**

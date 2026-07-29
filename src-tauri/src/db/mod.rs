@@ -466,6 +466,14 @@ pub fn clear_all_data(conn: &Connection, db_path: &std::path::Path) -> Result<()
     // 동일 Connection으로 테이블 재생성
     migration::migrate_schema(conn, db_path)?;
 
+    // 파일 크기 회수 — DROP 은 페이지를 freelist 로 반납할 뿐 파일은 줄지 않는다.
+    // 호출부(commands/index/data.rs)가 직전에 drain_pool() 을 수행해 다른 커넥션
+    // 락과 경합하지 않는 시점. VACUUM 은 임시로 DB 크기만큼 여유 공간이 필요하므로
+    // 실패해도 초기화 자체는 성공 처리한다.
+    if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;") {
+        tracing::warn!("VACUUM after clear_all_data failed (disk space?): {}", e);
+    }
+
     Ok(())
 }
 

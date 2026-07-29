@@ -208,7 +208,9 @@ export function UIProvider({ children }: { children: ReactNode }) {
     setPreviewTags(updated);
   }, [removeTag, getFileTags]);
 
-  const value: UIContextValue = {
+  // Provider value memoization — SearchContext(:251)·IndexContext 패턴.
+  // useState setter·ref 는 identity 안정이라 deps 에서 제외 (SearchContext 동일 기준).
+  const value: UIContextValue = useMemo(() => ({
     toasts, showToast, updateToast, dismissToast,
     setTheme,
     ...firstRun,
@@ -223,7 +225,18 @@ export function UIProvider({ children }: { children: ReactNode }) {
     bookmarks, addBookmark, removeBookmark, isBookmarked,
     allTags, getFileTags, previewTags, tagSuggestions, handleAddTag, handleRemoveTag,
     isMountedRef,
-  };
+  }), [
+    toasts, showToast, updateToast, dismissToast,
+    setTheme,
+    firstRun.isInitialized,
+    sidebarOpen, toggleSidebar,
+    settingsOpen, helpOpen, statsOpen, duplicateOpen,
+    showAutoIndexPrompt, tryShowAutoIndexPrompt,
+    reportResults,
+    previewFilePath, previewWidth, handlePreviewClose, handleResizeStart,
+    bookmarks, addBookmark, removeBookmark, isBookmarked,
+    allTags, getFileTags, previewTags, tagSuggestions, handleAddTag, handleRemoveTag,
+  ]);
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
 }

@@ -409,8 +409,8 @@ export function SearchTab({ settings, onChange }: TabProps) {
           className="mt-2 p-2.5 rounded-md text-xs leading-relaxed"
           style={{
             backgroundColor: "rgba(239, 68, 68, 0.08)",
-            border: "1px solid var(--color-error, #ef4444)",
-            color: "var(--color-error, #ef4444)",
+            border: "1px solid var(--color-error)",
+            color: "var(--color-error)",
           }}
         >
           <strong>⚠️ 주의:</strong> PDF 인덱싱 속도가 <strong>수 배 ~ 수십 배</strong> 느려집니다.

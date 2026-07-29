@@ -4,43 +4,103 @@ use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::AppContainer;
 use serde::Serialize;
-use std::sync::RwLock;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock, RwLock};
 use tauri::State;
 
-/// 프리뷰 경로 검증: canonicalize + 감시 폴더 내 경로인지 확인
-fn validate_preview_path(
+/// 프리뷰 경로 검증: canonicalize + 감시 폴더 내 경로인지 확인.
+///
+/// canonicalize·DB 연결·폴더 조회 전부 블로킹 I/O — render_pdf_page 가 페이지마다
+/// 호출하므로 spawn_blocking 으로 옮겨 async 런타임 스레드를 막지 않는다.
+async fn validate_preview_path(
     file_path: &str,
     state: &State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<String> {
-    // 1. 경로 정규화 (path traversal 방지)
-    let canonical = std::fs::canonicalize(file_path)
-        .map_err(|_| ApiError::Validation("파일을 찾을 수 없습니다".to_string()))?;
-    let canonical_str = canonical.to_string_lossy().to_string();
-
-    // 2. 감시 폴더 내 경로인지 확인 (화이트리스트, 감시 폴더 미등록 시 거부)
     let db_path = {
         let container = state.read()?;
         container.db_path.to_string_lossy().to_string()
     };
-    let conn = db::get_connection(std::path::Path::new(&db_path))
-        .map_err(|e| ApiError::Validation(e.to_string()))?;
-    let folders =
-        db::get_watched_folders(&conn).map_err(|e| ApiError::Validation(e.to_string()))?;
-    if folders.is_empty() {
-        return Err(ApiError::Validation(
-            "등록된 감시 폴더가 없어 미리보기할 수 없습니다".to_string(),
-        ));
-    }
-    let in_scope = folders
-        .iter()
-        .any(|f| crate::utils::folder_scope::path_in_scope(&canonical_str, f));
-    if !in_scope {
-        return Err(ApiError::Validation(
-            "감시 폴더 외부 파일은 미리보기할 수 없습니다".to_string(),
-        ));
-    }
+    let fp = file_path.to_string();
 
-    Ok(canonical_str)
+    tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        // 1. 경로 정규화 (path traversal 방지)
+        let canonical = std::fs::canonicalize(&fp)
+            .map_err(|_| ApiError::Validation("파일을 찾을 수 없습니다".to_string()))?;
+        let canonical_str = canonical.to_string_lossy().to_string();
+
+        // 2. 감시 폴더 내 경로인지 확인 (화이트리스트, 감시 폴더 미등록 시 거부)
+        let conn = db::get_connection(std::path::Path::new(&db_path))
+            .map_err(|e| ApiError::Validation(e.to_string()))?;
+        let folders =
+            db::get_watched_folders(&conn).map_err(|e| ApiError::Validation(e.to_string()))?;
+        if folders.is_empty() {
+            return Err(ApiError::Validation(
+                "등록된 감시 폴더가 없어 미리보기할 수 없습니다".to_string(),
+            ));
+        }
+        let in_scope = folders
+            .iter()
+            .any(|f| crate::utils::folder_scope::path_in_scope(&canonical_str, f));
+        if !in_scope {
+            return Err(ApiError::Validation(
+                "감시 폴더 외부 파일은 미리보기할 수 없습니다".to_string(),
+            ));
+        }
+
+        Ok(canonical_str)
+    })
+    .await?
+}
+
+// ======================== PDF 미리보기 소스 캐시 ========================
+
+/// PDF 미리보기 본문 소스 판별 결과 (kordoc 원본 파싱 vs DB 청크).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PdfPreviewSource {
+    Kordoc,
+    Db,
+}
+
+/// 판별 캐시 엔트리 상한 — 초과 시 전체 비움 (엔트리가 작아 정교한 LRU 불필요)
+const PDF_SOURCE_CACHE_CAP: usize = 256;
+
+/// path+mtime → 소스 판별 인메모리 캐시. 판별 휴리스틱은 kordoc 전체 파싱과
+/// DB 청크 로드를 둘 다 요구하므로, 재방문 시 판별 결과를 재사용해 한쪽만 로드한다.
+static PDF_SOURCE_CACHE: OnceLock<Mutex<HashMap<(String, i64), PdfPreviewSource>>> =
+    OnceLock::new();
+
+fn pdf_source_cache() -> &'static Mutex<HashMap<(String, i64), PdfPreviewSource>> {
+    PDF_SOURCE_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn pdf_source_cache_get(key: &(String, i64)) -> Option<PdfPreviewSource> {
+    pdf_source_cache().lock().ok()?.get(key).copied()
+}
+
+fn pdf_source_cache_put(key: (String, i64), source: PdfPreviewSource) {
+    if let Ok(mut map) = pdf_source_cache().lock() {
+        if map.len() >= PDF_SOURCE_CACHE_CAP && !map.contains_key(&key) {
+            map.clear();
+        }
+        map.insert(key, source);
+    }
+}
+
+fn pdf_source_cache_remove(key: &(String, i64)) {
+    if let Ok(mut map) = pdf_source_cache().lock() {
+        map.remove(key);
+    }
+}
+
+/// 파일 수정 시각 (Unix seconds) — 캐시 키용. 실패 시 None (캐시 미사용).
+fn file_mtime_secs(path: &str) -> Option<i64> {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
 }
 
 // ======================== 미리보기 ========================
@@ -149,7 +209,7 @@ pub async fn load_markdown_preview(
     }
 
     // 경로 검증: canonicalize + 감시 폴더 화이트리스트
-    let fp = validate_preview_path(&file_path, &state)?;
+    let fp = validate_preview_path(&file_path, &state).await?;
 
     let file_name = std::path::Path::new(&fp)
         .file_name()
@@ -164,78 +224,11 @@ pub async fn load_markdown_preview(
         .to_lowercase();
     let is_pdf = ext_lower == "pdf";
 
-    let fp_for_kordoc = fp.clone();
-    let ext_for_kordoc = ext_lower.clone();
-    let result = tokio::task::spawn_blocking(move || -> ApiResult<String> {
-        let path = std::path::Path::new(&fp_for_kordoc);
-
-        let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
-        if kordoc_exts.contains(&ext_for_kordoc.as_str()) && crate::parsers::kordoc::is_available()
-        {
-            match crate::parsers::kordoc::get_markdown(path) {
-                Ok(md) => {
-                    tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp_for_kordoc);
-                    return Ok(md);
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "preview: kordoc 실패, fallback 사용 — {} — {:?}",
-                        fp_for_kordoc,
-                        e
-                    );
-                }
-            }
-        } else {
-            tracing::debug!(
-                "preview: kordoc 미사용 (ext={}, available={}) — {}",
-                ext_for_kordoc,
-                crate::parsers::kordoc::is_available(),
-                fp_for_kordoc
-            );
-        }
-
-        // fallback: DB 청크 병합
-        Err(ApiError::IndexingFailed("kordoc 미사용".to_string()))
-    })
-    .await?;
-
-    // PDF 는 세 가지 이슈 대응:
-    //  (1) 스캔본: kordoc 은 임베디드 텍스트만(짧음) → DB(OCR) 사용
-    //  (2) CID 디코딩 실패: kordoc 이 쓰레기 유니코드 반환 → DB 사용
-    //  (3) 정상: kordoc 사용
     let result = if is_pdf {
-        let kordoc_md = result.ok().unwrap_or_default();
-        let db_md = fetch_db_markdown(&file_path, &state)
-            .await
-            .unwrap_or_default();
-        let kordoc_len = kordoc_md.chars().count();
-        let db_len = db_md.chars().count();
-        let kordoc_garbage = crate::parsers::pdf::looks_like_garbage_text(&kordoc_md);
-        let much_longer_in_db = db_len > kordoc_len.saturating_mul(2).max(kordoc_len + 500);
-
-        if kordoc_garbage && !db_md.is_empty() {
-            tracing::info!(
-                "preview: PDF CID 깨짐 감지 — DB 사용 (kordoc {}자, DB {}자)",
-                kordoc_len,
-                db_len
-            );
-            Ok(db_md)
-        } else if much_longer_in_db {
-            tracing::info!(
-                "preview: PDF OCR 감지 — DB 사용 (kordoc {}자 vs DB {}자)",
-                kordoc_len,
-                db_len
-            );
-            Ok(db_md)
-        } else if !kordoc_md.is_empty() && !kordoc_garbage {
-            Ok(kordoc_md)
-        } else if !db_md.is_empty() {
-            Ok(db_md)
-        } else {
-            Err(ApiError::IndexingFailed("본문 없음".to_string()))
-        }
+        // PDF 는 판별 휴리스틱 + path+mtime 캐시 (이중 파싱 방지)
+        load_pdf_markdown(&fp, &file_path, &state).await
     } else {
-        result
+        parse_kordoc_markdown(fp.clone(), ext_lower.clone()).await
     };
 
     match result {
@@ -263,6 +256,122 @@ pub async fn load_markdown_preview(
     }
 }
 
+/// kordoc으로 마크다운 직접 추출 (블로킹 파싱 — spawn_blocking).
+/// kordoc 미지원/실패 시 Err → 호출부가 DB 청크로 fallback.
+async fn parse_kordoc_markdown(fp: String, ext: String) -> ApiResult<String> {
+    tokio::task::spawn_blocking(move || -> ApiResult<String> {
+        let path = std::path::Path::new(&fp);
+
+        let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
+        if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
+            match crate::parsers::kordoc::get_markdown(path) {
+                Ok(md) => {
+                    tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
+                    return Ok(md);
+                }
+                Err(e) => {
+                    tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp, e);
+                }
+            }
+        } else {
+            tracing::debug!(
+                "preview: kordoc 미사용 (ext={}, available={}) — {}",
+                ext,
+                crate::parsers::kordoc::is_available(),
+                fp
+            );
+        }
+
+        // fallback: DB 청크 병합
+        Err(ApiError::IndexingFailed("kordoc 미사용".to_string()))
+    })
+    .await?
+}
+
+/// PDF 미리보기 본문 결정 — 세 가지 이슈 대응:
+///  (1) 스캔본: kordoc 은 임베디드 텍스트만(짧음) → DB(OCR) 사용
+///  (2) CID 디코딩 실패: kordoc 이 쓰레기 유니코드 반환 → DB 사용
+///  (3) 정상: kordoc 사용
+///
+/// 판별에는 kordoc 전체 파싱 + DB 청크 로드가 둘 다 필요하므로, 결과를
+/// path+mtime 캐시에 저장해 재방문 시 판별된 소스 한쪽만 로드한다.
+/// 캐시된 소스가 비어 있으면(재인덱싱 등) 엔트리를 무효화하고 전체 판별로 복귀.
+async fn load_pdf_markdown(
+    fp: &str,
+    orig_path: &str,
+    state: &State<'_, RwLock<AppContainer>>,
+) -> ApiResult<String> {
+    let mtime = {
+        let p = fp.to_string();
+        tokio::task::spawn_blocking(move || file_mtime_secs(&p)).await?
+    };
+    let key = mtime.map(|mt| (fp.to_string(), mt));
+
+    // 캐시 히트: 판별 생략, 해당 소스만 로드
+    if let Some(k) = &key {
+        match pdf_source_cache_get(k) {
+            Some(PdfPreviewSource::Db) => {
+                let db_md = fetch_db_markdown(orig_path, state)
+                    .await
+                    .unwrap_or_default();
+                if !db_md.is_empty() {
+                    return Ok(db_md);
+                }
+                pdf_source_cache_remove(k);
+            }
+            Some(PdfPreviewSource::Kordoc) => {
+                if let Ok(md) = parse_kordoc_markdown(fp.to_string(), "pdf".to_string()).await {
+                    if !md.is_empty() && !crate::parsers::pdf::looks_like_garbage_text(&md) {
+                        return Ok(md);
+                    }
+                }
+                pdf_source_cache_remove(k);
+            }
+            None => {}
+        }
+    }
+
+    // 전체 판별 (기존 휴리스틱 그대로)
+    let kordoc_md = parse_kordoc_markdown(fp.to_string(), "pdf".to_string())
+        .await
+        .unwrap_or_default();
+    let db_md = fetch_db_markdown(orig_path, state)
+        .await
+        .unwrap_or_default();
+    let kordoc_len = kordoc_md.chars().count();
+    let db_len = db_md.chars().count();
+    let kordoc_garbage = crate::parsers::pdf::looks_like_garbage_text(&kordoc_md);
+    let much_longer_in_db = db_len > kordoc_len.saturating_mul(2).max(kordoc_len + 500);
+
+    let (source, result) = if kordoc_garbage && !db_md.is_empty() {
+        tracing::info!(
+            "preview: PDF CID 깨짐 감지 — DB 사용 (kordoc {}자, DB {}자)",
+            kordoc_len,
+            db_len
+        );
+        (Some(PdfPreviewSource::Db), Ok(db_md))
+    } else if much_longer_in_db {
+        tracing::info!(
+            "preview: PDF OCR 감지 — DB 사용 (kordoc {}자 vs DB {}자)",
+            kordoc_len,
+            db_len
+        );
+        (Some(PdfPreviewSource::Db), Ok(db_md))
+    } else if !kordoc_md.is_empty() && !kordoc_garbage {
+        (Some(PdfPreviewSource::Kordoc), Ok(kordoc_md))
+    } else if !db_md.is_empty() {
+        (Some(PdfPreviewSource::Db), Ok(db_md))
+    } else {
+        (None, Err(ApiError::IndexingFailed("본문 없음".to_string())))
+    };
+
+    if let (Some(k), Some(s)) = (key, source) {
+        pdf_source_cache_put(k, s);
+    }
+
+    result
+}
+
 // ======================== 레이아웃 미리보기 (SVG) ========================
 
 /// 원본 조판 그대로의 SVG 로 렌더 (레이아웃 보기 토글).
@@ -283,7 +392,7 @@ pub async fn render_layout_svg(
     }
 
     // 경로 검증: canonicalize + 감시 폴더 화이트리스트 (마크다운 미리보기와 동일)
-    let fp = validate_preview_path(&file_path, &state)?;
+    let fp = validate_preview_path(&file_path, &state).await?;
 
     let ext = std::path::Path::new(&fp)
         .extension()
@@ -337,7 +446,7 @@ pub async fn render_pdf_page(
         return Err(ApiError::Validation("파일 경로가 비어있습니다".to_string()));
     }
     // 경로 검증: canonicalize + 감시 폴더 화이트리스트 (다른 미리보기와 동일)
-    let fp = validate_preview_path(&file_path, &state)?;
+    let fp = validate_preview_path(&file_path, &state).await?;
     let ext = std::path::Path::new(&fp)
         .extension()
         .and_then(|e| e.to_str())
@@ -524,7 +633,15 @@ pub async fn update_bookmark_note(
     Ok(())
 }
 
-/// 모든 북마크 조회 (삭제된 파일의 고아 레코드 자동 정리)
+/// 고아 북마크 정리 중복 실행 방지 플래그 (죽은 UNC 경로에서 정리가 오래 걸릴 때 중첩 방지)
+static ORPHAN_CLEANUP_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// 모든 북마크 조회.
+///
+/// 응답을 먼저 반환하고, 삭제된 파일의 고아 레코드 정리는 별도 백그라운드
+/// 태스크에서 수행한다 — 북마크당 `Path::exists()` 검사가 죽은 UNC 경로에서
+/// 분 단위로 블로킹될 수 있어, 조회 응답과 분리한다. (고아 북마크는 정리
+/// 완료 후 다음 조회부터 제외됨)
 #[tauri::command]
 pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<Vec<BookmarkInfo>> {
     let db_path = {
@@ -532,8 +649,9 @@ pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<
         container.db_path.to_string_lossy().to_string()
     };
 
+    let db_path_for_query = db_path.clone();
     let result = tokio::task::spawn_blocking(move || -> ApiResult<Vec<BookmarkInfo>> {
-        let conn = db::get_connection(std::path::Path::new(&db_path))?;
+        let conn = db::get_connection(std::path::Path::new(&db_path_for_query))?;
 
         let mut stmt = conn
             .prepare(
@@ -557,39 +675,59 @@ pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<
             })
             .map_err(|e| ApiError::DatabaseQuery(e.to_string()))?;
 
-        let all_bookmarks: Vec<BookmarkInfo> = rows
-            .filter_map(|r| r.ok())
-            .collect();
-
-        // 고아 레코드 정리: 파일이 삭제된 북마크 자동 제거
-        let orphan_ids: Vec<i64> = all_bookmarks
-            .iter()
-            .filter(|b| !std::path::Path::new(&b.file_path).exists())
-            .map(|b| b.id)
-            .collect();
-
-        if !orphan_ids.is_empty() {
-            let placeholders: String = orphan_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!("DELETE FROM bookmarks WHERE id IN ({})", placeholders);
-            if let Ok(mut del_stmt) = conn.prepare(&sql) {
-                let params: Vec<Box<dyn rusqlite::types::ToSql>> = orphan_ids
-                    .iter()
-                    .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
-                    .collect();
-                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-                let deleted = del_stmt.execute(param_refs.as_slice()).unwrap_or(0);
-                tracing::info!("Cleaned up {} orphaned bookmarks (files no longer exist)", deleted);
-            }
-        }
-
-        let bookmarks: Vec<BookmarkInfo> = all_bookmarks
-            .into_iter()
-            .filter(|b| !orphan_ids.contains(&b.id))
-            .collect();
-
-        Ok(bookmarks)
+        Ok(rows.filter_map(|r| r.ok()).collect())
     })
     .await??;
 
+    // 고아 정리 백그라운드 kick-off (이미 실행 중이면 스킵)
+    if !result.is_empty()
+        && ORPHAN_CLEANUP_RUNNING
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    {
+        let entries: Vec<(i64, String)> =
+            result.iter().map(|b| (b.id, b.file_path.clone())).collect();
+        tokio::task::spawn_blocking(move || {
+            cleanup_orphan_bookmarks(&db_path, &entries);
+            ORPHAN_CLEANUP_RUNNING.store(false, Ordering::Release);
+        });
+    }
+
     Ok(result)
+}
+
+/// 파일이 사라진 북마크를 DB에서 제거 (블로킹 — 백그라운드 전용)
+fn cleanup_orphan_bookmarks(db_path: &str, entries: &[(i64, String)]) {
+    let orphan_ids: Vec<i64> = entries
+        .iter()
+        .filter(|(_, path)| !std::path::Path::new(path).exists())
+        .map(|(id, _)| *id)
+        .collect();
+    if orphan_ids.is_empty() {
+        return;
+    }
+
+    let conn = match db::get_connection(std::path::Path::new(db_path)) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("Orphan bookmark cleanup: DB connection failed — {}", e);
+            return;
+        }
+    };
+    let placeholders: String = orphan_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let sql = format!("DELETE FROM bookmarks WHERE id IN ({})", placeholders);
+    let prepared = conn.prepare(&sql);
+    if let Ok(mut del_stmt) = prepared {
+        let params: Vec<Box<dyn rusqlite::types::ToSql>> = orphan_ids
+            .iter()
+            .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+            .collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let deleted = del_stmt.execute(param_refs.as_slice()).unwrap_or(0);
+        tracing::info!(
+            "Cleaned up {} orphaned bookmarks (files no longer exist)",
+            deleted
+        );
+    }
 }

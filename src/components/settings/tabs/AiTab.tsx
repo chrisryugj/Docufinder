@@ -172,12 +172,12 @@ export function AiTab({ settings, onChange }: TabProps) {
                   className="w-full px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1"
                   style={{
                     backgroundColor: "var(--color-bg-tertiary)",
-                    borderColor: modelMismatch ? "#dc2626" : "var(--color-border)",
+                    borderColor: modelMismatch ? "var(--color-error)" : "var(--color-border)",
                     color: "var(--color-text-primary)",
                   }}
                 />
                 {modelMismatch && (
-                  <p className="text-[11px] mt-1 leading-snug" style={{ color: "#dc2626" }}>
+                  <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--color-error)" }}>
                     Gemini 모델 ID 가 입력돼 있어요. 사내 LLM 서버에 이대로 보내면 <code>404 model not found</code> 가 납니다.
                     서버에 실제로 떠 있는 모델 ID 로 바꿔주세요 (예: <code>qwen3.6-35b-a3b</code>).
                   </p>

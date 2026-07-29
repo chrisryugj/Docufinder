@@ -62,21 +62,22 @@ const TYPE_COLORS: Record<string, string> = {
   txt: "var(--color-file-txt)", md: "var(--color-file-txt)",
 };
 
-/** 코드·이미지·미디어 등 비문서 확장자 고정 색상 — 문서앱이라도 폴더에 섞여 인덱싱된다. */
+/** 코드·이미지·미디어 등 비문서 확장자 고정 색상 — 문서앱이라도 폴더에 섞여 인덱싱된다.
+ *  실제 색값은 variables.css `--chart-*` 토큰 (하드코딩 hex 수렴). */
 const EXT_COLORS: Record<string, string> = {
-  js: "#F7DF1E", jsx: "#F7DF1E", mjs: "#F7DF1E", cjs: "#F7DF1E",
-  ts: "#3178C6", tsx: "#3178C6",
-  json: "#8B8B8B", yaml: "#CB171E", yml: "#CB171E", toml: "#9C4221",
-  py: "#3776AB", rs: "#DEA584", go: "#00ADD8", java: "#B07219",
-  c: "#555555", cpp: "#F34B7D", h: "#555555", cs: "#178600",
-  rb: "#701516", php: "#4F5D95", sh: "#89E051", lua: "#000080",
-  html: "#E34C26", css: "#563D7C", scss: "#C6538C", vue: "#41B883",
-  png: "#0EA5E9", jpg: "#0EA5E9", jpeg: "#0EA5E9", gif: "#0EA5E9",
-  webp: "#0EA5E9", svg: "#FFB13B", bmp: "#0EA5E9", ico: "#0EA5E9",
-  mp4: "#EC4899", mov: "#EC4899", avi: "#EC4899", mkv: "#EC4899",
-  mp3: "#A855F7", wav: "#A855F7", flac: "#A855F7",
-  zip: "#F59E0B", z01: "#F59E0B", z02: "#F59E0B", rar: "#F59E0B",
-  "7z": "#F59E0B", tar: "#F59E0B", gz: "#F59E0B",
+  js: "var(--chart-js)", jsx: "var(--chart-js)", mjs: "var(--chart-js)", cjs: "var(--chart-js)",
+  ts: "var(--chart-ts)", tsx: "var(--chart-ts)",
+  json: "var(--chart-json)", yaml: "var(--chart-yaml)", yml: "var(--chart-yaml)", toml: "var(--chart-toml)",
+  py: "var(--chart-py)", rs: "var(--chart-rs)", go: "var(--chart-go)", java: "var(--chart-java)",
+  c: "var(--chart-c)", cpp: "var(--chart-cpp)", h: "var(--chart-c)", cs: "var(--chart-cs)",
+  rb: "var(--chart-rb)", php: "var(--chart-php)", sh: "var(--chart-sh)", lua: "var(--chart-lua)",
+  html: "var(--chart-html)", css: "var(--chart-css)", scss: "var(--chart-scss)", vue: "var(--chart-vue)",
+  png: "var(--chart-image)", jpg: "var(--chart-image)", jpeg: "var(--chart-image)", gif: "var(--chart-image)",
+  webp: "var(--chart-image)", svg: "var(--chart-svg)", bmp: "var(--chart-image)", ico: "var(--chart-image)",
+  mp4: "var(--chart-video)", mov: "var(--chart-video)", avi: "var(--chart-video)", mkv: "var(--chart-video)",
+  mp3: "var(--chart-audio)", wav: "var(--chart-audio)", flac: "var(--chart-audio)",
+  zip: "var(--chart-archive)", z01: "var(--chart-archive)", z02: "var(--chart-archive)", rar: "var(--chart-archive)",
+  "7z": "var(--chart-archive)", tar: "var(--chart-archive)", gz: "var(--chart-archive)",
 };
 
 /** 미매핑 확장자용 안정적 해시 색상 — 명·채도 고정이라 라이트/다크 양쪽에서 판독. */

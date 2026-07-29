@@ -42,10 +42,10 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
       <div className="space-y-4">
         {/* 요약 */}
         <div className="flex gap-4">
-          <StatCard label="성공" value={totalIndexed} color="var(--color-success, #22c55e)" />
-          <StatCard label="실패" value={totalFailed} color="var(--color-error, #ef4444)" />
+          <StatCard label="성공" value={totalIndexed} color="var(--color-success)" />
+          <StatCard label="실패" value={totalFailed} color="var(--color-error)" />
           {totalOcrImages > 0 && (
-            <StatCard label="OCR 이미지" value={totalOcrImages} color="#8b5cf6" />
+            <StatCard label="OCR 이미지" value={totalOcrImages} color="var(--color-ocr)" />
           )}
         </div>
 
@@ -99,7 +99,7 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <svg
                           className="w-3.5 h-3.5 flex-shrink-0"
-                          style={{ color: "var(--color-error, #ef4444)" }}
+                          style={{ color: "var(--color-error)" }}
                           fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
@@ -123,7 +123,7 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
                       {/* 에러 사유 */}
                       <div
                         className="ml-5 mt-0.5"
-                        style={{ color: "var(--color-error, #ef4444)", fontSize: "11px" }}
+                        style={{ color: "var(--color-error)", fontSize: "11px" }}
                       >
                         {parsed.reason}
                       </div>

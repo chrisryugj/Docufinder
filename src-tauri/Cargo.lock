@@ -310,6 +310,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b25655df2c3cdd83c5e5b293b88acd880332b2ddadd7c30ac43144fdc0033da9"
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "docufinder"
-version = "3.4.9"
+version = "3.5.0"
 dependencies = [
  "base64 0.22.1",
  "calamine",
@@ -4619,9 +4625,9 @@ dependencies = [
 
 [[package]]
 name = "quick-xml"
-version = "0.40.1"
+version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2474bd2e5029e7ccb6abb2ba48cf2383a333851dedf495901544281590c7da7f"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "memchr",
 ]
@@ -5024,7 +5030,7 @@ dependencies = [
  "log",
  "pico-args",
  "rgb",
- "svgtypes",
+ "svgtypes 0.15.3",
  "tiny-skia",
  "usvg",
  "zune-jpeg 0.4.21",
@@ -5065,10 +5071,10 @@ dependencies = [
 
 [[package]]
 name = "rhwp"
-version = "0.7.17"
-source = "git+https://github.com/edwardkim/rhwp?rev=03351190ec35436e58cbfee0aa9278a8fdc04a59#03351190ec35436e58cbfee0aa9278a8fdc04a59"
+version = "0.8.2"
+source = "git+https://github.com/edwardkim/rhwp?rev=9b16aa9e23f476e2b335d7c029fc9f24a199d63c#9b16aa9e23f476e2b335d7c029fc9f24a199d63c"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.0",
  "blake3",
  "byteorder",
  "cfb 0.14.0",
@@ -5081,13 +5087,14 @@ dependencies = [
  "paste",
  "pcx",
  "pdf-writer",
- "quick-xml 0.40.1",
+ "quick-xml 0.41.0",
  "serde",
  "serde_json",
  "snafu",
  "strum 0.28.0",
  "subsetter",
  "svg2pdf",
+ "svgtypes 0.16.1",
  "ttf-parser",
  "unicode-segmentation",
  "unicode-width",
@@ -5975,6 +5982,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68c7541fff44b35860c1a7a47a7cadf3e4a304c457b58f9870d9706ece028afc"
 dependencies = [
  "kurbo 0.11.3",
+ "siphasher 1.0.2",
+]
+
+[[package]]
+name = "svgtypes"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
+dependencies = [
+ "kurbo 0.13.1",
  "siphasher 1.0.2",
 ]
 
@@ -7274,7 +7291,7 @@ dependencies = [
  "simplecss",
  "siphasher 1.0.2",
  "strict-num",
- "svgtypes",
+ "svgtypes 0.15.3",
  "tiny-skia-path",
  "unicode-bidi",
  "unicode-script",
