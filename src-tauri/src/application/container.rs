@@ -470,21 +470,10 @@ impl AppContainer {
             .cloned()
     }
 
-    /// OCR 엔진 (PaddleOCR ONNX)
-    pub fn get_ocr_engine(&self) -> Result<Arc<OcrEngine>, ApiError> {
-        self.ocr_engine
-            .get_or_try_init(|| {
-                let ocr_dir = self.models_dir.join("paddleocr");
-                OcrEngine::new(&ocr_dir, self.get_settings().ocr_layout_enabled)
-                    .map(Arc::new)
-                    .map_err(|e| ApiError::IndexingFailed(format!("OCR 엔진 초기화 실패: {}", e)))
-            })
-            .cloned()
-    }
-
     /// 이미 초기화된 OCR 엔진만 반환 — **절대 blocking 초기화하지 않는다**.
     ///
-    /// `get_ocr_engine` 은 OnceCell 초기화라, 초기화가 오래 걸리거나 멈추면 같은 OnceCell 을
+    /// blocking `get_or_try_init` API(구 `get_ocr_engine`)는 이슈 #35 재발 방지를 위해
+    /// 제거됨 — OnceCell 초기화가 멈추면 같은 OnceCell 을
     /// 기다리는 **모든** 호출자가 함께 멈춘다. OCR 은 ONNX 세션 빌드라 환경(내부망 EDR 의
     /// DLL 로드 검사 등)에 따라 수십 초 이상 걸릴 수 있어, UI 경로가 그 지연에 얽히면 앱이
     /// 멈춘 것처럼 보인다(이슈 #35). 워밍업은 `spawn_ocr_warmup` 이 담당하고, 그 외에는

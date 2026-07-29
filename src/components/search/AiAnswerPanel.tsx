@@ -110,7 +110,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
     return (
       <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
         <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-error, #ef4444)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <line x1="15" y1="9" x2="9" y2="15" />
             <line x1="9" y1="9" x2="15" y2="15" />
@@ -168,7 +168,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
           <span>Enter로 전송 · Shift+Enter로 줄바꿈</span>
           <span className="opacity-30">|</span>
           <span className="flex items-center gap-1.5 opacity-70">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning, #f59e0b)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
               <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
             </svg>
             문서 내용이 외부 AI 서버로 전송됩니다

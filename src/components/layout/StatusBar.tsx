@@ -177,7 +177,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
             {status?.filename_cache_truncated && (
               <span
                 title="파일 수가 캐시 상한(100만개)을 초과했습니다. 일부 파일명 검색 결과가 누락될 수 있습니다."
-                style={{ color: "var(--color-warning, #f59e0b)" }}
+                style={{ color: "var(--color-warning)" }}
               >
                 · 파일명 캐시 초과
               </span>
@@ -186,7 +186,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
               <button
                 onClick={onShowReport}
                 className="px-1.5 py-0.5 text-[11px] rounded font-medium transition-opacity hover:opacity-80"
-                style={{ color: "var(--color-warning, #f59e0b)" }}
+                style={{ color: "var(--color-warning)" }}
                 title="마지막 인덱싱에서 실패한 파일 목록을 다시 봅니다"
               >
                 실패 {failedCount}건

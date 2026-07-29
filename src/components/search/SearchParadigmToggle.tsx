@@ -67,7 +67,7 @@ export default function SearchParadigmToggle({ paradigm, onChange }: Props) {
             `}
             style={
               isNaturalActive ? {
-                background: "linear-gradient(135deg, var(--color-accent) 0%, #059669 100%)",
+                background: "linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-active) 100%)",
                 boxShadow: "0 1px 4px var(--color-accent-glow)",
               } : isQuestionActive ? {
                 background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)",

@@ -58,15 +58,34 @@ pub async fn clear_all_data(
     //    재시도가 빠른 이유는 두 번째엔 이미 잔존 lock이 정리됐기 때문.
     emit_step("clearing-database");
     crate::db::pool::drain_pool();
+    let clear_result = {
+        let container = state.read()?;
+        container.index_service().clear_database()
+    };
+
+    // 4. 감시 재개 — 성공/실패 무관 수행해 1번의 pause 와 짝을 맞춘다.
+    //    (미수행 시 pause_count 가 1로 굳어 이후 add_folder 의 pause/resume 쌍이
+    //    0에 도달하지 못해 재시작 전까지 실시간 감시가 전면 죽는다.)
+    //    성공 시 watched_folders 는 비어 있어 재등록은 자연히 no-op,
+    //    실패 시엔 기존 폴더 감시가 복구된다.
     {
         let container = state.read()?;
-        container
-            .index_service()
-            .clear_database()
-            .map_err(ApiError::from)?;
+        if let Ok(wm) = container.get_watch_manager() {
+            if let Ok(mut wm) = wm.write() {
+                let folders: Vec<String> = crate::db::get_connection(&container.db_path)
+                    .ok()
+                    .and_then(|conn| crate::db::get_watched_folders(&conn).ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|f| std::path::Path::new(f).exists())
+                    .collect();
+                wm.resume_with_folders(&folders);
+            }
+        }
     }
+    clear_result.map_err(ApiError::from)?;
 
-    // 4. 파일명 캐시 클리어
+    // 5. 파일명 캐시 클리어
     {
         let container = state.read()?;
         container.get_filename_cache().clear();

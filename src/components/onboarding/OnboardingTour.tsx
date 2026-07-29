@@ -293,7 +293,7 @@ export function OnboardingTour({
           width: spot.width,
           height: spot.height,
           boxShadow:
-            "0 0 0 9999px rgba(15,23,42,0.62), 0 0 0 1.5px var(--color-accent, #3b82f6)",
+            "0 0 0 9999px rgba(15,23,42,0.62), 0 0 0 1.5px var(--color-accent)",
         }}
       />
     </>

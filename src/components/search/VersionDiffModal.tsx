@@ -150,13 +150,13 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
               icon={<Plus className="w-3 h-3" />}
               count={addedRows.length}
               label="B에 추가"
-              color="var(--color-success, #34a853)"
+              color="var(--diff-add)"
             />
             <SummaryChip
               icon={<Minus className="w-3 h-3" />}
               count={removedRows.length}
               label="B에서 제거"
-              color="var(--color-danger, #ea4335)"
+              color="var(--diff-del)"
             />
             <SummaryChip
               icon={<Check className="w-3 h-3" />}
@@ -202,7 +202,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
             </div>
           )}
           {error && (
-            <div className="text-sm" style={{ color: "var(--color-danger, #ea4335)" }}>
+            <div className="text-sm" style={{ color: "var(--diff-del)" }}>
               오류: {error}
             </div>
           )}
@@ -224,7 +224,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
             <Section
               title={`B에 추가된 내용 (${addedRows.length})`}
               subtitle="원본(A)에 없는 내용"
-              color="var(--color-success, #34a853)"
+              color="var(--diff-add)"
             >
               {addedRows.map((c, i) => (
                 <OneSideRow key={`a-${i}`} entry={c} side="B" />
@@ -236,7 +236,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
             <Section
               title={`B에서 제거된 내용 (${removedRows.length})`}
               subtitle="대상(B)에 없는 내용"
-              color="var(--color-danger, #ea4335)"
+              color="var(--diff-del)"
             >
               {removedRows.map((c, i) => (
                 <OneSideRow key={`r-${i}`} entry={c} side="A" />
@@ -283,7 +283,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
 }
 
 function FileLabel({ role, name, path }: { role: "A" | "B"; name: string; path: string }) {
-  const color = role === "A" ? "var(--color-danger, #ea4335)" : "var(--color-success, #34a853)";
+  const color = role === "A" ? "var(--diff-del)" : "var(--diff-add)";
   return (
     <div className="flex-1 min-w-0 flex items-center gap-1.5" title={path}>
       <span
@@ -379,13 +379,13 @@ function ModifiedRow({ entry }: { entry: ChunkDiffEntry }) {
           <div
             className="rounded p-2"
             style={{
-              backgroundColor: "color-mix(in srgb, var(--color-danger, #ea4335) 8%, transparent)",
-              borderLeft: "2px solid var(--color-danger, #ea4335)",
+              backgroundColor: "color-mix(in srgb, var(--diff-del) 8%, transparent)",
+              borderLeft: "2px solid var(--diff-del)",
             }}
           >
             <div
               className="text-[10px] font-semibold mb-1"
-              style={{ color: "var(--color-danger, #ea4335)" }}
+              style={{ color: "var(--diff-del)" }}
             >
               A (원본)
             </div>
@@ -396,13 +396,13 @@ function ModifiedRow({ entry }: { entry: ChunkDiffEntry }) {
           <div
             className="rounded p-2"
             style={{
-              backgroundColor: "color-mix(in srgb, var(--color-success, #34a853) 8%, transparent)",
-              borderLeft: "2px solid var(--color-success, #34a853)",
+              backgroundColor: "color-mix(in srgb, var(--diff-add) 8%, transparent)",
+              borderLeft: "2px solid var(--diff-add)",
             }}
           >
             <div
               className="text-[10px] font-semibold mb-1"
-              style={{ color: "var(--color-success, #34a853)" }}
+              style={{ color: "var(--diff-add)" }}
             >
               B (대상)
             </div>
@@ -417,7 +417,7 @@ function ModifiedRow({ entry }: { entry: ChunkDiffEntry }) {
 /** 한쪽에만 존재 — 추가/제거됨 */
 function OneSideRow({ entry, side }: { entry: ChunkDiffEntry; side: "A" | "B" }) {
   const preview = side === "A" ? entry.a_preview : entry.b_preview;
-  const color = side === "A" ? "var(--color-danger, #ea4335)" : "var(--color-success, #34a853)";
+  const color = side === "A" ? "var(--diff-del)" : "var(--diff-add)";
   if (!preview) return null;
   return (
     <div

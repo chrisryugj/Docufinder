@@ -38,9 +38,9 @@ function statusIcon(status: BatchJobStatus) {
         />
       );
     case "done":
-      return <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "#10b981" }} />;
+      return <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-success)" }} />;
     case "failed":
-      return <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "#ef4444" }} />;
+      return <AlertTriangle className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-error)" }} />;
     case "cancelled":
       return <Ban className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-text-muted)" }} />;
   }
@@ -146,7 +146,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
       {job.status === "failed" && job.error && (
         <div
           className="mt-0.5 text-[10px] truncate"
-          style={{ color: "#ef4444" }}
+          style={{ color: "var(--color-error)" }}
           title={job.error}
         >
           {job.error}
@@ -204,7 +204,7 @@ export const DriveIndexingPanel = memo(function DriveIndexingPanel({
               style={{ color: "var(--color-accent)" }}
             />
           ) : (
-            <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "#10b981" }} />
+            <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-success)" }} />
           )}
           <span
             className="text-[11px] font-bold tracking-[0.08em] uppercase"

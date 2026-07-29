@@ -311,7 +311,9 @@ fn index_folder_fts_impl(
     });
 
     // 메타데이터 전용 파일 배치 저장 (파일명 검색용, 콘텐츠 파싱 없음)
-    // 필터: 문서 확장자만 저장 (DLL, INI, 압축파일 등은 제외)
+    // 필터: scan_metadata_only(1011행)·sync 와 동일한 블랙리스트 기준으로 통일 —
+    // 종전 화이트리스트(txt|md|hwp|pdf)는 크기 초과로 파싱 제외된 docx/xlsx/hwpx 를
+    // 파일명 검색에서 누락시켰다 (DLL/EXE 류 배제는 METADATA_EXCLUDED_EXTENSIONS 담당)
     let metadata_docs: Vec<_> = metadata_only
         .iter()
         .filter(|p| {
@@ -320,8 +322,7 @@ fn index_folder_fts_impl(
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            // hwp, md, txt 등 문서류만 허용
-            matches!(ext.as_str(), "txt" | "md" | "hwp" | "pdf")
+            !METADATA_EXCLUDED_EXTENSIONS.contains(&ext.as_str())
         })
         .collect();
 

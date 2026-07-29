@@ -197,6 +197,42 @@
   --shadow-premium-accent: 0 2px 4px rgba(28, 25, 23, 0.04), 0 12px 28px -10px rgba(1, 175, 122, 0.22);
   /* 카드 곡률 언어 통일 — 결과/칩/패널 카드류 기본값 */
   --radius-card: var(--radius-xl); /* 12px */
+
+  /* ============================================
+     Chart & Diff Tokens (컴포넌트 하드코딩 hex 수렴)
+     ============================================ */
+  /* 문서 비교(diff) — 추가/삭제. 기능색 별칭이라 다크 값은 success/error 를 따라 자동 전환 */
+  --diff-add: var(--color-success);
+  --diff-del: var(--color-error);
+  /* OCR 지표 (인덱싱 리포트) */
+  --color-ocr: #8B5CF6;
+  /* 통계 차트 — 비문서 확장자 식별색 (언어·포맷 브랜드색).
+     명도 중간대 브랜드색이라 라이트/다크 공통값 사용 (기존 렌더와 동일) */
+  --chart-js: #F7DF1E;
+  --chart-ts: #3178C6;
+  --chart-json: #8B8B8B;
+  --chart-yaml: #CB171E;
+  --chart-toml: #9C4221;
+  --chart-py: #3776AB;
+  --chart-rs: #DEA584;
+  --chart-go: #00ADD8;
+  --chart-java: #B07219;
+  --chart-c: #555555;
+  --chart-cpp: #F34B7D;
+  --chart-cs: #178600;
+  --chart-rb: #701516;
+  --chart-php: #4F5D95;
+  --chart-sh: #89E051;
+  --chart-lua: #000080;
+  --chart-html: #E34C26;
+  --chart-css: #563D7C;
+  --chart-scss: #C6538C;
+  --chart-vue: #41B883;
+  --chart-image: #0EA5E9;
+  --chart-svg: #FFB13B;
+  --chart-video: #EC4899;
+  --chart-audio: #A855F7;
+  --chart-archive: #F59E0B;
 }
 
 /* ============================================

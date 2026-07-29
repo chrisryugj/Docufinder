@@ -7,127 +7,13 @@ use super::*;
 #[tauri::command]
 pub async fn initialize_app(
     app_handle: AppHandle,
-    state: State<'_, RwLock<AppContainer>>,
+    _state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     tracing::info!("Initializing app after disclaimer acceptance");
 
-    // 벡터 인덱싱은 AI RAG 전용 → 앱 시작 시 자동 재개 비활성화
-    // 사용자가 명시적으로 start_vector_indexing 커맨드를 호출할 때만 실행
-    let has_pending_chunks = {
-        let container = state.read()?;
-        let should_auto_resume = false;
-
-        if should_auto_resume {
-            let Ok(conn) = crate::db::get_connection(&container.db_path) else {
-                return Ok(());
-            };
-
-            // FTS 미완료 폴더가 있으면 벡터 인덱싱 스킵
-            // (resume_indexing이 FTS 완료 후 auto vector를 순차적으로 시작)
-            let has_incomplete_fts = crate::db::get_watched_folders_with_info(&conn)
-                .map(|folders| {
-                    folders.iter().any(|f| {
-                        f.indexing_status == "indexing" || f.indexing_status == "cancelled"
-                    })
-                })
-                .unwrap_or(false);
-
-            if has_incomplete_fts {
-                tracing::info!(
-                    "[initialize_app] FTS 미완료 폴더 존재 → 벡터 인덱싱 스킵 (resume_indexing에서 순차 처리)"
-                );
-                false
-            } else {
-                let Ok(stats) = crate::db::get_vector_indexing_stats(&conn) else {
-                    return Ok(());
-                };
-                stats.pending_chunks > 0
-            }
-        } else {
-            false
-        }
-    };
-
-    if has_pending_chunks {
-        tracing::info!("Found pending vector chunks. Starting background indexing.");
-
-        // read lock을 최소 범위로 유지하고, 필요한 데이터만 추출
-        let (
-            embedder,
-            vector_index,
-            vector_worker,
-            db_path,
-            intensity,
-            watched_folders,
-            watch_manager,
-        ) = {
-            let container = state.read()?;
-            let watched_folders = if let Ok(conn) = crate::db::get_connection(&container.db_path) {
-                crate::db::get_watched_folders(&conn).unwrap_or_default()
-            } else {
-                vec![]
-            };
-            (
-                container.get_embedder(),
-                container.get_vector_index(),
-                container.get_vector_worker(),
-                container.db_path.clone(),
-                container.get_settings().indexing_intensity.clone(),
-                watched_folders,
-                container.get_watch_manager(),
-            )
-        }; // read lock 해제
-
-        // watcher 일시 중지 (lock 해제 후 별도 수행)
-        if let Ok(ref wm) = watch_manager {
-            if let Ok(mut wm) = wm.write() {
-                wm.pause();
-            }
-        }
-
-        if let (Ok(emb), Ok(vi)) = (embedder, vector_index) {
-            if let Ok(mut worker) = vector_worker.write() {
-                let app_handle_clone = app_handle.clone();
-                let watched_folders_clone = watched_folders.clone();
-                let started = worker.start(
-                    db_path,
-                    emb,
-                    vi,
-                    Some(Arc::new(move |progress| {
-                        let _ = app_handle_clone.emit("vector-indexing-progress", &progress);
-                        // 벡터 인덱싱 완료 시 watcher 재개 + startup sync 시작
-                        if progress.is_complete {
-                            if let Some(cs) = app_handle_clone.try_state::<RwLock<AppContainer>>() {
-                                if let Ok(c) = cs.read() {
-                                    if let Ok(wm) = c.get_watch_manager() {
-                                        if let Ok(mut wm) = wm.write() {
-                                            wm.resume_with_folders(&watched_folders_clone);
-                                        }
-                                    }
-                                }
-                            }
-                            // 벡터 완료 후 startup sync 시작
-                            spawn_startup_sync_async(app_handle_clone.clone());
-                        }
-                    })),
-                    Some(intensity),
-                );
-                if started.is_err() {
-                    // 시작 실패 → 즉시 재개 (pause만 된 채로 방치 방지)
-                    tracing::warn!("Failed to start vector indexing worker");
-                    if let Ok(ref wm) = watch_manager {
-                        if let Ok(mut wm) = wm.write() {
-                            wm.resume_with_folders(&watched_folders);
-                        }
-                    }
-                    spawn_startup_sync_async(app_handle.clone());
-                }
-            }
-        }
-    } else {
-        // 벡터 인덱싱이 필요 없으면 바로 startup sync 시작
-        spawn_startup_sync_async(app_handle);
-    }
+    // 벡터 인덱싱 자동 재개는 제거됨 (AI RAG 전용 — 사용자가 start_vector_indexing 을
+    // 명시 호출할 때만 실행). 여기서는 startup sync 만 시작한다.
+    spawn_startup_sync_async(app_handle);
 
     Ok(())
 }
@@ -282,19 +168,20 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
         })
         .await;
 
-        // 루프 완료 후 watcher 복구
+        // 루프 완료 후 watcher 복구 — resume 은 폴더 목록 조회 성공 여부와 무관하게
+        // 수행한다 (DB 연결 실패 시에도 pause_count 짝은 맞춰야 감시가 죽지 않음)
         if let Some(cs) = app_handle.try_state::<RwLock<AppContainer>>() {
             if let Ok(c) = cs.read() {
-                if let Ok(conn) = crate::db::get_connection(&c.db_path) {
-                    let remaining = crate::db::get_watched_folders(&conn)
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|f| std::path::Path::new(f).exists())
-                        .collect::<Vec<_>>();
-                    if let Ok(wm) = c.get_watch_manager() {
-                        if let Ok(mut wm) = wm.write() {
-                            wm.resume_with_folders(&remaining);
-                        }
+                let remaining: Vec<String> = crate::db::get_connection(&c.db_path)
+                    .ok()
+                    .and_then(|conn| crate::db::get_watched_folders(&conn).ok())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|f| std::path::Path::new(f).exists())
+                    .collect();
+                if let Ok(wm) = c.get_watch_manager() {
+                    if let Ok(mut wm) = wm.write() {
+                        wm.resume_with_folders(&remaining);
                     }
                 }
             }

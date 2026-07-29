@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.4.9"
+version = "3.5.0"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -52,8 +52,11 @@ mail-parser = { version = "0.11", default-features = false, features = ["full_en
 # HWP5(.hwp) 바이너리 원본 레이아웃 미리보기 — rhwp(순수 Rust HWP/HWPX 뷰어) DocumentCore→SVG.
 # 미리보기 "원본 레이아웃" 뷰 전용 (인덱싱/마크다운은 kordoc 담당). native-skia(C++) feature 는
 # 켜지 않는다 — render_page_svg_native 는 순수 Rust(tiny-skia) 경로라 C++ 링크 없이 Win/macOS 컴파일.
-# rev 는 v0.7.17 태그 커밋 SHA 고정 (공급망 차단, kordoc SHA-pin 정책과 동일).
-rhwp = { git = "https://github.com/edwardkim/rhwp", rev = "03351190ec35436e58cbfee0aa9278a8fdc04a59", default-features = false }
+# rev 는 v0.8.2 태그 커밋 SHA 고정 (공급망 차단, kordoc SHA-pin 정책과 동일).
+# v0.7.17→v0.8.2: BinData 지연 로딩(RSS 244→49MB)·fuzz 방어 6건·초대형 표 O(n²) 제거·
+# 바탕쪽 개체 배치·TAC outMargin 등 렌더 정합 — API 4종(from_bytes/page_count/
+# render_page_svg_native/populate_external_images_from_dir) 시그니처 불변 확인.
+rhwp = { git = "https://github.com/edwardkim/rhwp", rev = "9b16aa9e23f476e2b335d7c029fc9f24a199d63c", default-features = false }
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs", "process"] }
