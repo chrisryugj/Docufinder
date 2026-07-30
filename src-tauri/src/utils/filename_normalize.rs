@@ -330,12 +330,14 @@ mod tests {
         assert_eq!(extract_version_label("just_a_file.txt"), None);
     }
 
-    // === 실환경 파일명 7388개 regression 스위트 ===
-    // fixtures/real_filenames.list: 사용자 E:\ 드라이브에서 실제 수집된 파일명.
+    // === 합성 파일명 regression 스위트 ===
+    // fixtures/filenames_synthetic.list: 한국 사무환경 파일명 패턴(연도·월·버전 접미사·
+    // 복사본·YYMMDD·사진 타임스탬프·하이픈 정렬번호·괄호 날짜)을 조합해 생성한 5,900여 건.
+    // 생성기는 결정적이며 실명·실제 문서 제목을 포함하지 않는다.
     // .list 확장자 — Docufinder 파서(hwpx/docx/xlsx/pdf/txt) 대상 아님 → 사용자 DB 인덱싱 오염 방지.
     // 정규화 규칙을 수정한 뒤 이 스위트를 돌려 false positive/negative를 모니터링한다.
 
-    const REAL_FIXTURE: &str = include_str!("../../tests/fixtures/real_filenames.list");
+    const REAL_FIXTURE: &str = include_str!("../../tests/fixtures/filenames_synthetic.list");
 
     fn load_real_filenames() -> Vec<String> {
         REAL_FIXTURE

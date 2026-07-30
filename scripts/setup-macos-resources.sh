@@ -88,10 +88,15 @@ echo "  installing kordoc runtime deps (npm, prod-only)…"
     "@hyzyla/pdfium@^2" "onnxruntime-node@^1.24" "sharp@^0.34" "@huggingface/transformers@^4")
 
 # trim 불필요 파일
+# LICENSE*/NOTICE*/COPYING* 는 지우지 않는다 — 이 node_modules 는 배포본에 그대로
+# 번들되므로, MIT·Apache-2.0 등 대부분의 라이선스가 요구하는 저작권 고지가
+# 수령자에게 함께 전달되어야 한다.
 find "$KORDOC_DEST/node_modules" -type f \( \
-    -name '*.d.ts' -o -name '*.d.mts' -o -name '*.md' \
-    -o -name 'LICENSE*' -o -name 'CHANGELOG*' -o -name '*.map' \
-    -o -name 'tsconfig*' \) -delete 2>/dev/null || true
+    -name '*.d.ts' -o -name '*.d.mts' -o -name '*.map' \
+    -o -name 'CHANGELOG*' -o -name 'tsconfig*' \) -delete 2>/dev/null || true
+find "$KORDOC_DEST/node_modules" -type f -name '*.md' \
+    ! -iname 'LICENSE*' ! -iname 'NOTICE*' ! -iname 'COPYING*' \
+    -delete 2>/dev/null || true
 
 echo "==> [3/4] ONNX Runtime ${ORT_VERSION} osx-arm64"
 DYLIB_DEST="$RES_DIR/onnxruntime/libonnxruntime.dylib"

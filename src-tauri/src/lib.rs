@@ -499,8 +499,8 @@ pub fn run() {
         }
         eprintln!("Please contact the development team to report this issue.");
 
-        // Telegram 자동 전송 (빌드 시 토큰 주입됐을 때만; 사용자 설정 체크는 생략 —
-        // panic 은 치명적이므로 best-effort 로 알림).
+        // Telegram 자동 전송 (빌드 시 토큰 주입 + 사용자의 error_reporting_enabled
+        // 양쪽을 통과할 때만 — report_panic_sync 내부에서 검사한다).
         let telegram_msg = match &breadcrumb_line {
             Some(bc) => format!("{message} | {bc}"),
             None => message.clone(),

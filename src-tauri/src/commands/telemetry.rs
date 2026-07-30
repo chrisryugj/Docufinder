@@ -156,10 +156,20 @@ fn truncate(s: &str, max: usize) -> &str {
     }
 }
 
-/// Rust panic hook 에서 호출 (sync). 사용자 설정 체크 불가하므로
-/// build-time env 존재 여부로만 gate.
+/// Rust panic hook 에서 호출 (sync).
+///
+/// build-time env 와 **사용자 설정** 양쪽을 모두 통과해야 전송한다.
+/// panic 상황이라도 opt-out 을 무시하지 않는다 — 전송이 막혀도 크래시 로그는
+/// 로컬에 남고, 사용자가 나중에 토글을 켜면 `spawn_flush_pending_crash_logs` 가
+/// 처리한다.
 pub fn report_panic_sync(location: &str, message: &str) {
     if TELEGRAM_BOT_TOKEN.is_empty() || TELEGRAM_CHAT_ID.is_empty() {
+        return;
+    }
+    let Some(app_data_dir) = dirs::data_dir().map(|d| d.join("com.anything.app")) else {
+        return;
+    };
+    if !crate::commands::settings::get_settings_sync(&app_data_dir).error_reporting_enabled {
         return;
     }
     let report = ErrorReport {

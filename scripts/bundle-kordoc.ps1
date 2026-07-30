@@ -93,8 +93,12 @@ if ($npmExit -ne 0) {
 Pop-Location
 
 # Clean up unnecessary files (typescript defs, docs, tests)
+# LICENSE*/NOTICE*/COPYING* 는 지우지 않는다 — 이 node_modules 는 배포본에 그대로
+# 번들되므로, MIT·Apache-2.0 등 대부분의 라이선스가 요구하는 저작권 고지가
+# 수령자에게 함께 전달되어야 한다.
 if (Test-Path "$kordocOut\node_modules") {
-    Get-ChildItem "$kordocOut\node_modules" -Recurse -Include "*.d.ts","*.d.mts","*.md","LICENSE*","CHANGELOG*","*.map","tsconfig*" |
+    Get-ChildItem "$kordocOut\node_modules" -Recurse -Include "*.d.ts","*.d.mts","*.md","CHANGELOG*","*.map","tsconfig*" |
+        Where-Object { $_.Name -notmatch '^(LICEN[CS]E|NOTICE|COPYING)' } |
         Remove-Item -Force -ErrorAction SilentlyContinue
 }
 

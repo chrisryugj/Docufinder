@@ -1566,7 +1566,7 @@ WARNING: 이슈 #23 의 0x80070002 ERROR_FILE_NOT_FOUND 원인일 가능성
 **HWP 3.0 (구버전) 파일 본문 인덱싱 지원** — [이슈 #22](https://github.com/chrisryugj/Docufinder/issues/22) 사용자 환경의 2003년 판결문 등 1996~2002년 한컴이 만든 구버전 `.HWP` 가 v2.5.22 까지 `kordoc 실행 실패: 지원하지 않는 파일 형식` 으로 차단되던 문제 해결.
 
 ### 추가
-- **kordoc v2.7.1 번들** — kordoc 에 `parseHwp3` 신규 모듈 추가 (`"HWP Document File V3.00"` 30 byte 시그니처 → DocInfo 128B + DocSummary 1008B + raw deflate 압축 해제 → font/style 메타 skip → paragraph_list 재귀 + 표/머리말/각주 nested 본문 포함). 상용 조합형(johab) → 0xAC00 한글 음절 매핑 + 5,893개 한자/기호 lookup. [edwardkim/rhwp](https://github.com/edwardkim/rhwp) (Apache-2.0) 의 Rust 구현을 TypeScript 로 minimal port. 검증: rhwp sample 3건 — sample4(임베디드 시스템 개요) 444 byte 본문 + 작자 "유미경", sample5(리눅스 시스템 관리자 가이드) 7,204 byte 본문 + 작자 "김태형" 경고 없이 깨끗하게 추출. 본 변경은 `parsers/kordoc.rs` 의 fileType 무관 응답 수용 흐름과 `parsers/password_detect.rs` 의 HWP3 가 CFB 가 아니므로 통과 동작 덕분에 Rust 측 코드 변경 없이 사이드카 번들 갱신만으로 적용.
+- **kordoc v2.7.1 번들** — kordoc 에 `parseHwp3` 신규 모듈 추가 (`"HWP Document File V3.00"` 30 byte 시그니처 → DocInfo 128B + DocSummary 1008B + raw deflate 압축 해제 → font/style 메타 skip → paragraph_list 재귀 + 표/머리말/각주 nested 본문 포함). 상용 조합형(johab) → 0xAC00 한글 음절 매핑 + 5,893개 한자/기호 lookup. [edwardkim/rhwp](https://github.com/edwardkim/rhwp) (MIT) 의 Rust 구현을 TypeScript 로 minimal port. 검증: rhwp sample 3건 — sample4(임베디드 시스템 개요) 444 byte 본문 + 작자 "유미경", sample5(리눅스 시스템 관리자 가이드) 7,204 byte 본문 + 작자 "김태형" 경고 없이 깨끗하게 추출. 본 변경은 `parsers/kordoc.rs` 의 fileType 무관 응답 수용 흐름과 `parsers/password_detect.rs` 의 HWP3 가 CFB 가 아니므로 통과 동작 덕분에 Rust 측 코드 변경 없이 사이드카 번들 갱신만으로 적용.
 
 ### 사용자 안내
 - **2003년 작성 .HWP 재인덱싱** — v2.5.22 에서 `kordoc 실행 실패 ... 지원하지 않는 파일 형식` 으로 missing 됐던 구버전 .HWP 들이 v2.5.23 에서 자동 처리. 폴더 우클릭 → "재인덱싱" 으로 갱신.

@@ -305,6 +305,11 @@ SSD 기준 약 1,000개 문서에 2~5분. FTS 인덱싱이 먼저 완료되어 �
 
 상용 라이선스 문의: ryuseungin@gmail.com
 
+배포본에 포함되는 제3자 저작물(PDFium, ONNX Runtime, PaddleOCR, Node.js,
+Pretendard, kordoc 및 그 의존성)의 저작권·라이선스 고지는
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 를 참조. 위 BUSL 조건은
+제3자 저작물에는 적용되지 않는다.
+
 ---
 
 버그 리포트·기능 제안은 [Issues](https://github.com/chrisryugj/Docufinder/issues)에서 환영합니다.
