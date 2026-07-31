@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef, useCallback, useMemo, type ComponentProps } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, MoreHorizontal, Tag, AlertTriangle } from "lucide-react";
+import { X, FileText, Copy, ExternalLink, FolderOpen, Bookmark, Sparkles, ChevronDown, ChevronUp, MessageSquare, ClipboardCopy, Save, Search, MoreHorizontal, Tag, AlertTriangle, Lock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -30,6 +30,9 @@ interface MarkdownPreviewResponse {
   markdown: string;
   /** 복사 시 글자가 깨지는 문서(CID/PUA 매핑 손상)로 감지됨 */
   garbled: boolean;
+  /** 열기 암호가 필요한 문서 — 비밀번호 입력을 띄운다.
+   *  암호를 넣어 재요청했는데도 true 면 입력한 암호가 틀린 것. */
+  needs_password?: boolean;
 }
 
 /** 인용 점프 타깃 — AI 답변 [출처N] 클릭 시 부모가 내려보냄.
@@ -578,6 +581,13 @@ export const PreviewPanel = memo(function PreviewPanel({
   const [markdown, setMarkdown] = useState<string | null>(null);
   // 복사 시 글자 깨짐 표식 — 최종 반환 markdown 기준 판정값 (백엔드 계산)
   const [garbled, setGarbled] = useState(false);
+  /** 열기 암호가 필요한 문서 — 입력 폼을 띄운다 */
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  /** 암호 재시도 진행 중 */
+  const [unlocking, setUnlocking] = useState(false);
+  /** 입력한 암호가 틀렸다 (한 번이라도 시도한 뒤) */
+  const [passwordWrong, setPasswordWrong] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -699,14 +709,18 @@ export const PreviewPanel = memo(function PreviewPanel({
     setLoading(true);
     setError(null);
     setGarbled(false);
+    setNeedsPassword(false);
+    setPasswordInput("");
+    setPasswordWrong(false);
 
     // 빠른 탐색 시 불필요한 파싱 방지를 위해 300ms debounce (화살표 키 고속 이동 대응)
     const timer = setTimeout(() => {
-      invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath })
+      invoke<MarkdownPreviewResponse>("load_markdown_preview", { filePath, password: null })
         .then((res) => {
           if (!cancelled) {
             setMarkdown(res.markdown);
             setGarbled(res.garbled ?? false);
+            setNeedsPassword(res.needs_password ?? false);
             setLoading(false);
             contentRef.current?.scrollTo(0, 0);
           }
@@ -1134,6 +1148,33 @@ export const PreviewPanel = memo(function PreviewPanel({
   // PDF 는 pdfium 페이지 이미지로 원본 레이아웃을 본다 (SVG 경로와 별개, PdfLayoutView)
   const isPdf = ext === "pdf";
 
+  /** 입력한 암호로 문서를 다시 연다 (kordoc v4.4.0+ — HWPX·HWP3·HWP5) */
+  const unlockWithPassword = async () => {
+    if (!passwordInput || unlocking) return;
+    setUnlocking(true);
+    setPasswordWrong(false);
+    try {
+      const res = await invoke<MarkdownPreviewResponse>("load_markdown_preview", {
+        filePath,
+        password: passwordInput,
+      });
+      if (res.needs_password) {
+        // 암호가 틀렸다 — 입력값은 남겨 사용자가 고쳐 넣게 한다
+        setPasswordWrong(true);
+        return;
+      }
+      setMarkdown(res.markdown);
+      setGarbled(res.garbled ?? false);
+      setNeedsPassword(false);
+      setPasswordInput("");
+      contentRef.current?.scrollTo(0, 0);
+    } catch (e) {
+      setError(typeof e === "string" ? e : (e as Error)?.message || "문서 열기 실패");
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   return (
     <div ref={panelRef} onKeyDown={handlePanelKeyDown} className="preview-panel flex flex-col h-full border-l bg-[var(--color-bg-primary)]" style={{ borderColor: "var(--color-border)", minWidth: "320px" }}>
       {/* 헤더 */}
@@ -1458,6 +1499,54 @@ export const PreviewPanel = memo(function PreviewPanel({
             </div>
           )}
 
+          {/* 열기 암호 입력 — 암호로 보호된 문서 (kordoc v4.4.0+) */}
+          {needsPassword && !loading && (
+            <div className="p-4 flex flex-col items-center gap-3">
+              <Lock size={20} className="opacity-60 text-[var(--color-text-muted)]" />
+              <p className="text-sm text-center text-[var(--color-text-secondary)]">
+                암호로 보호된 문서입니다.
+                <br />
+                열기 암호를 입력하면 내용을 볼 수 있습니다.
+              </p>
+              <form
+                className="flex items-center gap-1.5 w-full max-w-xs"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void unlockWithPassword();
+                }}
+              >
+                <input
+                  type="password"
+                  value={passwordInput}
+                  autoFocus
+                  disabled={unlocking}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    if (passwordWrong) setPasswordWrong(false);
+                  }}
+                  placeholder="열기 암호"
+                  aria-label="문서 열기 암호"
+                  aria-invalid={passwordWrong}
+                  className="flex-1 px-2 py-1.5 text-sm rounded outline-none bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] border"
+                  style={{ borderColor: passwordWrong ? "var(--color-error)" : "var(--color-border)" }}
+                />
+                <button
+                  type="submit"
+                  disabled={!passwordInput || unlocking}
+                  className="px-3 py-1.5 text-sm rounded shrink-0 bg-[var(--color-accent)] text-white disabled:opacity-50"
+                >
+                  {unlocking ? "여는 중…" : "열기"}
+                </button>
+              </form>
+              {passwordWrong && (
+                <p className="text-xs text-[var(--color-error)]">암호가 맞지 않습니다. 다시 확인해 주세요.</p>
+              )}
+              <p className="text-xs text-[var(--color-text-muted)]">
+                암호는 이 문서를 여는 데만 쓰이고 저장하지 않습니다.
+              </p>
+            </div>
+          )}
+
           {error && (
             <div className="p-4 text-sm text-[var(--color-error)]">
               <FileText size={20} className="mx-auto mb-2 opacity-50" />
@@ -1465,7 +1554,7 @@ export const PreviewPanel = memo(function PreviewPanel({
             </div>
           )}
 
-          {!loading && !error && markdown !== null && markdown.length === 0 && (
+          {!loading && !error && !needsPassword && markdown !== null && markdown.length === 0 && (
             <div className="p-4 text-sm text-center text-[var(--color-text-muted)]">
               <FileText size={24} className="mx-auto mb-2 opacity-30" />
               인덱싱된 텍스트가 없습니다

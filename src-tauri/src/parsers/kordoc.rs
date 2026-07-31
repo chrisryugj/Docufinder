@@ -50,12 +50,15 @@ pub enum KordocOcrMode {
 }
 
 /// kordoc 호출 옵션
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct KordocOptions {
     /// PDF 수식 OCR 활성화 (--formula-ocr)
     pub formula_ocr: bool,
     /// PDF 텍스트 OCR (내장 PP-OCRv5 korean — 첫 사용 시 모델 ~18MB 자동 다운로드)
     pub ocr: KordocOcrMode,
+    /// 암호로 보호된 문서의 열기 암호 (kordoc v4.4.0+, HWPX·HWP3·HWP5).
+    /// 인덱싱 경로는 항상 None — 사용자가 미리보기에서 입력했을 때만 전달한다.
+    pub password: Option<String>,
 }
 
 /// 전역 수식 OCR 토글. Settings 에서 변경될 때 set_formula_ocr_enabled 로 갱신.
@@ -104,6 +107,10 @@ struct KordocResponse {
     #[serde(default)]
     warnings: Vec<KordocWarning>,
     error: Option<String>,
+    /// 실패 원인 코드 (kordoc v4.4.0+ — 실패 시에도 --format json 이 JSON 을 낸다).
+    /// "ENCRYPTED" 면 열기 암호가 필요하거나 입력한 암호가 틀린 것.
+    #[serde(default)]
+    code: Option<String>,
     /// PDF 전용 — 텍스트층 부재 (kordoc v2.9+)
     #[serde(default)]
     is_image_based: Option<bool>,
@@ -238,9 +245,12 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
     })?;
 
     if !resp.success {
-        return Err(ParseError::ParseError(
-            resp.error.unwrap_or_else(|| "kordoc 파싱 실패".to_string()),
-        ));
+        let msg = resp.error.unwrap_or_else(|| "kordoc 파싱 실패".to_string());
+        // 암호 문서는 전용 에러로 — 호출부(미리보기)가 비밀번호 입력을 띄울 수 있어야 한다
+        if resp.code.as_deref() == Some("ENCRYPTED") {
+            return Err(ParseError::PasswordProtected(msg));
+        }
+        return Err(ParseError::ParseError(msg));
     }
 
     // 구조화 신호 (kordoc v4.2+): NEEDS_OCR/OCR_APPLIED 경고 코드 + 페이지 품질.
@@ -318,6 +328,18 @@ pub fn get_markdown(path: &Path) -> Result<String, ParseError> {
     get_markdown_with_options(path, options_for_path(path))
 }
 
+/// 열기 암호를 지정해 마크다운 추출 — 미리보기에서 사용자가 비밀번호를 입력했을 때.
+/// 암호가 틀리면 ParseError::PasswordProtected 로 돌아온다.
+pub fn get_markdown_with_password(path: &Path, password: &str) -> Result<String, ParseError> {
+    get_markdown_with_options(
+        path,
+        KordocOptions {
+            password: Some(password.to_string()),
+            ..options_for_path(path)
+        },
+    )
+}
+
 /// get_markdown + 옵션 지정
 pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<String, ParseError> {
     validate_file_size(path)?;
@@ -348,9 +370,12 @@ pub fn get_markdown_with_options(path: &Path, opts: KordocOptions) -> Result<Str
     })?;
 
     if !resp.success {
-        return Err(ParseError::ParseError(
-            resp.error.unwrap_or_else(|| "kordoc 파싱 실패".to_string()),
-        ));
+        let msg = resp.error.unwrap_or_else(|| "kordoc 파싱 실패".to_string());
+        // 암호 문서는 전용 에러로 — 호출부(미리보기)가 비밀번호 입력을 띄울 수 있어야 한다
+        if resp.code.as_deref() == Some("ENCRYPTED") {
+            return Err(ParseError::PasswordProtected(msg));
+        }
+        return Err(ParseError::ParseError(msg));
     }
 
     resp.markdown
@@ -944,6 +969,10 @@ fn call_kordoc_sync(
         KordocOcrMode::Auto => args.push("--ocr".into()),
         KordocOcrMode::Force => args.push("--ocr-force".into()),
     }
+    if let Some(pw) = opts.password.as_deref() {
+        args.push("--password".into());
+        args.push(pw.into());
+    }
 
     debug!(
         "kordoc: {} {:?}",
@@ -1231,6 +1260,7 @@ mod tests {
             KordocOptions {
                 formula_ocr: false,
                 ocr: KordocOcrMode::Auto,
+                password: None,
             },
         )
         .expect("스캔 PDF OCR 파싱");

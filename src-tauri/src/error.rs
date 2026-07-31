@@ -43,6 +43,10 @@ pub enum ApiError {
     #[error("인덱싱 실패: {0}")]
     IndexingFailed(String),
 
+    /// 열기 암호가 필요하거나 입력한 암호가 틀림 — 프론트가 비밀번호 입력을 띄운다
+    #[error("{0}")]
+    PasswordProtected(String),
+
     // ============ 검색 ============
     /// 검색 실패
     #[error("검색 실패: {0}")]

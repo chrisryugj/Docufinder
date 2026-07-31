@@ -209,6 +209,8 @@ fn parse_file_inner(
             } else {
                 kordoc::KordocOcrMode::Off
             },
+            // 인덱싱 경로는 암호를 모른다 — 암호 문서는 사전 감지에서 이미 걸러진다
+            password: None,
         };
         match kordoc::parse_with_options(path, kordoc_opts) {
             Ok(doc) => {

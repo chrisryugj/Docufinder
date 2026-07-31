@@ -193,6 +193,10 @@ pub struct MarkdownPreviewResponse {
     /// 복사 시 글자가 깨지는 문서(PDF CID/ToUnicode 누락, HWP PUA 커스텀폰트)로 감지됨.
     /// 최종 반환 markdown(교체 후) 기준 판정 = "복사 시 실제로 깨지는가"와 일치.
     pub garbled: bool,
+    /// 열기 암호가 필요한 문서 — 프론트가 비밀번호 입력을 띄운다.
+    /// password 를 주고 재호출했는데도 true 면 입력한 암호가 틀린 것.
+    #[serde(default)]
+    pub needs_password: bool,
 }
 
 /// kordoc으로 파일의 마크다운을 직접 추출 (미리보기 렌더링용)
@@ -202,6 +206,8 @@ pub struct MarkdownPreviewResponse {
 #[tauri::command]
 pub async fn load_markdown_preview(
     file_path: String,
+    // password: 프론트가 비밀번호 입력을 받아 재호출할 때만 전달한다
+    password: Option<String>,
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<MarkdownPreviewResponse> {
     if file_path.trim().is_empty() {
@@ -228,7 +234,7 @@ pub async fn load_markdown_preview(
         // PDF 는 판별 휴리스틱 + path+mtime 캐시 (이중 파싱 방지)
         load_pdf_markdown(&fp, &file_path, &state).await
     } else {
-        parse_kordoc_markdown(fp.clone(), ext_lower.clone()).await
+        parse_kordoc_markdown(fp.clone(), ext_lower.clone(), password.clone()).await
     };
 
     match result {
@@ -239,18 +245,27 @@ pub async fn load_markdown_preview(
                 file_name,
                 markdown,
                 garbled,
+                needs_password: false,
             })
         }
-        Err(_) => {
-            let markdown = fetch_db_markdown(&file_path, &state)
-                .await
-                .unwrap_or_default();
+        Err(e) => {
+            // 암호 문서는 DB 청크로 조용히 대체하지 않는다 — 본문이 없는 이유를 알려야
+            // 사용자가 비밀번호를 넣어 다시 열 수 있다.
+            let needs_password = matches!(e, ApiError::PasswordProtected(_));
+            let markdown = if needs_password {
+                String::new()
+            } else {
+                fetch_db_markdown(&file_path, &state)
+                    .await
+                    .unwrap_or_default()
+            };
             let garbled = crate::parsers::pdf::looks_like_garbage_text(&markdown);
             Ok(MarkdownPreviewResponse {
                 file_path,
                 file_name,
                 markdown,
                 garbled,
+                needs_password,
             })
         }
     }
@@ -258,16 +273,29 @@ pub async fn load_markdown_preview(
 
 /// kordoc으로 마크다운 직접 추출 (블로킹 파싱 — spawn_blocking).
 /// kordoc 미지원/실패 시 Err → 호출부가 DB 청크로 fallback.
-async fn parse_kordoc_markdown(fp: String, ext: String) -> ApiResult<String> {
+async fn parse_kordoc_markdown(
+    fp: String,
+    ext: String,
+    password: Option<String>,
+) -> ApiResult<String> {
     tokio::task::spawn_blocking(move || -> ApiResult<String> {
         let path = std::path::Path::new(&fp);
 
         let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
         if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
-            match crate::parsers::kordoc::get_markdown(path) {
+            let result = match password.as_deref() {
+                Some(pw) => crate::parsers::kordoc::get_markdown_with_password(path, pw),
+                None => crate::parsers::kordoc::get_markdown(path),
+            };
+            match result {
                 Ok(md) => {
                     tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
                     return Ok(md);
+                }
+                Err(crate::parsers::ParseError::PasswordProtected(msg)) => {
+                    // 비밀번호가 필요/불일치 — DB 청크 fallback 대신 그대로 올려보낸다
+                    tracing::info!("preview: 암호 문서 — {} — {}", fp, msg);
+                    return Err(ApiError::PasswordProtected(msg));
                 }
                 Err(e) => {
                     tracing::warn!("preview: kordoc 실패, fallback 사용 — {} — {:?}", fp, e);
@@ -320,7 +348,8 @@ async fn load_pdf_markdown(
                 pdf_source_cache_remove(k);
             }
             Some(PdfPreviewSource::Kordoc) => {
-                if let Ok(md) = parse_kordoc_markdown(fp.to_string(), "pdf".to_string()).await {
+                if let Ok(md) = parse_kordoc_markdown(fp.to_string(), "pdf".to_string(), None).await
+                {
                     if !md.is_empty() && !crate::parsers::pdf::looks_like_garbage_text(&md) {
                         return Ok(md);
                     }
@@ -332,7 +361,7 @@ async fn load_pdf_markdown(
     }
 
     // 전체 판별 (기존 휴리스틱 그대로)
-    let kordoc_md = parse_kordoc_markdown(fp.to_string(), "pdf".to_string())
+    let kordoc_md = parse_kordoc_markdown(fp.to_string(), "pdf".to_string(), None)
         .await
         .unwrap_or_default();
     let db_md = fetch_db_markdown(orig_path, state)
