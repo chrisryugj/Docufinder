@@ -798,6 +798,7 @@ function AppContent() {
                       error={search.aiError}
                       onReset={search.resetAi}
                       currentQuestion={search.aiAskedQuery}
+                      searchScope={search.filters.searchScope}
                       onCite={handleCitationJump}
                       onExampleClick={(text) => {
                         search.setQuery(text);

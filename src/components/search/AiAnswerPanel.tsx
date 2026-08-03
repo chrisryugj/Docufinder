@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -8,6 +9,8 @@ import "katex/dist/katex.min.css";
 import type { AiAnalysis, SourceRef } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { ResultContextMenu, useContextMenu } from "./ResultContextMenu";
+import { useUIContext } from "../../contexts/UIContext";
+import { buildAiAnswerMarkdown, toDefaultSavePath, toSafeFileStem } from "../../utils/aiAnswerMarkdown";
 
 interface Props {
   answer: string;
@@ -16,6 +19,8 @@ interface Props {
   error: string | null;
   onReset: () => void;
   currentQuestion?: string;
+  /** 질의에 사용된 검색 범위 폴더 — Markdown 저장 시 기본 폴더로 쓴다 */
+  searchScope?: string | null;
   onExampleClick?: (text: string) => void;
   /** AI 답변 [출처N] 또는 참조 문서 클릭 → 미리보기 인용 점프 */
   onCite?: (source: SourceRef) => void;
@@ -65,7 +70,8 @@ function linkifyCitations(text: string): string {
   return text.replace(/\[출처\s*:?\s*(\d+)\s*\]/g, (_m, n) => `[출처${n}](${CITE_SCHEME}${n})`);
 }
 
-function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, onCite }: Props) {
+
+function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, searchScope, onCite }: Props) {
   const handleOpenFile = useCallback((path: string) => {
     invoke("open_file", { path }).catch(() => {});
   }, []);
@@ -305,8 +311,13 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
 
       {/* 하단 액션 바 */}
       {(analysis || error) && (
-        <CopyableActionBar answer={answer} analysis={analysis} onReset={onReset} />
-
+        <CopyableActionBar
+          answer={answer}
+          analysis={analysis}
+          onReset={onReset}
+          currentQuestion={currentQuestion}
+          searchScope={searchScope}
+        />
       )}
     </div>
   );
@@ -393,9 +404,55 @@ function SourceFileItem({
   );
 }
 
-/** 하단 액션 바 — 새 질문 + 복사 버튼 */
-function CopyableActionBar({ answer, analysis, onReset }: { answer: string; analysis: AiAnalysis | null; onReset: () => void }) {
+/** 하단 액션 바 — 새 질문 + 복사 + Markdown 저장 버튼 */
+function CopyableActionBar({
+  answer,
+  analysis,
+  onReset,
+  currentQuestion,
+  searchScope,
+}: {
+  answer: string;
+  analysis: AiAnalysis | null;
+  onReset: () => void;
+  currentQuestion?: string;
+  searchScope?: string | null;
+}) {
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const { showToast, updateToast } = useUIContext();
+
+  // 답변 + 참조 문서를 .md 파일로 저장 (미리보기 패널과 같은 export_markdown 커맨드 사용)
+  const handleSaveMarkdown = useCallback(async () => {
+    const timestamp = new Date().toISOString().slice(0, 10);
+    let outputPath: string | null = null;
+    try {
+      outputPath = await save({
+        defaultPath: toDefaultSavePath(
+          searchScope,
+          `${toSafeFileStem(currentQuestion)}_${timestamp}.md`,
+        ),
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+    } catch {
+      showToast("파일 저장 창 열기 실패", "error");
+      return;
+    }
+    if (!outputPath) return; // 사용자 취소
+
+    setIsSaving(true);
+    const toastId = showToast("Markdown 저장 중...", "loading");
+    try {
+      const content = buildAiAnswerMarkdown(currentQuestion, answer, analysis);
+      await invoke("export_markdown", { content, outputPath });
+      updateToast(toastId, { message: "Markdown 파일로 저장했습니다", type: "success" });
+    } catch (e) {
+      const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "저장 실패");
+      updateToast(toastId, { message: `저장 실패: ${msg}`, type: "error" });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [answer, analysis, currentQuestion, searchScope, showToast, updateToast]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -449,6 +506,23 @@ function CopyableActionBar({ answer, analysis, onReset }: { answer: string; anal
               </svg>
             )}
             {copied ? "복사됨" : "복사"}
+          </button>
+        )}
+        {answer && (
+          <button
+            onClick={handleSaveMarkdown}
+            disabled={isSaving}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
+            style={{ color: "var(--color-text-muted)" }}
+            aria-label="AI 답변을 Markdown 파일로 저장"
+            title="질문·답변·참조 문서를 .md 파일로 저장"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            {isSaving ? "저장 중..." : "MD 저장"}
           </button>
         )}
       </div>
