@@ -260,8 +260,17 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 ## 개발자용
 
 ```bash
+# `pnpm run bundle-kordoc` 에 필요
+git clone https://github.com/chrisryugj/kordoc # Docufinder 폴더 바깥에 클론
+cd kordoc
+npm install
+npm run build
+```
+
+```bash
 pnpm install          # 의존성 설치
 pnpm run download-model  # ONNX 모델 다운로드 (첫 빌드 시)
+pnpm run bundle-kordoc # kordoc 및 node.exe 번들링 (첫 빌드 시, kordoc 업데이트 시)
 pnpm tauri:dev        # 개발 모드
 pnpm tauri:build      # 프로덕션 빌드 (NSIS 설치파일 .exe)
 ```
