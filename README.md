@@ -160,6 +160,17 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 1. `.dmg` 더블클릭 → Applications 폴더로 드래그
 2. **첫 실행만**: Applications 폴더에서 Anything 우클릭 → "열기" → 경고창에서 다시 "열기"
 
+**"Apple은 'Anything'에 악성 코드가 없음을 확인할 수 없습니다" 팝업이 뜰 때** (macOS 15 Sequoia 이상)
+
+macOS 15부터는 우클릭 → "열기" 우회가 막혀 위 팝업에 "열기" 버튼이 없습니다. 두 방법 중 하나로 열 수 있습니다.
+
+- 팝업에서 "완료" 클릭 → **시스템 설정 → 개인정보 보호 및 보안** → 하단 "'Anything'이(가) 차단되었습니다" 옆 **"그래도 열기"** → 다시 실행
+- 또는 터미널에서 quarantine 속성 제거:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Anything.app
+```
+
 **"손상된 앱"으로 표시될 때** (Gatekeeper quarantine)
 
 ```bash

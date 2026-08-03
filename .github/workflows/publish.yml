@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v4.3.0 (기안문 서식·누름틀 채우기, 빈 문단 보존 #57, 에러 계약 7건, TAC outMargin, 성능) — 2026-07-29
+      # 현재: v4.4.0 (비밀번호 문서 열기 #59 — v3.6.0 암호 미리보기 필수, HWP3 아래아·PUA·CDATA 소실 수정) — 2026-08-04
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4868052e1d56d9e68a348cbcb97a217c089edd6d
+          ref: e92525f394245e5afd859908ad20af9082726b50
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -222,7 +222,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4868052e1d56d9e68a348cbcb97a217c089edd6d
+          ref: e92525f394245e5afd859908ad20af9082726b50
 
       - name: Build kordoc dist
         working-directory: kordoc-src
