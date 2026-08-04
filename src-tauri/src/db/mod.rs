@@ -603,6 +603,9 @@ pub fn get_chunks_by_ids(conn: &Connection, chunk_ids: &[i64]) -> Result<Vec<Chu
 
 /// 파일 경로 + 청크 인덱스 목록으로 청크 일괄 조회 (RAG 이웃 청크 확장용)
 /// 대용량 시 자동 분할.
+///
+/// 유일한 호출자가 `commands::ai` 라 lite(내부망) 빌드에는 컴파일하지 않는다.
+#[cfg(feature = "online")]
 pub fn get_chunks_for_file_indices(
     conn: &Connection,
     file_path: &str,

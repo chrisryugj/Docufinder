@@ -1,6 +1,7 @@
 import { forwardRef, memo, useCallback, useMemo } from "react";
 import { Search, HelpCircle, Settings, Download } from "lucide-react";
 import type { UpdatePhase } from "../../hooks/useUpdater";
+import { IS_LITE } from "../../utils/buildFlavor";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import type { SearchMode, SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -85,11 +86,13 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
   ) => {
     // SearchBar와 동일: 인덱싱 1회 완료 시 패러다임 토글 노출 (이슈 #32 — 시맨틱 게이트 제거)
     const canUseParadigms = (status?.indexed_files ?? 0) > 0;
+    // lite: 업데이터 플러그인이 없어 업데이트 배지를 띄울 일이 없다
     const updateVisible =
+      !IS_LITE && (
       updatePhase === "available" ||
       updatePhase === "downloading" ||
       updatePhase === "installing" ||
-      updatePhase === "ready-to-restart";
+      updatePhase === "ready-to-restart");
     const isNatural = paradigm === "natural";
     const { innerRef, imeHandlers } = useSearchInput({
       query,

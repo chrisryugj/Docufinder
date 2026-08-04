@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { getErrorMessage } from "../types/error";
 import { isMac } from "../utils/platform";
+import { IS_LITE } from "../utils/buildFlavor";
 
 export type UpdatePhase =
   | "idle"
@@ -75,6 +76,10 @@ export function useUpdater(auto: boolean = true) {
   stateRef.current = state;
 
   const checkForUpdate = useCallback(async (): Promise<Update | null> => {
+    // lite: updater/process 플러그인이 등록돼 있지 않아 check()·check_github_release 가
+    // 항상 실패한다. phase 를 "idle" 로 둔 채 아무 네트워크 호출도 하지 않고 빠진다.
+    if (IS_LITE) return null;
+
     // macOS는 ad-hoc 서명(Apple Developer ID 미보유)으로 plugin-updater 자동 설치는 미지원.
     // 대신 GitHub Releases API 로 최신 태그를 직접 조회 → 새 버전이면 사용자에게 release
     // 페이지 안내(이슈 #22 — 사용자 제안 반영). plugin-updater.check() 는 windows-x86_64 만
@@ -209,6 +214,8 @@ export function useUpdater(auto: boolean = true) {
 
   useEffect(() => {
     if (!auto) return;
+    // lite: 자동 체크 타이머도 아예 걸지 않는다 (내부망에서 외부 호출 시도 자체를 막는다)
+    if (IS_LITE) return;
 
     // mac 도 자동 체크 — plugin-updater 대신 GitHub Releases API 로 새 버전을 확인하고
     // 발견 시 모달이 release 페이지 다운로드 안내 UI 를 띄운다 (이슈 #22 사용자 제안).

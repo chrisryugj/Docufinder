@@ -6,16 +6,16 @@
 
 #[cfg(windows)]
 use std::collections::HashMap;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 use std::os::windows::process::CommandExt;
 use std::path::Path;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 use std::process::Command;
 #[cfg(windows)]
 use std::sync::{Mutex, OnceLock};
 
 /// 콘솔 창 숨김 플래그 (Windows)
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 /// 디스크 유형
@@ -53,8 +53,19 @@ fn get_drive_letter(path: &Path) -> Option<char> {
         .filter(|c| c.is_ascii_alphabetic())
 }
 
+/// lite(내부망) 빌드: WMI 조회를 하지 않고 드라이브 문자 추정만 쓴다.
+///
+/// `powershell.exe -EncodedCommand <Base64>` 는 인자 인젝션을 막으려고 고른 형태지만,
+/// 탐지 관점에서는 정반대다 — 인코딩된 PowerShell 실행은 거의 모든 EDR 이 고신뢰 악성
+/// 시그니처로 다룬다. 이 조회의 유일한 쓰임은 인덱싱 스레드 수/throttle 튜닝이라,
+/// 못 해도 HDD 기준 보수적 설정으로 동작할 뿐 기능 손실이 없다.
+#[cfg(all(windows, not(feature = "online")))]
+fn query_disk_type_wmi(_drive_letter: char) -> Option<DiskType> {
+    None
+}
+
 /// WMI로 디스크 유형 조회 (Windows PowerShell)
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 fn query_disk_type_wmi(drive_letter: char) -> Option<DiskType> {
     // PowerShell 명령으로 MediaType 조회
     let script = format!(

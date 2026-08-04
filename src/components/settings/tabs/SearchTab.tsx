@@ -8,6 +8,7 @@ import { invokeWithTimeout } from "../../../utils/invokeWithTimeout";
 import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
 import { SYSTEM_FOLDERS_HINT } from "../../../utils/platform";
+import { IS_LITE } from "../../../utils/buildFlavor";
 
 interface FormulaModelInfo {
   name: string;
@@ -321,7 +322,15 @@ export function SearchTab({ settings, onChange }: TabProps) {
         />
       </div>
 
+      {/* lite: OCR·레이아웃·수식 OCR 모델을 번들하지도 받지도 않아 백엔드가 셋 다 false 로 고정 */}
+      {IS_LITE && (
+        <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+          내부망 전용 설치본입니다 — OCR·레이아웃 분석·PDF 수식 OCR 은 포함되어 있지 않습니다.
+        </p>
+      )}
+
       {/* OCR 설정 */}
+      {!IS_LITE && (
       <div>
         <SettingsToggle
           label="OCR (이미지 텍스트 인식)"
@@ -392,8 +401,10 @@ export function SearchTab({ settings, onChange }: TabProps) {
           </div>
         )}
       </div>
+      )}
 
-      {/* PDF 수식 OCR */}
+      {/* PDF 수식 OCR — lite: download_formula_models 가 Err, 상태 조회는 항상 빈 목록 */}
+      {!IS_LITE && (
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
         <SettingsToggle
           label="PDF 수식 OCR"
@@ -488,6 +499,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
           </div>
         )}
       </div>
+      )}
 
       {/* 문서 버전 그룹핑 (Document Lineage) */}
       <div>

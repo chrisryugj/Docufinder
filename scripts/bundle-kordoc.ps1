@@ -5,7 +5,11 @@
 
 param(
     [string]$KordocDir = "",
-    [string]$OutputDir = "$PSScriptRoot\..\src-tauri\resources"
+    [string]$OutputDir = "$PSScriptRoot\..\src-tauri\resources",
+    # Anything Lite(내부망) 번들. 수식 OCR optional deps 4종을 제외한다 —
+    # 서명 없는 네이티브 바이너리(.node/.dll) 수십 개를 설치 폴더에서 빼고,
+    # 어차피 lite 는 --formula-ocr 를 CLI 에 넘기지 않는다. docs/LITE-BUILD.md 참고.
+    [switch]$Lite
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,9 +79,13 @@ Push-Location $kordocOut
 # kordoc dependencies — keep in sync with kordoc package.json `dependencies`
 # (markdown-it added in kordoc v2.7.0 for Print Renderer; missing it crashes cli.js at startup)
 $deps = @(
-    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "markdown-it@^14", "pdfjs-dist@4",
-    "@hyzyla/pdfium@^2", "onnxruntime-node@^1.24", "sharp@^0.34", "@huggingface/transformers@^4"
+    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "markdown-it@^14", "pdfjs-dist@4"
 )
+if ($Lite) {
+    Write-Host "  -> LITE mode: 수식 OCR optional deps 제외 (네이티브 바이너리 미포함)" -ForegroundColor Yellow
+} else {
+    $deps += @("@hyzyla/pdfium@^2", "onnxruntime-node@^1.24", "sharp@^0.34", "@huggingface/transformers@^4")
+}
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"
 # npm이 stderr에 warn을 써도 Stop 모드에서 죽지 않도록 이 블록만 Continue로 전환
 $prevErrorAction = $ErrorActionPreference

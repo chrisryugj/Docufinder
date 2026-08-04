@@ -89,6 +89,22 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy -- -D warnings
 
+      # Anything Lite(내부망) flavor 검증 — online 경로를 cfg 로 들어낸 빌드가
+      # 깨지지 않았는지 확인한다. lite 는 평소 아무도 빌드하지 않아 방치하면 조용히
+      # 썩는다. build script 가 기본 tauri.conf.json 을 읽으면 없는 플러그인의
+      # `updater:default` 권한을 찾다 실패하므로 TAURI_CONFIG 로 lite 설정을 넘긴다.
+      - name: Cargo clippy (lite flavor)
+        working-directory: src-tauri
+        run: |
+          $env:TAURI_CONFIG = Get-Content tauri.lite.conf.json -Raw
+          cargo clippy --no-default-features --features custom-protocol --all-targets -- -D warnings
+
+      - name: Cargo test (lite flavor)
+        working-directory: src-tauri
+        run: |
+          $env:TAURI_CONFIG = Get-Content tauri.lite.conf.json -Raw
+          cargo test --no-default-features --features custom-protocol
+
       - name: Security audit (cargo)
         working-directory: src-tauri
         shell: bash

@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.6.1"
+version = "3.7.0"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -22,10 +22,10 @@ tauri-plugin-dialog = "^2.6"
 tauri-plugin-autostart = "^2.5"
 tauri-plugin-single-instance = "^2"
 tauri-plugin-window-state = "^2.4"
-# 자동 업데이트 (GitHub Releases + ed25519)
-tauri-plugin-updater = "^2.9"
+# 자동 업데이트 (GitHub Releases + ed25519) — lite 빌드는 제외 (online feature)
+tauri-plugin-updater = { version = "^2.9", optional = true }
 # relaunch() — 업데이트 설치 후 재시작
-tauri-plugin-process = "^2.3"
+tauri-plugin-process = { version = "^2.3", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
@@ -80,8 +80,10 @@ tokenizers = { version = "0.19", default-features = false, features = ["onig"] }
 # Korean morphological analysis (Phase 5)
 lindera = { version = "2.0", features = ["embed-ko-dic", "compress"] }
 
-# HTTP client for model download + LLM API
-ureq = { version = "3", features = ["json"] }
+# HTTP client for model download + LLM API.
+# optional: lite(내부망) 빌드는 이 크레이트를 아예 링크하지 않아 바이너리에 HTTP/TLS 스택과
+# 외부 호스트 문자열이 남지 않는다 — IT 부서가 strings/import 검사로 "네트워크 없음"을 검증 가능.
+ureq = { version = "3", features = ["json"], optional = true }
 
 # SHA-256 무결성 검증
 sha2 = "0.10"
@@ -145,9 +147,18 @@ windows = { version = "0.61", features = [
 ] }
 
 [features]
-default = ["custom-protocol"]
+default = ["custom-protocol", "online"]
 custom-protocol = ["tauri/custom-protocol"]
 devtools = ["tauri/devtools"]
+
+# 일반(온라인) 배포판 기능 묶음. 런타임에 외부 네트워크를 쓰는 모든 경로가 여기 매달린다:
+#   모델/DLL 다운로드 · Gemini/OpenAI 호환 LLM · Telegram 오류 리포트 · GitHub 업데이트 확인
+#
+# 내부망 전용 "Anything Lite" 는 `--no-default-features --features custom-protocol` 로 빌드해
+# 이 묶음을 통째로 뺀다. 목적은 기능 축소가 아니라 **보안솔루션(안랩 V3·ZombieZERO 등) 행위
+# 탐지 표면 제거** — 실행 중 다운로드(dropper), 외부 POST(C2 비컨), 자기 업데이트 설치가
+# 컴파일 단계에서 사라진다. 자세한 근거는 docs/LITE-BUILD.md.
+online = ["dep:ureq", "dep:tauri-plugin-updater", "dep:tauri-plugin-process"]
 
 [profile.release]
 panic = "unwind"        # catch_unwind 활성화 (PDF/XLSX 파서 안정성 필수)

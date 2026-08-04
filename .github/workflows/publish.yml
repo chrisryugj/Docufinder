@@ -175,6 +175,57 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ── Anything Lite (내부망 전용 빌드) ────────────────────────────────
+      # 반드시 위 온라인 빌드/업로드가 **끝난 뒤** 에 돌린다:
+      #   1) bundle-kordoc.ps1 -Lite 는 resources/kordoc 을 지우고 다시 깐다 (수식 OCR
+      #      네이티브 deps 4종 제외) — 순서가 뒤바뀌면 온라인 산출물이 깨진다.
+      #   2) lite 빌드의 beforeBuildCommand 가 dist/ 를 VITE_LITE=1 로 덮어쓴다.
+      #   3) target/release/*.pdb 도 lite 것으로 덮이므로 PDB 업로드 뒤여야 한다.
+      # 배경과 제외 항목은 docs/LITE-BUILD.md 참고.
+      - name: Bundle kordoc for lite (수식 OCR 네이티브 deps 제외)
+        if: success()
+        shell: pwsh
+        run: |
+          & scripts/bundle-kordoc.ps1 -KordocDir "${{ github.workspace }}/kordoc-src" -Lite
+
+      - name: Build Anything Lite installer
+        if: success()
+        shell: pwsh
+        run: |
+          pnpm exec tauri build --config src-tauri/tauri.lite.conf.json --no-default-features --features custom-protocol
+
+      # tauri-action 이 만든 릴리스에 lite 설치본만 추가로 올린다. latest.json 에는
+      # 넣지 않는다 — lite 는 자동 업데이트 대상이 아니다(updater 플러그인 자체가 없음).
+      - name: Upload Lite installer to release
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $nsis = "src-tauri/target/release/bundle/nsis"
+          $setup = Get-ChildItem $nsis -Filter "*Lite*setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            Write-Error "Lite installer 를 찾지 못했다. $nsis 내용: $((Get-ChildItem $nsis -ErrorAction SilentlyContinue).Name -join ', ')"
+            exit 1
+          }
+          Write-Host "Lite installer: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
+          gh release upload "${{ github.ref_name }}" $setup.FullName --clobber
+
+      # 내부망 검토 제출용 증빙 — lite 바이너리에 외부 호스트 문자열이 없어야 한다.
+      # 하나라도 걸리면 online 경로가 lite 로 새어 들어간 것이므로 릴리스를 실패시킨다.
+      - name: Verify lite binary has no external host strings
+        if: success()
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/docufinder.exe"
+          if (-not (Test-Path $exe)) { Write-Error "lite 바이너리 없음: $exe"; exit 1 }
+          $hits = Select-String -Path $exe -Pattern 'api\.telegram\.org|huggingface\.co|api\.github\.com' -Encoding Byte -AllMatches
+          if ($hits) {
+            Write-Error "lite 바이너리에서 외부 호스트 문자열 검출: $($hits.Matches.Value -join ', ')"
+            exit 1
+          }
+          Write-Host "OK — lite 바이너리에 외부 호스트 문자열 없음"
+
       # [v2.6.24] LTSC 단일 통합 installer(ltsc-setup ~573MB) 빌드를 폐기했다.
       # 배경: Fixed Version Runtime 을 NSIS 에 통째 bundle 하는 노선은
       #   1) 573MB 단일 exe 가 망간/단방향 전송에서 무결성이 깨져 설치 불가,

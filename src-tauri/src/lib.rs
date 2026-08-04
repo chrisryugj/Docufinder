@@ -6,7 +6,10 @@ mod db;
 mod embedder;
 mod error;
 mod indexer;
+// LLM 클라이언트 · 모델 자동 다운로드 — 둘 다 런타임 네트워크 경로라 lite 빌드에선 통째로 뺀다.
+#[cfg(feature = "online")]
 mod llm; // LLM 클라이언트 (RAG + AI 요약)
+#[cfg(feature = "online")]
 mod model_downloader; // 모델 자동 다운로드
 pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
 pub mod panic_filter; // crash.log BENIGN 필터 (panic hook + deferred flush 공유)
@@ -25,6 +28,17 @@ mod webview2_runtime;
 
 pub use application::container::AppContainer;
 pub use error::{ApiError, ApiResult};
+
+/// `tauri.conf.json` 의 `identifier` 와 반드시 같아야 하는 값.
+///
+/// panic hook 은 Tauri 앱이 만들어지기 전에 설치되므로 `app.path().app_data_dir()` 를 쓸 수
+/// 없고 `dirs::data_dir()` 아래 경로를 직접 조립한다. lite 빌드는 일반 배포판과 설정/DB 를
+/// 섞지 않으려고 별도 identifier 를 쓰므로(그래야 lite 의 기능 강제 off 가 일반 설치본의
+/// 설정을 덮어쓰지 않는다) 여기서도 갈라줘야 크래시 로그가 엉뚱한 폴더로 가지 않는다.
+#[cfg(feature = "online")]
+pub const APP_IDENTIFIER: &str = "com.anything.app";
+#[cfg(not(feature = "online"))]
+pub const APP_IDENTIFIER: &str = "com.anything.lite";
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -125,6 +139,7 @@ fn init_logging(app_data_dir: Option<&PathBuf>) {
 }
 
 /// 모델 파일이 없으면 비동기 자동 다운로드 시작
+#[cfg(feature = "online")]
 fn maybe_download_models(
     app_handle: tauri::AppHandle,
     models_dir: PathBuf,
@@ -186,6 +201,7 @@ fn maybe_download_models(
 }
 
 /// OCR 모델 파일이 없으면 비동기 자동 다운로드 시작
+#[cfg(feature = "online")]
 fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, ocr_enabled: bool) {
     if !ocr_enabled {
         return;
@@ -356,6 +372,7 @@ fn graceful_shutdown(app: &tauri::AppHandle) {
 }
 
 /// 모델 디렉토리 내 .tmp 잔여 파일 정리 (다운로드 중 크래시 시 생성됨)
+#[cfg(feature = "online")]
 fn cleanup_tmp_files(models_dir: &std::path::Path) {
     let mut cleaned = 0usize;
     // models/ 하위 2단계까지 탐색 (e.g., models/kosimcse-roberta-multitask/*.tmp)
@@ -509,7 +526,7 @@ pub fn run() {
 
         // 긴급 로그 flush — 날짜 기반 로테이션 (최대 3개 파일 유지)
         if let Some(data_dir) = dirs::data_dir() {
-            let crash_dir = data_dir.join("com.anything.app");
+            let crash_dir = data_dir.join(crate::APP_IDENTIFIER);
             let _ = std::fs::create_dir_all(&crash_dir);
 
             // 날짜별 crash log 파일
@@ -575,7 +592,7 @@ pub fn run() {
     let show_on_load = Arc::new(AtomicBool::new(true));
     let show_on_load_flag = show_on_load.clone();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // 싱글 인스턴스: 중복 실행 시 기존 창 포커스 (가장 먼저 등록해야 함)
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -584,11 +601,20 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_dialog::init());
+
+    // 자동 업데이트 — lite(내부망) 빌드는 등록하지 않는다.
+    // `dialog:false` + `installMode:passive` 로 서명 없는 설치본을 받아 조용히 실행하는 흐름은
+    // 보안솔루션이 dropper 휴리스틱으로 잡는 대표 동작이고, 폐쇄망에서는 6시간마다 실패하는
+    // 아웃바운드 시도가 IDS 로그에 반복 알람으로 쌓이기만 한다.
+    #[cfg(feature = "online")]
+    let builder = builder
         // 자동 업데이트 (GitHub Releases + ed25519 서명 검증)
         .plugin(tauri_plugin_updater::Builder::new().build())
         // relaunch() 지원 — updater가 설치 완료 후 앱 재시작
-        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_process::init());
+
+    builder
         // 네이티브 드래그아웃 — 검색 결과 파일을 다른 앱/웹페이지로 끌어다 놓기
         .plugin(tauri_plugin_drag::init())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
@@ -886,8 +912,10 @@ pub fn run() {
             std::fs::create_dir_all(&models_dir).ok();
 
             // 이전 다운로드 중 크래시로 남은 .tmp 파일 정리
+            #[cfg(feature = "online")]
             cleanup_tmp_files(&models_dir);
 
+            #[cfg_attr(not(feature = "online"), allow(unused_variables))]
             let resource_dir = app.path().resource_dir().ok();
 
             // macOS: ad-hoc 서명 + dmg 다운로드 시 .app 내부 sub-binary(node, *.node, dylib)에
@@ -929,6 +957,11 @@ pub fn run() {
             // PE 를 로드" 하는 상관을 dropper 로 오탐해 프로세스를 격리한다(이슈 #35). 설치
             // 프로그램이 놓은 서명된 번들 파일에서 로드하면 그 상관이 끊겨 오탐이 사라진다.
             // 번들이 없으면(dev·미번들 플랫폼) 기존 AppData seed/다운로드 경로로 fallback.
+            //
+            // lite(내부망) 빌드는 onnxruntime/pdfium 을 아예 번들하지 않고 시맨틱·OCR 도
+            // 강제 off 라, 두 경로를 설정할 일이 없다. 설정하지 않으면 `ort`/`pdfium-render`
+            // 가 dlopen 을 시도하는 순간 자체가 사라져 "런타임 DLL 로드" 신호가 0 이 된다.
+            #[cfg(feature = "online")]
             {
                 let ort_lib = model_downloader::dylib_filename();
                 let bundled_ort = resource_dir
@@ -948,6 +981,7 @@ pub fn run() {
             // ORT_DYLIB_PATH 와 동일하게 번들 경로 우선, 없으면 models/pdfium/<lib> fallback.
             // 외부에서 이미 명시 설정돼 있으면 그 값을 존중한다. 파일이 없으면 pdf.rs 가 조용히
             // 기능 비활성한다(크래시 없음 — 기존 born-digital/JPEG 스캔 경로는 그대로 동작).
+            #[cfg(feature = "online")]
             if std::env::var_os("PDFIUM_DYLIB_PATH").is_none() {
                 let pdfium_lib = model_downloader::pdfium_lib_filename();
                 let bundled_pdfium = resource_dir
@@ -970,6 +1004,12 @@ pub fn run() {
             // 전에 다운로드 체크가 돌아 같은 파일을 동시에 쓰는 레이스를 막는다.
             // Embedder/OCR 는 lazy(OnceCell) 초기화로 첫 사용 시점(빠르면 initialize_app 1초 후
             // startup sync)이 DLL 검증 완료(통상 수백 ms)보다 늦어 ort panic 방지 목적은 유지된다.
+            //
+            // lite(내부망) 빌드에는 이 스레드가 통째로 없다. seed 는 "실행 중인 프로세스가
+            // AppData 에 PE(onnxruntime.dll·pdfium.dll)를 쓰고 그걸 로드"하는 상관을 만들어
+            // ZombieZERO 계열이 dropper 로 격리했던 바로 그 동작이고(이슈 #35), 나머지는 전부
+            // 런타임 다운로드다. lite 는 두 기능(시맨틱·OCR)을 제공하지 않으므로 손실이 없다.
+            #[cfg(feature = "online")]
             {
                 let models_dir_bg = models_dir.clone();
                 let app_handle_bg = app.handle().clone();
@@ -1519,7 +1559,7 @@ pub fn run() {
             eprintln!("Fatal: Tauri failed to start: {}", e);
             // 크래시 로그에도 기록 (append 모드: 이전 기록 보존)
             if let Some(data_dir) = dirs::data_dir() {
-                let crash_dir = data_dir.join("com.anything.app");
+                let crash_dir = data_dir.join(crate::APP_IDENTIFIER);
                 let _ = std::fs::create_dir_all(&crash_dir);
                 let crash_log = crash_dir.join("crash.log");
                 // 크기 제한: 1MB 초과 시 truncate

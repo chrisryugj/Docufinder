@@ -10,9 +10,7 @@
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-ask",
-    "updater:default",
-    "process:allow-restart",
     "drag:default"
   ],
-  "_note": "파일/폴더 열기는 커스텀 커맨드(file.rs)로 처리하며 경로+확장자 검증 완료. shell:allow-open 제거하여 공격 표면 축소. updater:default = check/download_and_install. process:allow-restart = 업데이트 설치 후 재시작."
+  "_note": "파일/폴더 열기는 커스텀 커맨드(file.rs)로 처리하며 경로+확장자 검증 완료. shell:allow-open 제거하여 공격 표면 축소. 자동 업데이트 권한은 updater.json 으로 분리 — lite(내부망) 빌드는 그 파일을 활성화하지 않는다."
 }

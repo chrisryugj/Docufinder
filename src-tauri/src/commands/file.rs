@@ -297,7 +297,17 @@ pub async fn open_url(url: String) -> Result<(), String> {
         return Err("URL에 허용되지 않는 문자가 포함되어 있습니다".to_string());
     }
 
-    #[cfg(target_os = "windows")]
+    // lite(내부망) 빌드는 rundll32 를 쓰지 않는다. `rundll32.exe url.dll,FileProtocolHandler`
+    // 는 정상 용법이지만 EDR/APT 제품이 대표 LOLBin 실행(T1218.011)으로 분류하는 호출이라,
+    // 이미 파일/폴더 열기에 쓰고 있는 explorer.exe 로 통일해 프로세스 생성 종류를 줄인다.
+    // explorer.exe 도 http/https 를 기본 브라우저로 넘긴다. 인자는 Command 가 직접 전달하므로
+    // cmd 를 거치지 않아 `&` 인젝션 우려는 rundll32 경로와 동일하게 없다.
+    #[cfg(all(target_os = "windows", not(feature = "online")))]
+    {
+        open_with_default(&url)?;
+    }
+
+    #[cfg(all(target_os = "windows", feature = "online"))]
     {
         // cmd /C start는 URL 내 &를 명령 구분자로 해석할 수 있으므로
         // rundll32로 직접 URL 프로토콜 핸들러 호출 (cmd 인젝션 방지).
@@ -332,6 +342,9 @@ pub async fn open_url(url: String) -> Result<(), String> {
 /// macOS는 ad-hoc 서명/Notarization 미적용으로 plugin-updater 의 자동 업데이트가
 /// 동작하지 않는다. 대신 사용자가 "지금 확인" 을 누르면 이 함수로 GitHub 의 최신
 /// 태그를 직접 조회하고, 새 버전이면 release 페이지를 브라우저에서 열어준다 (이슈 #22).
+///
+/// lite(내부망) 빌드에는 없다 — 업데이트 확인 자체를 제공하지 않는다.
+#[cfg(feature = "online")]
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct GithubReleaseInfo {
     /// "v2.5.21" 형태의 릴리즈 태그.
@@ -346,6 +359,14 @@ pub struct GithubReleaseInfo {
     pub body: Option<String>,
 }
 
+/// lite(내부망) 빌드 스텁 — 업데이트 확인 경로가 없다.
+#[cfg(not(feature = "online"))]
+#[tauri::command]
+pub async fn check_github_release() -> Result<(), String> {
+    Err("이 설치본(내부망 전용)은 업데이트 확인을 지원하지 않습니다.".to_string())
+}
+
+#[cfg(feature = "online")]
 #[tauri::command]
 pub async fn check_github_release(repo: String) -> Result<GithubReleaseInfo, String> {
     // 입력 검증 — repo 는 "owner/name" 형태. 영숫자 + - _ . / 만 허용.

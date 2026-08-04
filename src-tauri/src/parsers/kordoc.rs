@@ -947,8 +947,19 @@ fn stderr_snippet(stderr: &str) -> String {
 fn call_kordoc_sync(
     cli_path: &Path,
     file_path: &Path,
-    opts: KordocOptions,
+    #[cfg_attr(feature = "online", allow(unused_mut))] mut opts: KordocOptions,
 ) -> Result<String, ParseError> {
+    // lite(내부망) 빌드의 마지막 관문. `--ocr`/`--ocr-force`/`--formula-ocr` 는 kordoc 이
+    // 첫 사용 시 HuggingFace 에서 모델(텍스트 OCR ~18MB, 수식 ~155MB)을 직접 내려받게 만든다.
+    // 그 다운로드는 Rust 쪽 `DOCUFINDER_OFFLINE` 스위치가 닿지 않는 자식 프로세스에서 일어나므로
+    // (앱이 자식을 띄워 외부 바이너리를 받는 = 전형적 dropper 패턴), 플래그를 만드는 지점이
+    // 아니라 **CLI 인자를 조립하는 이 한 곳**에서 잘라 우회 경로가 남지 않게 한다.
+    #[cfg(not(feature = "online"))]
+    {
+        opts.formula_ocr = false;
+        opts.ocr = KordocOcrMode::Off;
+    }
+
     // Windows extended-length / UNC prefix 제거 (Node.js/kordoc가 처리하지 못함).
     // 단순 strip("\\?\\") 만 하면 \\?\UNC\server\share\... 가 UNC\server\... 로 깨지므로
     // dunce::simplified 로 \\srv\share\... 형태까지 정확히 복원한다.

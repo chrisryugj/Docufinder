@@ -14,7 +14,8 @@ pub use text_normalize::normalize_text;
 
 /// PowerShell `-EncodedCommand`용 Base64(UTF-16LE) 인코딩.
 /// 문자열 보간 기반 인젝션을 원천 차단한다.
-#[cfg(windows)]
+/// lite 빌드는 PowerShell 을 아예 호출하지 않는다 (`disk_info` 주석 참고).
+#[cfg(all(windows, feature = "online"))]
 pub fn encode_powershell_command(script: &str) -> String {
     use base64::Engine;
     let utf16le: Vec<u8> = script

@@ -1,12 +1,16 @@
 use crate::constants::{DEFAULT_MAX_FILE_SIZE_MB, MAX_FILE_SIZE_LIMIT_MB};
 use crate::error::{ApiError, ApiResult};
+#[cfg(feature = "online")]
 use crate::model_downloader;
 use crate::AppContainer;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, State};
+// 모델 다운로드 진행 이벤트 emit / resource_dir 조회에만 쓰인다 — 둘 다 online 전용 경로.
+#[cfg(feature = "online")]
+use tauri::{Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -528,6 +532,32 @@ pub async fn count_ocr_reindex_candidates(
     })
 }
 
+/// lite(내부망) 빌드에서 제공하지 않는 기능의 토글을 강제로 내린다.
+///
+/// online 빌드에서 쓰던 `settings.json` 을 그대로 들고 오거나 사용자가 파일을 손으로 고쳐도
+/// 시맨틱/OCR 엔진 초기화(=onnxruntime dlopen)나 kordoc 모델 다운로드가 되살아나지 않게
+/// 하는 마지막 방어선. 로드(`get_settings_sync`)와 저장(`update_settings`) 양쪽에서 부른다.
+#[cfg(not(feature = "online"))]
+fn sanitize_for_lite(settings: &mut Settings) {
+    settings.semantic_search_enabled = false;
+    settings.ocr_enabled = false;
+    settings.ocr_layout_enabled = false;
+    settings.formula_ocr_enabled = false;
+    settings.ai_enabled = false;
+    settings.error_reporting_enabled = false;
+    // 파일명 검색은 전부 로컬이라 그대로 둔다. 임베딩이 필요한 두 모드만 되돌린다.
+    if matches!(
+        settings.search_mode,
+        SearchMode::Semantic | SearchMode::Hybrid
+    ) {
+        settings.search_mode = SearchMode::Keyword;
+    }
+}
+
+#[cfg(feature = "online")]
+#[inline]
+fn sanitize_for_lite(_settings: &mut Settings) {}
+
 /// 설정 동기 조회 (내부 사용)
 /// 수동 편집된 설정 파일의 비정상 값에 대비하여 범위 클램핑 적용
 pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
@@ -586,6 +616,8 @@ pub fn get_settings_sync(app_data_dir: &Path) -> Settings {
         );
         settings.ai_model = m;
     }
+
+    sanitize_for_lite(&mut settings);
 
     // 범위 클램핑 (수동 편집된 비정상 값 방어)
     settings.max_results = settings.max_results.clamp(1, 500);
@@ -677,6 +709,8 @@ pub async fn update_settings(
     state: State<'_, RwLock<AppContainer>>,
 ) -> ApiResult<()> {
     validate_settings(&settings)?;
+    // 프론트가 (구버전 UI·수동 IPC 등으로) 미지원 기능을 켜서 보내도 디스크에 남기지 않는다.
+    sanitize_for_lite(&mut settings);
     tracing::info!(
         "Updating settings: mode={:?}, theme={:?}, semantic={}, ocr={}, ai_key={}",
         settings.search_mode,
@@ -741,6 +775,7 @@ pub async fn update_settings(
     // 캐시를 덮기 **전** 의 OCR 토글 — 아래 워밍업이 "사용자가 방금 켰다"(전이)와
     // "켠 채로 다른 설정을 저장했다"를 구분하는 데 쓴다. 설정 모달은 300ms 디바운스
     // 자동저장이라 이 커맨드는 토글 하나 바꿀 때마다 들어온다.
+    #[cfg_attr(not(feature = "online"), allow(unused_variables))]
     let ocr_was_enabled = {
         let container = state.read()?;
         let prev = container.get_settings().ocr_enabled;
@@ -758,171 +793,181 @@ pub async fn update_settings(
 
     tracing::info!("Settings saved to {:?}", settings_path);
 
-    // 시맨틱 검색 활성화 시 모델이 없으면 백그라운드 다운로드 시작
-    if settings.semantic_search_enabled {
-        let models_dir = app_data_dir.join("models");
-        let e5_model_int8 = models_dir
-            .join("kosimcse-roberta-multitask")
-            .join("model_int8.onnx");
-        let e5_model = models_dir
-            .join("kosimcse-roberta-multitask")
-            .join("model.onnx");
-        let e5_model_data = models_dir
-            .join("kosimcse-roberta-multitask")
-            .join("model.onnx.data");
-        // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
-        let embedder_available =
-            e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
-        if !embedder_available {
-            let download_models_dir = models_dir.clone();
-            let download_app = app.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = download_app.emit("model-download-status", "downloading");
-                match tokio::task::spawn_blocking(move || {
-                    model_downloader::ensure_models(&download_models_dir)
-                })
-                .await
-                {
-                    Ok(Ok(_)) => {
-                        let _ = download_app.emit("model-download-status", "completed");
-                        // 다운로드 완료 → VectorIndex OnceCell pre-init
-                        // (WatchManager 벡터 삭제 경로 활성화, 재시작 없이 사용 가능)
-                        if let Some(state) = download_app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = state.read() {
-                                if let Err(e) = container.get_vector_index() {
-                                    tracing::warn!("VectorIndex pre-init 실패(다운로드 후): {}", e);
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        let _ = download_app.emit("model-download-status", "failed");
-                    }
-                }
-            });
-        } else {
-            // 이미 모델이 있으나 VectorIndex OnceCell이 아직 비어있다면 지금 init
-            // (사용자가 앱 설치 후 수동으로 models 폴더에 파일 배치한 케이스)
-            if let Ok(container) = state.read() {
-                if let Err(e) = container.get_vector_index() {
-                    tracing::debug!("VectorIndex pre-init skip: {}", e);
-                }
-            }
-        }
-    }
-
-    // OCR 활성화 시 모델이 없으면 백그라운드 다운로드 시작
-    if settings.ocr_enabled {
-        // 런타임 토글 ON → 엔진 워밍업. 이게 없으면 앱이 ocr_enabled:false 로 시작한
-        // 세션에서는 엔진을 만드는 경로가 없어 재시작 전까지 OCR 이 동작하지 않는다
-        // (이슈 #35 — v3.4.5 회귀). 멱등이라 이미 준비/진행 중이면 no-op.
-        //
-        // forced(실패 카운터 리셋)는 **방금 켠 경우에만**. 켜 둔 채로 다른 설정을 저장할
-        // 때마다 리셋하면 ONNX 로드가 막힌 환경에서 v3.4.7 이 넣은 자동 재시도 캡
-        // (MAX_AUTO_OCR_WARMUP_ATTEMPTS)이 무력화돼 경고가 다시 쌓인다.
-        if let Ok(container) = state.read() {
-            if ocr_was_enabled {
-                container.spawn_ocr_warmup();
-            } else {
-                container.spawn_ocr_warmup_forced();
-            }
-        }
-
-        let models_dir = app_data_dir.join("models");
-        let ocr_dir = models_dir.join("paddleocr");
-        let det_exists = ocr_dir.join("det.onnx").exists();
-        let rec_exists = ocr_dir.join("rec.onnx").exists();
-        if !det_exists || !rec_exists {
-            let download_app = app.clone();
-            let resource_dir = app.path().resource_dir().ok();
-            tauri::async_runtime::spawn(async move {
-                let _ = download_app.emit("model-download-status", "downloading-ocr");
-                let warmup_app = download_app.clone();
-                match tokio::task::spawn_blocking(move || {
-                    // 설치본 번들을 먼저 적용 — 폐쇄망에서는 토글만 켜도 동작해야 한다.
-                    // (기존엔 곧장 huggingface 다운로드라 즉시 "OCR 모델 다운로드 실패".)
-                    // seed 는 해시 동일 시 no-op 이라 온라인 환경에도 무해하다.
-                    if let Some(dir) = resource_dir {
-                        model_downloader::seed_bundled_models(&dir, &models_dir);
-                    }
-                    model_downloader::ensure_ocr_models(&models_dir)
-                })
-                .await
-                {
-                    Ok(Ok(_)) => {
-                        let _ = download_app.emit("model-download-status", "completed-ocr");
-                        // 모델이 방금 채워졌으니 엔진도 지금 준비한다(위 워밍업은 실패했을 것).
-                        if let Some(state) = warmup_app.try_state::<RwLock<AppContainer>>() {
-                            if let Ok(container) = state.read() {
-                                container.spawn_ocr_warmup_forced();
-                            }
-                        }
-                    }
-                    _ => {
-                        let _ = download_app.emit("model-download-status", "failed-ocr");
-                    }
-                }
-            });
-        }
-
-        // pdfium 도 함께 준비 — 런타임 OCR 토글에서도 스캔/이미지 PDF 래스터화가
-        // 즉시 동작하도록. (기존엔 앱 시작 setup 에서만 받아, 런타임에 켜면 재시작
-        // 전까지 스캔 PDF 인식이 안 됐다.) best-effort — 실패해도 기존 경로는 무손상.
-        let pdfium_models_dir = app_data_dir.join("models");
-        let pdfium_lib = pdfium_models_dir
-            .join("pdfium")
-            .join(model_downloader::pdfium_lib_filename());
-        if !pdfium_lib.exists() {
-            tauri::async_runtime::spawn(async move {
-                match tokio::task::spawn_blocking(move || {
-                    model_downloader::ensure_pdfium(&pdfium_models_dir)
-                })
-                .await
-                {
-                    Ok(Ok(_)) => {}
-                    Ok(Err(e)) => {
-                        tracing::warn!("pdfium 다운로드 실패(스캔 PDF 래스터화 비활성): {}", e)
-                    }
-                    Err(e) => tracing::warn!("pdfium 다운로드 태스크 오류: {}", e),
-                }
-            });
-        }
-
-        // PP-DocLayout 레이아웃 모델 — 레이아웃 분석 토글이 켜졌을 때만 받는다(선택·실험).
-        // 끄면 모델 파일을 제거해, 다음 OCR 엔진 초기화(재시작)부터 레이아웃 분석이 꺼진다.
-        let layout_models_dir = app_data_dir.join("models");
-        let layout_path = layout_models_dir.join("paddleocr").join("layout.onnx");
-        if settings.ocr_layout_enabled {
-            if !layout_path.exists() {
-                let layout_app = app.clone();
+    // 모델 준비(다운로드·번들 seed)와 OCR 워밍업 — 전부 online 빌드 전용.
+    // lite(내부망) 빌드는 시맨틱·OCR·수식 OCR 을 제공하지 않으며 `sanitize_for_lite` 가
+    // 저장 직전에 해당 토글을 강제로 내리므로, 아래 블록이 할 일 자체가 없다.
+    #[cfg(feature = "online")]
+    {
+        // 시맨틱 검색 활성화 시 모델이 없으면 백그라운드 다운로드 시작
+        if settings.semantic_search_enabled {
+            let models_dir = app_data_dir.join("models");
+            let e5_model_int8 = models_dir
+                .join("kosimcse-roberta-multitask")
+                .join("model_int8.onnx");
+            let e5_model = models_dir
+                .join("kosimcse-roberta-multitask")
+                .join("model.onnx");
+            let e5_model_data = models_dir
+                .join("kosimcse-roberta-multitask")
+                .join("model.onnx.data");
+            // INT8 모델 또는 F32 모델(+data) 중 하나라도 있으면 OK
+            let embedder_available =
+                e5_model_int8.exists() || (e5_model.exists() && e5_model_data.exists());
+            if !embedder_available {
+                let download_models_dir = models_dir.clone();
+                let download_app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = layout_app.emit("model-download-status", "downloading-layout");
+                    let _ = download_app.emit("model-download-status", "downloading");
                     match tokio::task::spawn_blocking(move || {
-                        model_downloader::ensure_layout_model(&layout_models_dir)
+                        model_downloader::ensure_models(&download_models_dir)
                     })
                     .await
                     {
                         Ok(Ok(_)) => {
-                            let _ = layout_app.emit("model-download-status", "completed-layout");
+                            let _ = download_app.emit("model-download-status", "completed");
+                            // 다운로드 완료 → VectorIndex OnceCell pre-init
+                            // (WatchManager 벡터 삭제 경로 활성화, 재시작 없이 사용 가능)
+                            if let Some(state) = download_app.try_state::<RwLock<AppContainer>>() {
+                                if let Ok(container) = state.read() {
+                                    if let Err(e) = container.get_vector_index() {
+                                        tracing::warn!(
+                                            "VectorIndex pre-init 실패(다운로드 후): {}",
+                                            e
+                                        );
+                                    }
+                                }
+                            }
                         }
-                        // 레이아웃 분석은 온라인 전용 선택 기능 — 실패해도 OCR 본체는 정상.
-                        // 폐쇄망에서 흔한 실패라 warn 이 아니라 info 로 남긴다(이슈 #35).
-                        Ok(Err(e)) => {
-                            tracing::info!(
-                                "레이아웃 분석 모델(선택 기능) 미적용 — OCR 본체는 정상 동작합니다: {}",
-                                e
-                            );
-                            let _ = layout_app.emit("model-download-status", "failed-layout");
+                        _ => {
+                            let _ = download_app.emit("model-download-status", "failed");
                         }
-                        Err(e) => {
-                            tracing::info!("레이아웃 분석 모델 태스크 종료(선택 기능): {}", e);
-                            let _ = layout_app.emit("model-download-status", "failed-layout");
+                    }
+                });
+            } else {
+                // 이미 모델이 있으나 VectorIndex OnceCell이 아직 비어있다면 지금 init
+                // (사용자가 앱 설치 후 수동으로 models 폴더에 파일 배치한 케이스)
+                if let Ok(container) = state.read() {
+                    if let Err(e) = container.get_vector_index() {
+                        tracing::debug!("VectorIndex pre-init skip: {}", e);
+                    }
+                }
+            }
+        }
+
+        // OCR 활성화 시 모델이 없으면 백그라운드 다운로드 시작
+        if settings.ocr_enabled {
+            // 런타임 토글 ON → 엔진 워밍업. 이게 없으면 앱이 ocr_enabled:false 로 시작한
+            // 세션에서는 엔진을 만드는 경로가 없어 재시작 전까지 OCR 이 동작하지 않는다
+            // (이슈 #35 — v3.4.5 회귀). 멱등이라 이미 준비/진행 중이면 no-op.
+            //
+            // forced(실패 카운터 리셋)는 **방금 켠 경우에만**. 켜 둔 채로 다른 설정을 저장할
+            // 때마다 리셋하면 ONNX 로드가 막힌 환경에서 v3.4.7 이 넣은 자동 재시도 캡
+            // (MAX_AUTO_OCR_WARMUP_ATTEMPTS)이 무력화돼 경고가 다시 쌓인다.
+            if let Ok(container) = state.read() {
+                if ocr_was_enabled {
+                    container.spawn_ocr_warmup();
+                } else {
+                    container.spawn_ocr_warmup_forced();
+                }
+            }
+
+            let models_dir = app_data_dir.join("models");
+            let ocr_dir = models_dir.join("paddleocr");
+            let det_exists = ocr_dir.join("det.onnx").exists();
+            let rec_exists = ocr_dir.join("rec.onnx").exists();
+            if !det_exists || !rec_exists {
+                let download_app = app.clone();
+                let resource_dir = app.path().resource_dir().ok();
+                tauri::async_runtime::spawn(async move {
+                    let _ = download_app.emit("model-download-status", "downloading-ocr");
+                    let warmup_app = download_app.clone();
+                    match tokio::task::spawn_blocking(move || {
+                        // 설치본 번들을 먼저 적용 — 폐쇄망에서는 토글만 켜도 동작해야 한다.
+                        // (기존엔 곧장 huggingface 다운로드라 즉시 "OCR 모델 다운로드 실패".)
+                        // seed 는 해시 동일 시 no-op 이라 온라인 환경에도 무해하다.
+                        if let Some(dir) = resource_dir {
+                            model_downloader::seed_bundled_models(&dir, &models_dir);
+                        }
+                        model_downloader::ensure_ocr_models(&models_dir)
+                    })
+                    .await
+                    {
+                        Ok(Ok(_)) => {
+                            let _ = download_app.emit("model-download-status", "completed-ocr");
+                            // 모델이 방금 채워졌으니 엔진도 지금 준비한다(위 워밍업은 실패했을 것).
+                            if let Some(state) = warmup_app.try_state::<RwLock<AppContainer>>() {
+                                if let Ok(container) = state.read() {
+                                    container.spawn_ocr_warmup_forced();
+                                }
+                            }
+                        }
+                        _ => {
+                            let _ = download_app.emit("model-download-status", "failed-ocr");
                         }
                     }
                 });
             }
-        } else {
-            let _ = std::fs::remove_file(&layout_path);
+
+            // pdfium 도 함께 준비 — 런타임 OCR 토글에서도 스캔/이미지 PDF 래스터화가
+            // 즉시 동작하도록. (기존엔 앱 시작 setup 에서만 받아, 런타임에 켜면 재시작
+            // 전까지 스캔 PDF 인식이 안 됐다.) best-effort — 실패해도 기존 경로는 무손상.
+            let pdfium_models_dir = app_data_dir.join("models");
+            let pdfium_lib = pdfium_models_dir
+                .join("pdfium")
+                .join(model_downloader::pdfium_lib_filename());
+            if !pdfium_lib.exists() {
+                tauri::async_runtime::spawn(async move {
+                    match tokio::task::spawn_blocking(move || {
+                        model_downloader::ensure_pdfium(&pdfium_models_dir)
+                    })
+                    .await
+                    {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(e)) => {
+                            tracing::warn!("pdfium 다운로드 실패(스캔 PDF 래스터화 비활성): {}", e)
+                        }
+                        Err(e) => tracing::warn!("pdfium 다운로드 태스크 오류: {}", e),
+                    }
+                });
+            }
+
+            // PP-DocLayout 레이아웃 모델 — 레이아웃 분석 토글이 켜졌을 때만 받는다(선택·실험).
+            // 끄면 모델 파일을 제거해, 다음 OCR 엔진 초기화(재시작)부터 레이아웃 분석이 꺼진다.
+            let layout_models_dir = app_data_dir.join("models");
+            let layout_path = layout_models_dir.join("paddleocr").join("layout.onnx");
+            if settings.ocr_layout_enabled {
+                if !layout_path.exists() {
+                    let layout_app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = layout_app.emit("model-download-status", "downloading-layout");
+                        match tokio::task::spawn_blocking(move || {
+                            model_downloader::ensure_layout_model(&layout_models_dir)
+                        })
+                        .await
+                        {
+                            Ok(Ok(_)) => {
+                                let _ =
+                                    layout_app.emit("model-download-status", "completed-layout");
+                            }
+                            // 레이아웃 분석은 온라인 전용 선택 기능 — 실패해도 OCR 본체는 정상.
+                            // 폐쇄망에서 흔한 실패라 warn 이 아니라 info 로 남긴다(이슈 #35).
+                            Ok(Err(e)) => {
+                                tracing::info!(
+                                "레이아웃 분석 모델(선택 기능) 미적용 — OCR 본체는 정상 동작합니다: {}",
+                                e
+                            );
+                                let _ = layout_app.emit("model-download-status", "failed-layout");
+                            }
+                            Err(e) => {
+                                tracing::info!("레이아웃 분석 모델 태스크 종료(선택 기능): {}", e);
+                                let _ = layout_app.emit("model-download-status", "failed-layout");
+                            }
+                        }
+                    });
+                }
+            } else {
+                let _ = std::fs::remove_file(&layout_path);
+            }
         }
     }
 

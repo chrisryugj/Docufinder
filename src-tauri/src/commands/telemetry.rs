@@ -11,6 +11,11 @@
 //!
 //! 토큰 노출 리스크:
 //!   - 바이너리에서 strings 로 추출 가능. 악용 시 BotFather 로 revoke + 새 토큰으로 재빌드.
+//!
+//! lite(내부망) 빌드: `online` feature 가 꺼지면 전송 경로 전체가 컴파일에서 빠진다.
+//! 서명 없는 실행 파일이 외부 호스트로 주기적 HTTPS POST 를 보내는 형태는 APT 대응 제품이
+//! C2 비컨으로 분류하는 대표 패턴이라, 내부망 배포본에서는 코드째 제거하는 편이 맞다.
+//! 크래시 로그는 그대로 로컬 파일에만 남는다.
 
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -20,10 +25,12 @@ use tauri::State;
 
 use crate::AppContainer;
 
+#[cfg(feature = "online")]
 const TELEGRAM_BOT_TOKEN: &str = match option_env!("TELEGRAM_BOT_TOKEN") {
     Some(t) => t,
     None => "",
 };
+#[cfg(feature = "online")]
 const TELEGRAM_CHAT_ID: &str = match option_env!("TELEGRAM_CHAT_ID") {
     Some(c) => c,
     None => "",
@@ -43,11 +50,13 @@ pub struct ErrorReport {
 }
 
 /// 앱 버전 — Cargo.toml 에서 빌드 시 주입
+#[cfg(feature = "online")]
 fn app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
 /// 경로 내 사용자 디렉토리를 ~ 로 치환
+#[cfg(feature = "online")]
 fn anonymize(text: &str) -> String {
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
@@ -59,6 +68,7 @@ fn anonymize(text: &str) -> String {
 }
 
 /// Telegram 에 POST. 블로킹 호출 (ureq).
+#[cfg(feature = "online")]
 fn send_to_telegram(text: &str) -> Result<(), String> {
     if TELEGRAM_BOT_TOKEN.is_empty() || TELEGRAM_CHAT_ID.is_empty() {
         return Err("Telegram credentials not configured at build time".into());
@@ -79,8 +89,28 @@ fn send_to_telegram(text: &str) -> Result<(), String> {
     }
 }
 
+/// lite 빌드의 `report_error` — 외부 전송 없이 로컬 로그에만 남긴다.
+///
+/// 커맨드 자체는 유지한다. 프론트 errorLogger 가 무조건 호출하는 경로라, 없애면
+/// 오류가 날 때마다 IPC 실패가 겹쳐 진단이 더 어려워진다.
+#[cfg(not(feature = "online"))]
+#[tauri::command]
+pub async fn report_error(
+    _state: State<'_, RwLock<AppContainer>>,
+    payload: ErrorReport,
+) -> Result<(), String> {
+    tracing::error!(
+        "[{}] {} — {}",
+        payload.source,
+        payload.title,
+        truncate(&payload.message, 1500)
+    );
+    Ok(())
+}
+
 /// 프론트엔드 호출: 백엔드에서도 사용자 설정을 재확인한다.
 /// 렌더러가 오염되어도 동의 없는 전송이 발생하지 않도록 IPC 진입점에서 게이트.
+#[cfg(feature = "online")]
 #[tauri::command]
 pub async fn report_error(
     state: State<'_, RwLock<AppContainer>>,
@@ -102,6 +132,7 @@ pub async fn report_error(
     .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
 
+#[cfg(feature = "online")]
 fn format_report(r: &ErrorReport) -> String {
     use std::fmt::Write;
     let mut out = String::new();
@@ -137,6 +168,7 @@ fn format_report(r: &ErrorReport) -> String {
     out
 }
 
+#[cfg(feature = "online")]
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -156,17 +188,26 @@ fn truncate(s: &str, max: usize) -> &str {
     }
 }
 
+/// lite 빌드: 외부 전송 없음. crash 로그는 panic hook 이 로컬 파일에 남긴다.
+#[cfg(not(feature = "online"))]
+pub fn report_panic_sync(_location: &str, _message: &str) {}
+
+/// lite 빌드: 미전송 crash 로그 플러시 대상이 없다 (전송 경로 자체가 없음).
+#[cfg(not(feature = "online"))]
+pub fn spawn_flush_pending_crash_logs(_app_data_dir: PathBuf) {}
+
 /// Rust panic hook 에서 호출 (sync).
 ///
 /// build-time env 와 **사용자 설정** 양쪽을 모두 통과해야 전송한다.
 /// panic 상황이라도 opt-out 을 무시하지 않는다 — 전송이 막혀도 크래시 로그는
 /// 로컬에 남고, 사용자가 나중에 토글을 켜면 `spawn_flush_pending_crash_logs` 가
 /// 처리한다.
+#[cfg(feature = "online")]
 pub fn report_panic_sync(location: &str, message: &str) {
     if TELEGRAM_BOT_TOKEN.is_empty() || TELEGRAM_CHAT_ID.is_empty() {
         return;
     }
-    let Some(app_data_dir) = dirs::data_dir().map(|d| d.join("com.anything.app")) else {
+    let Some(app_data_dir) = dirs::data_dir().map(|d| d.join(crate::APP_IDENTIFIER)) else {
         return;
     };
     if !crate::commands::settings::get_settings_sync(&app_data_dir).error_reporting_enabled {
@@ -198,6 +239,7 @@ pub fn report_panic_sync(location: &str, message: &str) {
 ///
 /// 사용자 설정 `error_reporting_enabled` 가 false 면 전송하지 않고 ".sent" 로 마킹만 한다
 /// (이전 세션에서 켜뒀다가 끈 경우 잔존 로그가 재전송되지 않도록).
+#[cfg(feature = "online")]
 pub fn spawn_flush_pending_crash_logs(app_data_dir: PathBuf) {
     if TELEGRAM_BOT_TOKEN.is_empty() || TELEGRAM_CHAT_ID.is_empty() {
         return;
@@ -206,7 +248,7 @@ pub fn spawn_flush_pending_crash_logs(app_data_dir: PathBuf) {
         let Some(data_dir) = dirs::data_dir() else {
             return;
         };
-        let crash_dir = data_dir.join("com.anything.app");
+        let crash_dir = data_dir.join(crate::APP_IDENTIFIER);
         let Ok(entries) = std::fs::read_dir(&crash_dir) else {
             return;
         };

@@ -1,4 +1,5 @@
 import type { SearchParadigm } from "../../types/search";
+import { IS_LITE } from "../../utils/buildFlavor";
 
 interface Props {
   paradigm: SearchParadigm;
@@ -29,7 +30,9 @@ const AnythingIcon = () => (
 const modes: { value: SearchParadigm; label: string; Icon: React.ComponentType }[] = [
   { value: "instant", label: "검색", Icon: InstantIcon },
   { value: "natural", label: "스마트", Icon: NaturalIcon },
-  { value: "question", label: "Anything", Icon: AnythingIcon },
+  // lite: LLM 클라이언트가 미컴파일이라 ask_ai 가 항상 Err — Anything(질문) 모드 진입 자체를 막는다.
+  // 스마트 모드는 로컬 파싱이라 그대로 둔다.
+  ...(IS_LITE ? [] : [{ value: "question" as const, label: "Anything", Icon: AnythingIcon }]),
 ];
 
 export default function SearchParadigmToggle({ paradigm, onChange }: Props) {

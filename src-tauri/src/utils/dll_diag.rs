@@ -17,7 +17,15 @@ pub fn diagnose_onnxruntime_once() {
     diagnose_impl();
 }
 
-#[cfg(windows)]
+/// lite(내부망) 빌드: 진단 대상 자체가 없다 (ONNX Runtime 을 번들하지도, 로드하지도 않음).
+///
+/// 진단 코드는 `LoadLibraryExW(..., LOAD_WITH_ALTERED_SEARCH_PATH)` 로 DLL 을 직접 열어
+/// 보는데, 이 조합은 DLL 사이드로딩 탐지 룰의 정면 대상이다. 쓸 일이 없는 빌드에서는
+/// 바이너리에 남기지 않는다.
+#[cfg(all(windows, not(feature = "online")))]
+fn diagnose_impl() {}
+
+#[cfg(all(windows, feature = "online"))]
 fn diagnose_impl() {
     let Some(ort_path) = std::env::var_os("ORT_DYLIB_PATH") else {
         tracing::warn!("[DLL 진단] ORT_DYLIB_PATH 미설정 — 진단 생략");
@@ -35,7 +43,7 @@ fn diagnose_impl() {
 #[cfg(not(windows))]
 fn diagnose_impl() {}
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 fn try_load(path: &std::ffi::OsStr) -> Result<(), u32> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Foundation::GetLastError;
@@ -59,7 +67,7 @@ fn try_load(path: &std::ffi::OsStr) -> Result<(), u32> {
     }
 }
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 fn report(name: &str, result: Result<(), u32>) {
     match result {
         Ok(()) => tracing::info!("[DLL 진단] {} 로드 OK", name),
@@ -73,7 +81,7 @@ fn report(name: &str, result: Result<(), u32>) {
 }
 
 /// Windows 로더 오류 코드 해석 — 사용자가 바로 조치할 수 있는 문장으로.
-#[cfg(windows)]
+#[cfg(all(windows, feature = "online"))]
 fn explain(code: u32) -> &'static str {
     match code {
         2 | 3 => "파일이 없습니다(설치본 손상 가능) — 앱을 재설치해 주세요",

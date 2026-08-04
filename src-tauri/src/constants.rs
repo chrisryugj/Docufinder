@@ -118,31 +118,40 @@ pub const MAX_FILE_SIZE_LIMIT_MB: u64 = 500;
 /// 검증 상태(2026-07): 4개 플랫폼 tgz 의 SHA-256 + 아카이브 내부 경로(win=`bin/pdfium.dll`,
 /// linux=`lib/libpdfium.so`, mac=`lib/libpdfium.dylib`)를 실제 다운로드로 대조 완료 — 전부 일치.
 /// 런타임 바인딩+OCR 실행까지 검증된 건 mac-arm64 뿐(나머지는 다운로드·추출·바인딩 로직만 감사).
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-mac-arm64.tgz";
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub const PDFIUM_DOWNLOAD_SHA256: &str =
     "c032aa59be58b0f12e41e76a8ef707e347b9841b0426446f646b2568d350ec4f";
 
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-mac-x64.tgz";
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_SHA256: &str =
     "0c78b8d55a4c97e02c9bb516997253cb972739373009cf29554c959a2f6b194a";
 
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-win-x64.tgz";
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_SHA256: &str =
     "bf25149815b34b00042f48a886653d469c817529dd9cccabb4b509b6465a9526";
 
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/7920/pdfium-linux-x64.tgz";
+#[cfg(feature = "online")]
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub const PDFIUM_DOWNLOAD_SHA256: &str =
     "49ab3afbd4e6c1e284b5f2898129c8bb8a10fd785c1c5392c8c1fc70242f9ced";
 
 /// 위 조합에 없는 플랫폼(예: linux-arm64) — 빈 URL 이면 `ensure_pdfium` 이 다운로드를 조용히 스킵.
+#[cfg(feature = "online")]
 #[cfg(not(any(
     all(target_os = "macos", target_arch = "aarch64"),
     all(target_os = "macos", target_arch = "x86_64"),
@@ -150,6 +159,7 @@ pub const PDFIUM_DOWNLOAD_SHA256: &str =
     all(target_os = "linux", target_arch = "x86_64"),
 )))]
 pub const PDFIUM_DOWNLOAD_URL: &str = "";
+#[cfg(feature = "online")]
 #[cfg(not(any(
     all(target_os = "macos", target_arch = "aarch64"),
     all(target_os = "macos", target_arch = "x86_64"),

@@ -15,6 +15,7 @@ import { useWindowFocus } from "./hooks/useWindowFocus";
 import { useUpdater } from "./hooks/useUpdater";
 import { setupGlobalErrorHandlers } from "./utils/errorLogger";
 import { getErrorMessage } from "./types/error";
+import { IS_LITE } from "./utils/buildFlavor";
 
 // Components
 import { Header, StatusBar, ErrorBanner, FloatingUI } from "./components/layout";
@@ -532,7 +533,10 @@ function AppContent() {
         ? [{ id: "mode-hybrid", group: "검색 모드", label: "하이브리드 검색 (시맨틱)", hint: search.searchMode === "hybrid" ? "현재" : undefined, keywords: "hybrid semantic 시맨틱 의미", icon: <Sparkles className={ico} />, run: () => { search.setParadigm("instant"); search.setSearchMode("hybrid"); } } as Command]
         : []),
       { id: "mode-filename", group: "검색 모드", label: "파일명 검색", hint: search.searchMode === "filename" ? "현재" : undefined, keywords: "filename 파일명", icon: <FileText className={ico} />, run: () => { search.setParadigm("instant"); search.setSearchMode("filename"); } },
-      { id: "mode-ai", group: "검색 모드", label: "AI에게 질문", keywords: "ai question 질문 anything", icon: <MessageCircleQuestion className={ico} />, run: () => search.setParadigm("question") },
+      // lite: LLM 클라이언트 미컴파일 — ask_ai 가 항상 Err 라 질문 모드 진입점을 뺀다
+      ...(IS_LITE
+        ? []
+        : [{ id: "mode-ai", group: "검색 모드", label: "AI에게 질문", keywords: "ai question 질문 anything", icon: <MessageCircleQuestion className={ico} />, run: () => search.setParadigm("question") } as Command]),
       // 보기
       { id: "sidebar", group: "보기", label: "사이드바 토글", keywords: "sidebar 사이드바", icon: <PanelLeft className={ico} />, run: ui.toggleSidebar },
       { id: "theme", group: "보기", label: "테마 전환 (라이트 ↔ 다크)", keywords: "theme dark light 다크 라이트 어둡게 밝게", icon: <SunMoon className={ico} />, run: () => { const isDark = document.documentElement.classList.contains("dark"); ui.setTheme(isDark ? "light" : "dark"); } },
@@ -540,7 +544,10 @@ function AppContent() {
       { id: "settings", group: "설정", label: "설정 열기", keywords: "settings 설정 환경", icon: <SettingsIcon className={ico} />, run: () => ui.setSettingsOpen(true) },
       { id: "help", group: "설정", label: "도움말", keywords: "help 도움말 단축키", icon: <HelpCircle className={ico} />, run: () => ui.setHelpOpen(true) },
       { id: "tour", group: "설정", label: "기능 둘러보기 다시 보기", keywords: "tour 투어 둘러보기 가이드", icon: <Compass className={ico} />, run: restartTour },
-      { id: "update", group: "설정", label: "업데이트 확인", keywords: "update 업데이트", icon: <Download className={ico} />, run: () => setUpdateModalOpen(true) },
+      // lite: 업데이터 플러그인이 없어 호출이 항상 실패한다
+      ...(IS_LITE
+        ? []
+        : [{ id: "update", group: "설정", label: "업데이트 확인", keywords: "update 업데이트", icon: <Download className={ico} />, run: () => setUpdateModalOpen(true) } as Command]),
     ];
     // 동적: 스마트 폴더
     for (const f of search.smartFolders) {
@@ -847,7 +854,8 @@ function AppContent() {
                     paradigm={search.paradigm}
                     nlSubmitted={search.nlSubmitted}
                     parsedQuery={search.parsedQuery}
-                    onSwitchToAnything={handleSwitchToAnything}
+                    // lite: AI 미포함 — 결과 하단 "Anything에게 물어보기" 배너 진입점을 숨긴다
+                    onSwitchToAnything={IS_LITE ? undefined : handleSwitchToAnything}
                     isIndexing={idx.isIndexing}
                     indexProgress={idx.progress}
                     searchMode={search.searchMode}
@@ -1023,18 +1031,21 @@ function AppContent() {
         onScrollToTop={search.scrollToTop}
       />
 
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={() => {
-          setUpdateModalOpen(false);
-          updater.dismiss();
-        }}
-        state={updater.state}
-        onInstall={updater.downloadAndInstall}
-        onRestart={updater.restart}
-        onCancel={updater.cancel}
-        onOpenReleasePage={updater.openReleasePage}
-      />
+      {/* lite: 업데이터 플러그인이 없어 모달을 띄울 경로가 없다 */}
+      {!IS_LITE && (
+        <UpdateModal
+          isOpen={updateModalOpen}
+          onClose={() => {
+            setUpdateModalOpen(false);
+            updater.dismiss();
+          }}
+          state={updater.state}
+          onInstall={updater.downloadAndInstall}
+          onRestart={updater.restart}
+          onCancel={updater.cancel}
+          onOpenReleasePage={updater.openReleasePage}
+        />
+      )}
 
       {/* 기능 투어 — 온보딩 단일 흐름: AutoIndexPrompt가 닫히고 + 폴더가 실제 추가된 뒤에만 1회 자동 시작.
           '나중에 할게요'(폴더 0개)면 투어를 띄우지 않아 모달→투어 중복 안내를 제거. 헬프 메뉴에서 재시작 가능. */}

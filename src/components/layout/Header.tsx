@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Home, Plus, HelpCircle, Settings, BarChart3, Files, MoreHorizontal, Download } from "lucide-react";
 import type { UpdatePhase } from "../../hooks/useUpdater";
+import { IS_LITE } from "../../utils/buildFlavor";
 
 interface HeaderProps {
   onAddFolder: () => void;
@@ -17,11 +18,13 @@ interface HeaderProps {
 }
 
 export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpenHelp, onOpenStats, onOpenDuplicates, onGoHome, isIndexing, isSidebarOpen, hasQuery, updatePhase, onOpenUpdate }: HeaderProps) {
+  // lite: 업데이터 플러그인이 없어 phase 가 idle 에서 움직이지 않지만, 배지 자체를 명시적으로 막는다
   const updateVisible =
+    !IS_LITE && (
     updatePhase === "available" ||
     updatePhase === "downloading" ||
     updatePhase === "installing" ||
-    updatePhase === "ready-to-restart";
+    updatePhase === "ready-to-restart");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);

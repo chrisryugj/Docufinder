@@ -21,12 +21,17 @@ $projectRoot = Split-Path -Parent (Resolve-Path $packageJson)
 
 $files = @(
     @{ Path = "$projectRoot\package.json";              Pattern = '"version": "[^"]*"';    Replace = "`"version`": `"$Version`"" },
-    @{ Path = "$projectRoot\src-tauri\Cargo.toml";      Pattern = '^version = "[^"]*"';   Replace = "version = `"$Version`"" },
+    # (?m) 필수 — 없으면 `^` 가 파일 선두에만 걸려 Cargo.toml 은 조용히 스킵된다.
+    # 그러면 package.json 만 올라가 release.sh 의 버전 일치 검사를 통과한 채로
+    # 바이너리 버전만 옛 값으로 배포된다. 들여쓴 의존성 `version = ` 은 열 0 이 아니라 안 걸린다.
+    @{ Path = "$projectRoot\src-tauri\Cargo.toml";      Pattern = '(?m)^version = "[^"]*"'; Replace = "version = `"$Version`"" },
     @{ Path = "$projectRoot\src-tauri\tauri.conf.json";  Pattern = '"version": "[^"]*"';   Replace = "`"version`": `"$Version`"" }
 )
 
 if ($DryRun) {
-    Write-Host "[DRY RUN] Would update to v$Version:" -ForegroundColor Magenta
+    # ${Version} 로 감싼다 — `$Version:` 는 PowerShell 이 드라이브 한정 변수로 파싱해
+    # 스크립트 전체가 ParserError 로 죽었다 (DryRun 여부와 무관하게 실행 불가였음).
+    Write-Host "[DRY RUN] Would update to v${Version}:" -ForegroundColor Magenta
 }
 
 foreach ($file in $files) {

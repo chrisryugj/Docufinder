@@ -20,6 +20,7 @@ import type { AiAnalysis } from "../../types/search";
 import { extractLegalReferences } from "../../utils/legalReference";
 import { cleanPath } from "../../utils/cleanPath";
 import { MOD_KEY } from "../../utils/platform";
+import { IS_LITE } from "../../utils/buildFlavor";
 import { useUIContext } from "../../contexts/UIContext";
 
 // ─── Types ─────────────────────────────────────────────
@@ -1245,24 +1246,29 @@ export const PreviewPanel = memo(function PreviewPanel({
               >
                 <Search size={14} />
               </button>
-              <button
-                onClick={() => setShowSummaryMenu((v) => !v)}
-                disabled={summaryLoading}
-                className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
-                title="AI 요약"
-              >
-                {summaryLoading
-                  ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
-                  : <Sparkles size={14} />
-                }
-              </button>
-              <button
-                onClick={() => setShowFileQa((v) => !v)}
-                className={`p-1.5 rounded-lg transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
-                title="이 파일에 대해 질문"
-              >
-                <MessageSquare size={14} />
-              </button>
+              {/* lite: summarize_ai / ask_ai_file 이 항상 Err — AI 요약·파일 질문 진입점을 숨긴다 */}
+              {!IS_LITE && (
+                <>
+                  <button
+                    onClick={() => setShowSummaryMenu((v) => !v)}
+                    disabled={summaryLoading}
+                    className="p-1.5 rounded-lg hover:bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] transition-colors disabled:opacity-50"
+                    title="AI 요약"
+                  >
+                    {summaryLoading
+                      ? <div className="w-3.5 h-3.5 border border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+                      : <Sparkles size={14} />
+                    }
+                  </button>
+                  <button
+                    onClick={() => setShowFileQa((v) => !v)}
+                    className={`p-1.5 rounded-lg transition-colors ${showFileQa ? "text-[var(--color-accent)] bg-[var(--color-accent-light)]" : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"}`}
+                    title="이 파일에 대해 질문"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                </>
+              )}
             </>
           )}
           {onBookmark && (

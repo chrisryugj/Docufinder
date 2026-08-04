@@ -5,6 +5,7 @@ import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import type { Settings } from "../../types/settings";
 import { getErrorMessage } from "../../types/error";
+import { IS_LITE } from "../../utils/buildFlavor";
 import { GeneralTab, SearchTab, AiTab, SystemTab, DiagnosticsTab } from "./tabs";
 
 interface SettingsModalProps {
@@ -21,7 +22,9 @@ type SettingsTab = "general" | "search" | "ai" | "system" | "diagnostics";
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "일반" },
   { id: "search", label: "검색" },
-  { id: "ai", label: "AI" },
+  // lite: LLM 클라이언트가 미컴파일이라 AI 설정을 저장해도 쓰이지 않는다 — 탭 자체를 뺀다.
+  // 기본 activeTab 이 "general" 이라 탭이 빠져도 초기 선택은 그대로 유효.
+  ...(IS_LITE ? [] : [{ id: "ai" as const, label: "AI" }]),
   { id: "system", label: "시스템" },
   { id: "diagnostics", label: "진단" },
 ];

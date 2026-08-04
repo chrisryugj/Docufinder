@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AiAnalysis } from "../types/search";
+import { IS_LITE } from "../utils/buildFlavor";
 
 interface AiTokenEvent {
   request_id: string;
@@ -76,6 +77,17 @@ export function useAiAnswer(): UseAiAnswerReturn {
   }, []);
 
   const ask = useCallback((query: string, folderScope?: string | null) => {
+    // lite: ask_ai 가 항상 Err — UI 진입점은 이미 숨겼지만, 혹시 남은 경로로 들어와도
+    // IPC 를 쏘지 않고 백엔드와 같은 문구를 그대로 보여준다.
+    if (IS_LITE) {
+      setAskedQuery(query);
+      setAnswer("");
+      setAnalysis(null);
+      setIsStreaming(false);
+      setError("이 설치본(내부망 전용)에는 AI 기능이 포함되어 있지 않습니다");
+      return;
+    }
+
     const requestId = crypto.randomUUID();
     requestIdRef.current = requestId;
     setAskedQuery(query);

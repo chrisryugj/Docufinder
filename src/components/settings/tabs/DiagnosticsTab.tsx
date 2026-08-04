@@ -6,6 +6,7 @@ import { useUpdater } from "../../../hooks/useUpdater";
 import { UpdateModal } from "../../updater/UpdateModal";
 import { getErrorMessage } from "../../../types/error";
 import { isMac } from "../../../utils/platform";
+import { IS_LITE } from "../../../utils/buildFlavor";
 import type { TabProps } from "./types";
 
 interface DiagnosticsTabProps extends TabProps {
@@ -23,7 +24,16 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
 
   return (
     <div className="space-y-3">
-      {/* 업데이트 */}
+      {/* lite: 업데이터 플러그인·Telegram 리포트가 빠진 빌드 — 왜 항목이 없는지 한 줄로 알린다 */}
+      {IS_LITE && (
+        <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+          내부망 전용 설치본입니다 — 자동 업데이트와 오류 자동 전송은 포함되어 있지 않습니다.
+          오류는 아래 로그 폴더에만 기록됩니다.
+        </p>
+      )}
+
+      {/* 업데이트 — lite: 업데이터 플러그인이 없어 호출이 항상 실패한다 */}
+      {!IS_LITE && (
       <div>
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>업데이트</h3>
         <div className="flex items-center justify-between">
@@ -48,8 +58,10 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
           </Button>
         </div>
       </div>
+      )}
 
-      {/* 오류 리포트 */}
+      {/* 오류 리포트 — lite: 백엔드가 error_reporting_enabled 를 false 로 고정해 토글이 무의미 */}
+      {!IS_LITE && (
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
         <h3 className="text-sm font-semibold mb-2" style={{ color: "var(--color-text-primary)" }}>오류 리포트</h3>
         <SettingsToggle
@@ -59,6 +71,7 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
           onChange={(v) => onChange("error_reporting_enabled", v)}
         />
       </div>
+      )}
 
       {/* 로그 */}
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
@@ -84,18 +97,20 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
         </div>
       </div>
 
-      <UpdateModal
-        isOpen={updateModalOpen}
-        onClose={() => {
-          setUpdateModalOpen(false);
-          updater.dismiss();
-        }}
-        state={updater.state}
-        onInstall={updater.downloadAndInstall}
-        onRestart={updater.restart}
-        onCancel={updater.cancel}
-        onOpenReleasePage={updater.openReleasePage}
-      />
+      {!IS_LITE && (
+        <UpdateModal
+          isOpen={updateModalOpen}
+          onClose={() => {
+            setUpdateModalOpen(false);
+            updater.dismiss();
+          }}
+          state={updater.state}
+          onInstall={updater.downloadAndInstall}
+          onRestart={updater.restart}
+          onCancel={updater.cancel}
+          onOpenReleasePage={updater.openReleasePage}
+        />
+      )}
     </div>
   );
 }

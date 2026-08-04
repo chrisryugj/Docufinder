@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Anything",
-  "version": "3.6.1",
+  "version": "3.7.0",
   "identifier": "com.anything.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -25,7 +25,16 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' https://github.com https://objects.githubusercontent.com https://api.github.com; object-src 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: asset: https://asset.localhost; connect-src 'self' https://github.com https://objects.githubusercontent.com https://api.github.com; object-src 'none'",
+      "capabilities": [
+        "default",
+        {
+          "identifier": "updater",
+          "description": "자동 업데이트 권한 — online(일반) 배포판 전용. capabilities/ 폴더에 두면 lite 빌드에서도 파일이 파싱돼 '플러그인 없음' 으로 빌드가 깨지므로 여기 인라인으로 둔다.",
+          "windows": ["main"],
+          "permissions": ["updater:default", "process:allow-restart"]
+        }
+      ]
     }
   },
   "bundle": {
