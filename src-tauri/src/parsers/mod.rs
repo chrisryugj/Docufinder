@@ -9,9 +9,13 @@ pub mod pdf_sniff;
 pub mod pptx;
 pub mod rhwp;
 pub mod txt;
+#[cfg(windows)]
+pub mod wincom;
 pub mod xlsx;
 
 use crate::ocr::OcrEngine;
+#[cfg(windows)]
+use crate::parsers::wincom::{docx as wincom_docx, pptx as wincom_pptx, xlsx as wincom_xlsx};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
@@ -254,9 +258,27 @@ fn parse_file_inner(
             }
         })),
         "hwpx" => parse_with_timeout(path, 30, "HWPX", hwpx::parse),
-        "docx" => parse_with_timeout(path, 30, "DOCX", docx::parse),
-        "pptx" => parse_with_timeout(path, 30, "PPTX", pptx::parse),
-        "xlsx" | "xls" => parse_with_timeout(path, 15, "XLS/XLSX", xlsx::parse),
+        "docx" => {
+            let parse_result = parse_with_timeout(path, 30, "DOCX", docx::parse);
+            match parse_result {
+                Ok(doc) => Ok(doc),
+                Err(err) => wincom_fallback_docx(path, err),
+            }
+        }
+        "pptx" => {
+            let parse_result = parse_with_timeout(path, 30, "PPTX", pptx::parse);
+            match parse_result {
+                Ok(doc) => Ok(doc),
+                Err(err) => wincom_fallback_pptx(path, err),
+            }
+        }
+        "xlsx" | "xls" => {
+            let parse_result = parse_with_timeout(path, 15, "XLS/XLSX", xlsx::parse);
+            match parse_result {
+                Ok(doc) => Ok(doc),
+                Err(err) => wincom_fallback_xlsx(path, err),
+            }
+        }
         "pdf" => pdf::parse(path, ocr),
         ext if crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
             match ocr {
@@ -269,6 +291,50 @@ fn parse_file_inner(
         }
         _ => Err(ParseError::UnsupportedFileType(extension)),
     }
+}
+
+// --- wincom fallback wrappers (Windows-only; no-op on other platforms) --------
+
+#[cfg(windows)]
+fn wincom_fallback_docx(path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    if crate::constants::is_use_wincom_for_docx() {
+        parse_with_timeout(path, 30, "DOCX", wincom_docx::parse)
+    } else {
+        Err(err)
+    }
+}
+
+#[cfg(windows)]
+fn wincom_fallback_pptx(path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    if crate::constants::is_use_wincom_for_xlsx() {
+        parse_with_timeout(path, 30, "PPTX", wincom_pptx::parse)
+    } else {
+        Err(err)
+    }
+}
+
+#[cfg(windows)]
+fn wincom_fallback_xlsx(path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    if crate::constants::is_use_wincom_for_pptx() {
+        parse_with_timeout(path, 30, "XLS/XLSX", wincom_xlsx::parse)
+    } else {
+        Err(err)
+    }
+}
+
+#[cfg(not(windows))]
+fn wincom_fallback_docx(_path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    Err(err)
+}
+
+#[cfg(not(windows))]
+fn wincom_fallback_pptx(_path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    Err(err)
+}
+
+#[cfg(not(windows))]
+fn wincom_fallback_xlsx(_path: &Path, err: ParseError) -> Result<ParsedDocument, ParseError> {
+    Err(err)
 }
 
 /// 공통 타임아웃 + 패닉 방어 래퍼 (HWPX, DOCX, PPTX, XLSX 공통)

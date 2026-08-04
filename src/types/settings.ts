@@ -96,4 +96,7 @@ export interface Settings {
    * false면 상대시간("3일 전")을 표시하고 절대 날짜/시간은 툴팁으로 노출.
    */
   show_absolute_time: boolean;
+  use_wincom_for_docx?: boolean,
+  use_wincom_for_xlsx?: boolean,
+  use_wincom_for_pptx?: boolean,
 }

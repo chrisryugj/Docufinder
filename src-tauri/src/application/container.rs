@@ -163,6 +163,9 @@ impl AppContainer {
         crate::utils::cloud_detect::set_skip_enabled(cached_settings.skip_cloud_body_indexing);
         // 시스템 폴더 추가 허용 토글 초기화 — validate_watch_path 우회 분기에 사용
         crate::constants::set_allow_system_folders(cached_settings.allow_system_folders);
+        crate::constants::set_use_wincom_for_docx(cached_settings.use_wincom_for_docx);
+        crate::constants::set_use_wincom_for_xlsx(cached_settings.use_wincom_for_xlsx);
+        crate::constants::set_use_wincom_for_pptx(cached_settings.use_wincom_for_pptx);
 
         // data_root가 설정되어 있으면 해당 경로에 DB/벡터 저장
         // 보안: 사용자 입력 경로 검증 (심볼릭 링크, 드라이브 루트, 시스템 폴더 거부)

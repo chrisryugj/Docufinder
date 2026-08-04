@@ -138,6 +138,15 @@ pub struct Settings {
     /// false면 상대시간("3일 전")을 표시하고 절대 날짜/시간은 툴팁으로 노출.
     #[serde(default = "default_show_absolute_time")]
     pub show_absolute_time: bool,
+
+    #[serde(default)]
+    pub use_wincom_for_docx: bool,
+
+    #[serde(default)]
+    pub use_wincom_for_xlsx: bool,
+
+    #[serde(default)]
+    pub use_wincom_for_pptx: bool,
 }
 
 fn default_show_result_path() -> bool {
@@ -286,6 +295,9 @@ impl Default for Settings {
             open_on_single_click: false,
             show_result_path: true,
             show_absolute_time: true,
+            use_wincom_for_docx: false,
+            use_wincom_for_xlsx: false,
+            use_wincom_for_pptx: false,
         }
     }
 }
@@ -790,6 +802,9 @@ pub async fn update_settings(
     crate::utils::cloud_detect::set_skip_enabled(settings.skip_cloud_body_indexing);
     // 시스템 폴더 추가 허용 토글 동기화 (validate_watch_path 즉시 반영)
     crate::constants::set_allow_system_folders(settings.allow_system_folders);
+    crate::constants::set_use_wincom_for_docx(settings.use_wincom_for_docx);
+    crate::constants::set_use_wincom_for_xlsx(settings.use_wincom_for_xlsx);
+    crate::constants::set_use_wincom_for_pptx(settings.use_wincom_for_pptx);
 
     tracing::info!("Settings saved to {:?}", settings_path);
 
