@@ -1,6 +1,6 @@
 {
   "name": "anything",
-  "version": "3.7.0",
+  "version": "3.7.1",
   "description": "로컬 문서 검색 앱 - Everything 대항마",
   "type": "module",
   "scripts": {
@@ -19,8 +19,8 @@
     "dev:lite": "set VITE_LITE=1&& vite",
     "build:lite": "set VITE_LITE=1&& tsc && vite build",
     "bundle-kordoc:lite": "powershell -ExecutionPolicy Bypass -File scripts/bundle-kordoc.ps1 -Lite",
-    "tauri:dev:lite": "tauri dev --config src-tauri/tauri.lite.conf.json --no-default-features --features custom-protocol",
-    "tauri:build:lite": "pnpm run bundle-kordoc:lite && tauri build --config src-tauri/tauri.lite.conf.json --no-default-features --features custom-protocol"
+    "tauri:dev:lite": "tauri dev --config src-tauri/tauri.lite.conf.json --features custom-protocol -- --no-default-features",
+    "tauri:build:lite": "pnpm run bundle-kordoc:lite && tauri build --config src-tauri/tauri.lite.conf.json --features custom-protocol -- --no-default-features"
   },
   "keywords": [
     "document",

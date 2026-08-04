@@ -135,9 +135,16 @@ TAURI_CONFIG="$(cat tauri.lite.conf.json)" \
 > lite 를 `cargo` 로 직접 검사할 땐 `TAURI_CONFIG` 를 넘겨야 한다. 안 넘기면 build script 가
 > 기본 `tauri.conf.json` 을 읽어 `updater:default` 권한을 찾다가 실패한다.
 
-IT 부서 제출용 증빙 — 빌드 산출물에 네트워크 흔적이 없음을 직접 보여줄 수 있다:
+IT 부서 제출용 증빙 — 빌드 산출물에 네트워크 흔적이 없음을 직접 보여줄 수 있다.
+릴리스마다 CI 가 자동으로 같은 검사를 돌리며, 하나라도 걸리면 배포가 실패한다.
 
 ```powershell
-# 외부 호스트 문자열이 하나도 안 나와야 한다
-Select-String -Path .\Anything*.exe -Pattern 'api\.telegram\.org|huggingface\.co|api\.github\.com' -Encoding Byte
+# lite 는 아무것도 안 나오고, 같은 검사에서 online 빌드는 4종 전부 검출된다(실측 대조군).
+$exe  = ".\docufinder.exe"   # 설치 폴더의 실행 파일
+$text = [System.Text.Encoding]::GetEncoding(28591).GetString([System.IO.File]::ReadAllBytes($exe))
+@('api.telegram.org','huggingface.co','api.github.com','generativelanguage.googleapis.com') |
+  ForEach-Object { "{0,-36} {1}" -f $_, $(if ($text.Contains($_)) { "검출" } else { "없음" }) }
 ```
+
+> `Select-String -Encoding Byte` 는 Windows PowerShell 5.1 에서만 동작한다 — PowerShell 7
+> 에서는 그 파라미터가 없어 실패하므로 위 방식을 쓴다.

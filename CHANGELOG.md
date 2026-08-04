@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.7.1] - 2026-08-04
+
+**v3.7.0 릴리스에서 Anything Lite 설치본이 빠졌던 문제 수정**
+
+v3.7.0 은 일반 설치본만 배포되고 Lite 설치본이 첨부되지 않았습니다. 릴리스 워크플로우의
+Lite 빌드 스텝이 인자 오류로 즉시 실패했기 때문입니다(일반 빌드·업로드는 정상 완료).
+**Lite 설치본이 필요하면 v3.7.1 을 받으세요.** 코드 자체는 v3.7.0 과 동일합니다.
+
+### 🐛 수정
+
+- **Lite 빌드 명령의 인자 위치 오류**: `--no-default-features` 는 Tauri CLI 자체 플래그가
+  아니라 러너(cargo)로 넘겨야 하는 인자입니다. `--` 앞에 두어 `unexpected argument` 로
+  실패했습니다. `publish.yml` 과 `package.json` 의 `tauri:build:lite`·`tauri:dev:lite`
+  스크립트가 같은 오류를 갖고 있어 함께 고쳤습니다.
+- **릴리스 검증 스텝이 PowerShell 7 에서 동작하지 않던 문제**: 바이너리 문자열 검사에 쓴
+  `Select-String -Encoding Byte` 는 Windows PowerShell 5.1 전용 파라미터입니다. 바이트를
+  ISO-8859-1 로 읽어 매칭하는 방식으로 교체해 두 PowerShell 에서 모두 동작합니다.
+  (이 검증은 v3.7.0 에서 Lite 빌드가 먼저 실패해 한 번도 실행되지 못했습니다.)
+
+### ✅ 검증
+
+Lite 빌드를 로컬에서 끝까지 돌려 확인했습니다. 문자열 검사는 대조군까지 확인 —
+동일 검사에서 **일반 빌드는 `api.telegram.org`·`huggingface.co`·`api.github.com`·
+`generativelanguage.googleapis.com` 4종을 전부 검출**하고, **Lite 빌드는 하나도 검출되지
+않습니다.** 검사가 무의미하게 통과한 것이 아님을 보이는 근거입니다.
+
 ## [3.7.0] - 2026-08-04
 
 **Anything Lite — 내부망(폐쇄망) 전용 배포본 신설**
