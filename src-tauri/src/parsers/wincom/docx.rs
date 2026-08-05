@@ -5,7 +5,9 @@
 
 use std::path::Path;
 
-use super::{to_parse_error, v_string, var_bool, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj};
+use super::{
+    to_parse_error, v_string, var_bool, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj,
+};
 use crate::parsers::{
     DocumentChunk, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE, MAX_FILE_SIZE,

@@ -7,7 +7,8 @@
 use std::path::Path;
 
 use super::{
-    to_parse_error, v_string, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj, MSO_FALSE, MSO_TRUE,
+    to_parse_error, v_string, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj, MSO_FALSE,
+    MSO_TRUE,
 };
 use crate::parsers::{
     DocumentChunk, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,

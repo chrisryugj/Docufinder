@@ -307,7 +307,10 @@ pub(crate) struct AppGuard {
 
 impl AppGuard {
     pub(crate) fn new(app: &Obj, kind: AppKind) -> Self {
-        AppGuard { app: app.clone(), kind }
+        AppGuard {
+            app: app.clone(),
+            kind,
+        }
     }
 
     fn collection_size(&self) -> windows::core::Result<i32> {
