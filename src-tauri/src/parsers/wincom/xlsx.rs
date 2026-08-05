@@ -16,7 +16,7 @@ use windows::Win32::System::Variant::{VARIANT, VT_BOOL, VT_BSTR, VT_R8};
 
 use super::{
     to_parse_error, v_is_array, v_is_empty, v_string, v_to_display_string, var_bool, var_i32,
-    var_str, AppGuard, ComApartment, Obj,
+    var_str, AppGuard, AppKind, ComApartment, Obj,
 };
 use crate::parsers::{
     DocumentChunk, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,
@@ -126,7 +126,7 @@ struct SheetData {
 /// 각 시트의 `UsedRange.Value` (2차원 SAFEARRAY) 를 행별 문자열로 변환.
 fn extract_sheets(path: &Path) -> windows::core::Result<Vec<SheetData>> {
     let app = Obj::create("Excel.Application")?;
-    let _guard = AppGuard::new(&app);
+    let _guard = AppGuard::new(&app, AppKind::Excel);
     // Excel 을 백그라운드로 실행 — 경고·이벤트·링크 갱신·매크로 모두 차단.
     let _ = app.put("Visible", var_bool(false));
     let _ = app.put("DisplayAlerts", var_bool(false));

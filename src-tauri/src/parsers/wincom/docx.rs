@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use super::{to_parse_error, v_string, var_bool, var_i32, var_str, AppGuard, ComApartment, Obj};
+use super::{to_parse_error, v_string, var_bool, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj};
 use crate::parsers::{
     DocumentChunk, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE, MAX_FILE_SIZE,
@@ -71,7 +71,7 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 /// Open 시 가짜 암호를 전달해 보호된 문서의 모달 다이얼로그를 차단한다.
 fn extract_text(path: &Path) -> windows::core::Result<String> {
     let app = Obj::create("Word.Application")?;
-    let _guard = AppGuard::new(&app);
+    let _guard = AppGuard::new(&app, AppKind::Word);
     // Word 를 백그라운드로 실행 — 경고·화면 갱신·매크로 모두 차단.
     let _ = app.put("Visible", var_bool(false));
     let _ = app.put("DisplayAlerts", var_i32(WD_ALERTS_NONE));

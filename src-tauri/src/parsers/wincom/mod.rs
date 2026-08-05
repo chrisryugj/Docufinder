@@ -281,22 +281,55 @@ fn to_wide(s: &str) -> Vec<u16> {
 // Application 객체 수명 가드
 // ============================================================================
 
+pub(crate) enum AppKind {
+    Word,
+    Excel,
+    PowerPoint,
+}
+
+impl AppKind {
+    fn collection_name(&self) -> &'static str {
+        match self {
+            Self::Word => "Documents",
+            Self::Excel => "Workbooks",
+            Self::PowerPoint => "Presentations",
+        }
+    }
+}
+
 /// Application 객체의 RAII 가드 — drop 시 `Quit` 호출로 Office 프로세스 종료.
 /// 잔존 `WINWORD.EXE` / `POWERPNT.EXE` / `EXCEL.EXE` 가 메모리·핸들을 점유하므로
 /// 반드시 정리해야 한다.
 pub(crate) struct AppGuard {
     app: Obj,
+    kind: AppKind,
 }
 
 impl AppGuard {
-    pub(crate) fn new(app: &Obj) -> Self {
-        AppGuard { app: app.clone() }
+    pub(crate) fn new(app: &Obj, kind: AppKind) -> Self {
+        AppGuard { app: app.clone(), kind }
+    }
+
+    fn collection_size(&self) -> windows::core::Result<i32> {
+        let collection = self.app.get_obj(self.kind.collection_name(), &[])?;
+        let count = collection.get("Count", &[])?;
+        i32::try_from(&count)
     }
 }
 
 impl Drop for AppGuard {
     fn drop(&mut self) {
-        let _ = self.app.call("Quit", &[]);
+        let should_quit = match self.kind {
+            AppKind::Word | AppKind::Excel => true,
+            AppKind::PowerPoint => match self.collection_size() {
+                Ok(0) => true,
+                Ok(_count) => false,
+                Err(_err) => false, // TODO: tracing::warn!
+            },
+        };
+        if should_quit {
+            let _ = self.app.call("Quit", &[]);
+        }
     }
 }
 

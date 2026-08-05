@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use super::{
-    to_parse_error, v_string, var_i32, var_str, AppGuard, ComApartment, Obj, MSO_FALSE, MSO_TRUE,
+    to_parse_error, v_string, var_i32, var_str, AppGuard, AppKind, ComApartment, Obj, MSO_FALSE, MSO_TRUE,
 };
 use crate::parsers::{
     DocumentChunk, DocumentMetadata, ParseError, ParsedDocument, DEFAULT_CHUNK_OVERLAP,
@@ -91,7 +91,7 @@ struct SlideText {
 /// 각 슬라이드의 Shape 텍스트 + `NotesPage` 텍스트 수집 순서로 동작.
 fn extract_slides(path: &Path) -> windows::core::Result<Vec<SlideText>> {
     let app = Obj::create("PowerPoint.Application")?;
-    let _guard = AppGuard::new(&app);
+    let _guard = AppGuard::new(&app, AppKind::PowerPoint);
     // PowerPoint 는 Word/Excel 과 달리 Visible=false 미지원 — 항상 가시 창으로 동작.
     let _ = app.put("DisplayAlerts", var_i32(PP_ALERTS_NONE));
     let _ = app.put(
