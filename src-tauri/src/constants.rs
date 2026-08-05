@@ -20,6 +20,7 @@ pub fn set_use_wincom_for_docx(v: bool) {
     USE_WINCOM_FOR_DOCX.store(v, Ordering::Relaxed);
 }
 
+#[cfg(windows)]
 pub fn is_use_wincom_for_docx() -> bool {
     USE_WINCOM_FOR_DOCX.load(Ordering::Relaxed)
 }
@@ -30,6 +31,7 @@ pub fn set_use_wincom_for_xlsx(v: bool) {
     USE_WINCOM_FOR_XLSX.store(v, Ordering::Relaxed);
 }
 
+#[cfg(windows)]
 pub fn is_use_wincom_for_xlsx() -> bool {
     USE_WINCOM_FOR_XLSX.load(Ordering::Relaxed)
 }
@@ -40,6 +42,7 @@ pub fn set_use_wincom_for_pptx(v: bool) {
     USE_WINCOM_FOR_PPTX.store(v, Ordering::Relaxed);
 }
 
+#[cfg(windows)]
 pub fn is_use_wincom_for_pptx() -> bool {
     USE_WINCOM_FOR_PPTX.load(Ordering::Relaxed)
 }
