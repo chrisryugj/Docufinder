@@ -93,6 +93,8 @@ struct SlideText {
 fn extract_slides(path: &Path) -> windows::core::Result<Vec<SlideText>> {
     let app = Obj::create("PowerPoint.Application")?;
     let _guard = AppGuard::new(&app, AppKind::PowerPoint);
+    let original_display_alerts = app.get("DisplayAlerts", &[])?;
+    let original_automation_security = app.get("AutomationSecurity", &[])?;
     // PowerPoint 는 Word/Excel 과 달리 Visible=false 미지원 — 항상 가시 창으로 동작.
     let _ = app.put("DisplayAlerts", var_i32(PP_ALERTS_NONE));
     let _ = app.put(
@@ -111,6 +113,7 @@ fn extract_slides(path: &Path) -> windows::core::Result<Vec<SlideText>> {
             var_i32(MSO_FALSE), // WithWindow — PowerPoint 창 표시 안 함
         ],
     )?;
+    let _ = app.put("AutomationSecurity", original_automation_security);
     let pres = super::as_obj(&pres_var)?;
 
     let slides_col = pres.get_obj("Slides", &[])?;
@@ -143,6 +146,7 @@ fn extract_slides(path: &Path) -> windows::core::Result<Vec<SlideText>> {
     }
 
     let _ = pres.call("Close", &[]);
+    let _ = app.put("DisplayAlerts", original_display_alerts);
 
     Ok(out)
 }
