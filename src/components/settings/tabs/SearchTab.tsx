@@ -7,7 +7,7 @@ import { SettingsToggle } from "../SettingsToggle";
 import { invokeWithTimeout } from "../../../utils/invokeWithTimeout";
 import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
-import { SYSTEM_FOLDERS_HINT } from "../../../utils/platform";
+import { SYSTEM_FOLDERS_HINT, isWindows } from "../../../utils/platform";
 import { IS_LITE } from "../../../utils/buildFlavor";
 
 interface FormulaModelInfo {
@@ -501,36 +501,39 @@ export function SearchTab({ settings, onChange }: TabProps) {
       </div>
       )}
 
-      {/* Read with MS Office via Windows COM*/}
+      {/* 설치된 MS Office 로 읽기 (Windows COM) — 백엔드 fallback 자체가 Windows 전용 */}
+      {isWindows && (
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
         <label
-	  className="flex items-center text-sm font-medium mb-2"
-	  style={{ color: "var(--color-text-secondary)" }}
-	>
-	  설치된 MS 오피스로 파일 읽기
-	</label>
+          className="flex items-center text-sm font-medium mb-2"
+          style={{ color: "var(--color-text-secondary)" }}
+        >
+          설치된 MS 오피스로 파일 읽기
+          <InfoTooltip content="사내 문서보안(DRM) 솔루션이 파일을 암호화해 일반 파싱이 실패할 때, 설치된 MS Office 를 백그라운드로 띄워 본문을 읽습니다. 파싱이 실패한 파일에만 동작하며 인덱싱 속도가 크게 느려집니다." />
+        </label>
 
         <SettingsToggle
           label="설치된 MS Word 로 DOCX 읽기"
-          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          description="사내 파일 암호화 등으로 인덱싱이 되지 않을 때 최후의 수단"
           checked={settings.use_wincom_for_docx ?? false}
           onChange={(v) => onChange("use_wincom_for_docx", v)}
         />
 
         <SettingsToggle
           label="설치된 MS Excel 로 XLSX, XLS 읽기"
-          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          description="사내 파일 암호화 등으로 인덱싱이 되지 않을 때 최후의 수단"
           checked={settings.use_wincom_for_xlsx ?? false}
           onChange={(v) => onChange("use_wincom_for_xlsx", v)}
         />
 
         <SettingsToggle
           label="설치된 MS PowerPoint 로 PPTX 읽기"
-          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          description="사내 파일 암호화 등으로 인덱싱이 되지 않을 때 최후의 수단"
           checked={settings.use_wincom_for_pptx ?? false}
           onChange={(v) => onChange("use_wincom_for_pptx", v)}
         />
       </div>
+      )}
 
       {/* 문서 버전 그룹핑 (Document Lineage) */}
       <div>

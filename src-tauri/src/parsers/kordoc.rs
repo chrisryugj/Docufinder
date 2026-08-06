@@ -1081,7 +1081,9 @@ fn parse_iso_timestamp(s: &str) -> Option<i64> {
 ///
 /// 행은 줄바꿈, 셀은 공백으로 직렬화하고 변환되지 못한(중첩 표 등) 잔여 표/줄바꿈 태그를
 /// 제거한다. 표가 없으면 입력을 그대로 돌려준다(정규식 매칭 0 → 사실상 무비용).
-/// 미리보기 패널은 `get_markdown` 원본(HTML 표 유지)을 쓰므로 GFM 렌더에는 영향이 없다.
+/// 밑줄 태그(`<u>`, kordoc v4.7.0+)도 함께 걷어낸다 — 표 바깥 본문에 그대로 남으면
+/// 검색 스니펫에 태그가 노출되고 구절 검색이 태그 경계에서 끊긴다.
+/// 미리보기 패널은 `get_markdown` 원본(HTML 표·밑줄 유지)을 쓰므로 GFM 렌더에는 영향이 없다.
 fn html_tables_to_text(md: &str) -> String {
     use std::sync::OnceLock;
     static TABLE_RE: OnceLock<regex::Regex> = OnceLock::new();
@@ -1089,6 +1091,7 @@ fn html_tables_to_text(md: &str) -> String {
     static CELL_RE: OnceLock<regex::Regex> = OnceLock::new();
     static INNER_TAG_RE: OnceLock<regex::Regex> = OnceLock::new();
     static LEFTOVER_RE: OnceLock<regex::Regex> = OnceLock::new();
+    static UNDERLINE_RE: OnceLock<regex::Regex> = OnceLock::new();
 
     let table_re =
         TABLE_RE.get_or_init(|| regex::Regex::new(r"(?is)<table[^>]*>.*?</table>").unwrap());
@@ -1100,6 +1103,8 @@ fn html_tables_to_text(md: &str) -> String {
         regex::Regex::new(r"(?is)</?(?:table|thead|tbody|tfoot|tr|td|th|col|colgroup|br)[^>]*>")
             .unwrap()
     });
+    // 낱말 중간에도 열리고 닫히므로 공백이 아니라 삭제 — 공백을 넣으면 단어가 쪼개진다.
+    let underline_re = UNDERLINE_RE.get_or_init(|| regex::Regex::new(r"(?i)</?u>").unwrap());
 
     let replaced = table_re.replace_all(md, |caps: &regex::Captures| {
         let table = &caps[0];
@@ -1125,7 +1130,8 @@ fn html_tables_to_text(md: &str) -> String {
     });
 
     // 중첩 표 등으로 위 변환을 빠져나간 잔여 표/줄바꿈 태그 제거 (정규식은 중첩을 셀 수 없음).
-    leftover_re.replace_all(&replaced, " ").into_owned()
+    let leftover_cleaned = leftover_re.replace_all(&replaced, " ");
+    underline_re.replace_all(&leftover_cleaned, "").into_owned()
 }
 
 #[cfg(test)]
@@ -1151,6 +1157,15 @@ mod tests {
     fn no_table_is_noop() {
         let md = "# 제목\n본문 텍스트 — GFM 표 아님 | 열1 | 열2";
         assert_eq!(html_tables_to_text(md), md);
+    }
+
+    #[test]
+    fn underline_tags_removed_without_splitting_words() {
+        // kordoc v4.7.0+ 는 밑줄을 <u>…</u> 로 방출한다. 낱말 중간에서 열려도
+        // 공백이 끼면 FTS 토큰이 쪼개지므로 태그만 지운다.
+        let md = "부서명은 <u>소방행정과</u>이고 밑<u>줄</u>도 있다";
+        let out = html_tables_to_text(md);
+        assert_eq!(out, "부서명은 소방행정과이고 밑줄도 있다", "출력: {out:?}");
     }
 
     #[test]

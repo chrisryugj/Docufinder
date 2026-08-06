@@ -73,12 +73,13 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
 /// Open 시 가짜 암호를 전달해 보호된 문서의 모달 다이얼로그를 차단한다.
 fn extract_text(path: &Path) -> windows::core::Result<String> {
     let app = Obj::create("Word.Application")?;
-    let _guard = AppGuard::new(&app, AppKind::Word);
+    let mut guard = AppGuard::new(&app, AppKind::Word);
     // Word 를 백그라운드로 실행 — 경고·화면 갱신·매크로 모두 차단.
-    let _ = app.put("Visible", var_bool(false));
-    let _ = app.put("DisplayAlerts", var_i32(WD_ALERTS_NONE));
-    let _ = app.put("ScreenUpdating", var_bool(false));
-    let _ = app.put(
+    // 사용자가 켜 둔 Word 인스턴스에 붙었을 수 있으므로 전부 put_scoped (drop 에서 복원).
+    guard.put_scoped("Visible", var_bool(false));
+    guard.put_scoped("DisplayAlerts", var_i32(WD_ALERTS_NONE));
+    guard.put_scoped("ScreenUpdating", var_bool(false));
+    guard.put_scoped(
         "AutomationSecurity",
         var_i32(super::MSO_AUTOMATION_SECURITY_FORCE_DISABLE),
     );

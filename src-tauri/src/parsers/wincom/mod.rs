@@ -297,12 +297,22 @@ impl AppKind {
     }
 }
 
-/// Application 객체의 RAII 가드 — drop 시 `Quit` 호출로 Office 프로세스 종료.
-/// 잔존 `WINWORD.EXE` / `POWERPNT.EXE` / `EXCEL.EXE` 가 메모리·핸들을 점유하므로
-/// 반드시 정리해야 한다.
+/// Application 객체의 RAII 가드 — 우리가 바꾼 앱 전역 설정을 되돌리고,
+/// 열린 문서가 남지 않은 인스턴스만 `Quit` 으로 종료한다.
+///
+/// Word·PowerPoint 는 단일 인스턴스 자동화 서버라 사용자가 앱을 이미 켜 둔 상태면
+/// `CoCreateInstance` 가 새 프로세스를 띄우는 대신 **그 인스턴스에 붙는다**. 이때
+/// 무조건 `Quit` 하면 사용자가 편집 중이던 문서까지 닫히고(`DisplayAlerts` 를 꺼 둔
+/// 탓에 저장 확인 없이), `Visible=false` · `ScreenUpdating=false` 같은 전역 설정도
+/// 그대로 남아 앱이 먹통처럼 보인다. 그래서
+/// ① `put_scoped` 로 바꾼 값은 drop 에서 원래 값으로 되돌리고,
+/// ② 열린 문서 수가 0 일 때만 Quit 한다 (우리가 연 문서는 그전에 Close 된다).
+/// 조회 실패 시에도 Quit 하지 않는다 — 이미 죽은 인스턴스라 Quit 도 실패한다.
 pub(crate) struct AppGuard {
     app: Obj,
     kind: AppKind,
+    /// `put_scoped` 로 덮어쓴 속성의 원래 값 (설정한 순서대로).
+    saved: Vec<(&'static str, VARIANT)>,
 }
 
 impl AppGuard {
@@ -310,7 +320,17 @@ impl AppGuard {
         AppGuard {
             app: app.clone(),
             kind,
+            saved: Vec::new(),
         }
+    }
+
+    /// 앱 전역 속성을 원래 값으로 백업한 뒤 새 값으로 설정한다 (drop 에서 복원).
+    /// 읽기가 실패하는 속성(해당 앱이 지원하지 않음)은 설정만 하고 복원 대상에서 뺀다.
+    pub(crate) fn put_scoped(&mut self, name: &'static str, value: VARIANT) {
+        if let Ok(original) = self.app.get(name, &[]) {
+            self.saved.push((name, original));
+        }
+        let _ = self.app.put(name, value);
     }
 
     fn collection_size(&self) -> windows::core::Result<i32> {
@@ -322,15 +342,11 @@ impl AppGuard {
 
 impl Drop for AppGuard {
     fn drop(&mut self) {
-        let should_quit = match self.kind {
-            AppKind::Word | AppKind::Excel => true,
-            AppKind::PowerPoint => match self.collection_size() {
-                Ok(0) => true,
-                Ok(_count) => false,
-                Err(_err) => false, // TODO: tracing::warn!
-            },
-        };
-        if should_quit {
+        let saved = std::mem::take(&mut self.saved);
+        for (name, original) in saved.into_iter().rev() {
+            let _ = self.app.put(name, original);
+        }
+        if matches!(self.collection_size(), Ok(0)) {
             let _ = self.app.call("Quit", &[]);
         }
     }

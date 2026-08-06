@@ -220,8 +220,10 @@ function findJumpTarget(
 const PREVIEW_SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [
+    // "u" — kordoc v4.7.0+ 가 밑줄을 <u>…</u> 로 방출한다 (기본 스키마에 없어 그냥 두면
+    // 태그가 통째로 사라져 원문의 밑줄 강조가 미리보기에서 소실된다). 속성 없는 표시 태그.
     ...(defaultSchema.tagNames ?? []),
-    "table", "thead", "tbody", "tfoot", "tr", "td", "th", "col", "colgroup", "br",
+    "table", "thead", "tbody", "tfoot", "tr", "td", "th", "col", "colgroup", "br", "u",
   ],
   attributes: {
     ...defaultSchema.attributes,

@@ -126,14 +126,16 @@ struct SheetData {
 /// 각 시트의 `UsedRange.Value` (2차원 SAFEARRAY) 를 행별 문자열로 변환.
 fn extract_sheets(path: &Path) -> windows::core::Result<Vec<SheetData>> {
     let app = Obj::create("Excel.Application")?;
-    let _guard = AppGuard::new(&app, AppKind::Excel);
+    let mut guard = AppGuard::new(&app, AppKind::Excel);
     // Excel 을 백그라운드로 실행 — 경고·이벤트·링크 갱신·매크로 모두 차단.
-    let _ = app.put("Visible", var_bool(false));
-    let _ = app.put("DisplayAlerts", var_bool(false));
-    let _ = app.put("ScreenUpdating", var_bool(false));
-    let _ = app.put("EnableEvents", var_bool(false));
-    let _ = app.put("AskToUpdateLinks", var_bool(false));
-    let _ = app.put(
+    // 사용자가 켜 둔 Excel 인스턴스에 붙었을 수 있으므로 전부 put_scoped (drop 에서 복원).
+    // 특히 EnableEvents=false 가 남으면 사용자 통합문서의 매크로 이벤트가 죽는다.
+    guard.put_scoped("Visible", var_bool(false));
+    guard.put_scoped("DisplayAlerts", var_bool(false));
+    guard.put_scoped("ScreenUpdating", var_bool(false));
+    guard.put_scoped("EnableEvents", var_bool(false));
+    guard.put_scoped("AskToUpdateLinks", var_bool(false));
+    guard.put_scoped(
         "AutomationSecurity",
         var_i32(super::MSO_AUTOMATION_SECURITY_FORCE_DISABLE),
     );
