@@ -133,7 +133,11 @@ windows-sys = { version = "0.59", features = [
     # 이슈 #33: kordoc Node 사이드카 자식을 Job Object 에 묶어 앱 종료/크래시 시 자동 정리
     "Win32_System_JobObjects",
     # 이슈 #35: ONNX Runtime DLL 로드 실패 원인(GetLastError) 진단
-    "Win32_System_LibraryLoader"
+    "Win32_System_LibraryLoader",
+    # Index by using MS Office via Windows COM
+    "Win32_System_Variant",
+    "Win32_System_Ole",
+    "Win32_System_Com_StructuredStorage"
 ] }
 # Fixed-version WebView2 Runtime 지원 (이슈 #24): registry 미등록 환경에서도
 # EBWebView 폴더만 있으면 ICoreWebView2Environment 를 직접 만들어 wry 에 inject.

@@ -501,6 +501,37 @@ export function SearchTab({ settings, onChange }: TabProps) {
       </div>
       )}
 
+      {/* Read with MS Office via Windows COM*/}
+      <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
+        <label
+	  className="flex items-center text-sm font-medium mb-2"
+	  style={{ color: "var(--color-text-secondary)" }}
+	>
+	  설치된 MS 오피스로 파일 읽기
+	</label>
+
+        <SettingsToggle
+          label="설치된 MS Word 로 DOCX 읽기"
+          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          checked={settings.use_wincom_for_docx ?? false}
+          onChange={(v) => onChange("use_wincom_for_docx", v)}
+        />
+
+        <SettingsToggle
+          label="설치된 MS Excel 로 XLSX, XLS 읽기"
+          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          checked={settings.use_wincom_for_xlsx ?? false}
+          onChange={(v) => onChange("use_wincom_for_xlsx", v)}
+        />
+
+        <SettingsToggle
+          label="설치된 MS PowerPoint 로 PPTX 읽기"
+          description="사내 파일암호화 등으로 인덱싱이 되지않을때 최후의 수단"
+          checked={settings.use_wincom_for_pptx ?? false}
+          onChange={(v) => onChange("use_wincom_for_pptx", v)}
+        />
+      </div>
+
       {/* 문서 버전 그룹핑 (Document Lineage) */}
       <div>
         <SettingsToggle

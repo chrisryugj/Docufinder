@@ -14,6 +14,39 @@ pub fn is_allow_system_folders() -> bool {
     ALLOW_SYSTEM_FOLDERS.load(Ordering::Relaxed)
 }
 
+static USE_WINCOM_FOR_DOCX: AtomicBool = AtomicBool::new(false);
+
+pub fn set_use_wincom_for_docx(v: bool) {
+    USE_WINCOM_FOR_DOCX.store(v, Ordering::Relaxed);
+}
+
+#[cfg(windows)]
+pub fn is_use_wincom_for_docx() -> bool {
+    USE_WINCOM_FOR_DOCX.load(Ordering::Relaxed)
+}
+
+static USE_WINCOM_FOR_XLSX: AtomicBool = AtomicBool::new(false);
+
+pub fn set_use_wincom_for_xlsx(v: bool) {
+    USE_WINCOM_FOR_XLSX.store(v, Ordering::Relaxed);
+}
+
+#[cfg(windows)]
+pub fn is_use_wincom_for_xlsx() -> bool {
+    USE_WINCOM_FOR_XLSX.load(Ordering::Relaxed)
+}
+
+static USE_WINCOM_FOR_PPTX: AtomicBool = AtomicBool::new(false);
+
+pub fn set_use_wincom_for_pptx(v: bool) {
+    USE_WINCOM_FOR_PPTX.store(v, Ordering::Relaxed);
+}
+
+#[cfg(windows)]
+pub fn is_use_wincom_for_pptx() -> bool {
+    USE_WINCOM_FOR_PPTX.load(Ordering::Relaxed)
+}
+
 /// 지원하는 파일 확장자 목록
 /// 참고: "hwp"는 파서 미지원 (파싱 실패 시 변환 대상으로 수집됨, pipeline.rs 참조)
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
