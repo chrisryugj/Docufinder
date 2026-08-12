@@ -117,6 +117,33 @@ struct KordocResponse {
     /// PDF 전용 — 페이지별 품질 신호 (kordoc v2.9+, ocrReason 은 v4.2 갱신)
     #[serde(default)]
     page_quality: Vec<KordocPageQuality>,
+    /// 블록 IR — 청크 페이지 매핑에 사용 (pageNumber 는 kordoc v4.7.3+ 에서
+    /// 한컴 저장본 실제 쪽 번호, PDF 는 원래 실제 페이지). 구버전 응답엔 없어도 무방.
+    #[serde(default)]
+    blocks: Vec<KordocBlock>,
+}
+
+/// kordoc IRBlock — 페이지 매핑에 필요한 필드만 역직렬화
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KordocBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    text: Option<String>,
+    page_number: Option<usize>,
+    table: Option<KordocTable>,
+}
+
+/// kordoc IRTable — `rows`/`cols` 는 **개수(정수)** 이고 셀 데이터는 `cells` 다 (실 JSON 확인).
+#[derive(Deserialize)]
+struct KordocTable {
+    #[serde(default)]
+    cells: Vec<Vec<KordocCell>>,
+}
+
+#[derive(Deserialize)]
+struct KordocCell {
+    text: Option<String>,
 }
 
 /// kordoc 페이지 품질 신호 (필요 필드만 역직렬화)
@@ -139,6 +166,9 @@ struct KordocMetadata {
     author: Option<String>,
     created_at: Option<String>,
     page_count: Option<usize>,
+    /// "layout"(실제 페이지 경계) | "section"(섹션 근사) — kordoc v4.7.3+ (#66).
+    /// 구버전 응답엔 없음 → 페이지 매핑 스킵.
+    page_mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -299,6 +329,7 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         author: None,
         created_at: None,
         page_count: None,
+        page_mode: None,
     });
 
     let metadata = DocumentMetadata {
@@ -313,7 +344,14 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
     // 깨진 잔재까지 섞여 표시 레이어 정규식만으로는 못 막음) 검색용 content/chunks 에선 표를
     // plain text 로 직렬화한다. 미리보기 패널은 get_markdown 원본을 써 GFM 렌더가 유지된다.
     let content = html_tables_to_text(&markdown);
-    let chunks = chunk_text(&content, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
+    let mut chunks = chunk_text(&content, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
+
+    // 실제 페이지 매핑 (#66, kordoc v4.7.3+) — pageMode="layout"(한컴 저장본·PDF·COM)일 때만
+    // 블록 IR 의 쪽 번호를 content 오프셋에 사영해 청크에 "페이지 N" 힌트를 단다.
+    // 섹션 근사(section)·구버전 응답은 종전대로 페이지 없음 (content/인덱스는 불변).
+    if meta.page_mode.as_deref() == Some("layout") && !resp.blocks.is_empty() {
+        annotate_chunk_pages(&mut chunks, &content, &resp.blocks);
+    }
 
     Ok(ParsedDocument {
         content,
@@ -321,6 +359,106 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         chunks,
         garbled_hint,
     })
+}
+
+// ─── 청크 페이지 매핑 (#66) ──────────────────────────
+
+/// 블록 원문에서 마크다운 변환(escapeGfm `\*`·헤딩 `###`·HTML 표 직렬화)의 영향을
+/// 받지 않는 선두 조각을 뽑는다 — content 커서 검색용 needle.
+fn markdown_safe_prefix(text: &str) -> String {
+    text.trim_start()
+        .chars()
+        .take_while(|c| {
+            !matches!(
+                c,
+                '\\' | '*' | '_' | '~' | '`' | '[' | ']' | '<' | '>' | '|' | '#' | '\n'
+            )
+        })
+        .take(24)
+        .collect()
+}
+
+/// chars[from..] 에서 needle(char 슬라이스)의 첫 등장 위치 (char 인덱스)
+fn find_chars_from(chars: &[char], from: usize, needle: &[char]) -> Option<usize> {
+    if needle.is_empty() || from >= chars.len() {
+        return None;
+    }
+    chars[from..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|p| from + p)
+}
+
+/// 블록 IR 의 쪽 번호를 content 문자 오프셋 브레이크포인트로 사영.
+/// 매칭 실패 블록은 건너뛴다 — 페이지 경계는 그 페이지의 후속 블록들로 재시도되므로
+/// 근사 정확도가 유지되고, 못 찾으면 이전 페이지가 이어질 뿐 오배정은 없다.
+fn page_breakpoints(chars: &[char], blocks: &[KordocBlock]) -> Vec<(usize, usize)> {
+    let mut points: Vec<(usize, usize)> = Vec::new();
+    let mut cursor = 0usize;
+    let mut last_page = 0usize;
+    for b in blocks {
+        let Some(page) = b.page_number else { continue };
+        // needle 후보: 문단/헤딩은 본문, 표는 첫 비어있지 않은 셀
+        let text = if b.block_type == "table" {
+            b.table.as_ref().and_then(|t| {
+                t.cells
+                    .iter()
+                    .flatten()
+                    .find_map(|c| c.text.as_deref().filter(|s| !s.trim().is_empty()))
+            })
+        } else {
+            b.text.as_deref()
+        };
+        let Some(text) = text else { continue };
+        let needle: Vec<char> = markdown_safe_prefix(text).chars().collect();
+        if needle.len() < 4 {
+            continue; // 너무 짧으면 오매칭 위험
+        }
+        if let Some(found) = find_chars_from(chars, cursor, &needle) {
+            if page != last_page {
+                points.push((found, page));
+                last_page = page;
+            }
+            cursor = found + 1; // 동일 텍스트 반복 블록도 전진하도록 최소 전진
+        }
+    }
+    // HWP5 머리말 블록이 본문 앞(오프셋 0 부근)에 본문보다 큰 쪽 번호로 놓이는 변칙 방어
+    if points.len() >= 2 && points[0].1 > points[1].1 {
+        points.remove(0);
+    }
+    points
+}
+
+/// 청크(char 오프셋)에 페이지 번호·위치 힌트를 부여한다. content 는 불변 —
+/// 브레이크포인트를 못 만들면 아무것도 하지 않는다(종전 동작).
+fn annotate_chunk_pages(
+    chunks: &mut [super::DocumentChunk],
+    content: &str,
+    blocks: &[KordocBlock],
+) {
+    let chars: Vec<char> = content.chars().collect();
+    let points = page_breakpoints(&chars, blocks);
+    if points.is_empty() {
+        return;
+    }
+    let page_at = |off: usize| -> usize {
+        match points.binary_search_by(|p| p.0.cmp(&off)) {
+            Ok(i) => points[i].1,
+            Err(0) => 1, // 첫 브레이크포인트 이전 = 문서 시작부
+            Err(i) => points[i - 1].1,
+        }
+    };
+    for ch in chunks.iter_mut() {
+        let start = page_at(ch.start_offset);
+        let end = page_at(ch.end_offset.saturating_sub(1)).max(start);
+        ch.page_number = Some(start);
+        ch.page_end = Some(end);
+        ch.location_hint = Some(if start == end {
+            format!("페이지 {}", start)
+        } else {
+            format!("페이지 {}-{}", start, end)
+        });
+    }
 }
 
 /// kordoc으로 파일의 full markdown만 추출 (미리보기용, 전역 formula OCR 토글 반영).
@@ -1138,6 +1276,92 @@ fn html_tables_to_text(md: &str) -> String {
 mod tests {
     use super::*;
 
+    fn block(block_type: &str, text: Option<&str>, page: usize) -> KordocBlock {
+        KordocBlock {
+            block_type: block_type.to_string(),
+            text: text.map(String::from),
+            page_number: Some(page),
+            table: None,
+        }
+    }
+
+    #[test]
+    fn chunk_pages_annotated_from_blocks() {
+        // 3페이지 문서 — 마크다운 헤딩 접두("## ")·escapeGfm(\*) 가 섞여도
+        // 블록 원문 선두 조각으로 매칭돼야 한다.
+        let content = "## 첫 페이지 제목\n\n첫 페이지 본문입니다.\n\n둘째 페이지 시작 문단.\n\n셋째 페이지 마지막 문단.";
+        let blocks = vec![
+            block("heading", Some("첫 페이지 제목"), 1),
+            block("paragraph", Some("첫 페이지 본문입니다."), 1),
+            block("paragraph", Some("둘째 페이지 시작 문단."), 2),
+            block("paragraph", Some("셋째 페이지 마지막 문단."), 3),
+        ];
+        let mut chunks = chunk_text(content, 20, 4);
+        annotate_chunk_pages(&mut chunks, content, &blocks);
+        assert!(
+            chunks.iter().all(|c| c.page_number.is_some()),
+            "전 청크 페이지 부여"
+        );
+        assert_eq!(chunks.first().unwrap().page_number, Some(1));
+        assert_eq!(chunks.last().unwrap().page_end, Some(3));
+        let hint = chunks.first().unwrap().location_hint.as_deref().unwrap();
+        assert!(hint.starts_with("페이지 "), "위치 힌트 형식: {hint}");
+    }
+
+    #[test]
+    fn chunk_pages_table_block_uses_first_cell() {
+        let content = "본문 문단\n\n항목 값 비고 첫셀텍스트 둘째셀\n\n표 다음 문단";
+        let blocks = vec![
+            block("paragraph", Some("본문 문단"), 1),
+            KordocBlock {
+                block_type: "table".to_string(),
+                text: None,
+                page_number: Some(2),
+                table: Some(KordocTable {
+                    cells: vec![vec![
+                        KordocCell {
+                            text: Some("항목 값 비고".to_string()),
+                        },
+                        KordocCell {
+                            text: Some("둘째셀".to_string()),
+                        },
+                    ]],
+                }),
+            },
+            block("paragraph", Some("표 다음 문단"), 2),
+        ];
+        let mut chunks = chunk_text(content, 200, 20);
+        annotate_chunk_pages(&mut chunks, content, &blocks);
+        // 단일 청크: 1페이지에서 시작해 2페이지에서 끝난다
+        assert_eq!(chunks[0].page_number, Some(1));
+        assert_eq!(chunks[0].page_end, Some(2));
+        assert_eq!(chunks[0].location_hint.as_deref(), Some("페이지 1-2"));
+    }
+
+    #[test]
+    fn chunk_pages_unmatched_blocks_are_skipped() {
+        // 어떤 블록도 content 와 매칭되지 않으면 아무것도 하지 않는다 (종전 동작)
+        let content = "완전히 다른 내용";
+        let blocks = vec![block("paragraph", Some("매칭될 수 없는 텍스트"), 2)];
+        let mut chunks = chunk_text(content, 100, 10);
+        annotate_chunk_pages(&mut chunks, content, &blocks);
+        assert_eq!(chunks[0].page_number, None);
+        assert_eq!(chunks[0].location_hint, None);
+    }
+
+    #[test]
+    fn markdown_safe_prefix_cuts_specials() {
+        assert_eq!(markdown_safe_prefix("가나다*라마"), "가나다");
+        assert_eq!(markdown_safe_prefix("  선두공백 제거"), "선두공백 제거");
+        assert_eq!(markdown_safe_prefix("한줄\n두줄"), "한줄");
+        assert_eq!(
+            markdown_safe_prefix("긴텍스트".repeat(20).as_str())
+                .chars()
+                .count(),
+            24
+        );
+    }
+
     #[test]
     fn html_table_serialized_to_plain_text() {
         let md = "앞\n<table><tr><td>A</td><td colspan=\"2\">B</td></tr>\
@@ -1307,5 +1531,30 @@ mod tests {
         assert!(resp.warnings[0].code.is_none());
         assert!(resp.page_quality.is_empty());
         assert_eq!(resp.is_image_based, None);
+        assert!(resp.blocks.is_empty());
+    }
+
+    /// kordoc v4.7.3 실 JSON 형태 계약 — IRTable 의 rows/cols 는 **정수(개수)** 고
+    /// 셀 데이터는 cells 다. 배열로 가정하면 역직렬화가 통째로 죽는다 (실출력 대조로 확정).
+    #[test]
+    fn kordoc_response_v473_blocks_shape_parses() {
+        let json = r#"{"success": true, "fileType": "hwpx", "markdown": "본문",
+            "blocks": [
+                {"type": "table", "pageNumber": 1, "table": {"rows": 2, "cols": 2, "hasHeader": true,
+                    "cells": [[{"text": "셀A", "colSpan": 1, "rowSpan": 1}, {"text": "셀B", "colSpan": 1, "rowSpan": 1}]]}},
+                {"type": "paragraph", "text": "둘째 쪽 문단", "pageNumber": 2}
+            ],
+            "metadata": {"pageCount": 2, "pageMode": "layout"}, "pageCount": 2}"#;
+        let resp: KordocResponse = serde_json::from_str(json).expect("v4.7.3 형태 역직렬화");
+        assert_eq!(resp.blocks.len(), 2);
+        assert_eq!(resp.blocks[0].block_type, "table");
+        assert_eq!(
+            resp.blocks[0].table.as_ref().unwrap().cells[0][0]
+                .text
+                .as_deref(),
+            Some("셀A")
+        );
+        assert_eq!(resp.blocks[1].page_number, Some(2));
+        assert_eq!(resp.metadata.unwrap().page_mode.as_deref(), Some("layout"));
     }
 }

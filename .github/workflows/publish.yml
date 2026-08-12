@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v4.7.1 (밑줄 <u> 보존 PDF·HWPX·HWP5, PDF 링크 어노테이션, 2단 지면 읽기순, BOM XML) — 2026-08-06
+      # 현재: v4.7.3 (HWP/HWPX 실제 페이지 경계 복원 #66 — pageMode·실페이지 pageNumber) — 2026-08-13
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4b65e571f3f3f9fe6b5d8a8b0958d1b5f0b532a3
+          ref: b7b2254e27468f157ad02bb2ec6c8262f8a71378
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -282,7 +282,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 4b65e571f3f3f9fe6b5d8a8b0958d1b5f0b532a3
+          ref: b7b2254e27468f157ad02bb2ec6c8262f8a71378
 
       - name: Build kordoc dist
         working-directory: kordoc-src
