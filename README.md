@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.5.0-blue.svg" alt="Version" /></a>
+  <a href="https://github.com/chrisryugj/Docufinder/releases"><img src="https://img.shields.io/badge/version-3.8.1-blue.svg" alt="Version" /></a>
   <a href="https://tauri.app"><img src="https://img.shields.io/badge/Tauri-2.10-24C8D8.svg" alt="Tauri 2" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-BSL%201.1-blue.svg" alt="License" /></a>
 </p>
@@ -37,11 +37,13 @@
 ### 문서 내용 검색
 폴더를 등록하면 자동으로 인덱싱합니다. 검색창에 키워드를 치면 **문서 안의 본문**에서 결과를 찾아줍니다. 수천 개 문서도 1초 안에.
 
+**몇 페이지에 있는지까지 (v3.8.1)** — HWP·HWPX·PDF 결과에 `3p` 같은 페이지 배지가 붙고, 결과를 클릭하면 미리보기가 그 페이지로 바로 이동합니다. 한컴 저장본의 조판 정보로 실제 쪽 번호를 복원하는 방식이라 **재인덱싱한 문서부터** 반영되며, 조판 정보가 없는 프로그램 생성 파일은 종전대로 페이지 없이 동작합니다.
+
 ### 파일명 검색
-Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **즉시** 찾습니다. 인덱싱이 끝나기 전에도 사용 가능. 결과는 **정렬 가능한 컬럼 뷰**(이름·경로·크기·수정일·유형)로 표시됩니다 — 컬럼을 클릭해 정렬하고, 경계를 드래그해 너비를 조절(더블클릭 시 자동 맞춤)하며, 헤더 우클릭으로 컬럼을 켜고 끌 수 있습니다. 너비·정렬·표시 설정은 자동 저장됩니다.
+Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **즉시** 찾습니다. 인덱싱이 끝나기 전에도 사용 가능. 결과는 **정렬 가능한 컬럼 뷰**(이름·경로·크기·수정일·유형)로 표시됩니다 — 컬럼을 클릭해 정렬하고, 경계를 드래그해 너비를 조절(더블클릭 시 자동 맞춤)하며, 헤더 우클릭으로 경로·크기·수정일 컬럼을 켜고 끌 수 있습니다. 너비·정렬·표시 설정은 자동 저장됩니다.
 
 ### AI 질의응답 (선택)
-"2026년 예산 얼마야?", "연차 조건이 뭐야?" 같은 자연어 질문을 하면 인덱싱된 문서에서 관련 부분을 찾아 답변합니다. **근거 문서 + 페이지**까지 표시. Gemini 또는 OpenAI 호환 서버(사내·오프라인 LLM 포함)의 API 키가 필요하며, 없어도 검색은 정상 동작합니다.
+"2026년 예산 얼마야?", "연차 조건이 뭐야?" 같은 자연어 질문을 하면 인덱싱된 문서에서 관련 부분을 찾아 답변합니다. **근거 문서 + 페이지**까지 표시. 답변 아래 **'MD 저장'** 버튼으로 질문·답변·참조 문서를 마크다운 한 파일로 남길 수 있습니다. Gemini 또는 OpenAI 호환 서버(vLLM·Ollama·LiteLLM 등 사내·오프라인 LLM 포함)의 API 키가 필요하며, 없어도 검색은 정상 동작합니다.
 
 ### AI 문서 요약 (선택)
 파일 우클릭 → 요약. 계약서, 보고서, 회의록 등 문서 타입에 맞춰 핵심만 뽑아줍니다. 요약은 AI 제공자(Gemini 또는 OpenAI 호환 서버)를 호출하므로 API 키 설정이 필요합니다.
@@ -52,7 +54,9 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 ### 문서 미리보기 & 크게 보기
 결과를 클릭하면 문서를 미리보기로 렌더합니다. 병합·중첩된 표도 원본 구조 그대로 표시하고, 전체화면 팝업 뷰어에서 커서 기준 휠 줌·더블클릭 확대·너비/페이지 맞춤으로 크게 볼 수 있습니다. Ctrl+F로 문서 안에서 바로 찾기도 됩니다.
 
-**원본 레이아웃 보기 (v3.2)** — 텍스트 미리보기 외에 원본 조판 그대로 보는 뷰(단축키 2)를 지원합니다. `.hwpx`(kordoc SVG — 글꼴·가로문서·다구역까지 충실 렌더), `.pdf`(원본 페이지 이미지), **`.hwp`(rhwp 네이티브 렌더 — 한컴 설치 없이)** 삼종 모두.
+**원본 레이아웃 보기 (v3.2)** — 텍스트 미리보기 외에 원본 조판 그대로 보는 뷰를 지원합니다(단축키 `1` 문서 텍스트 / `2` 원본 레이아웃). `.hwpx`(kordoc SVG — 글꼴·가로문서·다구역까지 충실 렌더), `.pdf`(원본 페이지 이미지), **`.hwp`(rhwp 네이티브 렌더 — 한컴 설치 없이)** 삼종 모두.
+
+**암호 걸린 문서 열기 (v3.6)** — 열기 암호가 걸린 HWPX·HWP(HWP3/HWP5) 문서는 미리보기에서 비밀번호를 입력해 볼 수 있습니다. 암호는 그 문서를 여는 데만 쓰고 저장하지 않으며, 인덱싱 경로는 종전대로 암호 문서를 건너뜁니다.
 
 ### 문서 비교
 같은 문서의 버전이 여러 개일 때, 결과 우클릭 → '비교 대상으로 선택' 후 다른 결과와 비교하면 두 문서의 달라진 부분을 나란히 보여줍니다.
@@ -71,9 +75,11 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 | 파워포인트 | `.pptx` | |
 | 엑셀 | `.xlsx` `.xls` | 시트·행 위치까지 추적 |
 | PDF | `.pdf` | 스캔 PDF OCR · 수식(LaTeX) 인식 — 설정에서 켜기 |
-| 이미지 | `.jpg` `.png` `.bmp` `.tiff` | OCR로 텍스트 추출 — 설정에서 켜기 |
+| 이미지 | `.jpg` `.jpeg` `.png` `.webp` `.bmp` `.tiff` | OCR로 텍스트 추출 — 설정에서 켜기 |
 | 텍스트 | `.txt` `.md` | EUC-KR/CP949 자동 감지 |
 | 메일 | `.eml` | 제목·보낸사람·받는사람·본문 검색 (charset 자동 디코딩) |
+
+> **사내 보안솔루션(DRM)으로 문서가 암호화된 환경이라면 (v3.8, Windows 전용·기본 꺼짐)** — 허가된 프로그램 외에는 파일이 깨진 것으로 보여 위 파서가 전부 실패합니다. 이때 **설정 → 검색 탭**에서 '설치된 MS 오피스로 파일 읽기'를 켜면, 회사가 공식 허가한 MS Word·Excel·PowerPoint 를 통해 본문을 읽어 인덱싱합니다. **기존 파서가 실패한 파일에만** 동작하는 최후 fallback 이고, Office 창은 화면에 뜨지 않으며 매크로 자동실행은 차단됩니다.
 
 ---
 
@@ -85,15 +91,17 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 
 | 내 PC 상황 | 받을 파일 | 크기 |
 |------------|-----------|------|
-| 집 / 개인 PC, Windows 10 (21H2 이상) / Windows 11 | **`Anything_<버전>_x64-setup.exe`** 하나만 | ~365 MB |
-| 회사 PC인데 관리자 권한이 없거나, Windows 10 LTSC 같은 구버전, 또는 첫 실행 때 WebView2 오류가 떴던 분 | **`Anything_<버전>_x64-setup.exe`** + **`MicrosoftEdgeWebView2RuntimeInstallerX64.exe`** | ~365 MB + ~190 MB |
+| 집 / 개인 PC, Windows 10 (21H2 이상) / Windows 11 | **`Anything_<버전>_x64-setup.exe`** 하나만 | ~380 MB |
+| 회사 PC인데 관리자 권한이 없거나, Windows 10 LTSC 같은 구버전, 또는 첫 실행 때 WebView2 오류가 떴던 분 | **`Anything_<버전>_x64-setup.exe`** + **`MicrosoftEdgeWebView2RuntimeInstallerX64.exe`** | ~380 MB + ~199 MB |
+| 내부망 PC 인데 보안솔루션(안랩 V3·ZombieZERO 등)이 앱을 격리하거나 기동을 막는 경우 | **`Anything.Lite_<버전>_x64-setup.exe`** ([아래 참고](#anything-lite--내부망-전용-배포본-v370)) | ~280 MB |
 
 > **WebView2 런타임이 핵심입니다.** 이 앱은 Windows 의 Microsoft Edge WebView2 런타임 위에서 화면을 그립니다. 개인 PC 는 보통 이미 깔려 있어 setup 하나로 끝나지만, WebView2 가 없는 회사 PC / LTSC 환경에서는 `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` 를 **먼저(가능하면 관리자 권한으로)** 설치한 뒤 앱 setup 을 실행하세요.
 
 **공통 요건**
 - RAM 8GB 이상 (16GB 권장) · 디스크 여유 1GB 이상
-- 최초 1회 인터넷 연결 (검색 모델 자동 다운로드, 약 420MB)
-- 이후 새 버전이 나오면 앱 안에서 자동으로 알려줍니다
+- **설치본만으로 검색·인덱싱·OCR 이 동작**합니다 — 기본 설정에서는 실행 중 내려받는 파일이 없습니다 (v3.4.3+)
+- 설정에서 **직접 켜는 선택 기능**만 예외입니다 — 시맨틱(의미) 검색(임베딩 모델 약 106MB), 수식(LaTeX) 인식, 레이아웃 분석은 처음 켤 때 각각 모델을 1회 내려받습니다
+- 이후 새 버전이 나오면 앱 안에서 자동으로 알려줍니다 (Lite·macOS 는 수동 업데이트)
 
 **오프라인 사내망 / 망간(단방향) 전송 PC 에 설치하려면**
 
@@ -107,11 +115,24 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 4. 이어서 `Anything_<버전>_x64-setup.exe` 더블클릭 — 끝
    - WebView2 가 이미 있는 PC 라면 1번에서 앱 setup 하나만 옮겨도 됩니다.
 
-> **OCR 도 설치본만으로 동작합니다** (v3.4.3+). OCR 엔진·스캔 PDF 처리에 필요한 파일이 모두
-> 설치본에 들어 있어 실행 중 내려받지 않습니다. 네트워크 시도 자체를 원천 차단하고 싶다면
-> 시스템 환경변수 **`DOCUFINDER_OFFLINE=1`** 을 설정하세요 (선택 — 평상시엔 필요 없습니다).
+> OCR 엔진·스캔 PDF 처리에 필요한 파일은 모두 설치본에 들어 있어 실행 중 내려받지 않습니다
+> (v3.4.3+). 네트워크 시도 자체를 원천 차단하고 싶다면 시스템 환경변수
+> **`DOCUFINDER_OFFLINE=1`** 을 설정하세요 (선택 — 평상시엔 필요 없습니다).
 > 이 스위치를 켜면 '레이아웃 분석'(온라인 전용 선택 기능)만 조용히 비활성되고, OCR 본체와
 > 검색·인덱싱은 그대로 동작합니다.
+
+### Anything Lite — 내부망 전용 배포본 (v3.7.0+)
+
+내부망 PC 에서 보안솔루션(안랩 V3·ZombieZERO 등)이 앱을 격리하거나 기동 자체를 막는 경우가 있었습니다. 증상마다 우회하는 대신 **탐지 표면을 컴파일 단계에서 들어낸 별도 빌드**를 릴리스에 함께 올립니다 — `Anything.Lite_<버전>_x64-setup.exe` (~280 MB, Windows 전용). 인터넷이 되는 PC 는 기존 `Anything_<버전>_x64-setup.exe` 를 쓰시면 됩니다.
+
+- **네트워크 코드가 물리적으로 없습니다.** HTTP 클라이언트를 링크조차 하지 않아 바이너리에 HTTP/TLS 스택과 외부 호스트 문자열이 남지 않습니다. IT 부서가 `strings` 로 직접 확인할 수 있고, CI 가 릴리스마다 이를 자동 검증합니다.
+- **빠지는 기능**: 시맨틱/하이브리드 검색 · OCR · AI 질의응답·요약 · 자동 업데이트 · 오류 자동 리포트.
+- **남는 기능**: 전문 검색(FTS5 + 한국어 형태소·근접 검색·검색 연산자), 파일명 검색, HWP/HWPX/DOCX/XLSX/PDF·`.eml` 파싱과 미리보기, 실시간 감시·증분 인덱싱, 문서 비교, 버전 계보, 태그·북마크, 중복 찾기, 내보내기.
+- 일반 배포본의 `settings.json` 을 그대로 가져오거나 파일을 손으로 고쳐도 시맨틱·OCR·AI 가 되살아나지 않습니다. 설정·DB 도 일반 배포본과 분리 저장됩니다.
+- Lite 도 `node.exe`(kordoc 사이드카 — HWP 파싱 필수)와 `msedgewebview2.exe`(UI 렌더러)는 자식 프로세스로 띄웁니다. 차단 정책이 있으면 이 둘의 예외 등록이 필요합니다.
+- **코드 서명은 여전히 미적용입니다.** Lite 는 탐지 표면을 최소화할 뿐 서명을 대신하지 못합니다.
+
+배경·제외 목록·IT 부서 제출용 근거는 [docs/LITE-BUILD.md](docs/LITE-BUILD.md) 를 참고하세요.
 
 <details>
 <summary><b>설치 시 보안 경고가 뜰 때</b> (클릭)</summary>
@@ -213,7 +234,7 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 
 ## 보안 & 데이터 흐름
 
-**AI 기능을 끄면 네트워크 통신이 완전히 제로입니다.** 폐쇄망·내부망 환경에서 그대로 사용할 수 있습니다.
+**AI 기능을 끄면 문서와 검색어가 밖으로 나가는 경로가 사라집니다.** 그때 남는 아웃바운드는 자동 업데이트 확인 하나뿐이고 이것도 설정에서 끌 수 있습니다. 네트워크 코드가 아예 없는 빌드가 필요하면 [Anything Lite](#anything-lite--내부망-전용-배포본-v370) 를 쓰세요.
 
 | 기능 | 데이터 위치 | 외부 전송 |
 |------|------------|----------|
@@ -224,6 +245,7 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | 파일명 검색 | 로컬 인메모리 캐시 | 없음 |
 | AI 질의응답 | **Gemini / OpenAI 호환** | 질문 + 관련 청크만 전송 |
 | AI 요약 | **Gemini / OpenAI 호환** | 문서 텍스트 전송 |
+| 오류 리포트 | 로컬 로그 파일 | **기본 꺼짐** — 켠 경우에만 오류 메시지·마스킹된 경로 전송 (문서 내용·검색어 제외) |
 
 - **원본 파일은 절대 복사되지 않습니다** — 인덱스만 생성
 - **AI 기능은 설정에서 완전히 비활성화** 가능 → 순수 로컬 검색 도구로 동작
@@ -265,6 +287,7 @@ xattr -dr com.apple.quarantine /Applications/Anything.app
 | AI | Gemini · OpenAI 호환 provider (RAG) |
 | OCR | PaddleOCR ONNX + PP-DocLayout 레이아웃 분석 |
 | HWP 파싱 | [kordoc](https://www.npmjs.com/package/kordoc) (번들 포함) |
+| HWP 원본 레이아웃 | [rhwp](https://github.com/edwardkim/rhwp) — Rust 네이티브 렌더 (한컴 설치 불필요) |
 
 ---
 
@@ -284,9 +307,20 @@ pnpm run download-model  # ONNX 모델 다운로드 (첫 빌드 시)
 pnpm run bundle-kordoc # kordoc 및 node.exe 번들링 (첫 빌드 시, kordoc 업데이트 시)
 pnpm tauri:dev        # 개발 모드
 pnpm tauri:build      # 프로덕션 빌드 (NSIS 설치파일 .exe)
+pnpm run tauri:build:lite  # 내부망 전용 Lite 빌드 (docs/LITE-BUILD.md)
 ```
 
 **빌드 요구사항**: Windows 10/11 x64 · Node.js 22 LTS + pnpm 10 · Rust 1.92+ · Visual Studio Build Tools 2022
+
+**macOS (Apple Silicon)** — `setup-mac-resources` 를 먼저 돌려야 합니다. node·kordoc·dylib 들은 저장소에 없어서, 안 돌리면 Tauri 리소스 검증이 "resource path doesn't exist" 로 실패합니다(`cargo test` 포함).
+
+```bash
+pnpm run setup-mac-resources  # node + kordoc + ONNX/pdfium dylib 채우기 (첫 빌드 시)
+pnpm run tauri:dev:mac
+pnpm run tauri:build:mac      # aarch64-apple-darwin (.dmg)
+```
+
+**릴리스**: `./scripts/release.sh X.Y.Z` — CI 와 같은 검증을 로컬에서 먼저 돌리고, 전부 통과해야만 태그를 만들어 푸시합니다.
 
 
 ---
@@ -295,12 +329,12 @@ pnpm tauri:build      # 프로덕션 빌드 (NSIS 설치파일 .exe)
 
 <details>
 <summary><b>폐쇄망/내부망에서 쓸 수 있나요?</b></summary>
-네. AI 기능을 끄면 앱이 외부와 통신하는 경로가 없습니다. ONNX 모델 파일만 수동으로 복사하면 검색·인덱싱·임베딩·OCR 전부 오프라인 동작합니다.
+네. AI 기능을 끄면 문서·검색어가 외부로 나가지 않고, 검색·인덱싱·OCR 은 설치본에 들어 있는 파일만으로 동작합니다(v3.4.3+). 시맨틱(의미) 검색까지 쓰려면 임베딩 모델 파일만 수동으로 복사해 넣으면 됩니다. 보안솔루션이 앱을 격리하는 환경이라면 네트워크 코드 자체가 없는 [Anything Lite](#anything-lite--내부망-전용-배포본-v370) 를 쓰세요.
 </details>
 
 <details>
 <summary><b>파일이 외부로 전송되나요?</b></summary>
-AI 질의응답을 쓸 때만 질문과 관련된 텍스트 조각이 Gemini API로 전송됩니다. AI를 끄면 전송되는 데이터는 없습니다. 원본 파일은 어떤 경우에도 외부로 나가지 않습니다.
+AI 질의응답을 쓸 때만 질문과 관련된 텍스트 조각이 설정한 AI 제공자(Gemini 또는 OpenAI 호환 서버)로 전송됩니다. 사내·로컬 LLM 을 endpoint 로 지정했다면 그 조각도 사내 네트워크 밖으로 나가지 않습니다. AI를 끄면 전송되는 데이터는 없습니다. 원본 파일은 어떤 경우에도 외부로 나가지 않습니다.
 </details>
 
 <details>
