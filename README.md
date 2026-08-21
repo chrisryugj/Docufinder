@@ -85,6 +85,14 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 
 ## 설치
 
+<p align="center">
+  <img src="docs/install-guide.jpg" alt="Anything 설치·실행 한 장 정리 — Windows·Mac 설치 순서와 폴더 추가·인덱싱·검색" width="900" />
+</p>
+
+<p align="center">
+  <sub>이미지 출처: <b>코난쌤</b></sub>
+</p>
+
 ### 다운로드 — 어느 파일을 받아야 하나?
 
 [Releases](https://github.com/chrisryugj/Docufinder/releases) 페이지에서 본인 환경에 맞게 받으세요.
