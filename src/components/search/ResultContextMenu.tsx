@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare, ScanText } from "lucide-react";
+import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare, ScanText, FileDown } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { save } from "@tauri-apps/plugin-dialog";
+import { useUIContext } from "../../contexts/UIContext";
 
 // 코드 스플리팅: 비교 모달은 '○○와 비교' 클릭 시에만 로딩 (LineageBadge 패턴)
 const VersionDiffModal = lazy(() =>
@@ -62,6 +65,9 @@ interface ResultContextMenuProps {
 /** OCR 재인식이 의미 있는 파일 — PDF(kordoc 강제 OCR) + 이미지(자체 엔진) */
 const OCR_ELIGIBLE_RE = /\.(pdf|jpe?g|png|bmp|tiff?)$/i;
 
+/** Markdown 내보내기가 가능한 파일 — 파서 지원 문서 포맷 (constants.rs SUPPORTED_EXTENSIONS) */
+const MD_EXPORT_RE = /\.(txt|md|hwpx|hwp|docx|pptx|xlsx|xls|pdf|eml)$/i;
+
 /** 컨텍스트 메뉴 표시를 위한 훅 */
 export function useContextMenu() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -75,7 +81,7 @@ export function useContextMenu() {
     e.stopPropagation();
 
     const menuWidth = 220;
-    const menuHeight = 240;
+    const menuHeight = 280;
     const padding = 8;
 
     let x = e.clientX;
@@ -114,6 +120,7 @@ export function ResultContextMenu({
   closeContextMenu: () => void;
 }) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const { showToast, updateToast } = useUIContext();
   // 임의 두 문서 비교 (D4): 전역 기준 파일 + 이 인스턴스에서 연 비교 모달의 기준
   const compareBase = useCompareBase();
   const [diffBase, setDiffBase] = useState<CompareBase | null>(null);
@@ -192,6 +199,50 @@ export function ResultContextMenu({
     return () => menu.removeEventListener("keydown", handleKeyDown);
   }, [contextMenu.isOpen, closeContextMenu]);
 
+  // Markdown으로 저장 — 파싱된 문서 내용을 .md 파일로 내보내기 (PreviewPanel과 같은
+  // load_markdown_preview + export_markdown 경로. 파일명 검색처럼 미리보기를 거치지
+  // 않은 결과에서도 바로 내보낼 수 있게 한다)
+  const handleExportMarkdown = async () => {
+    closeContextMenu();
+    const baseName = baseNameOf(filePath).replace(/^\\\\\?\\/, "");
+    const stem = baseName.replace(/\.[^.]+$/, "") || "document";
+    const safeName = stem.replace(/[<>:"/\\|?*]+/g, "_");
+    let outputPath: string | null = null;
+    try {
+      outputPath = await save({
+        defaultPath: `${safeName}.md`,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+    } catch {
+      showToast("파일 저장 창 열기 실패", "error");
+      return;
+    }
+    if (!outputPath) return; // 사용자 취소
+    const toastId = showToast("문서 내용을 읽는 중...", "loading");
+    try {
+      const res = await invoke<{ markdown: string; needs_password?: boolean }>(
+        "load_markdown_preview",
+        { filePath, password: null }
+      );
+      if (res.needs_password) {
+        updateToast(toastId, {
+          message: "암호로 보호된 문서예요 — 미리보기에서 암호를 입력한 뒤 저장해 주세요",
+          type: "error",
+        });
+        return;
+      }
+      if (!res.markdown?.trim()) {
+        updateToast(toastId, { message: "파싱된 내용이 없어 저장할 수 없어요", type: "error" });
+        return;
+      }
+      await invoke("export_markdown", { content: res.markdown, outputPath });
+      updateToast(toastId, { message: "Markdown 파일로 저장했습니다", type: "success" });
+    } catch (e) {
+      const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "저장 실패");
+      updateToast(toastId, { message: `저장 실패: ${msg}`, type: "error" });
+    }
+  };
+
   // 비교 모달은 메뉴가 닫힌 뒤에도 유지되어야 하므로 메뉴 open 여부와 무관하게 렌더
   const diffModal = diffBase ? (
     <Suspense fallback={null}>
@@ -260,6 +311,19 @@ export function ResultContextMenu({
         <span className="flex-1">경로 복사</span>
         <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
       </button>
+
+      {/* Markdown으로 저장 — 파서 지원 문서만. 파싱 불가 포맷(이미지·압축 등)은 숨김 */}
+      {MD_EXPORT_RE.test(filePath) && (
+        <button
+          role="menuitem"
+          onClick={(e) => { e.stopPropagation(); void handleExportMarkdown(); }}
+          className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
+          title="파싱된 문서 내용을 Markdown(.md) 파일로 저장합니다"
+        >
+          <FileDown className="w-4 h-4 clr-info" />
+          <span className="flex-1">Markdown으로 저장</span>
+        </button>
+      )}
 
       <div className="my-1 border-t" style={{ borderColor: "var(--color-border)" }} />
       <button
