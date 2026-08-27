@@ -131,6 +131,8 @@ pub fn analyze(
 
     // 후처리: 각 행 [class_id, score, x1, y1, x2, y2] — 이미 원본 좌표.
     let mut out: Vec<LayoutRegion> = Vec::new();
+    // rust 1.98 신규 lint — as_chunks 전환은 동작 동일하나 검증된 OCR 경로라 재작성하지 않는다
+    #[allow(clippy::chunks_exact_to_as_chunks)]
     for row in rows.chunks_exact(6) {
         let class_id = row[0] as i32;
         let score = row[1];

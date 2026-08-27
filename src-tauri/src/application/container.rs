@@ -734,6 +734,45 @@ impl AppContainer {
     }
 }
 
+/// KoSimCSE 임베더 실제 생성 — `get_embedder`(블로킹)와 `warmup_embedder`(백그라운드 스레드)가
+/// 공유하는 초기화 본체(#44). 컨테이너 &self 없이 동작해야 워밍업 스레드로 넘길 수 있다.
+fn build_embedder(models_dir: &std::path::Path) -> Result<Arc<Embedder>, ApiError> {
+    let model_dir = models_dir.join("kosimcse-roberta-multitask");
+    // INT8 양자화 모델 우선, F32 원본 폴백
+    let int8_path = model_dir.join("model_int8.onnx");
+    let model_path = if int8_path.exists() {
+        tracing::info!("INT8 양자화 모델 사용 (model_int8.onnx)");
+        int8_path
+    } else {
+        tracing::info!("F32 원본 모델 사용 (model.onnx)");
+        model_dir.join("model.onnx")
+    };
+    let tokenizer_path = model_dir.join("tokenizer.json");
+
+    if !model_path.exists() {
+        return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
+    }
+
+    // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
+    // (멀티스레드 환경에서 unsafe set_var 호출 방지)
+
+    // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
+    let sys_mem = crate::utils::disk_info::total_memory_mb();
+    if sys_mem > 0 && sys_mem <= 8192 {
+        tracing::warn!(
+            "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
+            sys_mem
+        );
+    }
+
+    Embedder::new(&model_path, &tokenizer_path)
+        .map(Arc::new)
+        .map_err(|e| {
+            tracing::error!("Embedder 초기화 실패: {}", e);
+            ApiError::EmbeddingFailed(e.to_string())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -851,43 +890,4 @@ mod tests {
             std::fs::copy(src.join(name), dst.join(name)).unwrap();
         }
     }
-}
-
-/// KoSimCSE 임베더 실제 생성 — `get_embedder`(블로킹)와 `warmup_embedder`(백그라운드 스레드)가
-/// 공유하는 초기화 본체(#44). 컨테이너 &self 없이 동작해야 워밍업 스레드로 넘길 수 있다.
-fn build_embedder(models_dir: &std::path::Path) -> Result<Arc<Embedder>, ApiError> {
-    let model_dir = models_dir.join("kosimcse-roberta-multitask");
-    // INT8 양자화 모델 우선, F32 원본 폴백
-    let int8_path = model_dir.join("model_int8.onnx");
-    let model_path = if int8_path.exists() {
-        tracing::info!("INT8 양자화 모델 사용 (model_int8.onnx)");
-        int8_path
-    } else {
-        tracing::info!("F32 원본 모델 사용 (model.onnx)");
-        model_dir.join("model.onnx")
-    };
-    let tokenizer_path = model_dir.join("tokenizer.json");
-
-    if !model_path.exists() {
-        return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
-    }
-
-    // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
-    // (멀티스레드 환경에서 unsafe set_var 호출 방지)
-
-    // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
-    let sys_mem = crate::utils::disk_info::total_memory_mb();
-    if sys_mem > 0 && sys_mem <= 8192 {
-        tracing::warn!(
-            "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
-            sys_mem
-        );
-    }
-
-    Embedder::new(&model_path, &tokenizer_path)
-        .map(Arc::new)
-        .map_err(|e| {
-            tracing::error!("Embedder 초기화 실패: {}", e);
-            ApiError::EmbeddingFailed(e.to_string())
-        })
 }
