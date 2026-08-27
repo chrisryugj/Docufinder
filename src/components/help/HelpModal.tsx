@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { SYSTEM_FOLDERS_HINT, HAS_DRIVES, MOD_KEY } from "../../utils/platform";
@@ -15,6 +16,9 @@ interface HelpModalProps {
 
 export function HelpModal({ isOpen, onClose, onRestartTour, initialSection = "start" }: HelpModalProps) {
   const [activeSection, setActiveSection] = useState<HelpSection>(initialSection);
+  // 설치 버전 — 망분리(자동 업데이트 불가) 환경에서 배포본과 대조하는 용도 (#42)
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   // 열릴 때마다 요청된 탭으로 — 닫힌 상태에서 initialSection이 바뀌어도 반영되도록
   useEffect(() => {
@@ -54,6 +58,15 @@ export function HelpModal({ isOpen, onClose, onRestartTour, initialSection = "st
               {section.label}
             </button>
           ))}
+          {appVersion && (
+            <div
+              className="mt-auto pt-3 px-3 text-[11px] tabular-nums"
+              style={{ color: "var(--color-text-muted)" }}
+              title="설치된 버전 — 새 버전은 GitHub Releases 의 setup.exe/dmg 로 설치합니다"
+            >
+              Anything v{appVersion}
+            </div>
+          )}
         </nav>
 
         {/* 콘텐츠 영역 */}

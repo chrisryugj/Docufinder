@@ -788,11 +788,11 @@ pub async fn update_settings(
     // "켠 채로 다른 설정을 저장했다"를 구분하는 데 쓴다. 설정 모달은 300ms 디바운스
     // 자동저장이라 이 커맨드는 토글 하나 바꿀 때마다 들어온다.
     #[cfg_attr(not(feature = "online"), allow(unused_variables))]
-    let ocr_was_enabled = {
+    let (ocr_was_enabled, semantic_was_enabled) = {
         let container = state.read()?;
-        let prev = container.get_settings().ocr_enabled;
+        let prev = container.get_settings();
         container.update_settings_cache(settings.clone());
-        prev
+        (prev.ocr_enabled, prev.semantic_search_enabled)
     };
 
     // 전역 formula OCR 토글 — kordoc 사이드카 호출 시 --formula-ocr 플래그 전파용
@@ -850,6 +850,8 @@ pub async fn update_settings(
                                             e
                                         );
                                     }
+                                    // 모델이 방금 채워졌으니 임베더도 지금 준비한다(#44)
+                                    container.spawn_embedder_warmup_forced();
                                 }
                             }
                         }
@@ -864,6 +866,14 @@ pub async fn update_settings(
                 if let Ok(container) = state.read() {
                     if let Err(e) = container.get_vector_index() {
                         tracing::debug!("VectorIndex pre-init skip: {}", e);
+                    }
+                    // 임베더도 백그라운드 워밍업 — 검색 경로는 더 이상 블로킹 초기화하지
+                    // 않으므로(#44) 여기서 준비를 걸어야 시맨틱이 재시작 없이 동작한다.
+                    // forced(실패 카운터 리셋)는 방금 켠 전이에만 — OCR 워밍업과 같은 규칙.
+                    if semantic_was_enabled {
+                        container.spawn_embedder_warmup();
+                    } else {
+                        container.spawn_embedder_warmup_forced();
                     }
                 }
             }

@@ -216,7 +216,14 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
               </button>
             )}
             {appVersion && (
-              <span className="text-[10px] opacity-50">v{appVersion}</span>
+              // 망분리 환경 사용자가 배포본과 대조할 수 있는 유일한 단서라 또렷하게 (#42)
+              <span
+                className="text-[11px] font-medium tabular-nums"
+                style={{ opacity: 0.7 }}
+                title="설치된 Anything 버전 — 도움말 창에서도 확인할 수 있습니다"
+              >
+                v{appVersion}
+              </span>
             )}
           </div>
         </div>

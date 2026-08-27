@@ -23,6 +23,9 @@ use std::sync::{Arc, RwLock};
 /// 매 인덱싱마다 재시도해도 결과가 같아 로그만 오염된다(이슈 #35). 사용자가 설정에서 OCR 을
 /// 다시 켜면 리셋된다.
 const MAX_AUTO_OCR_WARMUP_ATTEMPTS: u32 = 3;
+/// 임베더 자동 초기화 연속 실패 상한 — ONNX 로드가 막힌 환경에서 IPC 마다 수십 초
+/// 블로킹 재시도가 반복되는 것을 차단한다(#44). 사용자가 시맨틱 토글을 다시 켜면 리셋.
+const MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS: u32 = 3;
 
 type IncrementalCallback = RwLock<Option<Arc<dyn Fn(usize) + Send + Sync>>>;
 type VectorProgressState = Arc<RwLock<Option<VectorProgressCallback>>>;
@@ -59,6 +62,10 @@ pub struct AppContainer {
     ocr_warmup_running: Arc<AtomicBool>,
     /// OCR 워밍업 연속 실패 횟수 — 자동 재시도 폭주 차단(`MAX_AUTO_OCR_WARMUP_ATTEMPTS`)
     ocr_warmup_failures: Arc<AtomicU32>,
+    /// 임베더 워밍업 진행 중 플래그 — 중복 ONNX 세션 빌드 방지(`spawn_embedder_warmup`)
+    embedder_warmup_running: Arc<AtomicBool>,
+    /// 임베더 초기화 연속 실패 횟수 — 매 요청 재초기화 반복 차단(#44)
+    embedder_init_failures: Arc<AtomicU32>,
     /// 파일명 캐시 (Everything 스타일 빠른 검색)
     filename_cache: Arc<FilenameCache>,
     /// 배치 인덱싱 컨트롤러 (멀티 폴더 순차 실행 상태)
@@ -192,6 +199,8 @@ impl AppContainer {
             ocr_engine: Arc::new(OnceCell::new()),
             ocr_warmup_running: Arc::new(AtomicBool::new(false)),
             ocr_warmup_failures: Arc::new(AtomicU32::new(0)),
+            embedder_warmup_running: Arc::new(AtomicBool::new(false)),
+            embedder_init_failures: Arc::new(AtomicU32::new(0)),
             filename_cache: Arc::new(FilenameCache::new()),
             batch_controller: Arc::new(BatchController::new()),
             indexing_cancel_flag: Arc::new(AtomicBool::new(false)),
@@ -246,10 +255,18 @@ impl AppContainer {
 
     /// SearchService 생성
     pub fn search_service(&self) -> SearchService {
-        // 임베더: semantic_search_enabled ON일 때만 로드
-        // (OFF면 모델 파일이 있어도 ONNX 모델(~106MB+) 상주 로드 방지 — 키워드 검색은 임베더 미사용)
+        // 임베더: semantic_search_enabled ON일 때만, 그리고 **이미 준비된 경우에만** 붙인다.
+        // 종전엔 여기서 get_embedder()로 블로킹 초기화했는데, 호출자가 컨테이너 read guard 를
+        // 쥔 채라 ONNX 로드가 실패/지연되는 환경에서 키워드 검색·폴더 목록 등 무관한 IPC 까지
+        // 30초 타임아웃으로 굳었다(#44). 준비 전이면 백그라운드 워밍업만 걸고 임베더 없이
+        // 생성한다 — 시맨틱은 명확한 오류/키워드 degrade 로 응답하고, 준비되는 즉시 다음
+        // 검색부터 반영된다.
         let embedder = if self.get_settings().semantic_search_enabled {
-            self.get_embedder().ok()
+            let ready = self.embedder_if_ready();
+            if ready.is_none() {
+                self.spawn_embedder_warmup();
+            }
+            ready
         } else {
             None
         };
@@ -257,6 +274,18 @@ impl AppContainer {
             self.db_path.clone(),
             embedder,
             self.get_vector_index().ok(),
+            self.get_tokenizer().ok(),
+            Some(self.filename_cache.clone()),
+        )
+    }
+
+    /// 키워드·파일명 검색 전용 SearchService — 임베더·벡터 인덱스를 아예 붙이지 않는다(#44).
+    /// FTS 경로는 모델과 무관해야 하며, 모델 초기화 실패·지연이 새어들 통로 자체를 차단한다.
+    pub fn keyword_search_service(&self) -> SearchService {
+        SearchService::new(
+            self.db_path.clone(),
+            None,
+            None,
             self.get_tokenizer().ok(),
             Some(self.filename_cache.clone()),
         )
@@ -328,45 +357,135 @@ impl AppContainer {
     }
 
     /// 임베더 가져오기 (lazy load)
+    /// 임베더 획득(블로킹 초기화 가능) — 인덱싱 등 백그라운드 문맥 전용.
+    ///
+    /// ⚠️ IPC 검색 경로에서 부르지 말 것: ONNX Runtime 로드가 막힌 환경에서는 초기화가
+    /// 수십 초 걸리거나 panic 하는데, 호출자가 컨테이너 read guard 를 쥔 채면 키워드 검색·
+    /// 폴더 목록 등 무관한 IPC 까지 함께 굳는다(#44). 검색 경로는 `embedder_if_ready` +
+    /// `spawn_embedder_warmup` 을 쓴다.
+    ///
+    /// 실패는 [`MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS`]회까지만 실제 재시도하고 그 뒤에는 즉시
+    /// 반환한다(종전엔 OnceCell 이 실패를 캐시하지 않아 매 호출 재초기화가 반복됐다 — #44).
+    /// ort 는 dylib 로드 실패를 Err 가 아니라 **panic** 으로 알리므로 catch_unwind 로 격리한다.
     pub fn get_embedder(&self) -> Result<Arc<Embedder>, ApiError> {
-        self.embedder
-            .get_or_try_init(|| {
-                let model_dir = self.models_dir.join("kosimcse-roberta-multitask");
-                // INT8 양자화 모델 우선, F32 원본 폴백
-                let int8_path = model_dir.join("model_int8.onnx");
-                let model_path = if int8_path.exists() {
-                    tracing::info!("INT8 양자화 모델 사용 (model_int8.onnx)");
-                    int8_path
-                } else {
-                    tracing::info!("F32 원본 모델 사용 (model.onnx)");
-                    model_dir.join("model.onnx")
-                };
-                let tokenizer_path = model_dir.join("tokenizer.json");
+        if let Some(e) = self.embedder.get() {
+            return Ok(e.clone());
+        }
+        if self.embedder_init_failures.load(Ordering::Acquire) >= MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS
+        {
+            return Err(ApiError::EmbeddingFailed(
+                "임베딩 모델 초기화가 연속 실패해 자동 재시도를 멈췄습니다 — 설정에서 시맨틱 검색을 껐다 켜면 다시 시도합니다"
+                    .to_string(),
+            ));
+        }
+        let models_dir = self.models_dir.clone();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.embedder
+                .get_or_try_init(|| build_embedder(&models_dir))
+                .cloned()
+        }));
+        match result {
+            Ok(Ok(e)) => {
+                self.embedder_init_failures.store(0, Ordering::Release);
+                Ok(e)
+            }
+            Ok(Err(e)) => {
+                self.embedder_init_failures.fetch_add(1, Ordering::AcqRel);
+                Err(e)
+            }
+            Err(_) => {
+                self.embedder_init_failures.fetch_add(1, Ordering::AcqRel);
+                tracing::warn!(
+                    "임베더 초기화 중단(panic) — ONNX Runtime 로드가 막힌 환경일 수 있습니다"
+                );
+                Err(ApiError::EmbeddingFailed(
+                    "임베딩 모델 초기화 중단 — ONNX Runtime 로드가 막힌 환경일 수 있습니다"
+                        .to_string(),
+                ))
+            }
+        }
+    }
 
-                if !model_path.exists() {
-                    return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
+    /// 준비된 임베더만 반환 — 초기화 블로킹 없음(#44). 검색 IPC 경로 전용.
+    pub fn embedder_if_ready(&self) -> Option<Arc<Embedder>> {
+        self.embedder.get().cloned()
+    }
+
+    /// 임베더를 백그라운드에서 준비한다(멱등, 논블로킹) — `spawn_ocr_warmup` 과 같은 모델(#44).
+    ///
+    /// - 이미 준비됐거나 워밍업이 진행 중이면 no-op
+    /// - 컨테이너 락을 잡지 않는다(OnceCell/경로만 clone) — 수십 초 걸려도 UI 무관
+    /// - 자동 재시도는 [`MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS`] 회까지. ONNX Runtime 로드가
+    ///   아예 막힌 환경에서는 매번 실패가 확정이라, 검색마다 다시 시도하면 30초 블로킹과
+    ///   로그 오염만 반복된다(#44 실사례). 사용자가 시맨틱 토글을 다시 켜면 리셋된다.
+    pub fn spawn_embedder_warmup(&self) {
+        self.warmup_embedder(false);
+    }
+
+    /// 사용자의 명시적 액션(설정에서 시맨틱 켜기·모델 다운로드 완료) 용 — 실패 누적을
+    /// 리셋하고 다시 시도한다. 환경이 바뀌었을 수 있으니 자동 캡에 걸리지 않는다.
+    pub fn spawn_embedder_warmup_forced(&self) {
+        self.warmup_embedder(true);
+    }
+
+    fn warmup_embedder(&self, force: bool) {
+        if self.embedder.get().is_some() {
+            return;
+        }
+        if force {
+            self.embedder_init_failures.store(0, Ordering::Release);
+        } else if self.embedder_init_failures.load(Ordering::Acquire)
+            >= MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS
+        {
+            return; // 이 환경에서는 실패가 확정 — 사용자가 다시 켤 때까지 조용히 둔다
+        }
+        if self.embedder_warmup_running.swap(true, Ordering::AcqRel) {
+            return; // 이미 워밍업 중
+        }
+
+        let cell = self.embedder.clone();
+        let running = self.embedder_warmup_running.clone();
+        let failures = self.embedder_init_failures.clone();
+        let models_dir = self.models_dir.clone();
+
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            // ort 는 동적 라이브러리 로드 실패를 panic 으로 알린다 — 잡지 않으면 스레드가
+            // 죽으면서 진행 플래그가 true 로 굳어 재시도가 영영 막힌다 (OCR 워밍업과 동일).
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                cell.get_or_try_init(|| build_embedder(&models_dir))
+                    .map(|_| ())
+            }));
+
+            // 진행 플래그 해제는 실패 카운터를 갱신한 **뒤** — 순서가 바뀌면 그 틈에 들어온
+            // 워밍업 요청이 아직 0인 카운터를 보고 통과해 자동 재시도 상한을 넘길 수 있다.
+            match result {
+                Ok(Ok(())) => {
+                    failures.store(0, Ordering::Release);
+                    running.store(false, Ordering::Release);
+                    tracing::info!("임베더 워밍업 완료 ({}ms)", started.elapsed().as_millis());
+                    return;
                 }
+                Ok(Err(e)) => tracing::warn!(
+                    "임베더 워밍업 실패 — 시맨틱 검색만 비활성됩니다(키워드·파일명 검색은 정상): {}",
+                    e
+                ),
+                Err(_) => tracing::warn!(
+                    "임베더 워밍업 중단(panic) — ONNX Runtime 로드가 막힌 환경일 수 있습니다. \
+                     시맨틱 검색만 비활성됩니다"
+                ),
+            }
 
-                // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
-                // (멀티스레드 환경에서 unsafe set_var 호출 방지)
-
-                // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
-                let sys_mem = crate::utils::disk_info::total_memory_mb();
-                if sys_mem > 0 && sys_mem <= 8192 {
-                    tracing::warn!(
-                        "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
-                        sys_mem
-                    );
-                }
-
-                Embedder::new(&model_path, &tokenizer_path)
-                    .map(Arc::new)
-                    .map_err(|e| {
-                        tracing::error!("Embedder 초기화 실패: {}", e);
-                        ApiError::EmbeddingFailed(e.to_string())
-                    })
-            })
-            .cloned()
+            let n = failures.fetch_add(1, Ordering::AcqRel) + 1;
+            running.store(false, Ordering::Release);
+            if n >= MAX_AUTO_EMBEDDER_WARMUP_ATTEMPTS {
+                tracing::warn!(
+                    "임베더 준비를 {}회 연속 실패해 자동 재시도를 멈춥니다 — \
+                     설정에서 시맨틱 검색을 껐다 켜면 다시 시도합니다",
+                    n
+                );
+            }
+        });
     }
 
     /// 벡터 인덱스 가져오기 (lazy load)
@@ -732,4 +851,43 @@ mod tests {
             std::fs::copy(src.join(name), dst.join(name)).unwrap();
         }
     }
+}
+
+/// KoSimCSE 임베더 실제 생성 — `get_embedder`(블로킹)와 `warmup_embedder`(백그라운드 스레드)가
+/// 공유하는 초기화 본체(#44). 컨테이너 &self 없이 동작해야 워밍업 스레드로 넘길 수 있다.
+fn build_embedder(models_dir: &std::path::Path) -> Result<Arc<Embedder>, ApiError> {
+    let model_dir = models_dir.join("kosimcse-roberta-multitask");
+    // INT8 양자화 모델 우선, F32 원본 폴백
+    let int8_path = model_dir.join("model_int8.onnx");
+    let model_path = if int8_path.exists() {
+        tracing::info!("INT8 양자화 모델 사용 (model_int8.onnx)");
+        int8_path
+    } else {
+        tracing::info!("F32 원본 모델 사용 (model.onnx)");
+        model_dir.join("model.onnx")
+    };
+    let tokenizer_path = model_dir.join("tokenizer.json");
+
+    if !model_path.exists() {
+        return Err(ApiError::ModelNotFound(format!("{:?}", model_path)));
+    }
+
+    // ORT_DYLIB_PATH는 lib.rs setup()에서 단일 스레드 시점에 설정됨
+    // (멀티스레드 환경에서 unsafe set_var 호출 방지)
+
+    // 8GB RAM 환경 경고: ONNX 임베딩 모델(INT8 ~106MB / F32 ~840MB) 상주
+    let sys_mem = crate::utils::disk_info::total_memory_mb();
+    if sys_mem > 0 && sys_mem <= 8192 {
+        tracing::warn!(
+            "시맨틱 모델 로드 중 (RAM {}MB). 8GB 환경에서는 메모리 부족이 발생할 수 있습니다. 16GB 이상 권장.",
+            sys_mem
+        );
+    }
+
+    Embedder::new(&model_path, &tokenizer_path)
+        .map(Arc::new)
+        .map_err(|e| {
+            tracing::error!("Embedder 초기화 실패: {}", e);
+            ApiError::EmbeddingFailed(e.to_string())
+        })
 }

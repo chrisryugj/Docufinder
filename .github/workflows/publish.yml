@@ -331,6 +331,26 @@ jobs:
             codesign -dv "$APP" 2>&1 | head -20 || true
           fi
 
+      # v3.8.3 (#43): 최종 산출물 검증 — DMG 안의 앱에 Hardened Runtime 플래그가 남으면
+      # ad-hoc 서명 환경에서는 Library Validation 을 끌 방법이 없어 번들 dylib
+      # (libonnxruntime 등) dlopen 이 차단된다 → OCR·시맨틱 전멸. v2.6.10 의 의도
+      # (Hardened Runtime 제거)가 v3.0.9 실검증대로 dmg 에는 반영되지 않던 회귀를
+      # tauri.macos.conf.json `hardenedRuntime:false` 로 근원 수정했고, 여기서는
+      # "업로드되는 dmg 실물"에서 직접 확인한다 — 빌드 의도가 아니라 산출물이 증거.
+      - name: Verify dmg app has no hardened runtime flag (#43)
+        run: |
+          DMG=$(ls src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg 2>/dev/null | head -1)
+          if [ -z "$DMG" ]; then echo "no dmg to verify"; exit 1; fi
+          MOUNT="$RUNNER_TEMP/dmg-verify"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          FLAGS=$(codesign -dv "$MOUNT/Anything.app" 2>&1 | grep -o 'flags=[^ ]*' || true)
+          echo "DMG app codesign flags: $FLAGS"
+          hdiutil detach "$MOUNT"
+          if echo "$FLAGS" | grep -q 'runtime'; then
+            echo "::error::DMG 앱에 Hardened Runtime 플래그가 남아 있습니다 — 번들 ONNX dylib 로드가 차단됩니다 (#43)"
+            exit 1
+          fi
+
       - name: Upload dmg to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

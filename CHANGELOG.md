@@ -1,5 +1,47 @@
 # Changelog
 
+## [3.8.3] - 2026-08-28
+
+이슈 4건(#42~#45) 일괄 수리 — 검색이 모델 초기화에 인질로 잡히던 macOS 회귀,
+PDF circuit breaker 영구 고착, macOS DMG Hardened Runtime 잔존, 버전 표기 가시성.
+
+### 🐛 수정
+
+- **[PDF] circuit breaker 영구 고착 → 정상 텍스트 PDF 누락 (#45)**: OCR off 상태에서
+  스캔 PDF 판정이 5회 누적되면 breaker 가 이후 모든 PDF 를 즉시 실패시켰고, 스트릭
+  리셋이 kordoc 성공 경로에만 있어 **프로세스 재시작 전까지 해제 불가능한 흡수 상태**
+  였습니다(제보 환경 실측: PDF 3,211개 중 FTS 인덱싱 4개). 이제 breaker 열림/사전
+  감지 시 kordoc(node spawn)만 회피하고 Rust PDF 파서로 텍스트층을 확인합니다 —
+  실제 텍스트가 있으면 그대로 인덱싱하고 스트릭을 리셋해 다음 파일부터 kordoc 경로가
+  재개됩니다. 첫 64KB 비압축 마커만 보는 sniff 의 false positive(압축 텍스트 스트림
+  PDF)도 같은 경로로 구제됩니다. 회귀 테스트 3건("스캔 5개 뒤의 텍스트 PDF가
+  인덱싱됨" 포함) 추가. (@amnotyoung 제보)
+- **[macOS] 임베더 초기화가 키워드·파일명 검색까지 30초 블로킹 (#44)**:
+  `semantic_search_enabled` 상태에서 KoSimCSE 초기화가 실패/지연되는 환경(ONNX
+  Runtime 로드 차단 등)이면 임베더가 필요 없는 키워드·파일명 검색까지 IPC 타임아웃
+  으로 굳었습니다. 세 겹으로 분리:
+  - 키워드·파일명 검색은 임베더·벡터 인덱스를 **아예 붙이지 않는 전용 서비스**로 분리
+    — 모델 상태와 무관하게 항상 동작합니다.
+  - 검색 경로의 블로킹 초기화 제거 — 준비된 임베더만 사용하고, 미준비면 백그라운드
+    워밍업(부팅·설정 켜기·모델 다운로드 완료 시점에도 선제 준비)만 겁니다. 시맨틱은
+    준비 전 명확한 오류/키워드 degrade 로 응답하고 준비 즉시 반영됩니다.
+  - 초기화 실패를 캐시하고 자동 재시도를 3회로 캡 — 종전엔 OnceCell 이 실패를
+    기억하지 않아 매 요청 재초기화가 반복됐습니다. ort 의 dylib 로드 실패 panic 도
+    catch_unwind 로 격리(OCR 워밍업 #35 와 동일 모델). (@amnotyoung 제보)
+- **[macOS] v3.8.2 DMG 에 Hardened Runtime 잔존 → 번들 ONNX dylib 로드 차단 (#43)**:
+  v2.6.10 에서 Hardened Runtime 을 제거하기로 했지만 후처리 재서명이 dmg 생성 **이후**
+  라 배포 dmg 에는 반영되지 않았습니다(ad-hoc 서명에서는 entitlements 가 신뢰되지 않아
+  Library Validation 을 끌 수 없음 → PaddleOCR·KoSimCSE 전멸). 빌드 자체가 runtime
+  플래그 없이 서명하도록 `tauri.macos.conf.json` 에 `hardenedRuntime:false` 를 명시하고,
+  CI 가 **업로드되는 dmg 실물을 마운트해 codesign 플래그를 검증**하는 게이트를
+  추가했습니다. (@amnotyoung 제보)
+
+### ✨ 개선
+
+- **현재 버전 표기 가시성 (#42)**: 망분리(자동 업데이트 불가) 환경에서 설치본 버전을
+  배포본과 대조할 수 있도록, 하단 상태바의 버전 표기를 더 또렷하게 키우고(10px/50% →
+  11px/70% + 툴팁) 도움말 창 탭 하단에도 버전을 상시 표시합니다. (@JS190-prog 요청)
+
 ## [3.8.2] - 2026-08-14
 
 검색 결과 우클릭 메뉴에서 **문서를 Markdown 파일로 바로 저장**할 수 있습니다.

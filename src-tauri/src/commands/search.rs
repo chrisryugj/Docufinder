@@ -73,7 +73,13 @@ pub async fn search_keyword(
     let (service, max_results, group_versions) = {
         let container = state.read()?;
         let s = container.get_settings();
-        (container.search_service(), s.max_results, s.group_versions)
+        // 키워드 검색은 임베더·벡터 인덱스 미사용 — 모델 초기화 실패/지연이 FTS 경로를
+        // 30초 IPC 타임아웃으로 굳히지 않도록 모델을 아예 붙이지 않는 서비스를 쓴다(#44)
+        (
+            container.keyword_search_service(),
+            s.max_results,
+            s.group_versions,
+        )
     };
 
     let response = tokio::task::spawn_blocking(move || -> ApiResult<SearchResponse> {
@@ -105,7 +111,8 @@ pub async fn search_filename(
     let (service, max_results) = {
         let container = state.read()?;
         let s = container.get_settings();
-        (container.search_service(), s.max_results)
+        // 파일명 검색도 모델 무관 — 키워드와 동일하게 모델 없는 서비스(#44)
+        (container.keyword_search_service(), s.max_results)
     };
 
     // 파일명 매치는 Everything 스타일 — lineage collapse 적용 안 함.

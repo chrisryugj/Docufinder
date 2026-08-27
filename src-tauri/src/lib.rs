@@ -1061,13 +1061,21 @@ pub fn run() {
                     // dict.txt 를 지웠다가 다시 복사하는데, 그 창에 OcrEngine::new 가 읽으면
                     // "Dictionary not found" 로 실패하고 그 세션은 OCR 이 죽는다(이슈 #35).
                     // AppContainer 는 setup 본류에서 manage 되므로 잠깐 기다렸다 잡는다.
-                    if ocr_enabled {
+                    if ocr_enabled || semantic_enabled {
                         for _ in 0..50 {
                             if let Some(state) =
                                 app_handle_bg.try_state::<RwLock<AppContainer>>()
                             {
                                 if let Ok(container) = state.read() {
-                                    container.spawn_ocr_warmup();
+                                    if ocr_enabled {
+                                        container.spawn_ocr_warmup();
+                                    }
+                                    // 검색 경로는 더 이상 임베더를 블로킹 초기화하지 않으므로
+                                    // (#44) 시맨틱이 켜진 세션은 부팅 때 미리 준비해 첫
+                                    // 시맨틱 검색부터 동작하게 한다.
+                                    if semantic_enabled {
+                                        container.spawn_embedder_warmup();
+                                    }
                                 }
                                 break;
                             }

@@ -27,6 +27,49 @@ use zip::ZipArchive;
 static SCANNED_PDF_STREAK: AtomicUsize = AtomicUsize::new(0);
 const SCANNED_PDF_BREAKER_THRESHOLD: usize = 5;
 
+/// breaker/sniff 가 "스캔 의심" 판정한 PDF 를 Rust 파서로 재확인할 때의 텍스트층 실재 판정(#45).
+/// 쪽번호·워터마크 몇 글자뿐인 스캔본은 걸러내되, 오판이 데이터 유실로 이어지는 쪽(미달)이
+/// 더 아프므로 임계는 낮게 잡는다.
+fn substantial_pdf_text(doc: &ParsedDocument) -> bool {
+    doc.content.chars().filter(|c| !c.is_whitespace()).count() >= 50
+}
+
+/// OCR off 인 PDF 의 kordoc 호출 전 스캔 의심 게이트(#45).
+///
+/// breaker 열림(연속 임계치 초과) 또는 sniff 스캔 판정 시 kordoc(node spawn)만 회피하고,
+/// 즉시 실패하는 대신 Rust PDF 파서로 텍스트층을 먼저 확인한다:
+/// - 종전 breaker 는 즉시 Err 라 성공(스트릭 리셋) 경로에 닿을 수 없는 **흡수 상태** —
+///   스캔 PDF 5개 뒤의 정상 텍스트 PDF 까지 프로세스 재시작 전까지 전부 인덱싱 누락됐다.
+/// - sniff 는 첫 64KB 의 비압축 마커만 보므로 텍스트 스트림이 압축된 정상 PDF 가
+///   false positive 로 걸린다 — Rust 파서가 실제 텍스트를 뽑으면 그대로 인덱싱한다.
+///
+/// 반환: `None` = 스캔 의심 없음(kordoc 진행) / `Some(Ok)` = Rust 파서 결과로 인덱싱 +
+/// 스트릭 리셋 / `Some(Err)` = 스캔 판정 스킵(사전 감지는 스트릭 증가).
+fn pdf_scan_gate(path: &Path) -> Option<Result<ParsedDocument, ParseError>> {
+    let streak = SCANNED_PDF_STREAK.load(Ordering::Relaxed);
+    let breaker_open = streak >= SCANNED_PDF_BREAKER_THRESHOLD;
+    if !breaker_open && !pdf_sniff::is_likely_scanned_pdf(path) {
+        return None;
+    }
+    if let Ok(doc) = pdf::parse(path, None) {
+        if substantial_pdf_text(&doc) {
+            // 실제 텍스트층 존재 — 스캔 아님. 연속 스캔 상태도 여기서 해소되어
+            // 다음 PDF 부터 kordoc(고품질 표 복원) 경로가 재개된다.
+            SCANNED_PDF_STREAK.store(0, Ordering::Relaxed);
+            return Some(Ok(doc));
+        }
+    }
+    if breaker_open {
+        return Some(Err(ParseError::ParseError(
+            "이미지 기반 PDF (circuit breaker): kordoc 호출 회피".to_string(),
+        )));
+    }
+    SCANNED_PDF_STREAK.fetch_add(1, Ordering::Relaxed);
+    Some(Err(ParseError::ParseError(
+        "이미지 기반 PDF (사전 감지): OCR 비활성 → 본문 추출 스킵".to_string(),
+    )))
+}
+
 /// 기본 청크 크기 (문자 수)
 /// 600자 ≈ 한국어 기준 ~400-480 토큰 → KoSimCSE 512 토큰 제한 내 수용
 pub const DEFAULT_CHUNK_SIZE: usize = 600;
@@ -188,18 +231,8 @@ fn parse_file_inner(
         // node.exe 자식 spawn 누적 → 자식 프로세스/파이프/스레드 누수 → CRT 레벨
         // __fastfail. v2.5.6 의 사후 분기는 같은 파일 재시도만 막아 효과 미미했다.
         if extension == "pdf" && ocr.is_none() && kordoc_ocr == kordoc::KordocOcrMode::Off {
-            let streak = SCANNED_PDF_STREAK.load(Ordering::Relaxed);
-            // Circuit breaker: 연속 임계치 초과 시 sniff 도 건너뛰고 즉시 스킵.
-            if streak >= SCANNED_PDF_BREAKER_THRESHOLD {
-                return Err(ParseError::ParseError(
-                    "이미지 기반 PDF (circuit breaker): kordoc 호출 회피".to_string(),
-                ));
-            }
-            if pdf_sniff::is_likely_scanned_pdf(path) {
-                SCANNED_PDF_STREAK.fetch_add(1, Ordering::Relaxed);
-                return Err(ParseError::ParseError(
-                    "이미지 기반 PDF (사전 감지): OCR 비활성 → 본문 추출 스킵".to_string(),
-                ));
+            if let Some(result) = pdf_scan_gate(path) {
+                return result;
             }
         }
 
@@ -529,4 +562,63 @@ fn find_sentence_boundary(chars: &[char], search_start: usize, limit: usize) -> 
         i += 1;
     }
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    /// SCANNED_PDF_STREAK 는 전역 static — 병렬 테스트 간 간섭을 막기 위해 직렬화한다.
+    static STREAK_LOCK: Mutex<()> = Mutex::new(());
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name)
+    }
+
+    /// #45 회귀: breaker 가 열려 있어도 정상 텍스트 PDF 는 Rust 파서 경로로 인덱싱되고
+    /// 스트릭이 리셋되어 흡수 상태가 해소된다 ("스캔 PDF 5개 뒤의 텍스트 PDF 가 인덱싱됨").
+    #[test]
+    fn scan_gate_breaker_open_indexes_text_pdf_and_resets_streak() {
+        let _guard = STREAK_LOCK.lock().unwrap();
+        SCANNED_PDF_STREAK.store(SCANNED_PDF_BREAKER_THRESHOLD, Ordering::Relaxed);
+        let result = pdf_scan_gate(&fixture("multipage_text.pdf"))
+            .expect("breaker open 이므로 게이트가 판정해야 함");
+        let doc = result.expect("텍스트 PDF 는 breaker open 에서도 성공해야 함 (#45)");
+        assert!(substantial_pdf_text(&doc), "본문 텍스트가 추출되어야 함");
+        assert_eq!(
+            SCANNED_PDF_STREAK.load(Ordering::Relaxed),
+            0,
+            "텍스트층 확인 시 스트릭 리셋 — 이후 PDF 는 kordoc 경로 재개"
+        );
+    }
+
+    /// #45: breaker 가 열린 상태의 진짜 스캔 PDF 는 여전히 스킵(kordoc spawn 회피 의미 보존).
+    #[test]
+    fn scan_gate_breaker_open_still_skips_scanned_pdf() {
+        let _guard = STREAK_LOCK.lock().unwrap();
+        SCANNED_PDF_STREAK.store(SCANNED_PDF_BREAKER_THRESHOLD, Ordering::Relaxed);
+        let result = pdf_scan_gate(&fixture("scanned_korean.pdf"))
+            .expect("breaker open 이므로 게이트가 판정해야 함");
+        let err = result.expect_err("텍스트층 없는 스캔 PDF 는 스킵 유지");
+        assert!(
+            err.to_string().contains("circuit breaker"),
+            "breaker 사유가 보존되어야 함: {err}"
+        );
+        SCANNED_PDF_STREAK.store(0, Ordering::Relaxed);
+    }
+
+    /// breaker 닫힘 + 스캔 의심 없음 → 게이트는 관여하지 않는다(kordoc 진행).
+    #[test]
+    fn scan_gate_closed_text_pdf_passes_through() {
+        let _guard = STREAK_LOCK.lock().unwrap();
+        SCANNED_PDF_STREAK.store(0, Ordering::Relaxed);
+        assert!(
+            pdf_scan_gate(&fixture("multipage_text.pdf")).is_none(),
+            "정상 텍스트 PDF 는 sniff 미검출 → kordoc 경로로 진행"
+        );
+    }
 }
