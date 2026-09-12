@@ -168,7 +168,10 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
     }
 
     let mut reader = Reader::from_str(&xml_content);
-    reader.config_mut().trim_text(true);
+    // quick-xml 0.38+ 는 텍스트를 엔티티 참조(&amp; 등) 경계로 쪼개 내므로 trim_text 를
+    // 켜면 조각마다 양끝 공백이 잘려 "A &amp; B" 가 "A&B" 가 된다. 텍스트는 in_text 안에서만
+    // 모으므로 태그 사이 들여쓰기 공백은 어차피 버려진다.
+    reader.config_mut().trim_text(false);
 
     let mut result = String::new();
     let mut current_paragraph = String::new();
@@ -184,7 +187,12 @@ fn extract_text_from_xml_entry<R: std::io::Read + std::io::Seek>(
                 }
             }
             Ok(Event::Text(e)) if in_text => {
-                if let Ok(text) = e.unescape() {
+                if let Ok(text) = e.decode() {
+                    current_paragraph.push_str(&text);
+                }
+            }
+            Ok(Event::GeneralRef(r)) if in_text => {
+                if let Some(text) = crate::parsers::xml_ref_text(&r) {
                     current_paragraph.push_str(&text);
                 }
             }

@@ -1,0 +1,49 @@
+# OSV-Scanner 무시 목록 (정부 GitLab push 훅 · 로컬 `osv-scanner scan source -r .` 공용)
+#
+# 아래는 전부 RUSTSEC "unmaintained/unsound" 정보성 권고이며 알려진 취약점(CVE)이 아니다.
+# 하나같이 직접 의존이 아니라 tauri(gtk)·lindera·rhwp·usvg·lopdf 가 끌어오는 전이 의존이라
+# 이 레포에서 교체할 수 없다. 상위 크레이트가 갈아타면 항목을 지운다. (2026-09-12 점검)
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2021-0153"
+reason = "encoding: unmaintained. lindera-dictionary(형태소 사전) build-dependency"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0429"
+reason = "glib 0.18 unsound iterator: Linux gtk3 스택은 tauri 2 가 고정, macOS·Windows 빌드는 링크조차 안 됨"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste: unmaintained. rhwp·tokenizers 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error: unmaintained. glib-macros/gtk3-macros(tauri Linux) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0206"
+reason = "rustybuzz: unmaintained. usvg(SVG 렌더) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0192"
+reason = "ttf-parser: unmaintained. fontdb·lopdf·rhwp 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0081"
+reason = "unic-char-property: unmaintained. urlpattern(tauri) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0075"
+reason = "unic-char-range: unmaintained. urlpattern(tauri) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0080"
+reason = "unic-common: unmaintained. urlpattern(tauri) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0100"
+reason = "unic-ucd-ident: unmaintained. urlpattern(tauri) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0098"
+reason = "unic-ucd-version: unmaintained. urlpattern(tauri) 전이"

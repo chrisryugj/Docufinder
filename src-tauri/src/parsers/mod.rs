@@ -21,6 +21,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
 use zip::ZipArchive;
 
+/// quick-xml 0.38+ 는 텍스트 안의 `&amp;`·`&#xNN;` 을 `Event::Text` 에 섞지 않고
+/// `Event::GeneralRef` 로 따로 낸다. 문자 참조와 XML 기본 엔티티만 풀어 문자열로 돌려준다.
+/// (DTD 정의 엔티티는 문서 파서가 쓸 일이 없어 None.)
+pub(crate) fn xml_ref_text(r: &quick_xml::events::BytesRef<'_>) -> Option<String> {
+    if let Ok(Some(ch)) = r.resolve_char_ref() {
+        return Some(ch.to_string());
+    }
+    let name = r.decode().ok()?;
+    quick_xml::escape::resolve_xml_entity(&name).map(str::to_string)
+}
+
 /// 연속 이미지 PDF 카운터 — 임계치 초과 시 같은 세션의 나머지 이미지 PDF 는
 /// kordoc 호출 없이 즉시 스킵 (kordoc child 누적으로 인한 #17 크래시 방어).
 /// 텍스트 PDF 가 정상 처리되면 0으로 리셋.
