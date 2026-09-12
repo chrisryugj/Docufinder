@@ -115,10 +115,14 @@ pub fn collapse_by_lineage(results: Vec<SearchResult>) -> Vec<SearchResult> {
 
 // ── 스코어 정규화 ─────────────────────────────────────
 
-/// FTS5 BM25 스코어를 confidence로 변환
+/// FTS5 BM25 스코어를 confidence로 변환 (결과 집합 내 min-max 상대값)
 ///
-/// min-max 정규화에 절대 스코어 기반 감쇠를 적용하여
-/// 약한 매칭만 있는 결과 집합에서도 과대평가를 방지
+/// 절대 스코어 감쇠(|best|/5)는 쓰지 않는다. bm25 크기는 IDF 에 종속돼서
+/// 코퍼스가 작거나(문서 8개) 검색어가 문서 절반 이상에 등장하면 FTS5 가 IDF 를
+/// 1e-6 으로 클램프해 스코어가 0 근처로 붕괴한다. 그러면 모든 결과가 0% 가 되어
+/// min_confidence 필터가 실제 매치를 전부 숨겼다(파일명 매치만 남고 본문 0건).
+/// 키워드 매치는 FTS 가 확정한 매치이므로 confidence 는 집합 내 상대 순위만
+/// 뜻한다 — 최상 100, 최하 0, 전원 동점이면 100.
 pub fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
     if scores.is_empty() {
         return vec![];
@@ -126,21 +130,16 @@ pub fn normalize_fts_confidence(scores: &[f64]) -> Vec<u8> {
 
     let min = scores.iter().cloned().fold(f64::INFINITY, f64::min);
     let max = scores.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let best_abs = min.abs();
-    let quality_factor = (best_abs / 5.0).min(1.0);
 
     if (max - min).abs() < f64::EPSILON {
-        let confidence = (quality_factor * 100.0).round().clamp(0.0, 100.0) as u8;
-        return vec![confidence; scores.len()];
+        return vec![100; scores.len()];
     }
 
     scores
         .iter()
         .map(|&score| {
             let normalized = (max - score) / (max - min);
-            (normalized * quality_factor * 100.0)
-                .round()
-                .clamp(0.0, 100.0) as u8
+            (normalized * 100.0).round().clamp(0.0, 100.0) as u8
         })
         .collect()
 }
@@ -650,6 +649,29 @@ mod tests {
             &dummy("예산.xlsx", None),
             &Some("hwpx".into())
         ));
+    }
+
+    /// 문서 8개 코퍼스에서 5/7 청크에 등장하는 검색어 — FTS5 IDF 클램프로 bm25 가
+    /// 전부 0.0. 구 공식(|best|/5 감쇠)은 전원 0% → min_confidence 20 에 전부 숨김.
+    #[test]
+    fn fts_confidence_tiny_corpus_collapsed_scores_are_not_zero() {
+        let conf = normalize_fts_confidence(&[0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(conf, vec![100; 5]);
+    }
+
+    /// 흔한 검색어("2026": 300건 중 best=-1.26) — 절대 크기와 무관하게 상대 순위만
+    #[test]
+    fn fts_confidence_is_relative_rank_regardless_of_magnitude() {
+        let conf = normalize_fts_confidence(&[-1.26, -1.0, -0.76]);
+        assert_eq!(conf, vec![100, 48, 0]);
+        let scaled = normalize_fts_confidence(&[-12.6, -10.0, -7.6]);
+        assert_eq!(scaled, conf);
+    }
+
+    #[test]
+    fn fts_confidence_single_and_empty() {
+        assert_eq!(normalize_fts_confidence(&[-2.34]), vec![100]);
+        assert!(normalize_fts_confidence(&[]).is_empty());
     }
 
     #[test]
