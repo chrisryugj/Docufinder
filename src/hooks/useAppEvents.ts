@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { clearSearchCache } from "./useSearch";
 import type { ToastType } from "../components/ui/Toast";
@@ -16,6 +17,7 @@ interface UseAppEventsOptions {
  * App-level Tauri 이벤트 리스너 관리:
  * - incremental-index-updated: 증분 인덱싱 완료 → 캐시 무효화 + 재검색
  * - model-download-status: 모델 다운로드 상태 → 토스트
+ * - db-integrity-warning / probe_kordoc_runtime: 시작 시 진단 → 에러 토스트
  */
 export function useAppEvents({
   query,
@@ -135,5 +137,16 @@ export function useAppEvents({
     }).then((fn) => { unlistenFn = fn; });
 
     return () => { unlistenFn?.(); };
+  }, []);
+
+  // 문서 변환기(kordoc 사이드카) 실행 점검 — 시작 시 1회. 백엔드 setup 의 `kordoc-availability`
+  // emit 은 React 마운트 전이라 어떤 리스너도 받지 못하므로 push 대신 여기서 pull 한다.
+  // 실행통제가 node.exe 를 막는 내부망 PC 에서 "HWP 가 조용히 전부 실패" 를 원인·조치와 함께 띄운다.
+  useEffect(() => {
+    let cancelled = false;
+    invoke<string>("probe_kordoc_runtime").catch((e) => {
+      if (!cancelled) cbRef.current.showToast(String(e), "error", 20000);
+    });
+    return () => { cancelled = true; };
   }, []);
 }

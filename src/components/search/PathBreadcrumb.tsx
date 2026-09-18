@@ -1,4 +1,5 @@
 import { formatPathSegments, formatPathTail } from "../../utils/searchTextUtils";
+import { cleanPath } from "../../utils/cleanPath";
 
 interface PathBreadcrumbProps {
   /** 파일 전체 경로 — 컨테이너 title + 파일 위치 열기(reveal) 대상 */
@@ -25,7 +26,7 @@ export function PathBreadcrumb({
   compact = false,
   revealLast = false,
 }: PathBreadcrumbProps) {
-  const cleanFull = filePath.replace(/^\\\\\?\\/, "");
+  const cleanFull = cleanPath(filePath);
 
   if (compact) {
     return (

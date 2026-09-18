@@ -6,6 +6,7 @@ import type { IndexStatus, AddFolderResult, IndexingProgress } from "../types/in
 import { getErrorMessage } from "../types/error";
 import { open, ask } from "@tauri-apps/plugin-dialog";
 import { SYSTEM_FOLDERS_HINT } from "../utils/platform";
+import { cleanPath } from "../utils/cleanPath";
 
 /**
  * 드라이브 루트 경로인지 확인 (Windows)
@@ -13,7 +14,7 @@ import { SYSTEM_FOLDERS_HINT } from "../utils/platform";
  */
 function isDriveRoot(path: string): boolean {
   // 정규화
-  const normalized = path.replace(/\\\\\?\\/, "").replace(/\//g, "\\");
+  const normalized = cleanPath(path).replace(/\//g, "\\");
   // C:\, D:\ 패턴
   return /^[A-Za-z]:\\?$/.test(normalized);
 }

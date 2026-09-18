@@ -2,6 +2,8 @@
  * SearchResultItem에서 분리된 순수 텍스트 유틸 함수들
  */
 
+import { cleanPath } from "./cleanPath";
+
 export type TextRange = [number, number];
 
 const EXPANDED_CONTEXT_BEFORE_CHARS = 300;
@@ -46,7 +48,7 @@ export function stripHtmlTags(text: string): string {
  * 단일 세그먼트가 예산을 넘으면 그대로 반환하고 CSS truncate에 맡긴다.
  */
 export function formatPathTail(path: string, maxChars = 44): string {
-  const clean = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
+  const clean = cleanPath(path);
   if (clean.length <= maxChars) return clean;
   const sep = clean.includes("\\") ? "\\" : "/";
   const parts = clean.split(/[/\\]/).filter(Boolean);
@@ -62,13 +64,13 @@ export function formatPathTail(path: string, maxChars = 44): string {
 }
 
 export function formatPathSegments(path: string): { label: string; fullPath: string }[] {
-  const cleanPath = path.replace(/^\\\\\?\\/, "").replace(/^\/\/\?\//, "");
+  const cleaned = cleanPath(path);
   // 세그먼트 fullPath는 원본 경로의 구분자·절대경로 접두를 보존해야 탐색기 열기가 성립한다.
   // (기존 join("\\") 하드코딩은 unix "/Users/…"를 "Users\me"로, UNC "\\서버\…"를
   //  "서버\공유"로 만들어 세그먼트 클릭이 깨진 경로를 넘겼다)
-  const sep = cleanPath.includes("\\") ? "\\" : "/";
-  const prefix = cleanPath.startsWith("\\\\") ? "\\\\" : cleanPath.startsWith("/") ? "/" : "";
-  const parts = cleanPath.split(/[/\\]/).filter(Boolean);
+  const sep = cleaned.includes("\\") ? "\\" : "/";
+  const prefix = cleaned.startsWith("\\\\") ? "\\\\" : cleaned.startsWith("/") ? "/" : "";
+  const parts = cleaned.split(/[/\\]/).filter(Boolean);
 
   const segments = parts.map((part, i) => ({
     label: part,

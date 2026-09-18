@@ -1155,6 +1155,17 @@ pub fn run() {
                         }
                     }
                 }
+
+                // 이슈 #46: v3.8.5 까지 UNC 폴더가 `\\?\UNC\srv\share\…` verbatim 형태로 저장돼
+                // 프론트의 `\\?\` 제거가 `UNC\srv\…` 를 만들었다. 저장 형식을 `\\srv\share\…` 로
+                // 복원한다(멱등, 매핑 정보 불필요). #29 치환 뒤에 돌려야 `Y:\` → UNC 로 바뀐 행도 포함된다.
+                match db::remap_unc_verbatim_prefix(&conn) {
+                    Ok((nf, nd)) if nf + nd > 0 => tracing::info!(
+                        "[#46] \\\\?\\UNC\\ → \\\\ 마이그레이션: files {nf}, folders {nd}"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!("[#46] UNC verbatim 마이그레이션 실패: {e}"),
+                }
             }
 
             // 이전 세션에서 남긴 미전송 crash log 를 Telegram 으로 지연 전송
@@ -1527,6 +1538,7 @@ pub fn run() {
             commands::lineage::get_lineage_health,
             commands::lineage::get_lineage_diff,
             commands::maintenance::prune_missing_files,
+            commands::maintenance::probe_kordoc_runtime,
             commands::tags::add_file_tag,
             commands::tags::remove_file_tag,
             commands::tags::get_file_tags,

@@ -2,6 +2,7 @@ import { forwardRef, memo, useCallback, useMemo } from "react";
 import { Search, HelpCircle, Settings, Download } from "lucide-react";
 import type { UpdatePhase } from "../../hooks/useUpdater";
 import { IS_LITE } from "../../utils/buildFlavor";
+import { cleanPath } from "../../utils/cleanPath";
 import { useSearchInput } from "../../hooks/useSearchInput";
 import type { SearchMode, SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
@@ -161,7 +162,7 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       }
 
       if (filters.searchScope !== null) {
-        const normalized = filters.searchScope.replace(/\\\\\?\\/, "").replace(/\//g, "\\").replace(/\\$/, "");
+        const normalized = cleanPath(filters.searchScope).replace(/\//g, "\\").replace(/\\$/, "");
         const parts = normalized.split("\\");
         const last = parts[parts.length - 1] || "";
         const scopeLabel = /^[A-Za-z]:?$/.test(last) ? last.replace(/:?$/, ":") : last || filters.searchScope;

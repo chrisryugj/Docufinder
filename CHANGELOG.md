@@ -1,5 +1,40 @@
 # Changelog
 
+## [3.8.6] - 2026-09-18
+
+네트워크 공유폴더(UNC) 검색 결과에서 파일 열기·위치 열기·경로 복사·비교가 전부 실패하던 회귀 수리,
+내부망(lite) "인덱싱이 안 된다" 보고 대응 2건.
+
+### 🔧 변경
+
+- **[lite] 네트워크 폴더 본문 인덱싱 기본 ON**: `skip_cloud_body_indexing` 기본값이 lite 에서만
+  `false`. 폐쇄망엔 클라우드 hydrate 위험이 없고 문서는 파일서버(UNC·매핑드라이브)에 있는데,
+  기본 skip 이라 파일명만 인덱싱돼 "인덱싱이 안 된다"로 보였습니다(#19 계열). 이미 저장된
+  `settings.json` 은 그대로이므로 기존 lite 사용자는 `설정 → 시스템` 토글을 직접 꺼야 합니다.
+  online 기본값은 유지.
+- **[진단] 문서 변환기 실행 점검 (`probe_kordoc_runtime`)**: 시작 직후 `node cli.js --version`
+  을 실제로 띄워, 실행통제가 번들 `node.exe` 를 막거나 번들이 손상된 PC 에서 원인·조치를
+  에러 토스트로 알립니다(로그에도 기록). 기존엔 파일 존재만 확인해 "가용"으로 보고했고,
+  setup 의 `kordoc-availability` 이벤트는 React 마운트 전에 발생해 어떤 리스너도 받지
+  못했습니다 — HWP·DOCX·PDF 가 파일마다 조용히 실패해 "인덱싱이 안 된다"로만 보이던 경로.
+
+### 🐛 수정
+
+- **[경로] UNC 공유폴더 결과의 파일 열기·위치 열기·경로 복사·비교 실패 (#46)**: Windows
+  `canonicalize` 는 UNC 를 `\\?\UNC\srv\share\…` verbatim 형태로 돌려주는데, 이를 벗기려고
+  쓰던 `dunce` 는 `\\?\C:\…`(디스크)만 처리하고 verbatim UNC 는 그대로 둡니다(dunce 1.0.5
+  `is_safe_to_strip_unc`). 그 경로가 DB 에 저장됐고, 프론트 20여 곳이 `\\?\` 만 떼는 바람에
+  `UNC\srv\share\…` 라는 존재하지 않는 경로가 탐색기·클립보드로 넘어갔습니다. 백엔드
+  `open_file`/`open_folder` 도 같은 헬퍼를 거쳐 explorer 에 verbatim 경로를 넘겨 실패.
+  - `network_path::simplify` 가 verbatim UNC 를 `\\srv\share\…` 로 직접 복원하고,
+    `canonicalize_best_effort` 가 그 결과를 저장 형식으로 씀 → 신규 인덱스는 항상 일반 UNC.
+  - 시작 시 마이그레이션(`remap_unc_verbatim_prefix`, 멱등): 기존 DB 의 `\\?\UNC\…` 파일·감시
+    폴더·북마크·태그 경로를 일괄 복원. 같은 파일이 두 표현으로 공존하면 verbatim 쪽을 정리.
+  - 프론트 `cleanPath()` 한 곳에 UNC 규칙을 넣고, 흩어져 있던 인라인 `\\?\` 제거 12파일을
+    전부 이 함수로 통일(경로 표시·복사·탐색기 열기·범위 라벨·드라이브 루트 판정).
+  - 회귀 테스트: `simplify_restores_verbatim_unc`, `normalize_unifies_verbatim_unc`,
+    `verbatim_unc_matches_plain_unc_scope`.
+
 ## [3.8.5] - 2026-09-12
 
 문서가 적은 폴더에서 키워드 검색이 본문 0건으로 나오던 회귀 수리.

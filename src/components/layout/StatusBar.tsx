@@ -79,7 +79,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
                   style={{ color: "var(--color-text-muted)" }}
                   title={batchSummary.current.path}
                 >
-                  · {batchSummary.current.path.replace(/^\\\\\?\\/, "")}
+                  · {cleanPath(batchSummary.current.path)}
                 </span>
                 {batchSummary.current.current_file && (
                   <span

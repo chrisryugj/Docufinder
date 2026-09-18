@@ -125,6 +125,63 @@ pub fn remap_drive_prefix(
     Ok((files, folders))
 }
 
+/// 이슈 #46: `\\?\UNC\srv\share\…`(Windows `canonicalize` 의 verbatim UNC)로 저장된 경로를
+/// `\\srv\share\…` 로 일괄 복원.
+///
+/// `dunce` 가 verbatim UNC 는 벗기지 않아 v3.8.5 까지 DB 에 그대로 들어갔고, 프론트가 `\\?\` 만
+/// 떼면 `UNC\srv\…` 가 되어 파일 열기·위치 열기·경로 복사가 전부 깨졌다. 같은 파일이 두 표현으로
+/// 공존하면(정규화 실패 폴백 → 성공 세션 순으로 인덱싱된 경우) UNIQUE 충돌이 나므로 verbatim
+/// 쪽 행(청크·FTS 포함)을 먼저 지운 뒤 나머지를 치환한다. 북마크·태그는 `file_path` 문자열로
+/// 파일을 가리키므로 함께 옮긴다(충돌 행은 유지). 멱등 — 이미 `\\srv` 면 매칭 0건.
+/// `(files_updated, folders_updated)` 반환. 호출부(`lib.rs`)가 windows 전용이라 함수도 cfg 게이트.
+#[cfg(windows)]
+pub fn remap_unc_verbatim_prefix(conn: &Connection) -> Result<(usize, usize)> {
+    // `\\?\UNC\` 는 8글자 고정 → substr(path, 9) 가 `srv\share\…`, 앞에 `\\` 를 붙인다.
+    // SQLite 문자열 리터럴은 이스케이프가 없어 '\\' 가 백슬래시 두 글자 그대로다.
+    let like = format!("{}%", escape_like_pattern(r"\\?\UNC\"));
+    let tx = conn.unchecked_transaction()?;
+    // 1) `\\srv\…` 로 이미 있는 파일의 verbatim 중복 행 제거 (chunks_fts → chunks → files 순, delete_file 과 동일).
+    tx.execute(
+        r"DELETE FROM chunks_fts WHERE rowid IN (
+            SELECT c.id FROM chunks c JOIN files f ON c.file_id = f.id
+            WHERE f.path LIKE ?1 ESCAPE '\' AND ('\\' || substr(f.path, 9)) IN (SELECT path FROM files))",
+        params![like],
+    )?;
+    tx.execute(
+        r"DELETE FROM chunks WHERE file_id IN (
+            SELECT id FROM files
+            WHERE path LIKE ?1 ESCAPE '\' AND ('\\' || substr(path, 9)) IN (SELECT path FROM files))",
+        params![like],
+    )?;
+    tx.execute(
+        r"DELETE FROM files WHERE path LIKE ?1 ESCAPE '\' AND ('\\' || substr(path, 9)) IN (SELECT path FROM files)",
+        params![like],
+    )?;
+    tx.execute(
+        r"DELETE FROM watched_folders WHERE path LIKE ?1 ESCAPE '\' AND ('\\' || substr(path, 9)) IN (SELECT path FROM watched_folders)",
+        params![like],
+    )?;
+    // 2) 나머지 치환.
+    let files = tx.execute(
+        r"UPDATE files SET path = '\\' || substr(path, 9) WHERE path LIKE ?1 ESCAPE '\'",
+        params![like],
+    )?;
+    let folders = tx.execute(
+        r"UPDATE watched_folders SET path = '\\' || substr(path, 9) WHERE path LIKE ?1 ESCAPE '\'",
+        params![like],
+    )?;
+    tx.execute(
+        r"UPDATE OR IGNORE bookmarks SET file_path = '\\' || substr(file_path, 9) WHERE file_path LIKE ?1 ESCAPE '\'",
+        params![like],
+    )?;
+    tx.execute(
+        r"UPDATE OR IGNORE file_tags SET file_path = '\\' || substr(file_path, 9) WHERE file_path LIKE ?1 ESCAPE '\'",
+        params![like],
+    )?;
+    tx.commit()?;
+    Ok((files, folders))
+}
+
 /// 감시 폴더 삭제 (경로 표현 불일치 허용 — 이슈 #34, 과거 이슈 #22 "폴더 삭제 안 됨" 계열)
 pub fn remove_watched_folder(conn: &Connection, path: &str) -> Result<usize> {
     match find_watched_folder_id(conn, path)? {

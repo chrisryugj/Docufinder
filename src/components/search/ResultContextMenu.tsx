@@ -4,6 +4,7 @@ import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare, ScanText, 
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useUIContext } from "../../contexts/UIContext";
+import { cleanPath } from "../../utils/cleanPath";
 
 // 코드 스플리팅: 비교 모달은 '○○와 비교' 클릭 시에만 로딩 (LineageBadge 패턴)
 const VersionDiffModal = lazy(() =>
@@ -204,7 +205,7 @@ export function ResultContextMenu({
   // 않은 결과에서도 바로 내보낼 수 있게 한다)
   const handleExportMarkdown = async () => {
     closeContextMenu();
-    const baseName = baseNameOf(filePath).replace(/^\\\\\?\\/, "");
+    const baseName = baseNameOf(cleanPath(filePath));
     const stem = baseName.replace(/\.[^.]+$/, "") || "document";
     const safeName = stem.replace(/[<>:"/\\|?*]+/g, "_");
     let outputPath: string | null = null;

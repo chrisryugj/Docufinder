@@ -1,5 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { cleanPath } from "../../utils/cleanPath";
 import { save } from "@tauri-apps/plugin-dialog";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -37,11 +38,6 @@ const EXAMPLE_CATEGORIES: { label: string; icon: string; examples: string[] }[] 
 
 function basename(path: string): string {
   return path.replace(/\\/g, "/").split("/").pop() || path;
-}
-
-/** Windows extended-length path prefix (\\?\) 제거 */
-function cleanPath(path: string): string {
-  return path.replace(/^\\\\\?\\/, "");
 }
 
 /** 답변 끝의 [출처: 1, 3] 패턴에서 문서 번호(0-based) 추출 + 답변 텍스트 정리 */

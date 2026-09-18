@@ -157,8 +157,12 @@ fn default_show_absolute_time() -> bool {
     true
 }
 
+/// online: true — OneDrive·NAVER Works 류 가상드라이브의 hydrate 폭주 방지(이슈 #19).
+/// lite(내부망): false — 폐쇄망엔 클라우드 동기화 드라이브가 없고 문서는 파일서버(UNC·매핑
+/// 드라이브)에 있어, 기본 skip 은 "파일명만 검색되는 = 인덱싱이 안 되는" 앱으로만 보인다.
+/// 이미 저장된 settings.json 은 그대로이므로 기존 lite 사용자는 토글을 직접 꺼야 한다.
 fn default_skip_cloud_body_indexing() -> bool {
-    true
+    cfg!(feature = "online")
 }
 
 fn default_group_versions() -> bool {

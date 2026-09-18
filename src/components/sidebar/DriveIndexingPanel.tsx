@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { Check, X, Loader2, Clock, AlertTriangle, Ban } from "lucide-react";
 import type { BatchJob, BatchState, BatchJobStatus } from "../../types/index";
+import { cleanPath } from "../../utils/cleanPath";
 
 interface DriveIndexingPanelProps {
   batch: BatchState;
@@ -18,7 +19,7 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 function pathLabel(path: string): string {
-  const cleaned = path.replace(/^\\\\\?\\/, "");
+  const cleaned = cleanPath(path);
   // 드라이브 루트(C:\)는 그대로, 하위 폴더는 마지막 segment
   if (/^[A-Za-z]:\\?$/.test(cleaned)) return cleaned;
   const parts = cleaned.split(/[\\/]/).filter(Boolean);

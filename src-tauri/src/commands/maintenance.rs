@@ -1,4 +1,4 @@
-//! DB 유지보수 커맨드 — prune_missing_files 등.
+//! DB 유지보수·런타임 진단 커맨드 — prune_missing_files, probe_kordoc_runtime 등.
 
 use crate::application::container::AppContainer;
 use crate::{db, ApiError, ApiResult};
@@ -75,4 +75,22 @@ pub async fn prune_missing_files(state: State<'_, RwLock<AppContainer>>) -> ApiR
     tokio::task::spawn_blocking(move || prune_missing_files_impl(&db_path))
         .await
         .map_err(|e| ApiError::IndexingFailed(e.to_string()))?
+}
+
+/// 문서 변환기(kordoc 사이드카) 실행 가능성 실측 — 앱 시작 시 프론트가 1회 호출한다.
+///
+/// 번들 파일 존재만 보는 `is_available` 로는 실행통제가 `node.exe` 를 막는 내부망 PC 를 못 잡아
+/// HWP·DOCX·PDF 가 파일마다 조용히 실패했다("인덱싱이 안 된다" 보고). `node cli.js --version`
+/// 을 실제로 띄워 `Ok(버전)` / `Err(사용자에게 그대로 띄울 원인·조치 문구)` 를 돌려준다.
+/// 실패는 로그에도 남겨 진단 탭 로그 폴더에서 확인 가능하게 한다.
+#[tauri::command]
+pub async fn probe_kordoc_runtime() -> Result<String, String> {
+    let result = tokio::task::spawn_blocking(crate::parsers::kordoc::probe_runtime)
+        .await
+        .map_err(|e| format!("문서 변환기 점검 스레드 실패: {e}"))?;
+    match &result {
+        Ok(v) => tracing::info!("kordoc 런타임 점검 통과: v{v}"),
+        Err(e) => tracing::error!("kordoc 런타임 점검 실패: {e}"),
+    }
+    result
 }

@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { Tooltip } from "../ui/Tooltip";
 import { REVEAL_LABEL } from "../../utils/platform";
+import { cleanPath } from "../../utils/cleanPath";
 
 interface SuggestedFolder {
   path: string;
@@ -47,7 +48,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
   const isRegistered = useCallback(
     (path: string) => {
       const normalize = (p: string) =>
-        p.replace(/\\\\\?\\/, "").replace(/\\/g, "/").toLowerCase().replace(/\/$/, "");
+        cleanPath(p).replace(/\\/g, "/").toLowerCase().replace(/\/$/, "");
       const normalizedPath = normalize(path);
       return watchedFolders.some((wp) => normalize(wp) === normalizedPath);
     },

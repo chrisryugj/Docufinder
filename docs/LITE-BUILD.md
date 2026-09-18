@@ -66,6 +66,20 @@ search_mode: Semantic|Hybrid → Keyword   (Filename 은 로컬이라 유지)
 lite 는 identifier 가 `com.anything.lite` 로 갈린다. 같은 PC 에 일반판이 깔려 있어도
 설정·DB·로그가 섞이지 않는다 — 안 그러면 lite 의 강제 off 가 일반판 설정을 덮어쓴다.
 
+### 기본값이 다른 설정 (강제 아님, 토글 가능)
+
+| 설정 | online | lite | 이유 |
+|---|---|---|---|
+| `skip_cloud_body_indexing` (클라우드/네트워크 폴더 본문 인덱싱 자동 스킵) | true | **false** | 폐쇄망엔 OneDrive·NAVER Works 류 hydrate 위험이 없고, 문서는 파일서버(UNC·매핑드라이브)에 있다. 기본 skip 이면 파일명만 인덱싱돼 "인덱싱이 안 된다"(이슈 #19 계열)로 보인다 |
+
+이미 저장된 `settings.json` 에는 적용되지 않는다 — 기존 lite 사용자는 `설정 → 시스템` 에서 토글을 직접 꺼야 한다.
+
+### 시작 시 실행 점검 (`probe_kordoc_runtime`)
+
+실행통제(AppLocker·매체제어 등)가 번들 `node.exe` 를 막으면 파일 존재 검사는 통과하고 HWP·DOCX·PDF 만
+파일마다 조용히 실패한다. 앱은 시작 직후 `node cli.js --version` 을 실제로 띄워 보고, 실패하면 원인
+(os error 5/1260 → 실행통제 의심)과 조치(IT 부서에 node.exe 허용 요청)를 토스트로 띄운다. 로그에도 남는다.
+
 ---
 
 ## 3. lite 에 남는 기능

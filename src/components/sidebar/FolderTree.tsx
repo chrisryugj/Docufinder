@@ -271,7 +271,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   };
 
   // 모든 폴더가 드라이브 루트인지 감지 (전체 PC 인덱싱 모드)
-  const isDriveRoot = (p: string) => /^([A-Za-z]:\\?|\\\\?\?\\[A-Za-z]:\\?)$/.test(p.replace(/[\\/]+$/, "").replace(/^\\\\\?\\/, ""));
+  const isDriveRoot = (p: string) => /^([A-Za-z]:\\?|\\\\?\?\\[A-Za-z]:\\?)$/.test(cleanPath(p).replace(/[\\/]+$/, ""));
   const isFullPcMode = folders.length > 0 && folders.every(isDriveRoot);
   const totalIndexed = isFullPcMode
     ? Object.values(folderStats).reduce((sum, s) => sum + s.indexed_count, 0)
@@ -306,7 +306,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
         {/* 드라이브별 행 (우클릭 삭제 가능) */}
         <ul className="space-y-0.5 pl-4">
           {folders.map((folder) => {
-            const drive = folder.replace(/^\\\\\?\\/, "").charAt(0).toUpperCase();
+            const drive = cleanPath(folder).charAt(0).toUpperCase();
             const stats = folderStats[folder];
             return (
               <li

@@ -75,6 +75,24 @@ mod tests {
         assert!(path_in_scope(r"\\?\C:\docs\a\foo.txt", r"C:\docs\a"));
     }
 
+    // verbatim UNC(`\\?\UNC\`)와 일반 UNC 가 같은 scope 로 매칭돼야 open_file 화이트리스트가
+    // DB 저장 형식(구·신)과 무관하게 통과한다(이슈 #46). 문자열 처리라 OS 무관.
+    #[test]
+    fn verbatim_unc_matches_plain_unc_scope() {
+        assert!(path_in_scope(
+            r"\\?\UNC\srv\share\docs\a.txt",
+            r"\\srv\share\docs"
+        ));
+        assert!(path_in_scope(
+            r"\\srv\share\docs\a.txt",
+            r"\\?\UNC\srv\share\docs"
+        ));
+        assert!(!path_in_scope(
+            r"\\?\UNC\srv\share\docs-old\a.txt",
+            r"\\srv\share\docs"
+        ));
+    }
+
     #[test]
     fn empty_scope_means_no_restriction() {
         assert!(path_in_scope(r"C:\docs\a\foo.txt", ""));

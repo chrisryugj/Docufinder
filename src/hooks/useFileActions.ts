@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
+import { cleanPath } from "../utils/cleanPath";
 import type { useToast } from "./useToast";
 import type { useIndexStatus } from "./useIndexStatus";
 import type { AddFolderResult } from "../types/index";
@@ -60,8 +61,7 @@ export function useFileActions({
   const handleCopyPath = useCallback(
     async (path: string) => {
       try {
-        const cleanPath = path.replace(/^\\\\\?\\/, "");
-        await navigator.clipboard.writeText(cleanPath);
+        await navigator.clipboard.writeText(cleanPath(path));
         showToast("경로가 복사되었습니다", "success");
       } catch {
         showToast("경로 복사 실패", "error");
@@ -73,8 +73,7 @@ export function useFileActions({
   const handleOpenFolder = useCallback(
     async (folderPath: string) => {
       try {
-        const cleanPath = folderPath.replace(/^\\\\\?\\/, "");
-        await invokeWithTimeout("open_folder", { path: cleanPath }, IPC_TIMEOUT.FILE_ACTION);
+        await invokeWithTimeout("open_folder", { path: cleanPath(folderPath) }, IPC_TIMEOUT.FILE_ACTION);
         showToast("탐색기에서 열었습니다", "success");
       } catch {
         showToast("탐색기 열기 실패", "error");

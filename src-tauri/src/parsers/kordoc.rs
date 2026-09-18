@@ -877,6 +877,48 @@ pub fn is_available() -> bool {
     find_kordoc_cli().is_some() && which_node().is_some()
 }
 
+/// 사이드카 실행 가능성 실측 — `node cli.js --version` 을 실제로 띄워 본다.
+///
+/// `is_available` 은 파일 존재만 보므로, 실행통제(AppLocker·매체제어 등)가 번들 `node.exe` 를
+/// 막는 내부망 PC 나 node_modules 가 깨진 번들을 감지하지 못한다 — 그 경우 앱은 "가용" 으로
+/// 보고하고 HWP·DOCX·PDF 가 파일마다 조용히 실패해 사용자에겐 "인덱싱이 안 된다" 로만 보인다.
+/// `Ok(kordoc 버전)` / `Err(사용자에게 그대로 보여줄 원인·조치)`. 앱 시작 시 프론트가 1회 호출.
+pub fn probe_runtime() -> Result<String, String> {
+    let cli = find_kordoc_cli().ok_or_else(|| {
+        format!("문서 변환기(kordoc)가 설치 폴더에 없습니다. 재설치가 필요합니다. {PROBE_HINT}")
+    })?;
+    if which_node().is_none() {
+        return Err(format!(
+            "문서 변환기 실행 파일(node.exe)이 설치 폴더에 없습니다. 재설치가 필요합니다. {PROBE_HINT}"
+        ));
+    }
+    let out = run_kordoc_process(&cli, &["--version".into()], 15, "probe")
+        .map_err(|e| probe_spawn_error_message(&e.to_string()))?;
+    if !out.status.success() {
+        let snippet = stderr_snippet(&String::from_utf8_lossy(&out.stderr));
+        return Err(format!(
+            "문서 변환기(kordoc)가 비정상 종료했습니다 (exit {}): {snippet}. 번들이 손상됐을 수 있어 재설치를 권장합니다. {PROBE_HINT}",
+            out.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+const PROBE_HINT: &str =
+    "허용 전까지 HWP·DOCX·PDF 본문은 인덱싱되지 않습니다 (txt·md·xlsx·pptx·eml 은 정상).";
+
+/// spawn 실패 문자열 → 사용자 문구. ERROR_ACCESS_DENIED(5) / ERROR_ACCESS_DISABLED_BY_POLICY(1260)
+/// 은 보안 정책이 프로세스 생성 자체를 거부한 것이라 "실행통제" 로 안내한다.
+fn probe_spawn_error_message(raw: &str) -> String {
+    if raw.contains("os error 5)") || raw.contains("os error 1260)") {
+        format!(
+            "문서 변환기(node.exe) 실행이 차단되었습니다 — 보안 정책(실행통제)이 설치 폴더의 node.exe 를 막고 있을 가능성이 큽니다. IT 부서에 허용을 요청하세요. {PROBE_HINT} ({raw})"
+        )
+    } else {
+        format!("문서 변환기(kordoc) 점검 실패: {raw}. {PROBE_HINT}")
+    }
+}
+
 /// 외부 모듈(commands::formula)에서 사이드카 경로 조회용으로 노출.
 pub fn find_kordoc_cli_public() -> Option<PathBuf> {
     find_kordoc_cli()
@@ -1520,6 +1562,36 @@ mod tests {
             doc.chunks.len(),
             doc.chunks[0].content.chars().take(60).collect::<String>()
         );
+    }
+
+    /// 실행통제 계열 OS 에러만 "차단" 문구로, 그 외는 일반 점검 실패 문구로 분기한다.
+    #[test]
+    fn probe_spawn_error_classifies_policy_block() {
+        let blocked = probe_spawn_error_message(
+            "Parse error: kordoc 프로세스 시작 실패: 액세스가 거부되었습니다. (os error 5)",
+        );
+        assert!(blocked.contains("실행통제"), "{blocked}");
+        assert!(blocked.contains("os error 5"), "원문 보존: {blocked}");
+        let policy = probe_spawn_error_message("… (os error 1260)");
+        assert!(policy.contains("실행통제"), "{policy}");
+        // os error 53(네트워크 경로 없음) 같은 다른 코드는 오분류하지 않는다.
+        let other = probe_spawn_error_message("… (os error 53)");
+        assert!(!other.contains("실행통제"), "{other}");
+        assert!(other.contains("점검 실패"), "{other}");
+    }
+
+    /// 실 kordoc CLI 로 시작 시 런타임 점검 E2E (로컬 전용).
+    ///
+    /// 실행: KORDOC_CLI_PATH=<kordoc/dist/cli.js> cargo test probe_runtime_e2e -- --ignored --nocapture
+    #[test]
+    #[ignore = "실 kordoc CLI 필요 (로컬 전용)"]
+    fn probe_runtime_e2e_reports_version() {
+        let version = probe_runtime().expect("번들/로컬 kordoc 은 --version 에 0 으로 종료해야 함");
+        assert!(
+            version.split('.').count() >= 3,
+            "semver 형태여야 함: {version:?}"
+        );
+        eprintln!("probe ok — kordoc v{version}");
     }
 
     /// 구버전 kordoc JSON (code/pageQuality 없음)도 그대로 파싱돼야 한다 — 하위호환.

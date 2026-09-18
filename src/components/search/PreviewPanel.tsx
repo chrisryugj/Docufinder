@@ -656,7 +656,7 @@ export const PreviewPanel = memo(function PreviewPanel({
   const handleExportMarkdown = useCallback(async () => {
     if (!markdown || !filePath) return;
     setShowMoreMenu(false);
-    const baseName = filePath.replace(/^\\\\\?\\/, "").split(/[\\/]/).pop() || "preview";
+    const baseName = cleanPath(filePath).split(/[\\/]/).pop() || "preview";
     const stem = baseName.replace(/\.[^.]+$/, "") || "preview";
     const safeName = stem.replace(/[<>:"/\\|?*]+/g, "_");
     let outputPath: string | null = null;

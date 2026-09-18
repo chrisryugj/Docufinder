@@ -16,6 +16,7 @@ import {
   SEARCH_MODES,
 } from "../../types/search";
 import { CustomSelect } from "../ui/CustomSelect";
+import { cleanPath } from "../../utils/cleanPath";
 import type { FilterPreset } from "../../hooks/useFilterPresets";
 
 interface SearchFiltersProps {
@@ -332,7 +333,7 @@ interface FilterDropdownProps<T extends string> {
 /** 폴더 경로에서 짧은 라벨 추출 */
 function getFolderLabel(path: string): string {
   // 드라이브 루트: "C:\" → "C:"
-  const normalized = path.replace(/\\\\\?\\/, "").replace(/\//g, "\\");
+  const normalized = cleanPath(path).replace(/\//g, "\\");
   if (/^[A-Za-z]:\\?$/.test(normalized)) {
     return normalized.replace(/\\$/, "");
   }

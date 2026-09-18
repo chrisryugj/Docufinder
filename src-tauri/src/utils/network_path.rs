@@ -12,23 +12,34 @@
 use std::path::{Path, PathBuf};
 
 /// `\\?\` / `\\?\UNC\` 등 extended-length prefix 를 제거해 외부 도구·DB 와 일관된 경로로 만든다.
-/// 내부적으로 `dunce::simplified` 를 사용 — Microsoft 공식 알고리즘과 동등.
+///
+/// `dunce::simplified` 는 `\\?\C:\…`(VerbatimDisk)만 벗기고 `\\?\UNC\srv\share\…`(VerbatimUNC)는
+/// 그대로 돌려준다(dunce 1.0.5 `is_safe_to_strip_unc`). 그 결과가 DB 에 저장되고 프론트가
+/// `\\?\` 만 떼면 `UNC\srv\share\…` 라는 깨진 경로가 되어 파일 열기·위치 열기·경로 복사가
+/// 전부 실패했다(이슈 #46). verbatim UNC 는 여기서 직접 `\\srv\share\…` 로 복원한다.
 pub fn simplify(path: &Path) -> PathBuf {
-    dunce::simplified(path).to_path_buf()
+    let simplified = dunce::simplified(path);
+    let s = simplified.to_string_lossy();
+    match s.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => PathBuf::from(format!(r"\\{rest}")),
+        None => simplified.to_path_buf(),
+    }
 }
 
 /// best-effort 경로 정규화 — 인덱싱/검증 진입점이 공유한다(이슈 #29).
 ///
 /// 1. 매핑 네트워크 드라이브(`Y:\`)는 UNC(`\\srv\share`)로 치환 — elevated 세션에서
 ///    드라이브 매핑이 보이지 않아 `os error 5` 로 막히는 문제를 우회한다.
-/// 2. `dunce::canonicalize` 로 정규화(심볼릭 링크 해소 + `\\?\` prefix 회피).
+/// 2. `dunce::canonicalize` 로 정규화(심볼릭 링크 해소 + `\\?\` prefix 회피). dunce 가
+///    남기는 `\\?\UNC\` verbatim 은 `simplify` 로 마저 벗긴다(이슈 #46) — 여기서 나온
+///    경로가 그대로 DB 에 저장되므로 저장 형식은 항상 `\\srv\share\…` 여야 한다.
 /// 3. 실패(일부 SMB 서버가 핸들 오픈을 거부하는 `os error 5` 등) 시 원본 경로로
 ///    폴백한다 — `read_dir` 열거(=탐색기/PowerShell)는 가능하므로 정규화 실패가
 ///    인덱싱 전체를 막아선 안 된다(이슈 #29: resume/reindex/periodic_sync 차단 회귀).
 pub fn canonicalize_best_effort(path: &Path) -> PathBuf {
     let resolved = resolve_mapped_drive_to_unc(path).unwrap_or_else(|| path.to_path_buf());
     match dunce::canonicalize(&resolved) {
-        Ok(c) => c,
+        Ok(c) => simplify(&c),
         Err(e) => {
             // os error 5(액세스 거부)는 환경 의존 원인이 많아 상세 진단을 함께 남긴다.
             if e.raw_os_error() == Some(5) {
@@ -249,6 +260,36 @@ mod tests {
     fn local_not_network() {
         assert!(!is_network(Path::new(r"C:\Users\foo")));
         assert!(!is_network(Path::new(r"\\?\C:\Users\foo")));
+    }
+
+    // dunce 는 verbatim UNC 를 벗기지 않으므로 simplify 가 직접 복원해야 한다(이슈 #46).
+    // 문자열 접두사 처리라 OS 무관하게 검증 가능.
+    #[test]
+    fn simplify_restores_verbatim_unc() {
+        assert_eq!(
+            simplify(Path::new(r"\\?\UNC\srv\share\docs\a.hwp")),
+            PathBuf::from(r"\\srv\share\docs\a.hwp")
+        );
+        assert_eq!(
+            simplify(Path::new(r"\\?\UNC\srv\share")),
+            PathBuf::from(r"\\srv\share")
+        );
+        // 이미 일반 UNC / 로컬 경로는 그대로.
+        assert_eq!(
+            simplify(Path::new(r"\\srv\share\docs")),
+            PathBuf::from(r"\\srv\share\docs")
+        );
+        assert_eq!(simplify(Path::new(r"C:\docs")), PathBuf::from(r"C:\docs"));
+    }
+
+    // verbatim UNC 도 매핑드라이브·일반 UNC 와 같은 비교 키로 수렴해야 resume skip 이 맞는다.
+    #[test]
+    fn normalize_unifies_verbatim_unc() {
+        let map = vec![('Z', r"\\srv\share".to_string())];
+        assert_eq!(
+            normalize_for_compare(Path::new(r"\\?\UNC\srv\share\docs\a.pdf"), &map),
+            normalize_for_compare(Path::new(r"Z:\docs\a.pdf"), &map),
+        );
     }
 
     #[test]
