@@ -88,12 +88,6 @@ fn reveal_with_default(path_str: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 허용된 파일 확장자 (대소문자 무관)
-const ALLOWED_EXTENSIONS: &[&str] = &[
-    "pdf", "docx", "doc", "xlsx", "xls", "pptx", "ppt", "hwp", "hwpx", "txt", "md", "rtf", "csv",
-    "jpg", "jpeg", "png", "gif", "bmp", "webp",
-];
-
 /// 경로 검증 (path traversal 방지)
 fn validate_path(path: &str) -> Result<std::path::PathBuf, String> {
     let path = Path::new(path);
@@ -104,21 +98,6 @@ fn validate_path(path: &str) -> Result<std::path::PathBuf, String> {
         .map_err(|_| "유효하지 않은 경로입니다".to_string())?;
 
     Ok(canonical)
-}
-
-/// 파일 확장자 검증
-fn validate_extension(path: &Path) -> Result<(), String> {
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    if ALLOWED_EXTENSIONS.contains(&extension.as_str()) {
-        Ok(())
-    } else {
-        Err(format!("지원하지 않는 파일 형식입니다: {}", extension))
-    }
 }
 
 /// 파일을 기본 앱으로 열기 (페이지 지정 가능)
@@ -136,8 +115,9 @@ pub async fn open_file(
         return Err("파일을 찾을 수 없습니다".to_string());
     }
 
-    // 확장자 검증
-    validate_extension(&canonical_path)?;
+    // 확장자 제한 없음 — 탐색기·Everything 처럼 검색된 파일은 종류와 무관하게 기본 앱으로
+    // 연다(#46). v3.8.6 까지는 문서·이미지 19종 허용 목록이라 .java·.json 같은 파일이
+    // "지원하지 않는 파일 형식" 으로 거부됐다. 감시 폴더 스코프·시스템 폴더 차단은 유지.
 
     // 시스템 폴더 내 파일 접근 차단
     let path_lower = canonical_path.to_string_lossy().to_lowercase();

@@ -51,8 +51,11 @@ export function useFileActions({
       try {
         await invokeWithTimeout("open_file", { path: filePath, page: page ?? null }, IPC_TIMEOUT.FILE_ACTION);
         updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
-      } catch {
-        updateToast(toastId, { message: "파일 열기 실패", type: "error" });
+      } catch (e) {
+        // 백엔드 거부 사유(감시 폴더 외부·시스템 폴더 등)를 그대로 보여준다 — "실패" 만으로는
+        // 사용자가 왜 안 열리는지 알 수 없었다(#46)
+        const reason = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "");
+        updateToast(toastId, { message: reason ? `파일 열기 실패: ${reason}` : "파일 열기 실패", type: "error" });
       }
     },
     [addSearch, showToast, updateToast]
