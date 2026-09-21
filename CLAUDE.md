@@ -85,6 +85,7 @@ Anything/
 | `pnpm run download-model` | ONNX 모델 다운로드 |
 | `./scripts/release.sh X.Y.Z` | 릴리즈 — 로컬 CI 검증 통과 시에만 태그 생성+푸시 |
 | `pnpm exec vite build --config vite.harness.config.ts && pnpm exec vite preview --config vite.harness.config.ts` | 뷰어 UI 하니스 — 반드시 build+preview 로(빌드 산출물에만 앱과 같은 CSP 주입, dev 서버는 CSP 검증 불가) ([harness/README.md](harness/README.md)) |
+| `harness/search-quality/bench.py` | 검색 품질 회귀셋 — 실문서 50건·검색어 44개 벡터 top-k 적중률, 인덱싱 파이프라인(청크·정규화·별표 접기) 변경 시 실행 ([harness/search-quality/README.md](harness/search-quality/README.md)) |
 
 ## 개발 Phase
 

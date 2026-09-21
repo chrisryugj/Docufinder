@@ -5,6 +5,8 @@ LayoutView(HWPX SVG)·PdfLayoutView·SearchResultList 를 Tauri 없이 브라우
 v3.2.3 의 "pgclip 정규식이 릴리스 빌드에서 전혀 매치되지 않던" 부류 — 코드만 봐서는
 릴리스된 픽스가 실제로 안 도는 — 회귀를 잡기 위한 도구.
 
+검색 품질(벡터 top-k 적중률) 회귀셋은 별도: [search-quality/README.md](search-quality/README.md).
+
 ## 실행
 
 ```bash

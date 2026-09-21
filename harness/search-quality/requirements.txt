@@ -1,0 +1,4 @@
+onnxruntime
+tokenizers
+numpy
+huggingface_hub
