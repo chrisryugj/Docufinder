@@ -97,6 +97,10 @@ impl WorkerPool {
         self.state.lock().ok()
     }
 
+    fn is_disabled(&self) -> bool {
+        self.lock().is_some_and(|s| s.disabled)
+    }
+
     /// 대기 워커를 꺼내거나 새로 띄운다. `wait=false`(미리보기)는 모두 바쁘면 기다리지 않고
     /// None 을 돌려 1회성 실행으로 가게 한다 — 인덱싱이 워커를 다 쓰는 동안 미리보기가
     /// 몇 초씩 밀리지 않도록. None 은 "워커 없이 진행" 이다.
@@ -350,6 +354,12 @@ pub(super) fn run_request(
     }
 }
 
+/// parse-worker 를 띄우지 못해 풀이 꺼졌는지. `--no-images` 와 parse-worker 는 kordoc 에 함께
+/// 들어가므로, 워커가 없는 빌드는 그 옵션도 모른다고 본다 (버전만 4.14.3 이상인 개발 빌드 등).
+pub(super) fn pool_disabled() -> bool {
+    PARSE_POOL.is_disabled()
+}
+
 /// 풀의 워커로 파싱한다. `None` = 워커를 쓰지 못했으니 1회성 실행으로 진행.
 /// `interactive`(미리보기)는 워커가 모두 바쁘면 기다리지 않는다.
 pub(super) fn parse_via_pool(
@@ -554,6 +564,7 @@ for await (const line of rl) {
         };
 
         let mut w = pool.checkout(true, spawn).expect("first worker");
+        assert!(!pool.is_disabled());
         run_request(
             &mut w,
             "a.hwpx",
@@ -591,5 +602,6 @@ for await (const line of rl) {
             1,
             "한 번 실패하면 다시 띄우지 않는다"
         );
+        assert!(pool.is_disabled(), "1회성 실행이 --no-images 를 빼는 근거");
     }
 }

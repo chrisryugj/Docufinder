@@ -316,8 +316,11 @@ pub(super) fn call_kordoc_sync(
         {
             return result;
         }
-        // 앱은 문서 속 그림을 쓰지 않는다 — 그림 많은 PDF 는 base64 이미지가 출력의 대부분이었다
-        args.push("--no-images".into());
+        // 앱은 문서 속 그림을 쓰지 않는다 — 그림 많은 PDF 는 base64 이미지가 출력의 대부분이었다.
+        // 워커를 못 띄운 kordoc 은 이 옵션도 몰라 모든 파싱이 실패하므로 뺀다.
+        if !super::worker::pool_disabled() {
+            args.push("--no-images".into());
+        }
     }
 
     debug!(
