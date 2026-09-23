@@ -49,15 +49,12 @@ pub fn search(
         })
         .collect();
 
-    // folder_scope 필터 추가
-    let scope_pattern = match folder_scope {
-        Some(scope) if !scope.is_empty() => {
-            let escaped = escape_like_pattern(scope);
-            where_clauses.push("path LIKE ? ESCAPE '\\'".to_string());
-            Some(format!("{}%", escaped))
-        }
-        _ => None,
-    };
+    // folder_scope 필터 추가 — 폴더 경계까지 맞춘다(`C:\docs\a` 가 `C:\docs\a-old` 를 잡지 않게).
+    // FTS 경로와 같은 패턴·비교식(scope_like_pattern: 소문자 + `/` 통일 + `scope/%`).
+    let scope_pattern = folder_scope.and_then(crate::utils::folder_scope::scope_like_pattern);
+    if scope_pattern.is_some() {
+        where_clauses.push("REPLACE(LOWER(path), '\\', '/') LIKE ? ESCAPE '\\'".to_string());
+    }
 
     let sql = format!(
         "SELECT
@@ -183,6 +180,22 @@ mod tests {
     fn finds_non_ascii_uppercase_filename() {
         let conn = test_db("ÉTÉ.txt");
         assert_eq!(search(&conn, "ÉTÉ", 10, None).unwrap().len(), 1);
+    }
+
+    /// 폴더 범위는 폴더 경계까지 맞춘다: `보고서` 범위에 `보고서-old` 형제 폴더가 섞이지 않는다.
+    #[test]
+    fn folder_scope_excludes_sibling_folder() {
+        let conn = test_db("unused.txt");
+        for path in [r"C:\docs\보고서\계획.hwpx", r"C:\docs\보고서-old\계획.hwpx"] {
+            conn.execute(
+                "INSERT INTO files (path, name, file_type, size, modified_at) VALUES (?1, '계획.hwpx', 'hwpx', 1, 0)",
+                [path],
+            )
+            .unwrap();
+        }
+        let r = search(&conn, "계획", 10, Some(r"C:\docs\보고서")).unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].file_path, r"C:\docs\보고서\계획.hwpx");
     }
 
     /// ASCII 대소문자 무시는 SQLite LIKE 가 처리 — 소문자화를 뺀 뒤에도 유지돼야 한다.

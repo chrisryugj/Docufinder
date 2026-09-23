@@ -92,17 +92,13 @@ fn y_center(b: &BBox) -> f32 {
 /// 리프 방출 — 같은 행(높이 50% 이내)은 좌→우, 그 외 위→아래
 fn emit_leaf(boxes: &[BBox], items: &[usize], out: &mut Vec<usize>) {
     let mut v = items.to_vec();
-    v.sort_by(|&a, &b| {
-        let ba = &boxes[a];
-        let bb = &boxes[b];
-        let threshold = (ba.y1 - ba.y0).min(bb.y1 - bb.y0) * 0.5;
-        // total_cmp: NaN 전이성 위반 방지 (geometry::sort_boxes_reading_order 와 동일 규약)
-        if (ba.y0 - bb.y0).abs() < threshold {
-            ba.x0.total_cmp(&bb.x0)
-        } else {
-            ba.y0.total_cmp(&bb.y0)
-        }
-    });
+    // 줄 묶음 정렬 (geometry::sort_reading_lines — 쌍별 임계 비교 함수는 추이성이 깨져 패닉할 수 있다)
+    crate::ocr::geometry::sort_reading_lines(
+        &mut v,
+        |&i| boxes[i].y0,
+        |&i| boxes[i].y1 - boxes[i].y0,
+        |&i| boxes[i].x0,
+    );
     out.extend(v);
 }
 

@@ -23,6 +23,47 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+        // 지난 실행이 벡터를 저장하기 전에 끝나면 DB 에서 사라진 청크의 벡터가 남는다. 그 chunks.id 가
+        // 재사용되면 벡터 워커는 "이미 있음"으로 건너뛰어 다른 문서의 임베딩이 붙으므로, 색인 전에 정리한다.
+        let vector_target = app_handle
+            .try_state::<RwLock<AppContainer>>()
+            .and_then(|cs| {
+                cs.read()
+                    .ok()
+                    .and_then(|c| Some((c.db_path.clone(), c.get_vector_index().ok()?)))
+            });
+        if let Some((db_path, vi)) = vector_target {
+            let _ = tokio::task::spawn_blocking(move || {
+                let Ok(conn) = crate::db::get_connection(&db_path) else {
+                    return;
+                };
+                // 읽다 만 목록으로 정리하면 멀쩡한 벡터까지 지워지고, 그 파일은 vector_indexed_at 이
+                // 남아 다시 임베딩되지도 않는다 — 한 행이라도 못 읽으면 이번 정리는 건너뛴다.
+                let live: std::collections::HashSet<i64> =
+                    match conn.prepare("SELECT id FROM chunks") {
+                        Ok(mut stmt) => match stmt
+                            .query_map([], |row| row.get(0))
+                            .and_then(|rows| rows.collect::<Result<_, _>>())
+                        {
+                            Ok(ids) => ids,
+                            Err(e) => {
+                                tracing::warn!(
+                                    "[Startup] 청크 목록을 다 읽지 못해 벡터 정리를 건너뜀: {e}"
+                                );
+                                return;
+                            }
+                        },
+                        Err(_) => return,
+                    };
+                let removed = vi.remove_stale(|id| !live.contains(&id));
+                if removed > 0 {
+                    let _ = vi.save();
+                    tracing::info!("[Startup] DB 에 없는 청크의 벡터 {}개 정리", removed);
+                }
+            })
+            .await;
+        }
+
         let (folders_to_sync, service, include_subfolders, max_file_size_mb, exclude_dirs) = {
             let container_state = match app_handle.try_state::<RwLock<AppContainer>>() {
                 Some(c) => c,
@@ -155,8 +196,14 @@ pub(super) fn spawn_startup_sync_async(app_handle: AppHandle) {
         // stale prune — sync 대상이 아니었던 폴더 (인덱싱 중/skip)에도 잔재 레코드 남을 수 있음.
         // 디스크에 실재하지 않는 모든 files 레코드를 일괄 삭제. 10만 파일 기준 수초.
         let db_path_for_prune = db_path.clone();
+        let vector_index_for_prune = app_handle
+            .try_state::<RwLock<AppContainer>>()
+            .and_then(|cs| cs.read().ok().and_then(|c| c.get_vector_index().ok()));
         let _ = tokio::task::spawn_blocking(move || {
-            match crate::commands::maintenance::prune_missing_files_impl(&db_path_for_prune) {
+            match crate::commands::maintenance::prune_missing_files_impl(
+                &db_path_for_prune,
+                vector_index_for_prune.as_deref(),
+            ) {
                 Ok(r) if r.pruned > 0 => tracing::info!(
                     "[Startup Prune] {} stale records cleaned ({}ms)",
                     r.pruned,

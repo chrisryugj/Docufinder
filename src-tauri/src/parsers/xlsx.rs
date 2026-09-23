@@ -1,5 +1,5 @@
 use super::{DocumentChunk, DocumentMetadata, ParseError, ParsedDocument};
-use calamine::{open_workbook_auto, Data, Reader};
+use calamine::{open_workbook_auto, Data, Reader, Sheets};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
@@ -82,12 +82,8 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
         // NEIS Report Designer 가 출력한 구형 BIFF8 같은 비표준 포맷에서 calamine 0.26 이
         // sector / range 빌드 단계에서 panic 한 사례가 보고되어 추가.
         let sheet_result = catch_unwind(AssertUnwindSafe(|| {
-            let range = workbook.worksheet_range(&sheet_name).ok()?;
-            Some(extract_text_with_location(
-                &range,
-                &sheet_name,
-                global_offset,
-            ))
+            let rows = sheet_rows(&mut workbook, &sheet_name)?;
+            Some(rows_to_text_and_chunks(&rows, &sheet_name, global_offset))
         }));
 
         let (sheet_text, sheet_chunks) = match sheet_result {
@@ -155,56 +151,115 @@ pub fn parse(path: &Path) -> Result<ParsedDocument, ParseError> {
     })
 }
 
-/// 시트에서 텍스트 추출 + 행 정보 포함 청크 생성
-fn extract_text_with_location(
-    range: &calamine::Range<Data>,
+/// 시트 한 장의 (1-based 행 번호, 행 텍스트) 목록. 행 텍스트는 비지 않은 셀을 열 순서로 탭으로 잇는다.
+///
+/// xlsx·xlsb 는 셀을 하나씩 읽는다. `worksheet_range` 는 쓰인 셀을 감싸는 직사각형을 통째로
+/// 할당해서(행×열), A1 과 XFD1048576 에만 값이 있어도 170억 칸을 잡다가 프로세스가 죽는다
+/// (할당 실패는 catch_unwind 로 못 잡고, 시작 동기화 때마다 반복된다). xls(최대 65,536×256)·ods 는
+/// 기존 경로를 쓴다.
+fn sheet_rows<RS: std::io::Read + std::io::Seek>(
+    workbook: &mut Sheets<RS>,
     sheet_name: &str,
-    base_offset: usize,
-) -> (String, Vec<DocumentChunk>) {
-    let mut all_rows_text: Vec<String> = Vec::new();
-    let mut row_infos: Vec<(usize, String)> = Vec::new(); // (1-based row, text)
+) -> Option<Vec<(usize, String)>> {
+    let mut cells: Vec<(u32, u32, String)> = Vec::new();
+    let mut chars = 0usize;
+    // 행 순서로 오므로 글자 상한을 넘기면 그 뒤는 읽지 않는다 (아래 행 조립에서 다시 자른다)
+    let mut push = |pos: (u32, u32), value: Data| -> bool {
+        if let Some(text) = cell_to_string(&value) {
+            chars += text.len();
+            cells.push((pos.0, pos.1, text));
+        }
+        chars <= MAX_TOTAL_CHARS
+    };
+    match workbook {
+        Sheets::Xlsx(x) => {
+            let mut reader = x.worksheet_cells_reader(sheet_name).ok()?;
+            while let Ok(Some(cell)) = reader.next_cell() {
+                if !push(cell.get_position(), Data::from(cell.get_value().clone())) {
+                    break;
+                }
+            }
+        }
+        Sheets::Xlsb(x) => {
+            let mut reader = x.worksheet_cells_reader(sheet_name).ok()?;
+            while let Ok(Some(cell)) = reader.next_cell() {
+                if !push(cell.get_position(), Data::from(cell.get_value().clone())) {
+                    break;
+                }
+            }
+        }
+        _ => {
+            let range = workbook.worksheet_range(sheet_name).ok()?;
+            for (row, col, value) in range.used_cells() {
+                let (start_row, start_col) = range.start().unwrap_or((0, 0));
+                if !push(
+                    (start_row + row as u32, start_col + col as u32),
+                    value.clone(),
+                ) {
+                    break;
+                }
+            }
+        }
+    }
+    Some(rows_from_cells(cells, sheet_name))
+}
 
-    let (start_row, _) = range.start().unwrap_or((0, 0));
-    let start_row = start_row as usize;
-
+/// 셀 목록 → 행 목록. 시트 첫 행부터 MAX_ROWS_PER_SHEET 행, MAX_TOTAL_CHARS 글자까지.
+fn rows_from_cells(mut cells: Vec<(u32, u32, String)>, sheet_name: &str) -> Vec<(usize, String)> {
+    cells.sort_by_key(|(row, col, _)| (*row, *col));
+    let Some(first_row) = cells.first().map(|(row, _, _)| *row as usize) else {
+        return Vec::new();
+    };
+    let mut rows: Vec<(usize, String)> = Vec::new();
     let mut total_chars = 0usize;
-    for (row_idx, row) in range.rows().enumerate() {
-        if row_idx >= MAX_ROWS_PER_SHEET {
+    let mut i = 0;
+    while i < cells.len() {
+        let row = cells[i].0 as usize;
+        if row - first_row >= MAX_ROWS_PER_SHEET {
             tracing::warn!(
                 "Sheet '{}' truncated at {} rows (max {})",
                 sheet_name,
-                row_idx,
+                row - first_row,
                 MAX_ROWS_PER_SHEET
             );
             break;
         }
-
-        let actual_row = start_row + row_idx + 1; // 1-based Excel row
-
-        let cells: Vec<String> = row.iter().filter_map(cell_to_string).collect();
-
-        if !cells.is_empty() {
-            let row_text = cells.join("\t");
-            total_chars += row_text.len();
-            if total_chars > MAX_TOTAL_CHARS {
-                tracing::warn!(
-                    "Sheet '{}' truncated at {} chars (max {})",
-                    sheet_name,
-                    total_chars,
-                    MAX_TOTAL_CHARS
-                );
-                break;
-            }
-            all_rows_text.push(row_text.clone());
-            row_infos.push((actual_row, row_text));
+        let mut texts: Vec<&str> = Vec::new();
+        while i < cells.len() && cells[i].0 as usize == row {
+            texts.push(&cells[i].2);
+            i += 1;
         }
+        let row_text = texts.join("\t");
+        total_chars += row_text.len();
+        if total_chars > MAX_TOTAL_CHARS {
+            tracing::warn!(
+                "Sheet '{}' truncated at {} chars (max {})",
+                sheet_name,
+                total_chars,
+                MAX_TOTAL_CHARS
+            );
+            break;
+        }
+        rows.push((row + 1, row_text)); // 1-based Excel row
     }
+    rows
+}
 
-    let full_text = all_rows_text.join("\n");
+/// 행 목록 → 시트 텍스트 + 행 정보 포함 청크
+fn rows_to_text_and_chunks(
+    row_infos: &[(usize, String)],
+    sheet_name: &str,
+    base_offset: usize,
+) -> (String, Vec<DocumentChunk>) {
+    let full_text = row_infos
+        .iter()
+        .map(|(_, text)| text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
 
     // 행 단위로 청크 생성
     let chunks = create_chunks_with_rows(
-        &row_infos,
+        row_infos,
         sheet_name,
         base_offset,
         super::DEFAULT_CHUNK_SIZE,
@@ -324,5 +379,114 @@ fn cell_to_string(cell: &Data) -> Option<String> {
             tracing::debug!("Cell error: {:?}", e);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    /// 셀 두 개(A1, XFD1048576)만 있는 xlsx. 쓰인 셀을 감싸는 직사각형은 170억 칸이다.
+    fn write_far_corner_xlsx(path: &Path) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default();
+        let parts = [
+            (
+                "[Content_Types].xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>"#,
+            ),
+            (
+                "_rels/.rels",
+                r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>"#,
+            ),
+            (
+                "xl/workbook.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="자료" sheetId="1" r:id="rId1"/></sheets></workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>"#,
+            ),
+            (
+                "xl/worksheets/sheet1.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>첫칸</t></is></c><c r="C1"><v>42</v></c></row><row r="1048576"><c r="XFD1048576" t="inlineStr"><is><t>끝칸</t></is></c></row></sheetData></worksheet>"#,
+            ),
+        ];
+        for (name, body) in parts {
+            zip.start_file(name, opts).unwrap();
+            zip.write_all(body.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap();
+    }
+
+    /// 종전 추출(조밀 범위 순회)과 같은 행을 내는지 실제 엑셀로 대조 (로컬 전용).
+    /// 실행: XLSX_CORPUS=<xlsx 폴더> cargo test xlsx_rows_match_dense -- --ignored --nocapture
+    #[test]
+    #[ignore = "실 엑셀 코퍼스 필요 (로컬 전용)"]
+    fn xlsx_rows_match_dense_extraction() {
+        let Ok(dir) = std::env::var("XLSX_CORPUS") else {
+            eprintln!("XLSX_CORPUS 미설정 — skip");
+            return;
+        };
+        let mut compared = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if ext != "xlsx" && ext != "xls" {
+                continue;
+            }
+            let mut dense_wb = open_workbook_auto(&path).unwrap();
+            let mut sparse_wb = open_workbook_auto(&path).unwrap();
+            for sheet in dense_wb.sheet_names().to_vec() {
+                let Ok(range) = dense_wb.worksheet_range(&sheet) else {
+                    continue;
+                };
+                // 종전 extract_text_with_location 의 행 조립
+                let (start_row, _) = range.start().unwrap_or((0, 0));
+                let mut dense: Vec<(usize, String)> = Vec::new();
+                let mut total = 0usize;
+                for (idx, row) in range.rows().enumerate() {
+                    if idx >= MAX_ROWS_PER_SHEET {
+                        break;
+                    }
+                    let cells: Vec<String> = row.iter().filter_map(cell_to_string).collect();
+                    if !cells.is_empty() {
+                        let text = cells.join("\t");
+                        total += text.len();
+                        if total > MAX_TOTAL_CHARS {
+                            break;
+                        }
+                        dense.push((start_row as usize + idx + 1, text));
+                    }
+                }
+                let sparse = sheet_rows(&mut sparse_wb, &sheet).unwrap();
+                assert_eq!(dense, sparse, "{} / {}", path.display(), sheet);
+                compared += 1;
+            }
+        }
+        eprintln!("시트 {compared}장 일치");
+        assert!(compared > 0);
+    }
+
+    /// 멀리 떨어진 셀 하나로 거대 할당이 일어나 프로세스가 죽지 않고, 값은 그대로 뽑힌다.
+    #[test]
+    fn far_apart_cells_do_not_allocate_the_whole_rectangle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("far.xlsx");
+        write_far_corner_xlsx(&path);
+        let doc = parse(&path).expect("파싱 성공");
+        assert!(doc.content.contains("첫칸\t42"), "{:?}", doc.content);
+        assert!(
+            !doc.content.contains("끝칸"),
+            "시트 행 상한(5만 행) 밖은 잘린다: {:?}",
+            doc.content
+        );
+        assert_eq!(doc.chunks[0].location_hint.as_deref(), Some("자료!행1"));
     }
 }

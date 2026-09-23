@@ -198,10 +198,7 @@ pub fn sync_folder_fts(
     drop(update_stmt);
 
     // 3. SQL diff: 삭제된 파일 (DB에 있으나 FS 임시 테이블에 없음)
-    let folder_escaped_unix = db::escape_like_pattern(&folder_str.replace('\\', "/"));
-    let folder_escaped_win = db::escape_like_pattern(&folder_str.replace('/', "\\"));
-    let pattern_unix = format!("{}/%", folder_escaped_unix);
-    let pattern_win = format!("{}\\%", folder_escaped_win);
+    let (pattern_unix, pattern_win) = folder_like_patterns(&folder_str);
 
     let mut delete_stmt = conn
         .prepare(
@@ -266,11 +263,16 @@ pub fn sync_folder_fts(
         unchanged
     );
 
-    // 4. 삭제 처리
+    // 4. 삭제 처리 — 스캔에 없다고 다 지우지 않는다. 폴더 스캔은 읽기 오류(권한 거부·잠깐 끊긴
+    // 네트워크 공유)를 건너뛰어 그 아래 파일도 후보에 들어온다. 없다고 확인된 파일만 지운다
+    // (앱 시작 정리 prune 과 같은 기준). 윈도우 경로 패턴 수리로 삭제 감지가 처음 실제로 돈다.
     let mut deleted = 0;
     for path in &to_delete {
         if cancel_flag.load(Ordering::Acquire) {
             break;
+        }
+        if !crate::utils::confirmed_missing(Path::new(path)) {
+            continue;
         }
         // 벡터를 먼저 제거 — watcher 삭제 경로(manager.rs)와 동일. 안 하면 유령 벡터가
         // 남고, 해제된 chunks.id가 재사용될 때 타 파일 임베딩으로 오귀속된다(이슈 #34 후속).
@@ -297,7 +299,7 @@ pub fn sync_folder_fts(
             if cancel_flag.load(Ordering::Acquire) {
                 break;
             }
-            let _ = save_file_metadata_only(conn, path);
+            let _ = save_file_metadata_only(conn, path, vector_index.as_deref());
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
                 if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                     tracing::warn!("Sync metadata batch commit failed: {}", e);
@@ -461,15 +463,14 @@ pub fn sync_folder_fts(
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
                         send_progress("indexing", total, processed, Some(file_name), false);
-                        match save_document_to_db_fts_only_no_tx(
+                        match save_document_isolated(
                             conn,
                             &path,
                             document,
-                            FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
                             vector_index.as_deref(),
                             chunk_tokens,
                         ) {
-                            Ok(_) => indexed += 1,
+                            Ok(()) => indexed += 1,
                             Err(e) => {
                                 failed += 1;
                                 if errors.len() < MAX_INDEXING_ERRORS {
@@ -481,7 +482,9 @@ pub fn sync_folder_fts(
                         }
                     }
                     ParseResult::Failure { path, error } => {
-                        if let Err(e) = save_file_metadata_only(conn, &path) {
+                        if let Err(e) =
+                            save_file_metadata_only(conn, &path, vector_index.as_deref())
+                        {
                             tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
                         }
                         failed += 1;
@@ -494,7 +497,9 @@ pub fn sync_folder_fts(
                     ParseResult::CloudSkipped { path } => {
                         // 클라우드 placeholder: 메타데이터만 저장 (파일명 검색은 가능),
                         // 본문 다운로드는 회피.
-                        if let Err(e) = save_file_metadata_only(conn, &path) {
+                        if let Err(e) =
+                            save_file_metadata_only(conn, &path, vector_index.as_deref())
+                        {
                             tracing::warn!(
                                 "Failed to save metadata for cloud placeholder {:?}: {}",
                                 path,
@@ -528,6 +533,8 @@ pub fn sync_folder_fts(
     if let Err(e) = conn.execute_batch("COMMIT") {
         tracing::warn!("Final commit failed: {}", e);
     }
+    // receiver 를 먼저 버려 가득 찬 채널에 막힌 파서 스레드를 풀어 준다 (취소 시 join 영구 대기 방지)
+    drop(receiver);
     let _ = producer_handle.join();
 
     send_progress("completed", total, processed, None, true);
@@ -546,4 +553,282 @@ pub fn sync_folder_fts(
         errors,
         was_cancelled: false,
     })
+}
+
+/// 문서 하나를 SAVEPOINT 안에서 저장한다. 실패나 패닉이면 그 문서의 부분 쓰기만 되돌리고 같은
+/// 배치의 다른 문서는 살린다 (종전엔 저장 패닉이 동기화 스레드를 끝냈고, 실패한 문서의 반쯤 쓴
+/// 행이 배치와 함께 커밋될 수 있었다). 호출자는 이미 BEGIN 한 트랜잭션 안에서 부른다.
+pub(crate) fn save_document_isolated(
+    conn: &Connection,
+    path: &Path,
+    document: crate::parsers::ParsedDocument,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
+    chunk_tokens: Option<Vec<Option<String>>>,
+) -> Result<(), String> {
+    conn.execute_batch("SAVEPOINT doc_save")
+        .map_err(|e| e.to_string())?;
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        save_document_to_db_fts_only_no_tx(
+            conn,
+            path,
+            document,
+            FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
+            vector_index,
+            chunk_tokens,
+        )
+    }));
+    let outcome = match result {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err("저장 중 내부 오류 (이 파일만 건너뜀)".to_string()),
+    };
+    let finish = if outcome.is_ok() {
+        "RELEASE doc_save"
+    } else {
+        "ROLLBACK TO doc_save; RELEASE doc_save"
+    };
+    if let Err(e) = conn.execute_batch(finish) {
+        tracing::warn!("SAVEPOINT 정리 실패 ({}): {}", path.display(), e);
+    }
+    outcome
+}
+
+/// 폴더 아래 경로를 고르는 LIKE 패턴 (유닉스 구분자, 윈도우 구분자). ESCAPE '\\' 와 함께 쓴다.
+///
+/// 윈도우 쪽 꼬리는 `\\\\%`(이스케이프된 역슬래시 + 와일드카드)여야 한다. `\\%` 로 쓰면 ESCAPE 아래서
+/// 리터럴 `%` 가 되어 윈도우 경로가 하나도 안 걸렸다(삭제된 파일이 검색에 계속 남음).
+/// 끝 구분자는 잘라 드라이브 루트(`C:\\`) 감시 폴더도 걸리게 한다 (db::delete_files_in_folder 와 동일).
+fn folder_like_patterns(folder: &str) -> (String, String) {
+    let folder = folder.trim_end_matches(['/', '\\']);
+    let escaped_unix = db::escape_like_pattern(&folder.replace('\\', "/"));
+    let escaped_win = db::escape_like_pattern(&folder.replace('/', "\\"));
+    (
+        format!("{}/%", escaped_unix),
+        format!("{}\\\\%", escaped_win),
+    )
+}
+
+#[cfg(test)]
+mod like_pattern_tests {
+    use super::folder_like_patterns;
+
+    fn matches(pattern: &str, path: &str) -> bool {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.query_row("SELECT ?2 LIKE ?1 ESCAPE '\\'", [pattern, path], |r| {
+            r.get(0)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn windows_paths_under_folder_match() {
+        let (unix, win) = folder_like_patterns(r"C:\docs\보고서");
+        assert!(matches(&win, r"C:\docs\보고서\a.hwpx"));
+        assert!(matches(&win, r"C:\docs\보고서\sub\b.pdf"));
+        assert!(
+            !matches(&win, r"C:\docs\보고서-old\c.pdf"),
+            "형제 폴더 오탐"
+        );
+        assert!(matches(&unix, "C:/docs/보고서/a.hwpx"));
+    }
+
+    #[test]
+    fn drive_root_and_wildcard_chars() {
+        let (_, win) = folder_like_patterns(r"D:\");
+        assert!(matches(&win, r"D:\x.txt"));
+        let (_, win) = folder_like_patterns(r"C:\100%_폴더");
+        assert!(matches(&win, r"C:\100%_폴더\a.txt"));
+        assert!(!matches(&win, r"C:\100x폴더\a.txt"), "% _ 는 리터럴이어야");
+    }
+}
+
+#[cfg(test)]
+mod save_isolation_tests {
+    use super::save_document_isolated;
+    use crate::parsers::{DocumentChunk, DocumentMetadata, ParsedDocument};
+    use std::path::Path;
+
+    fn doc(text: &str) -> ParsedDocument {
+        ParsedDocument {
+            content: text.to_string(),
+            metadata: DocumentMetadata {
+                title: None,
+                author: None,
+                created_at: None,
+                page_count: None,
+            },
+            chunks: vec![DocumentChunk {
+                content: text.to_string(),
+                start_offset: 0,
+                end_offset: text.len(),
+                page_number: None,
+                page_end: None,
+                location_hint: None,
+            }],
+            garbled_hint: false,
+        }
+    }
+
+    /// 본문을 못 읽어 메타데이터만 남길 때 예전 청크(와 FTS)는 지워져 옛 내용이 검색되지 않는다.
+    #[test]
+    fn metadata_fallback_clears_stale_chunks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("stale.db");
+        crate::db::init_database(&db_path).unwrap();
+        let a = tmp.path().join("a.txt");
+        std::fs::write(&a, "가").unwrap();
+
+        let conn = crate::db::get_connection(&db_path).unwrap();
+        conn.execute_batch("BEGIN").unwrap();
+        save_document_isolated(&conn, &a, doc("비밀 예산 내역"), None, None).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+        let fts_hits = |q: &str| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM chunks_fts WHERE chunks_fts MATCH ?1",
+                [q],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(fts_hits("비밀"), 1);
+
+        crate::indexer::collector::save_file_metadata_only(&conn, &a, None).unwrap();
+        assert_eq!(fts_hits("비밀"), 0, "옛 본문이 검색된다");
+        let fts_at: Option<i64> = conn
+            .query_row(
+                "SELECT fts_indexed_at FROM files WHERE path = ?1",
+                [a.to_string_lossy().to_string()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(fts_at.is_none(), "다시 읽도록 색인 시각을 비워야 한다");
+    }
+
+    /// 메타데이터만 남길 때 예전 청크의 벡터도 지운다. 남기면 해제된 chunks.id 가 재사용될 때
+    /// 벡터 워커가 "이미 있음" 으로 건너뛰어 다른 문서의 임베딩이 붙는다.
+    #[test]
+    fn metadata_fallback_removes_stale_vectors() {
+        use crate::embedder::EMBEDDING_DIM;
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("vec.db");
+        crate::db::init_database(&db_path).unwrap();
+        let a = tmp.path().join("a.txt");
+        std::fs::write(&a, "가").unwrap();
+        let vi = crate::search::vector::VectorIndex::new(&tmp.path().join("v.usearch")).unwrap();
+
+        let conn = crate::db::get_connection(&db_path).unwrap();
+        conn.execute_batch("BEGIN").unwrap();
+        save_document_isolated(&conn, &a, doc("예산 내역"), None, None).unwrap();
+        conn.execute_batch("COMMIT").unwrap();
+        let chunk_id: i64 = conn
+            .query_row("SELECT id FROM chunks LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        let mut v = vec![0.0f32; EMBEDDING_DIM];
+        v[0] = 1.0;
+        vi.add(chunk_id, &v).unwrap();
+        assert!(vi.contains_chunk(chunk_id));
+
+        crate::indexer::collector::save_file_metadata_only(&conn, &a, Some(&vi)).unwrap();
+        assert!(!vi.contains_chunk(chunk_id), "지운 청크의 벡터가 남았다");
+    }
+
+    /// 한 문서 저장이 중간에 실패해도 그 문서의 반쯤 쓴 행만 되돌리고, 같은 배치의 앞 문서는 남는다.
+    #[test]
+    fn failed_save_rolls_back_only_that_document() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("iso.db");
+        crate::db::init_database(&db_path).unwrap();
+        let a = tmp.path().join("a.txt");
+        let b = tmp.path().join("b.txt");
+        std::fs::write(&a, "가").unwrap();
+        std::fs::write(&b, "나").unwrap();
+
+        let conn = crate::db::get_connection(&db_path).unwrap();
+        conn.execute_batch("BEGIN").unwrap();
+        save_document_isolated(&conn, &a, doc("예산 집행"), None, None).unwrap();
+        // 청크 테이블을 치워 b 저장을 files 행 쓴 뒤에 실패시킨다
+        conn.execute_batch("ALTER TABLE chunks RENAME TO chunks_gone")
+            .unwrap();
+        assert!(save_document_isolated(&conn, &b, doc("계획 수립"), None, None).is_err());
+        conn.execute_batch("ALTER TABLE chunks_gone RENAME TO chunks; COMMIT")
+            .unwrap();
+
+        let count = |p: &Path| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM files WHERE path = ?1",
+                [p.to_string_lossy().to_string()],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(count(&a), 1, "앞 문서는 커밋돼야 한다");
+        assert_eq!(
+            count(&b),
+            0,
+            "실패한 문서의 반쯤 쓴 files 행은 되돌려져야 한다"
+        );
+    }
+}
+
+#[cfg(test)]
+mod sync_delete_tests {
+    use super::sync_folder_fts;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    fn indexed_paths(conn: &rusqlite::Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("SELECT path FROM files ORDER BY path")
+            .unwrap();
+        let rows = stmt.query_map([], |r| r.get(0)).unwrap();
+        rows.collect::<Result<_, _>>().unwrap()
+    }
+
+    fn sync(conn: &rusqlite::Connection, root: &std::path::Path) -> super::SyncResult {
+        sync_folder_fts(
+            conn,
+            root,
+            true,
+            Arc::new(AtomicBool::new(false)),
+            None,
+            0,
+            &[],
+            None,
+            None,
+        )
+        .unwrap()
+    }
+
+    /// 스캔 중 읽지 못한 하위 폴더(권한 거부 등)의 파일은 지우지 않고, 정말 지워진 파일만 지운다.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_subfolder_is_not_treated_as_deleted() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("docs");
+        let locked = root.join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        std::fs::write(root.join("a.txt"), "예산 집행 계획").unwrap();
+        std::fs::write(root.join("gone.txt"), "지울 문서").unwrap();
+        std::fs::write(locked.join("b.txt"), "잠긴 폴더 문서").unwrap();
+
+        let db_path = tmp.path().join("sync.db");
+        crate::db::init_database(&db_path).unwrap();
+        let conn = crate::db::get_connection(&db_path).unwrap();
+        sync(&conn, &root);
+        assert_eq!(indexed_paths(&conn).len(), 3);
+
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let r = sync(&conn, &root);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let paths = indexed_paths(&conn);
+        assert_eq!(r.deleted, 1, "정말 지운 파일 한 건만: {paths:?}");
+        assert!(
+            paths.iter().any(|p| p.ends_with("b.txt")),
+            "읽지 못한 폴더의 문서가 지워졌다: {paths:?}"
+        );
+        assert!(!paths.iter().any(|p| p.ends_with("gone.txt")));
+    }
 }

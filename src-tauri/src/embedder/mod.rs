@@ -9,7 +9,12 @@ use thiserror::Error;
 use tokenizers::Tokenizer;
 
 pub const EMBEDDING_DIM: usize = 768;
-const MAX_LENGTH: usize = 512;
+/// 임베딩 입력 토큰 상한. 배포 tokenizer.json 이 128 로 잘라 왔으므로(지금까지의 모든 벡터가
+/// 이 값으로 만들어졌다) 파일 설정에 기대지 않고 여기서 명시한다. 종전 상수 512 는 절단이
+/// tokenizer.json 에서 먼저 일어나 효과가 없었다. 512 로 올리면 청크 전체를 보지만 검색 품질
+/// 회귀셋(harness/search-quality, 질의 44)에서 top-1 86→91%, top-3 100→98% 로 오차 범위 이득이고
+/// 임베딩 비용은 4배 이상 + 전체 재임베딩이라 128 을 유지한다 (2026-09-23 실측).
+const MAX_LENGTH: usize = 128;
 /// 배치 임베딩 서브배치 크기.
 /// 인덱싱 배치(32건)가 Session Mutex를 통째로 점유하면 쿼리 임베딩(1건)이
 /// 배치 전체(~400ms)를 기다린다 → 서브배치 단위로 락을 잡았다 놓아
@@ -90,8 +95,14 @@ impl Embedder {
             .with_intra_threads(num_threads)?
             .commit_from_file(model_path)?;
 
-        // Tokenizer 로드
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
+        // Tokenizer 로드 (절단 길이는 MAX_LENGTH 로 고정)
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| EmbedderError::TokenizerError(e.to_string()))?;
+        tokenizer
+            .with_truncation(Some(tokenizers::TruncationParams {
+                max_length: MAX_LENGTH,
+                ..Default::default()
+            }))
             .map_err(|e| EmbedderError::TokenizerError(e.to_string()))?;
 
         Ok(Self {

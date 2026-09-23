@@ -132,6 +132,9 @@ impl SearchService {
         // 1·2. FTS5 ∥ 벡터 병렬 (임베딩 ONNX 가 지배적이라 FTS 를 그 뒤에 숨긴다:
         // 총지연 ≈ max(FTS, embed+vec)). rusqlite Connection 은 !Sync 라 각 클로저가
         // 풀에서 conn 을 따로 빌린다 (MAX_POOL_SIZE=16, 동시 최대 3개는 여유).
+        // FTS 후보는 결과 수의 3배를 가져온다. 아래에서 파일당 청크 3개로 자르므로, 긴 문서 하나가
+        // 상위 청크를 독차지하면 max_results 개만 가져와서는 결과 파일 수가 크게 줄었다.
+        let fts_fetch_limit = max_results.saturating_mul(3);
         let (fts_res, vec_bundle) = rayon::join(
             || -> AppResult<Vec<fts::FtsResult>> {
                 let conn = self.get_connection()?;
@@ -141,7 +144,7 @@ impl SearchService {
                         fts::search_with_operators(
                             &conn,
                             o,
-                            max_results,
+                            fts_fetch_limit,
                             tok_ref,
                             folder_scope,
                             mode,
@@ -153,15 +156,17 @@ impl SearchService {
                         Some(tok) => fts::search_with_tokenizer(
                             &conn,
                             query,
-                            max_results,
+                            fts_fetch_limit,
                             tok.as_ref(),
                             folder_scope,
                             mode,
                             filter,
                         )
                         .map_err(|e| AppError::SearchFailed(e.to_string()))?,
-                        None => fts::search(&conn, query, max_results, folder_scope, mode, filter)
-                            .map_err(|e| AppError::SearchFailed(e.to_string()))?,
+                        None => {
+                            fts::search(&conn, query, fts_fetch_limit, folder_scope, mode, filter)
+                                .map_err(|e| AppError::SearchFailed(e.to_string()))?
+                        }
                     },
                 };
                 Ok(fts_results)
@@ -352,6 +357,18 @@ impl SearchService {
                 *count += 1;
                 *count <= MAX_CHUNKS_PER_FILE
             });
+        }
+
+        // `-제외어` 는 문서 단위 (벡터 결과는 청크 본문만 보고 거르므로 여기서 파일째 뺀다)
+        if let Some(o) = op.filter(|o| !o.excludes.is_empty()) {
+            let conn = self.get_connection()?;
+            if let Err(e) =
+                fts::drop_files_with_excluded_terms(&conn, &o.excludes, &mut results, |r| {
+                    &r.file_path
+                })
+            {
+                tracing::warn!("Hybrid exclude filter failed: {}", e);
+            }
         }
 
         // RRF 융합은 FTS top-N ∪ 벡터 top-N 이라 최대 2×max_results까지 부풀 수 있다

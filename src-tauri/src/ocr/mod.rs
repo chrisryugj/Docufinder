@@ -261,9 +261,10 @@ impl OcrEngine {
         }
 
         // 2. Crop: 각 영역을 잘라내기
+        let rgb = image.to_rgb8();
         let crops: Vec<image::RgbImage> = boxes
             .iter()
-            .map(|quad| geometry::crop_quad(image, quad))
+            .map(|quad| geometry::crop_quad(&rgb, quad))
             .collect();
 
         // 3. Recognition: 각 crop에서 텍스트 인식

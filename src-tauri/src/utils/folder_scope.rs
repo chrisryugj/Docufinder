@@ -40,11 +40,21 @@ pub fn path_in_scope(path: &str, scope: &str) -> bool {
 
 /// FTS LIKE 패턴용: scope 에 segment 경계를 강제한 prefix 패턴 반환.
 /// 호출자는 SQL 에서 `REPLACE(LOWER(path), '\\', '/') LIKE ? ESCAPE '\\'` 로 써야 한다.
+///
+/// SQLite `LOWER()`·`LIKE` 는 ASCII 만 대소문자를 가린다. 패턴을 유니코드 전체로 소문자화하면
+/// `É`·`Ж` 같은 대문자가 든 폴더는 DB 쪽이 그대로라 영영 맞지 않았다 — ASCII 만 내린다.
 pub fn scope_like_pattern(scope: &str) -> Option<String> {
-    normalize_scope_prefix(scope).map(|p| {
-        let escaped = crate::db::escape_like_pattern(&p);
-        format!("{}%", escaped)
-    })
+    let simplified = crate::utils::network_path::simplify(std::path::Path::new(scope));
+    let norm = simplified
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    let norm = norm.trim_end_matches('/');
+    if norm.is_empty() {
+        return None;
+    }
+    let escaped = crate::db::escape_like_pattern(&format!("{norm}/"));
+    Some(format!("{}%", escaped))
 }
 
 #[cfg(test)]
@@ -97,6 +107,22 @@ mod tests {
     fn empty_scope_means_no_restriction() {
         assert!(path_in_scope(r"C:\docs\a\foo.txt", ""));
         assert!(scope_like_pattern("").is_none());
+    }
+
+    /// SQLite LOWER 는 ASCII 만 내리므로 패턴도 그래야 비ASCII 대문자 폴더가 맞는다.
+    #[test]
+    fn like_pattern_matches_sqlite_lower_for_non_ascii() {
+        let pat = scope_like_pattern(r"C:\Users\Émile\Документы").unwrap();
+        assert_eq!(pat, "c:/users/Émile/Документы/%");
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let hit: bool = conn
+            .query_row(
+                "SELECT REPLACE(LOWER(?1), '\\', '/') LIKE ?2 ESCAPE '\\'",
+                [r"C:\Users\Émile\Документы\보고서.hwpx", pat.as_str()],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(hit, "비ASCII 대문자 폴더가 범위에서 빠졌다");
     }
 
     #[test]

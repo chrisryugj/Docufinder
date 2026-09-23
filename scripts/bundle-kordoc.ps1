@@ -76,15 +76,17 @@ Write-Host "  -> kordoc dist copied"
 # 이들이 번들에 포함되지 않으면 `--formula-ocr` 플래그가 tryImport 단계에서 실패.
 # 모델(~155MB)은 런타임 HuggingFace 다운로드이므로 여기서는 SDK 바이너리만 포함.
 Push-Location $kordocOut
-# kordoc dependencies — keep in sync with kordoc package.json `dependencies`
-# (markdown-it added in kordoc v2.7.0 for Print Renderer; missing it crashes cli.js at startup)
-$deps = @(
-    "@xmldom/xmldom", "commander", "jszip", "zod", "cfb", "markdown-it@^14", "pdfjs-dist@4"
-)
+# 목록·버전 범위는 kordoc package.json 이 정본 (scripts/kordoc-runtime-deps.cjs)
+$depsArgs = @("$PSScriptRoot\kordoc-runtime-deps.cjs", "$KordocDir\package.json")
 if ($Lite) {
     Write-Host "  -> LITE mode: 수식 OCR optional deps 제외 (네이티브 바이너리 미포함)" -ForegroundColor Yellow
-} else {
-    $deps += @("@hyzyla/pdfium@^2", "onnxruntime-node@^1.24", "sharp@^0.34", "@huggingface/transformers@^4")
+    $depsArgs += "--lite"
+}
+$deps = @(& $nodeExe @depsArgs | Where-Object { $_ })
+if ($LASTEXITCODE -ne 0 -or $deps.Count -eq 0) {
+    Pop-Location
+    Write-Error "kordoc 의존성 목록 생성 실패 ($KordocDir\package.json)"
+    exit 1
 }
 Write-Host "  -> Installing node_modules: $($deps -join ', ')"
 # npm이 stderr에 warn을 써도 Stop 모드에서 죽지 않도록 이 블록만 Continue로 전환
@@ -109,6 +111,25 @@ if (Test-Path "$kordocOut\node_modules") {
         Where-Object { $_.Name -notmatch '^(LICEN[CS]E|NOTICE|COPYING)' } |
         Remove-Item -Force -ErrorAction SilentlyContinue
 }
+
+# 다른 플랫폼 바이너리 제거. onnxruntime-node 는 darwin·linux·win32 바이너리를 모두 담아
+# 온다(약 290MB). 로더는 bin\napi-v*\<platform>\<arch> 하나만 읽는다 (Windows 빌드는 x64).
+$ortBin = "$kordocOut\node_modules\onnxruntime-node\bin"
+if (Test-Path $ortBin) {
+    Get-ChildItem $ortBin -Directory | ForEach-Object {
+        Get-ChildItem $_.FullName -Directory | ForEach-Object {
+            if ($_.Name -ne "win32") {
+                Remove-Item $_.FullName -Recurse -Force
+            } else {
+                Get-ChildItem $_.FullName -Directory | Where-Object { $_.Name -ne "x64" } |
+                    Remove-Item -Recurse -Force
+            }
+        }
+    }
+}
+# onnxruntime-web(약 120MB)은 브라우저용. kordoc 은 Node 에서 onnxruntime-node 만 쓰고,
+# 수식 OCR 토크나이저(@huggingface/transformers)도 이것 없이 로드된다(실측).
+Remove-Item "$kordocOut\node_modules\onnxruntime-web" -Recurse -Force -ErrorAction SilentlyContinue
 
 $totalSize = (Get-ChildItem "$OutputDir\kordoc" -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB
 $nodeSize = (Get-Item "$OutputDir\node.exe").Length / 1MB

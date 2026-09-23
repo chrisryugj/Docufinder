@@ -739,7 +739,10 @@ impl NlQueryParser {
             },
         ];
 
-        let lower = remaining.to_lowercase();
+        // ASCII 만 소문자화한다. 찾은 바이트 위치로 원문(remaining)을 자르므로 길이가 바뀌면 안 된다
+        // (to_lowercase 는 켈빈 기호 K·Ω·İ 등에서 바이트 길이가 달라져 문자 중간을 잘라 패닉했다).
+        // 패턴은 한글과 ASCII 확장자뿐이라 ASCII 대소문자 무시로 충분하다.
+        let lower = remaining.to_ascii_lowercase();
 
         // 긴 패턴부터 매칭 (정확도 우선)
         for ftp in &ft_patterns {
@@ -747,7 +750,7 @@ impl NlQueryParser {
             sorted_patterns.sort_by_key(|b| std::cmp::Reverse(b.len()));
 
             for pat in &sorted_patterns {
-                let pat_lower = pat.to_lowercase();
+                let pat_lower = pat.to_ascii_lowercase();
                 if let Some(pos) = lower.find(&pat_lower) {
                     // 단어 경계 확인
                     let before_ok = pos == 0 || remaining[..pos].ends_with(' ');

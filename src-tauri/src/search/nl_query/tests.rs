@@ -1068,3 +1068,25 @@ fn test_comprehensive_smart_queries() {
         );
     }
 }
+
+/// 소문자화하면 바이트 길이가 바뀌는 문자(켈빈 기호·옴·옹스트롬·터키어 İ)가 있어도 패닉하지 않는다.
+#[test]
+fn test_case_folding_length_change_does_not_panic() {
+    for q in [
+        "\u{212A}HWPX 예산",
+        "\u{2126}pdf 문서",
+        "\u{212B} hwp 파일",
+        "İstanbul pptx",
+        "PDF 계획",
+    ] {
+        let result = NlQueryParser::parse(q);
+        assert!(
+            !result.keywords.is_empty() || result.file_type.is_some(),
+            "{q}"
+        );
+    }
+    assert_eq!(
+        NlQueryParser::parse("예산 PDF로").file_type.as_deref(),
+        Some("pdf")
+    );
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # macOS arm64 빌드 리소스 셋업 — node, kordoc, dylib 들을 src-tauri/resources/ 에 채운다.
-# - Node v20 darwin-arm64
+# - Node v22 darwin-arm64
 # - kordoc dist + node_modules (prod)
 # - ONNX Runtime v1.23.0 osx-arm64 dylib
 # - pdfium mac-arm64 dylib (스캔 PDF 래스터화)
@@ -13,7 +13,8 @@
 #   KORDOC_DIR=/path/to/kordoc bash scripts/setup-macos-resources.sh
 set -euo pipefail
 
-NODE_VERSION="v20.18.0"
+# Windows 번들(publish.yml setup-node 22)과 같은 메이저. v20 은 2026-04 지원 종료.
+NODE_VERSION="v22.23.2"
 ORT_VERSION="1.23.0"
 # pdfium (스캔/이미지 PDF 래스터화 fallback) — bblanchon/pdfium-binaries.
 # constants.rs 의 mac-arm64 SHA 와 반드시 동기화. 번들에 넣어 런타임 다운로드를 제거하면
@@ -81,11 +82,10 @@ cat > "$KORDOC_DEST/package.json" <<'EOF'
 EOF
 
 echo "  installing kordoc runtime deps (npm, prod-only)…"
-# kordoc dependencies — keep in sync with kordoc package.json `dependencies`
-# (markdown-it added in kordoc v2.7.0 for Print Renderer; missing it crashes cli.js at startup)
-(cd "$KORDOC_DEST" && npm install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error \
-    "@xmldom/xmldom" "commander" "jszip" "zod" "cfb" "markdown-it@^14" "pdfjs-dist@4" \
-    "@hyzyla/pdfium@^2" "onnxruntime-node@^1.24" "sharp@^0.34" "@huggingface/transformers@^4")
+# 목록·버전 범위는 kordoc package.json 이 정본 (scripts/kordoc-runtime-deps.cjs)
+DEPS=($("$NODE_DEST" "$REPO_ROOT/scripts/kordoc-runtime-deps.cjs" "$KORDOC_SRC/package.json"))
+echo "  ${DEPS[*]}"
+(cd "$KORDOC_DEST" && npm install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error "${DEPS[@]}")
 
 # trim 불필요 파일
 # LICENSE*/NOTICE*/COPYING* 는 지우지 않는다 — 이 node_modules 는 배포본에 그대로
@@ -97,6 +97,16 @@ find "$KORDOC_DEST/node_modules" -type f \( \
 find "$KORDOC_DEST/node_modules" -type f -name '*.md' \
     ! -iname 'LICENSE*' ! -iname 'NOTICE*' ! -iname 'COPYING*' \
     -delete 2>/dev/null || true
+# 다른 플랫폼 바이너리 제거. onnxruntime-node 는 darwin·linux·win32 바이너리를 모두 담아
+# 온다(약 290MB). 로더는 bin/napi-v*/<platform>/<arch> 하나만 읽는다.
+ORT_BIN="$KORDOC_DEST/node_modules/onnxruntime-node/bin"
+if [[ -d "$ORT_BIN" ]]; then
+    find "$ORT_BIN" -mindepth 3 -maxdepth 3 -type d ! -path '*/darwin/arm64' -exec rm -rf {} +
+    find "$ORT_BIN" -mindepth 2 -maxdepth 2 -type d -empty -delete
+fi
+# onnxruntime-web(약 120MB)은 브라우저용. kordoc 은 Node 에서 onnxruntime-node 만 쓰고,
+# 수식 OCR 토크나이저(@huggingface/transformers)도 이것 없이 로드된다(실측).
+rm -rf "$KORDOC_DEST/node_modules/onnxruntime-web"
 
 echo "==> [3/4] ONNX Runtime ${ORT_VERSION} osx-arm64"
 DYLIB_DEST="$RES_DIR/onnxruntime/libonnxruntime.dylib"

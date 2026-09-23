@@ -150,10 +150,17 @@ fn ctc_decode(
 
         // blank(0) 제거 + 연속 중복 제거
         if idx != 0 && idx != prev_idx {
-            // dictionary는 1-indexed (idx=1 → dictionary[0])
+            // dictionary는 1-indexed (idx=1 → dictionary[0]). 사전 바로 다음 클래스는 공백이다
+            // (PaddleOCR use_space_char: rec 모델 11,947 = blank + 사전 11,945 + 공백). 종전엔 이
+            // 공백을 버려 OCR 본문이 띄어쓰기 없이 붙었다.
             let dict_idx = (idx - 1) as usize;
-            if dict_idx < dictionary.len() {
-                chars.push(dictionary[dict_idx].clone());
+            let ch = match dict_idx.cmp(&dictionary.len()) {
+                std::cmp::Ordering::Less => Some(dictionary[dict_idx].as_str()),
+                std::cmp::Ordering::Equal => Some(" "),
+                std::cmp::Ordering::Greater => None,
+            };
+            if let Some(ch) = ch {
+                chars.push(ch.to_string());
                 // softmax 근사 (max값을 신뢰도로 사용)
                 scores.push(max_val);
             }
@@ -188,4 +195,23 @@ fn resize_rec(crop: &RgbImage, max_width: u32) -> RgbImage {
         REC_HEIGHT,
         image::imageops::FilterType::Lanczos3,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 사전 바로 다음 클래스(공백)가 띄어쓰기로 살아난다.
+    #[test]
+    fn ctc_decode_keeps_space_class() {
+        let dictionary = vec!["문".to_string(), "서".to_string()];
+        let classes = dictionary.len() + 2; // blank + 사전 + 공백
+        let steps = [1usize, 0, 3, 2, 2]; // 문, blank, 공백, 서, 서(중복)
+        let mut logits = vec![0.0f32; steps.len() * classes];
+        for (t, &c) in steps.iter().enumerate() {
+            logits[t * classes + c] = 1.0;
+        }
+        let r = ctc_decode(&logits, steps.len(), classes, &dictionary);
+        assert_eq!(r.text, "문 서");
+    }
 }

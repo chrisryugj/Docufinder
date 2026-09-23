@@ -1,6 +1,6 @@
 //! 기하 유틸리티: 윤곽선 검출, 최소 회전 사각형, crop & warp
 
-use image::{DynamicImage, RgbImage};
+use image::RgbImage;
 
 /// 바운딩 박스 (4점 좌표, 시계방향: 좌상→우상→우하→좌하)
 #[derive(Debug, Clone)]
@@ -130,9 +130,9 @@ pub fn compute_box_score(
     }
 }
 
-/// Quad 영역을 원본 이미지에서 crop하여 수평 직사각형으로 변환
-pub fn crop_quad(image: &DynamicImage, quad: &Quad) -> RgbImage {
-    let rgb = image.to_rgb8();
+/// Quad 영역을 원본 이미지에서 crop하여 수평 직사각형으로 변환.
+/// 원본은 호출자가 RGB 로 한 번만 바꿔 넘긴다 (종전엔 상자마다 전체 이미지를 변환했다).
+pub fn crop_quad(rgb: &RgbImage, quad: &Quad) -> RgbImage {
     let (img_w, img_h) = (rgb.width(), rgb.height());
 
     let x1 = quad.points[0].0.max(0.0) as u32;
@@ -176,19 +176,68 @@ fn rotate_90_ccw(img: &RgbImage) -> RgbImage {
 
 /// 바운딩 박스를 y좌표 → x좌표 순으로 정렬 (읽기 순서)
 pub fn sort_boxes_reading_order(boxes: &mut [Quad]) {
-    // y 좌표 기준 그룹핑 (같은 줄 판정: y 차이 < 높이의 50%)
-    boxes.sort_by(|a, b| {
-        let ay = a.points[0].1;
-        let by = b.points[0].1;
-        let ah = a.points[2].1 - a.points[0].1;
-        let bh = b.points[2].1 - b.points[0].1;
-        let threshold = (ah.min(bh)) * 0.5;
+    sort_reading_lines(
+        boxes,
+        |q| q.points[0].1,
+        |q| q.points[2].1 - q.points[0].1,
+        |q| q.points[0].0,
+    );
+}
 
-        // total_cmp: NaN 전이성 위반 방지 (Rust 1.81+ smallsort panic)
-        if (ay - by).abs() < threshold {
-            a.points[0].0.total_cmp(&b.points[0].0)
-        } else {
-            ay.total_cmp(&by)
+/// 읽기 순서 정렬: 위쪽 좌표순으로 늘어놓고, 줄 첫 상자와 위쪽 차이가 높이(둘 중 작은 쪽)의 50%
+/// 미만이면 같은 줄로 묶어 줄 안에서 왼쪽부터 놓는다.
+///
+/// 종전엔 "두 상자의 차이가 임계 미만이면 x, 아니면 y" 를 비교 함수로 썼는데, 임계가 쌍마다 달라
+/// 추이성이 깨진다(A≈B, B≈C 인데 A·C 는 다른 줄). Rust 1.81+ 정렬은 이런 비교 함수에서 패닉할 수 있다.
+pub(crate) fn sort_reading_lines<T: Clone>(
+    items: &mut [T],
+    top: impl Fn(&T) -> f32,
+    height: impl Fn(&T) -> f32,
+    left: impl Fn(&T) -> f32,
+) {
+    items.sort_by(|a, b| top(a).total_cmp(&top(b)));
+    let mut start = 0;
+    while start < items.len() {
+        let (anchor_top, anchor_h) = (top(&items[start]), height(&items[start]));
+        let mut end = start + 1;
+        while end < items.len()
+            && (top(&items[end]) - anchor_top).abs() < anchor_h.min(height(&items[end])) * 0.5
+        {
+            end += 1;
         }
-    });
+        items[start..end].sort_by(|a, b| left(a).total_cmp(&left(b)));
+        start = end;
+    }
+}
+
+#[cfg(test)]
+mod reading_order_tests {
+    use super::sort_reading_lines;
+
+    /// (위, 높이, 왼쪽) 상자. 줄 첫 상자 기준으로 묶고 줄 안은 왼쪽부터.
+    #[test]
+    fn groups_lines_and_orders_left_to_right() {
+        let mut boxes = vec![
+            (21.0f32, 10.0f32, 5.0f32, "둘째줄-왼"),
+            (0.0, 10.0, 50.0, "첫줄-오른"),
+            (3.0, 10.0, 10.0, "첫줄-왼"),
+            (22.0, 10.0, 40.0, "둘째줄-오른"),
+        ];
+        sort_reading_lines(&mut boxes, |b| b.0, |b| b.1, |b| b.2);
+        let names: Vec<_> = boxes.iter().map(|b| b.3).collect();
+        assert_eq!(names, ["첫줄-왼", "첫줄-오른", "둘째줄-왼", "둘째줄-오른"]);
+    }
+
+    /// 종전 비교 함수가 추이성을 깨던 배치(높이가 들쭉날쭉한 상자 다수)에서도 패닉하지 않는다.
+    #[test]
+    fn mixed_heights_do_not_panic() {
+        let mut boxes: Vec<(f32, f32, f32)> = (0..400)
+            .map(|i| {
+                let i = i as f32;
+                ((i * 7.3) % 97.0, 1.0 + (i * 3.1) % 13.0, (i * 11.7) % 211.0)
+            })
+            .collect();
+        sort_reading_lines(&mut boxes, |b| b.0, |b| b.1, |b| b.2);
+        assert_eq!(boxes.len(), 400);
+    }
 }

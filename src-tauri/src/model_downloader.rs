@@ -496,8 +496,18 @@ fn download_file_optional_hash(url: &str, dest: &Path, expected_hash: &str) -> R
     }
 }
 
+/// 모델 다운로드 직렬화. 설정 자동 저장 등으로 같은 모델 다운로드가 겹치면 같은 `.tmp` 에 번갈아
+/// 쓰여 해시가 어긋나고, 멀쩡한 다운로드를 "변조"로 보고했다.
+static DOWNLOAD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// SHA-256 검증 포함 파일 다운로드
 fn download_file_verified(url: &str, dest: &Path, expected_hash: &str) -> Result<(), String> {
+    let _guard = DOWNLOAD_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // 기다리는 동안 앞선 호출이 이미 받아 뒀으면 그대로 쓴다
+    if dest.exists() && compute_sha256(dest).is_ok_and(|h| h == expected_hash) {
+        return Ok(());
+    }
+
     // 임시 파일에 다운로드
     let temp_path = dest.with_extension("tmp");
 

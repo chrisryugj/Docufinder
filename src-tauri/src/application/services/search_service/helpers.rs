@@ -84,18 +84,20 @@ pub fn collapse_by_lineage(results: Vec<SearchResult>) -> Vec<SearchResult> {
     use std::collections::HashMap;
 
     // 1. lineage_id → 대표 file_path 선정
-    // canonical이 포함되면 무조건 대표, 아니면 최고 점수 버전.
-    let mut rep: HashMap<String, (String, bool, f64)> = HashMap::new(); // lineage_id → (path, is_canonical, score)
+    // canonical이 포함되면 무조건 대표, 아니면 먼저 나온 버전. 결과는 관련도순으로 오므로 먼저
+    // 나온 것이 가장 잘 맞는 버전이다. 점수로 비교하면 모드마다 방향이 달라(키워드 bm25 는 낮을수록
+    // 좋고 하이브리드 RRF·벡터는 높을수록 좋다) 키워드 검색에서 가장 덜 맞는 버전이 남았다.
+    let mut rep: HashMap<String, (String, bool)> = HashMap::new(); // lineage_id → (path, is_canonical)
     for r in &results {
         let Some(lid) = r.lineage_id.as_ref() else {
             continue;
         };
         let is_canonical = r.lineage_role.as_deref() == Some("canonical");
         match rep.get(lid) {
-            Some((_, true, _)) if !is_canonical => continue, // canonical 확정, 무시
-            Some((_, false, sc)) if !is_canonical && r.score <= *sc => continue,
+            Some((_, true)) => continue, // canonical 확정, 무시
+            Some((_, false)) if !is_canonical => continue,
             _ => {
-                rep.insert(lid.clone(), (r.file_path.clone(), is_canonical, r.score));
+                rep.insert(lid.clone(), (r.file_path.clone(), is_canonical));
             }
         }
     }
@@ -104,10 +106,7 @@ pub fn collapse_by_lineage(results: Vec<SearchResult>) -> Vec<SearchResult> {
     results
         .into_iter()
         .filter(|r| match r.lineage_id.as_ref() {
-            Some(lid) => rep
-                .get(lid)
-                .map(|(p, _, _)| p == &r.file_path)
-                .unwrap_or(true),
+            Some(lid) => rep.get(lid).map(|(p, _)| p == &r.file_path).unwrap_or(true),
             None => true,
         })
         .collect()
@@ -470,7 +469,7 @@ pub fn smart_apply_filename_filter(r: &SearchResult, filename: &Option<String>) 
 /// 확장자로 다시 확장해야 .hwp / .xls / .doc / .ppt 파일도 잡힌다.
 pub fn file_type_extensions(ft: &str) -> Vec<String> {
     match ft {
-        "hwpx" => vec!["hwp".to_string(), "hwpx".to_string()],
+        "hwpx" => vec!["hwp".to_string(), "hwpx".to_string(), "hml".to_string()],
         "docx" => vec!["doc".to_string(), "docx".to_string()],
         "xlsx" => vec!["xls".to_string(), "xlsx".to_string()],
         "pptx" => vec!["ppt".to_string(), "pptx".to_string()],
@@ -567,6 +566,34 @@ mod tests {
         }
     }
 
+    /// 버전 묶기는 관련도순으로 먼저 나온 버전을 남긴다 (canonical 이 있으면 그것).
+    /// 키워드 모드 score 는 bm25 라 낮을수록 좋아서, 점수 비교로는 가장 덜 맞는 버전이 남았다.
+    #[test]
+    fn collapse_by_lineage_keeps_first_ranked_version() {
+        let version = |name: &str, bm25: f64, role: &str| SearchResult {
+            score: bm25,
+            lineage_id: Some("L1".into()),
+            lineage_role: Some(role.into()),
+            ..dummy(name, None)
+        };
+        // 키워드 결과: bm25 오름차순(관련도순)으로 온다
+        let out = collapse_by_lineage(vec![
+            version("계획_최종.hwpx", -9.0, "version"),
+            version("계획_초안.hwpx", -2.0, "version"),
+            dummy("무관.hwpx", None),
+        ]);
+        let names: Vec<_> = out.iter().map(|r| r.file_name.as_str()).collect();
+        assert_eq!(names, ["계획_최종.hwpx", "무관.hwpx"]);
+
+        // canonical 은 순서와 무관하게 대표
+        let out = collapse_by_lineage(vec![
+            version("계획_v2.hwpx", -9.0, "version"),
+            version("계획.hwpx", -1.0, "canonical"),
+        ]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].file_name, "계획.hwpx");
+    }
+
     /// 회귀: macOS 는 파일명을 NFD 로 저장하고 IME 검색어는 NFC 라, 소문자화만 하면
     /// 캐시가 찾아낸 결과를 이 후처리 필터가 다시 떨어뜨린다.
     #[test]
@@ -599,7 +626,7 @@ mod tests {
 
     #[test]
     fn file_type_extensions_expands_groups() {
-        assert_eq!(file_type_extensions("hwpx"), ["hwp", "hwpx"]);
+        assert_eq!(file_type_extensions("hwpx"), ["hwp", "hwpx", "hml"]);
         assert_eq!(file_type_extensions("xlsx"), ["xls", "xlsx"]);
         assert_eq!(file_type_extensions("docx"), ["doc", "docx"]);
         assert_eq!(file_type_extensions("pptx"), ["ppt", "pptx"]);

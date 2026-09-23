@@ -169,8 +169,15 @@ fn hwpx_is_encrypted(path: &Path) -> std::io::Result<bool> {
         Ok(m) => m,
         Err(_) => return Ok(false),
     };
+    // manifest.xml 은 수 KB 다. 모든 HWPX 에 kordoc 보다 먼저 도는 경로라, 헤더 크기를 속인
+    // 압축 폭탄이 여기서 메모리를 다 먹지 않게 1MB 까지만 읽는다.
     let mut content = String::new();
-    if manifest.read_to_string(&mut content).is_err() {
+    if manifest
+        .by_ref()
+        .take(1024 * 1024)
+        .read_to_string(&mut content)
+        .is_err()
+    {
         return Ok(false);
     }
 

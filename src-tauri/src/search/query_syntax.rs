@@ -216,7 +216,7 @@ fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
 /// (application 레이어 의존을 피하기 위한 의도적 미러 — 그룹 변경 시 양쪽 동기화)
 fn expand_ext_group(ext: &str) -> Vec<String> {
     match ext {
-        "hwp" | "hwpx" => vec!["hwp".into(), "hwpx".into()],
+        "hwp" | "hwpx" | "hml" => vec!["hwp".into(), "hwpx".into(), "hml".into()],
         "doc" | "docx" => vec!["doc".into(), "docx".into()],
         "xls" | "xlsx" => vec!["xls".into(), "xlsx".into()],
         "ppt" | "pptx" => vec!["ppt".into(), "pptx".into()],
@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn ext_filter_expands_legacy_groups() {
         let q = parse_operators("예산 ext:hwp");
-        assert_eq!(q.ext_filters, vec!["hwp", "hwpx"]);
+        assert_eq!(q.ext_filters, vec!["hwp", "hwpx", "hml"]);
         assert_eq!(q.terms, "예산");
 
         let q = parse_operators("ext:.PDF,xls");
@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(q.terms, "예산");
         assert_eq!(q.phrases, vec!["감사 결과"]);
         assert_eq!(q.excludes, vec!["초안"]);
-        assert_eq!(q.ext_filters, vec!["hwp", "hwpx"]);
+        assert_eq!(q.ext_filters, vec!["hwp", "hwpx", "hml"]);
         assert_eq!(q.path_filters, vec!["2024"]);
         assert!(q.after.is_some());
         assert!(q.date_range().is_some());

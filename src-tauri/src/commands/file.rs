@@ -14,6 +14,16 @@ fn windows_system32(exe: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(root).join("System32").join(exe)
 }
 
+/// 열기용 프로세스를 띄우고 끝날 때까지 뒤에서 기다려 회수한다. spawn 만 하고 Child 를 버리면
+/// 맥·리눅스에서 끝난 `open`·`xdg-open` 이 좀비로 남아 파일을 열 때마다 쌓였다.
+fn spawn_reaped(cmd: &mut Command) -> Result<(), String> {
+    let mut child = cmd.spawn().map_err(|e| format!("열기 실패: {}", e))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 /// 플랫폼별 기본 앱으로 경로 열기 (공통 헬퍼)
 fn open_with_default(path_str: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
@@ -23,24 +33,17 @@ fn open_with_default(path_str: &str) -> Result<(), String> {
         // 경로라 spawn 이 항상 실패한다 (PATH hijack 방지 커밋 #28 의 회귀로
         // 파일/폴더/로그폴더 열기가 모두 깨져 있었음).
         let win_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
-        Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
-            .arg(path_str)
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(
+            Command::new(std::path::PathBuf::from(win_root).join("explorer.exe")).arg(path_str),
+        )?;
     }
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .arg(path_str)
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(Command::new("open").arg(path_str))?;
     }
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open")
-            .arg(path_str)
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(Command::new("xdg-open").arg(path_str))?;
     }
     Ok(())
 }
@@ -59,19 +62,15 @@ fn reveal_with_default(path_str: &str) -> Result<(), String> {
         // 기본 폴더만 연다. raw_arg 로 경로만 따옴표로 감싼 원형을 그대로 넘긴다.
         // Windows 파일명에 " 문자는 허용되지 않으므로 추가 이스케이프 불필요.
         let win_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from("C:\\Windows"));
-        Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
-            .raw_arg(format!("/select,\"{}\"", path_str))
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(
+            Command::new(std::path::PathBuf::from(win_root).join("explorer.exe"))
+                .raw_arg(format!("/select,\"{}\"", path_str)),
+        )?;
     }
     #[cfg(target_os = "macos")]
     {
         // open -R — Finder 에서 파일을 reveal (선택 상태로 표시)
-        Command::new("open")
-            .arg("-R")
-            .arg(path_str)
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(Command::new("open").arg("-R").arg(path_str))?;
     }
     #[cfg(target_os = "linux")]
     {
@@ -80,10 +79,7 @@ fn reveal_with_default(path_str: &str) -> Result<(), String> {
             .parent()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| path_str.to_string());
-        Command::new("xdg-open")
-            .arg(parent)
-            .spawn()
-            .map_err(|e| format!("열기 실패: {}", e))?;
+        spawn_reaped(Command::new("xdg-open").arg(parent))?;
     }
     Ok(())
 }
@@ -300,18 +296,12 @@ pub async fn open_url(url: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        Command::new("open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| format!("URL 열기 실패: {}", e))?;
+        spawn_reaped(Command::new("open").arg(&url))?;
     }
 
     #[cfg(target_os = "linux")]
     {
-        Command::new("xdg-open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| format!("URL 열기 실패: {}", e))?;
+        spawn_reaped(Command::new("xdg-open").arg(&url))?;
     }
 
     Ok(())

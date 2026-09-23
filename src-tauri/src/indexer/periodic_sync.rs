@@ -109,12 +109,11 @@ fn resume_watching_inner(app: &AppHandle, db_path: &Path) {
         return;
     };
     let Ok(mut wm) = wm.write() else { return };
-    let Ok(conn) = crate::db::get_connection(db_path) else {
-        return;
-    };
-    let Ok(folders) = crate::db::get_watched_folders(&conn) else {
-        return;
-    };
+    // DB 를 못 읽어도 resume 은 불러 일시정지 카운트 짝을 맞춘다 (종전엔 여기서 돌아가 감시가 영영 멈췄다)
+    let folders = crate::db::get_connection(db_path)
+        .ok()
+        .and_then(|conn| crate::db::get_watched_folders(&conn).ok())
+        .unwrap_or_default();
     let existing: Vec<String> = folders
         .into_iter()
         .filter(|f| Path::new(f).exists())

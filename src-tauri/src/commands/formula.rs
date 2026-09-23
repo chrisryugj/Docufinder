@@ -138,7 +138,8 @@ fn run_download(app: AppHandle) -> ApiResult<()> {
     cmd.arg(cli.to_string_lossy().as_ref())
         .arg("check-formula-models")
         .stdin(Stdio::null())
-        .stdout(Stdio::piped())
+        // 진행률은 stderr 로만 읽는다. stdout 을 파이프로 받고 안 읽으면 출력이 버퍼를 채울 때 멈춘다.
+        .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
     #[cfg(windows)]

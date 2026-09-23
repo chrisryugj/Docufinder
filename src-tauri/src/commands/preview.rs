@@ -103,6 +103,57 @@ fn file_mtime_secs(path: &str) -> Option<i64> {
         .map(|d| d.as_secs() as i64)
 }
 
+// ======================== kordoc 마크다운 캐시 ========================
+
+/// 캐시 상한: 문서 수와 총 바이트 둘 다 (대형 문서 몇 개가 메모리를 붙잡지 않게).
+const MD_CACHE_MAX_ENTRIES: usize = 16;
+const MD_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
+
+/// (정규 경로, 수정 시각, 크기, 수식 OCR 여부). 내용이 바뀌면 시각·크기가 달라져 자동 무효화.
+type MdCacheKey = (String, std::time::SystemTime, u64, bool);
+
+/// 결과 사이를 오갈 때 같은 문서를 kordoc 으로 다시 파싱하지 않게(문서당 0.1~3초) 최근
+/// 마크다운을 LRU 로 둔다. 앞쪽이 최근. 암호 문서는 담지 않는다.
+static MD_CACHE: Mutex<std::collections::VecDeque<(MdCacheKey, String)>> =
+    Mutex::new(std::collections::VecDeque::new());
+
+fn md_cache_key(fp: &str) -> Option<MdCacheKey> {
+    let meta = std::fs::metadata(fp).ok()?;
+    Some((
+        fp.to_string(),
+        meta.modified().ok()?,
+        meta.len(),
+        crate::parsers::kordoc::is_formula_ocr_enabled(),
+    ))
+}
+
+fn md_cache_get(key: &MdCacheKey) -> Option<String> {
+    let mut cache = MD_CACHE.lock().ok()?;
+    let idx = cache.iter().position(|(k, _)| k == key)?;
+    let entry = cache.remove(idx)?;
+    let md = entry.1.clone();
+    cache.push_front(entry);
+    Some(md)
+}
+
+fn md_cache_put(key: MdCacheKey, md: &str) {
+    if md.len() > MD_CACHE_MAX_BYTES / 4 {
+        return; // 초대형 문서 하나가 캐시를 통째로 비우지 않게
+    }
+    let Ok(mut cache) = MD_CACHE.lock() else {
+        return;
+    };
+    cache.retain(|(k, _)| k.0 != key.0);
+    cache.push_front((key, md.to_string()));
+    let mut total: usize = cache.iter().map(|(_, m)| m.len()).sum();
+    while cache.len() > MD_CACHE_MAX_ENTRIES || total > MD_CACHE_MAX_BYTES {
+        let Some((_, old)) = cache.pop_back() else {
+            break;
+        };
+        total -= old.len();
+    }
+}
+
 // ======================== 미리보기 ========================
 
 /// 미리보기 섹션 (오버랩 제거 후 병합된 연속 텍스트)
@@ -281,8 +332,12 @@ async fn parse_kordoc_markdown(
     tokio::task::spawn_blocking(move || -> ApiResult<String> {
         let path = std::path::Path::new(&fp);
 
-        let kordoc_exts = ["hwp", "hwpx", "docx", "pdf"];
+        let kordoc_exts = ["hwp", "hwpx", "hml", "docx", "pdf"];
         if kordoc_exts.contains(&ext.as_str()) && crate::parsers::kordoc::is_available() {
+            let cache_key = password.is_none().then(|| md_cache_key(&fp)).flatten();
+            if let Some(md) = cache_key.as_ref().and_then(md_cache_get) {
+                return Ok(md);
+            }
             let result = match password.as_deref() {
                 Some(pw) => crate::parsers::kordoc::get_markdown_with_password(path, pw),
                 None => crate::parsers::kordoc::get_markdown(path),
@@ -290,6 +345,9 @@ async fn parse_kordoc_markdown(
             match result {
                 Ok(md) => {
                     tracing::info!("preview: kordoc 성공 ({}자) — {}", md.len(), fp);
+                    if let Some(key) = cache_key {
+                        md_cache_put(key, &md);
+                    }
                     return Ok(md);
                 }
                 Err(crate::parsers::ParseError::PasswordProtected(msg)) => {
@@ -729,7 +787,8 @@ pub async fn get_bookmarks(state: State<'_, RwLock<AppContainer>>) -> ApiResult<
 fn cleanup_orphan_bookmarks(db_path: &str, entries: &[(i64, String)]) {
     let orphan_ids: Vec<i64> = entries
         .iter()
-        .filter(|(_, path)| !std::path::Path::new(path).exists())
+        // 종전엔 `exists()` 만 봐서 연결이 끊긴 동안 북마크와 메모가 지워졌다
+        .filter(|(_, path)| crate::utils::confirmed_missing(std::path::Path::new(path)))
         .map(|(id, _)| *id)
         .collect();
     if orphan_ids.is_empty() {
@@ -758,5 +817,49 @@ fn cleanup_orphan_bookmarks(db_path: &str, entries: &[(i64, String)]) {
             "Cleaned up {} orphaned bookmarks (files no longer exist)",
             deleted
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key(path: &str, secs: u64) -> MdCacheKey {
+        (
+            path.to_string(),
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs),
+            10,
+            false,
+        )
+    }
+
+    /// LRU: 적중하면 앞으로, 상한을 넘기면 가장 오래된 것부터, 같은 경로의 옛 버전은 교체.
+    #[test]
+    fn md_cache_lru_and_invalidation() {
+        for i in 0..MD_CACHE_MAX_ENTRIES + 3 {
+            md_cache_put(key(&format!("/d/{i}.hwpx"), 1), &format!("본문 {i}"));
+        }
+        assert!(
+            md_cache_get(&key("/d/0.hwpx", 1)).is_none(),
+            "오래된 항목은 밀려난다"
+        );
+        let newest = format!("/d/{}.hwpx", MD_CACHE_MAX_ENTRIES + 2);
+        assert_eq!(
+            md_cache_get(&key(&newest, 1)).as_deref(),
+            Some(format!("본문 {}", MD_CACHE_MAX_ENTRIES + 2).as_str())
+        );
+
+        // 파일이 바뀌면(수정 시각) 옛 키는 적중하지 않고, 같은 경로 항목은 하나만 남는다.
+        md_cache_put(key(&newest, 2), "새 본문");
+        assert!(md_cache_get(&key(&newest, 1)).is_none());
+        assert_eq!(md_cache_get(&key(&newest, 2)).as_deref(), Some("새 본문"));
+        let same_path = MD_CACHE
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k.0 == newest)
+            .count();
+        assert_eq!(same_path, 1);
+        assert!(MD_CACHE.lock().unwrap().len() <= MD_CACHE_MAX_ENTRIES);
     }
 }

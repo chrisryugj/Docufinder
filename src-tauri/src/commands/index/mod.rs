@@ -123,15 +123,17 @@ pub(super) fn resume_watching(state: &State<'_, RwLock<AppContainer>>, db_path: 
     if let Ok(container) = state.read() {
         if let Ok(wm) = container.get_watch_manager() {
             if let Ok(mut wm) = wm.write() {
-                if let Ok(conn) = crate::db::get_connection(db_path) {
-                    if let Ok(folders) = crate::db::get_watched_folders(&conn) {
-                        let existing_folders: Vec<String> = folders
-                            .into_iter()
-                            .filter(|folder| Path::new(folder).exists())
-                            .collect();
-                        wm.resume_with_folders(&existing_folders);
-                    }
-                }
+                // DB 를 못 읽어도 resume 은 불러 일시정지 카운트 짝을 맞춘다 (종전엔 건너뛰어
+                // 감시가 영영 멈췄다. 폴더는 다음 resume 에서 다시 등록된다)
+                let folders = crate::db::get_connection(db_path)
+                    .ok()
+                    .and_then(|conn| crate::db::get_watched_folders(&conn).ok())
+                    .unwrap_or_default();
+                let existing_folders: Vec<String> = folders
+                    .into_iter()
+                    .filter(|folder| Path::new(folder).exists())
+                    .collect();
+                wm.resume_with_folders(&existing_folders);
             }
         }
     }
@@ -438,11 +440,9 @@ pub async fn start_vector_indexing(
 #[tauri::command]
 pub async fn cancel_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Cancelling indexing...");
-    let service = {
-        let container = state.read()?;
-        container.index_service()
-    };
-    service.cancel_indexing();
+    // IndexService 가 쓰는 것과 같은 취소 플래그를 바로 세운다. 서비스를 만들면 임베더를 동기
+    // 로드할 수 있어(수 초) 그동안 취소가 늦고 컨테이너 읽기 락도 붙잡았다.
+    state.read()?.cancel_indexing();
     Ok(())
 }
 
@@ -450,9 +450,11 @@ pub async fn cancel_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResul
 #[tauri::command]
 pub async fn cancel_vector_indexing(state: State<'_, RwLock<AppContainer>>) -> ApiResult<()> {
     tracing::info!("Cancelling vector indexing...");
-    let service = {
-        let container = state.read()?;
-        container.index_service()
-    };
-    service.cancel_vector_indexing().map_err(ApiError::from)
+    // cancel_indexing 과 같은 이유로 서비스를 만들지 않고 공유 워커에 바로 알린다.
+    let worker = state.read()?.get_vector_worker();
+    let worker = worker
+        .read()
+        .map_err(|e| ApiError::CommandFailed(format!("VectorWorker lock failed: {}", e)))?;
+    worker.cancel();
+    Ok(())
 }

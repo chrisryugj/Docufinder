@@ -308,8 +308,13 @@ pub fn spawn_flush_pending_crash_logs(app_data_dir: PathBuf) {
                 continue;
             }
             // 최근 1MB만 (너무 크면 Telegram 4096자 제한에 걸림 — format_report 에서 잘림)
+            // 글자 경계에서 자른다 (바이트 위치로 자르면 한글 중간에서 패닉)
             let tail = if content.len() > 1_000_000 {
-                &content[content.len() - 1_000_000..]
+                let mut start = content.len() - 1_000_000;
+                while !content.is_char_boundary(start) {
+                    start += 1;
+                }
+                &content[start..]
             } else {
                 &content
             };

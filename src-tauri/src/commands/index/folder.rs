@@ -128,6 +128,35 @@ pub async fn add_folder(
         );
     }
 
+    // 메타데이터 스캔 중에 취소했으면 여기서 끝낸다. 다음 단계(index_folder_fts)가 시작하면서
+    // 취소 플래그를 내리므로, 종전엔 취소를 눌러도 본문 인덱싱이 그대로 이어졌다.
+    if matches!(&metadata_result, Ok(meta) if meta.was_cancelled) {
+        if let Ok(conn) = crate::db::get_connection(&ctx.db_path) {
+            let _ = crate::db::set_folder_indexing_status(&conn, &path, "cancelled");
+        }
+        let _ = app_handle.emit(
+            "indexing-progress",
+            &IndexingProgress {
+                phase: "cancelled".to_string(),
+                total_files: 0,
+                processed_files: 0,
+                current_file: None,
+                folder_path: path.clone(),
+                error: None,
+            },
+        );
+        resume_watching(&state, &ctx.db_path);
+        return Ok(AddFolderResult {
+            success: true,
+            indexed_count: 0,
+            failed_count: 0,
+            vectors_count: 0,
+            message: "인덱싱을 취소했습니다. 파일 이름 검색은 됩니다.".to_string(),
+            errors: vec![],
+            ocr_image_count: 0,
+        });
+    }
+
     // 4. FTS 인덱싱
     let progress_callback = create_fts_progress_callback(app_handle.clone());
     let result = match ctx

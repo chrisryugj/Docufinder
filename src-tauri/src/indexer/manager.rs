@@ -12,6 +12,7 @@ use crate::indexer::pipeline;
 use crate::ocr::OcrEngine;
 use crate::search::filename_cache::{FilenameCache, FilenameEntry};
 use crate::search::vector::VectorIndex;
+use notify::event::ModifyKind;
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use once_cell::sync::OnceCell;
 use std::collections::HashSet;
@@ -252,11 +253,19 @@ impl WatchManager {
     ///
     /// 카운터 감소 후 0이 되었을 때만 실제로 폴더를 재등록.
     /// 중첩된 pause가 있으면 마지막 resume에서만 활성화.
+    /// 멈춘 적이 없으면(앱 시작 직후) 바로 등록한다. 종전엔 경고만 남기고 돌아가서, 시작 동기화가
+    /// 전부 건너뛰어지면(직전 5분 안에 동기화함 등) 그 세션 내내 감시가 꺼져 있었다. watch() 는 이미
+    /// 감시 중인 폴더를 건너뛰므로 여러 번 불려도 안전하다.
     pub fn resume_with_folders(&mut self, folders: &[String]) {
         loop {
             let current = self.pause_count.load(std::sync::atomic::Ordering::SeqCst);
             if current == 0 {
-                tracing::warn!("resume_with_folders called but was not paused");
+                for folder in folders {
+                    if let Err(e) = self.watch(Path::new(folder)) {
+                        tracing::warn!("Failed to start watching {:?}: {}", folder, e);
+                    }
+                }
+                tracing::info!("File watching started ({} folders)", folders.len());
                 return;
             }
             let new_val = current - 1;
@@ -357,7 +366,19 @@ impl WatchManager {
                                 count
                             );
                         } else {
-                            Self::process_pending_files(&mut pending_files, &ctx);
+                            // 처리 중 패닉이 나도 감시 루프는 살아 있어야 한다. 종전엔 스레드가 끝나
+                            // 그 세션 동안 감시가 조용히 멈췄다(열린 트랜잭션은 커넥션 풀이 반납 때 되돌린다).
+                            let processed =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    Self::process_pending_files(&mut pending_files, &ctx)
+                                }));
+                            if processed.is_err() {
+                                tracing::error!(
+                                    "[WatchManager] 변경 처리 중 내부 오류, {}건 건너뜀 (감시는 계속)",
+                                    pending_files.len()
+                                );
+                                pending_files.clear();
+                            }
                         }
                     }
                 }
@@ -410,6 +431,25 @@ impl WatchManager {
                     // 삭제 이벤트: is_file() 체크 불필요 (파일이 이미 없음)
                     tracing::debug!("File removed: {:?}", path);
                     pending.insert(path.clone());
+                }
+                // 이름 바꾸기·이동의 옛 경로는 Modify(Name) 으로 오고 경로는 이미 없다. 있는 파일만
+                // 받으면 옛 경로가 색인에 영영 남으므로 넣어 두고 처리 단계에서 삭제로 다룬다.
+                EventKind::Modify(ModifyKind::Name(_)) if !path.exists() => {
+                    tracing::debug!("File renamed away: {:?}", path);
+                    pending.insert(path.clone());
+                }
+                // 폴더를 통째로 옮겨 오거나 만들면 이벤트는 폴더 경로 하나뿐이다. 안의 파일을 받지 않으면
+                // 옮겨 온 문서가 다음 동기화(기본 10분, 자동 동기화를 끄면 재시작)까지 검색에서 빠진다
+                // (옛 경로 쪽은 처리 단계에서 폴더째 삭제된다).
+                EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)) if path.is_dir() => {
+                    let files = crate::indexer::collector::collect_files(
+                        path,
+                        true,
+                        &std::sync::atomic::AtomicBool::new(false),
+                        excluded_dirs,
+                    );
+                    tracing::debug!("Folder moved in/created: {:?} ({} files)", path, files.len());
+                    pending.extend(files);
                 }
                 EventKind::Create(_) | EventKind::Modify(_)
                     // 생성/수정 이벤트: 파일 존재 확인 (디렉토리 제외)
@@ -481,6 +521,39 @@ impl WatchManager {
                     ctx.filename_cache.remove(fid);
                 }
                 tracing::info!("Deleted from index + cache: {}", path_str);
+            }
+
+            // 폴더째 지워지거나 옮겨지면 이벤트는 폴더 경로 하나로만 온다. 그 아래 파일 행도 지운다.
+            // 색인된 파일 경로였다면 폴더가 아니니 건너뛴다 — 이 조회는 LIKE 라 files 를 통째로 훑어,
+            // 대량 삭제(Shift+Del·네트워크 공유 끊김)에서 파일마다 돌면 감시 스레드가 몇 분씩 멈췄다.
+            let under = if file_id.is_none() {
+                db::get_file_and_chunk_ids_in_folder(&conn, &path_str)
+            } else {
+                Ok(Vec::new())
+            };
+            if let Ok(under) = under {
+                if !under.is_empty() {
+                    if let Some(vi) = ctx.vector_index.get() {
+                        for chunk_id in under.iter().flat_map(|(_, ids)| ids.iter()) {
+                            let _ = vi.remove(*chunk_id);
+                        }
+                    }
+                    match db::retry_on_busy(|| db::delete_files_in_folder(&conn, path_str_ref)) {
+                        Ok(n) => {
+                            for (fid, _) in &under {
+                                ctx.filename_cache.remove(*fid);
+                            }
+                            tracing::info!(
+                                "Deleted {} files under removed folder: {}",
+                                n,
+                                path_str
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to delete files under {}: {}", path_str, e)
+                        }
+                    }
+                }
             }
         }
 
@@ -684,5 +757,82 @@ impl Drop for WatchManager {
     fn drop(&mut self) {
         // 🔴 Critical 버그 수정: Drop에서 shutdown 호출하여 thread join
         self.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{CreateKind, RenameMode};
+
+    fn event(kind: EventKind, path: PathBuf) -> Event {
+        Event::new(kind).add_path(path)
+    }
+
+    /// 폴더를 통째로 옮겨 오면 이벤트는 폴더 경로 하나뿐 — 안의 파일(하위 폴더 포함)을 받는다.
+    #[test]
+    fn moved_in_folder_files_are_collected() {
+        let tmp = tempfile::tempdir().unwrap();
+        let moved = tmp.path().join("옮겨온폴더");
+        std::fs::create_dir_all(moved.join("하위")).unwrap();
+        std::fs::write(moved.join("a.hwpx"), "x").unwrap();
+        std::fs::write(moved.join("하위").join("b.pdf"), "x").unwrap();
+
+        let mut pending = HashSet::new();
+        WatchManager::collect_files_from_event(
+            &event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::To)),
+                moved.clone(),
+            ),
+            &mut pending,
+            &[],
+        );
+        assert!(pending.contains(&moved.join("a.hwpx")), "{pending:?}");
+        assert!(
+            pending.contains(&moved.join("하위").join("b.pdf")),
+            "{pending:?}"
+        );
+        assert!(!pending.contains(&moved), "폴더 자체는 색인 대상이 아니다");
+    }
+
+    /// 이름 바꾸기로 사라진 옛 경로는 삭제 대상으로 모인다 (종전엔 존재하는 파일만 받아 누락).
+    #[test]
+    fn renamed_away_path_is_collected_for_removal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("옛이름.hwpx");
+        let new = tmp.path().join("새이름.hwpx");
+        std::fs::write(&new, "x").unwrap();
+
+        let mut pending = HashSet::new();
+        WatchManager::collect_files_from_event(
+            &event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::From)),
+                old.clone(),
+            ),
+            &mut pending,
+            &[],
+        );
+        WatchManager::collect_files_from_event(
+            &event(
+                EventKind::Modify(ModifyKind::Name(RenameMode::To)),
+                new.clone(),
+            ),
+            &mut pending,
+            &[],
+        );
+        assert!(pending.contains(&old), "옛 경로가 빠졌다");
+        assert!(pending.contains(&new), "새 경로가 빠졌다");
+
+        // 없는 경로의 생성 이벤트는 여전히 무시한다
+        let mut pending = HashSet::new();
+        WatchManager::collect_files_from_event(
+            &event(
+                EventKind::Create(CreateKind::File),
+                tmp.path().join("없음.txt"),
+            ),
+            &mut pending,
+            &[],
+        );
+        assert!(pending.is_empty());
     }
 }

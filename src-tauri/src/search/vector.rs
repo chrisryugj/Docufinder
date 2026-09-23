@@ -513,6 +513,19 @@ impl VectorIndex {
         Ok(())
     }
 
+    /// `is_stale` 이 참인 chunk_id 의 벡터를 지우고 지운 개수를 돌려준다 (DB 에서 사라진 청크 정리용).
+    /// 지울 게 없으면 쓰기 모드로 바꾸지 않는다 (mmap 뷰 유지).
+    pub fn remove_stale(&self, is_stale: impl Fn(i64) -> bool) -> usize {
+        let stale: Vec<i64> = match self.id_map.read() {
+            Ok(map) => map.keys().copied().filter(|id| is_stale(*id)).collect(),
+            Err(_) => return 0,
+        };
+        stale
+            .into_iter()
+            .filter(|id| self.remove(*id).is_ok())
+            .count()
+    }
+
     /// 유사도 검색
     pub fn search(
         &self,
@@ -566,28 +579,32 @@ impl VectorIndex {
             // 비어있지 않은 경우는 id_map 길이 체크(아래)가 처리함
         }
 
+        // 락 순서는 add/remove 와 같게 index → id_map → next_key. 종전엔 id_map 을 쥔 채
+        // index 를 잡아서, add/remove(index 쓰기 → id_map 쓰기)와 겹치면 서로 기다리며 멈췄다
+        // (이후 검색도 index 읽기에서 막힌다). 저장하는 동안 둘을 함께 쥐어 파일 짝도 맞춘다.
+        let index = self.index.read().map_err(|_| VectorError::LockPoisoned)?;
         let id_map = self.id_map.read().map_err(|_| VectorError::LockPoisoned)?;
         let map_len = id_map.len();
+        let final_map_path = self.path.with_extension("map");
 
-        // 빈 인덱스는 저장하지 않음 (빈 파일이 다음 로드 시 에러 유발 가능)
+        // 전부 지워진 인덱스는 빈 파일을 쓰는 대신(다음 로드 시 에러 유발 가능) 옛 파일을 지운다.
+        // 남겨 두면 다음 실행에 옛 벡터가 다시 로드되고, 해제된 chunks.id 가 재사용될 때 다른
+        // 문서의 임베딩으로 오귀속된다(마지막 폴더 제거·전부 정리된 경우).
         if map_len == 0 {
+            let _ = std::fs::remove_file(&self.path);
+            let _ = std::fs::remove_file(&final_map_path);
             return Ok(());
         }
 
         // Step 1: tmp 파일에 먼저 저장
         let tmp_index_path = self.path.with_extension("usearch.tmp");
         let tmp_map_path = self.path.with_extension("map.tmp");
-        let final_map_path = self.path.with_extension("map");
 
         let tmp_index_str = tmp_index_path.to_string_lossy();
-        self.index
-            .read()
-            .map_err(|_| VectorError::LockPoisoned)?
-            .save(&tmp_index_str)
-            .map_err(|e| {
-                let _ = std::fs::remove_file(&tmp_index_path);
-                VectorError::IndexError(format!("{:?}", e))
-            })?;
+        index.save(&tmp_index_str).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_index_path);
+            VectorError::IndexError(format!("{:?}", e))
+        })?;
 
         // 매핑 파일 → tmp
         let next_key = *self
@@ -774,3 +791,93 @@ impl VectorIndex {
 // RwLock<Index>가 Send + Sync를 자동으로 구현하므로
 // VectorIndex도 자동으로 Send + Sync를 구현함
 // (unsafe impl 불필요)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unit_vec(seed: usize) -> Vec<f32> {
+        let mut v = vec![0.0f32; EMBEDDING_DIM];
+        v[seed % EMBEDDING_DIM] = 1.0;
+        v[(seed * 7 + 3) % EMBEDDING_DIM] = 0.5;
+        v
+    }
+
+    /// 벡터를 전부 지우고 저장하면 옛 파일도 사라져, 다음 실행에 옛 벡터가 되살아나지 않는다.
+    #[test]
+    fn save_after_removing_everything_deletes_stale_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.usearch");
+        let vi = VectorIndex::new(&path).unwrap();
+        vi.add(1, &unit_vec(1)).unwrap();
+        vi.add(2, &unit_vec(2)).unwrap();
+        vi.save().unwrap();
+        assert!(path.exists() && path.with_extension("map").exists());
+
+        vi.remove(1).unwrap();
+        vi.remove(2).unwrap();
+        vi.save().unwrap();
+        assert!(!path.exists(), "빈 인덱스 저장 뒤 옛 .usearch 가 남았다");
+        assert!(
+            !path.with_extension("map").exists(),
+            "빈 인덱스 저장 뒤 옛 .map 이 남았다"
+        );
+
+        let reloaded = VectorIndex::new(&path).unwrap();
+        assert_eq!(reloaded.chunk_count(), 0);
+    }
+
+    #[test]
+    fn remove_stale_drops_only_matching_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let vi = VectorIndex::new(&dir.path().join("vectors.usearch")).unwrap();
+        for id in 1..=4 {
+            vi.add(id, &unit_vec(id as usize)).unwrap();
+        }
+        let removed = vi.remove_stale(|id| id % 2 == 0);
+        assert_eq!(removed, 2);
+        assert!(vi.contains_chunk(1) && vi.contains_chunk(3));
+        assert!(!vi.contains_chunk(2) && !vi.contains_chunk(4));
+        assert_eq!(vi.remove_stale(|_| false), 0);
+    }
+
+    /// save 와 add/remove 가 동시에 돌아도 멈추지 않는다 (락 순서 역전 회귀 방지).
+    #[test]
+    fn save_concurrent_with_add_remove_does_not_deadlock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vectors.usearch");
+        let vi = std::sync::Arc::new(VectorIndex::new(&path).unwrap());
+        for i in 0..50 {
+            vi.add(i, &unit_vec(i as usize)).unwrap();
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let writer = {
+            let vi = vi.clone();
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                for round in 0..300i64 {
+                    let id = 1000 + round;
+                    vi.add(id, &unit_vec(round as usize)).unwrap();
+                    vi.remove(id).unwrap();
+                }
+                tx.send("writer").unwrap();
+            })
+        };
+        let saver = {
+            let vi = vi.clone();
+            std::thread::spawn(move || {
+                for _ in 0..60 {
+                    vi.save().unwrap();
+                }
+                tx.send("saver").unwrap();
+            })
+        };
+        for _ in 0..2 {
+            rx.recv_timeout(std::time::Duration::from_secs(60))
+                .expect("save 와 add/remove 가 서로 기다리며 멈췄다 (락 순서 역전)");
+        }
+        writer.join().unwrap();
+        saver.join().unwrap();
+    }
+}

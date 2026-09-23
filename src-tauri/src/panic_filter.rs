@@ -16,8 +16,10 @@ pub const BENIGN_PANIC_SOURCES: &[&str] = &[
     "cff-parser",            // pdf-extract transitive: CFF 폰트 파서
     "quick-xml",
     "calamine",
-    "zip-",    // zip-2.x, zip-rs 등
-    "ort",     // ONNX Runtime 내부 panic (세션 초기화 / DLL 로드)
+    "zip-", // zip-2.x, zip-rs 등
+    // ONNX Runtime 내부 panic (세션 초기화 / DLL 로드). 크레이트 경로(`ort-2.0.0-rc.N/`)로 좁힌다.
+    // 종전 "ort" 는 export.rs·report·표준 라이브러리 slice/sort 경로까지 잡아 진짜 패닉을 숨겼다.
+    "ort-2.",
     "usearch", // 벡터 인덱스 C++ 바인딩 panic (reserve / add 중)
     "lindera", // 형태소 사전 로드 panic (embedded ko-dic 압축 해제)
     "tao-",    // Windows event loop 내부 상태 전이 패닉 (앱 종료 시점)
@@ -82,6 +84,15 @@ mod tests {
         // 사용자 보고: tiff tiled planar raw 디코딩 assertion 실패 (이슈 댓글 v2.5.26)
         let loc = r"C:\Users\runneradmin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tiff-0.11.3\src\decoder\image.rs:919";
         assert!(is_benign_location(loc));
+    }
+
+    /// "ort" 부분 문자열로만 보면 export.rs·표준 라이브러리 정렬 패닉까지 무해로 숨겨진다.
+    #[test]
+    fn ort_filter_does_not_hide_unrelated_paths() {
+        assert!(!is_benign_location(r"src\commands\export.rs:10"));
+        assert!(!is_benign_location(
+            "/rustc/abc/library/core/src/slice/sort/shared/smallsort.rs:860"
+        ));
     }
 
     #[test]

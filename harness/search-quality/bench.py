@@ -27,10 +27,11 @@ GATE_TOP1, GATE_TOP3 = 0.85, 0.95
 TABLE = re.compile(r"(?is)<table[^>]*>.*?</table>")
 ROW = re.compile(r"(?is)<tr[^>]*>(.*?)</tr>")
 CELL = re.compile(r"(?is)<t[dh][^>]*>(.*?)</t[dh]>")
-INNER = re.compile(r"(?is)<[^>]+>")
+INNER = re.compile(r"(?is)</?[a-z][^>]*>")  # 태그만, 셀 본문의 <개정 …> 은 보존
 LEFTOVER = re.compile(r"(?is)</?(?:table|thead|tbody|tfoot|tr|td|th|col|colgroup|br)[^>]*>")
 UNDERLINE = re.compile(r"(?i)</?u>")
 MASK = re.compile(r"(?:\\?\*){3,}")  # parsers/mod.rs collapse_masking_runs
+IMAGE = re.compile(r"(?i)!\[[^\]]*\]\([^)]*\)|<img\b[^>]*>")  # parsers/kordoc.rs strip_image_refs
 
 
 def html_tables_to_text(md: str) -> str:  # parsers/kordoc.rs
@@ -102,7 +103,7 @@ def title_of(md: str) -> str:
 
 
 def pipeline(md: str, mask=True, header=False, title=False):
-    text = html_tables_to_text(md)
+    text = IMAGE.sub("", html_tables_to_text(md))
     if header:
         text = strip_header(text)
     chunks = [normalize_text(c) for c in chunk_text(text)]
@@ -123,7 +124,7 @@ VARIANTS = {
 # ── 임베딩 ─────────────────────────────────────────────────────────
 
 
-def load_embedder():
+def load_embedder(max_len):
     import onnxruntime as ort
     from huggingface_hub import hf_hub_download
     from tokenizers import Tokenizer
@@ -132,7 +133,7 @@ def load_embedder():
     model = hf_hub_download(MODEL_REPO, "model_int8.onnx", local_dir=mdir)
     tokj = hf_hub_download(MODEL_REPO, "tokenizer.json", local_dir=mdir)
     tok = Tokenizer.from_file(tokj)
-    tok.enable_truncation(512)
+    tok.enable_truncation(max_len)
     tok.enable_padding()
     sess = ort.InferenceSession(model)
     names = [i.name for i in sess.get_inputs()]
@@ -184,12 +185,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="실험 변형까지 실행")
     ap.add_argument("-v", "--verbose", action="store_true", help="미스 쿼리 출력")
+    ap.add_argument("--max-len", type=int, default=128, help="임베딩 토큰 절단 길이 (embedder/mod.rs MAX_LENGTH 와 같게)")
     args = ap.parse_args()
 
     manifest = json.loads((HERE / "manifest.json").read_text())
     queries = json.loads((HERE / "queries.json").read_text())
     corpus = {did: (HERE / "corpus" / f"{did}.md").read_text() for did in manifest["docs"]}
-    embed = load_embedder()
+    embed = load_embedder(args.max_len)
     qv = embed([normalize_text(q["query"]) for q in queries])
 
     names = list(VARIANTS) if args.all else list(VARIANTS)[:2]

@@ -176,7 +176,16 @@ fn parse_file_normalized(
     ocr: Option<&OcrEngine>,
     kordoc_ocr: kordoc::KordocOcrMode,
 ) -> Result<ParsedDocument, ParseError> {
+    // 파싱하는 동안 파일이 바뀌면(저장 중인 문서 등) 한 번 더 읽는다. 수정 시각은 저장 단계에서
+    // 파싱 뒤에 읽으므로, 그대로 두면 옛 본문이 새 수정 시각으로 기록되어 다음 변경 전까지 다시
+    // 읽지 않는다(감시·동기화 모두 수정 시각이 같으면 건너뛴다).
+    let modified = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let before = modified(path);
     let mut doc = parse_file_inner(path, ocr, kordoc_ocr)?;
+    if before.is_some() && modified(path) != before {
+        tracing::info!("파싱 중 파일이 바뀌어 다시 읽음: {}", path.display());
+        doc = parse_file_inner(path, ocr, kordoc_ocr)?;
+    }
     doc.content = String::new();
     for chunk in &mut doc.chunks {
         chunk.content = collapse_masking_runs(&crate::utils::normalize_text(&chunk.content));
@@ -244,7 +253,7 @@ fn parse_file_inner(
     // 실패한 kordoc 에러는 보존했다가 .hwp 처럼 Rust 파서가 없는 포맷에서 그대로 반환한다.
     // (이전엔 .hwp 가 fallback 진입 시 generic "Unsupported file type: hwp (kordoc 필요)" 로
     // 덮어써서 사용자가 진짜 원인을 알 수 없었다 — 이슈 #22 의 "kordoc 필요" false 메시지)
-    let kordoc_formats = ["hwp", "hwpx", "docx", "pdf"];
+    let kordoc_formats = ["hwp", "hwpx", "hml", "docx", "pdf"];
     // 이미지(png/jpg/webp)는 OCR 옵션이 켜져 있을 때만 kordoc 직접 입력(v4.2.1+)으로
     // 우선 시도 — 표 괘선 복원 포함. 실패 시 아래 자체 OCR 엔진 분기가 fallback.
     let is_kordoc_image = kordoc::KORDOC_IMAGE_EXTENSIONS.contains(&extension.as_str())
@@ -307,12 +316,12 @@ fn parse_file_inner(
         // HWP5 바이너리: kordoc 전용 (Rust 파서 없음). kordoc 실제 에러를 그대로 반환해
         // 사용자가 "kordoc 필요"라는 잘못된 안내 대신 진짜 원인 (구버전 HWP3, 비표준 변종 등)을
         // 볼 수 있도록 한다 — 이슈 #22 진단 가시성 개선.
-        "hwp" => Err(kordoc_err.unwrap_or_else(|| {
+        "hwp" | "hml" => Err(kordoc_err.unwrap_or_else(|| {
             if kordoc::is_available() {
                 // kordoc 가 사용 가능한데도 에러가 None 이면 위 분기를 안 탔다는 뜻 — 이론상 도달 X.
-                ParseError::ParseError("HWP 파싱 경로 비정상 진입".to_string())
+                ParseError::ParseError(format!("{extension} 파싱 경로 비정상 진입"))
             } else {
-                ParseError::UnsupportedFileType("hwp (kordoc 필요)".to_string())
+                ParseError::UnsupportedFileType(format!("{extension} (kordoc 필요)"))
             }
         })),
         "hwpx" => parse_with_timeout(path, 30, "HWPX", hwpx::parse),
@@ -340,8 +349,17 @@ fn parse_file_inner(
         "pdf" => pdf::parse(path, ocr),
         ext if crate::constants::OCR_IMAGE_EXTENSIONS.contains(&ext) => {
             match ocr {
-                // 자체 OCR 엔진 fallback (bmp/tiff 는 이 경로 전용, webp 는 디코딩 불가로 실패)
-                Some(engine) => image_ocr::parse(path, engine),
+                // 자체 OCR 엔진 fallback (bmp/tiff 는 이 경로 전용, webp 는 디코딩 불가로 실패).
+                // 이미지 디코더(tiff 등)의 패닉을 이 파일 실패로 가둔다 (다른 파서는 parse_with_timeout 이 가둔다).
+                Some(engine) => std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    image_ocr::parse(path, engine)
+                }))
+                .unwrap_or_else(|_| {
+                    Err(ParseError::ParseError(format!(
+                        "이미지 디코딩 내부 오류 (파일 손상 가능): {}",
+                        path.display()
+                    )))
+                }),
                 // 엔진 없이 kordoc 만 시도한 경우(OCR로 다시 읽기 등) 실제 원인 보존
                 None => Err(kordoc_err
                     .unwrap_or_else(|| ParseError::UnsupportedFileType(extension.clone()))),

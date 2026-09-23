@@ -2,6 +2,7 @@ mod application; // 클린 아키텍처: Application Layer
 pub mod breadcrumb; // 현재 처리 중 파일/단계 추적 (panic hook 에서 읽음)
 mod commands;
 mod constants;
+mod crash; // 패닉 훅, 시작 실패 crash log
 mod db;
 mod embedder;
 mod error;
@@ -15,6 +16,8 @@ pub mod ocr; // PaddleOCR ONNX 기반 OCR 엔진
 pub mod panic_filter; // crash.log BENIGN 필터 (panic hook + deferred flush 공유)
 pub mod parsers;
 mod search;
+mod shutdown; // 종료 절차 (벡터 워커 정리, DB 정리)
+mod startup; // setup 단계 초기화 (로깅, 모델 준비, 백그라운드 작업, 트레이)
 mod tokenizer; // 한국어 형태소 분석 (Phase 5)
 mod utils; // 유틸리티 (idle_detector, disk_info)
 
@@ -40,16 +43,16 @@ pub const APP_IDENTIFIER: &str = "com.anything.app";
 #[cfg(not(feature = "online"))]
 pub const APP_IDENTIFIER: &str = "com.anything.lite";
 
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+use shutdown::{cleanup_vector_resources, graceful_shutdown};
+#[cfg(feature = "online")]
+use startup::cleanup_tmp_files;
+use startup::init_logging;
 
 /// 로깅 초기화 (파일 + 콘솔)
 ///
@@ -75,511 +78,13 @@ fn drag_preview_icon(app: tauri::AppHandle) -> Result<String, String> {
     Ok(path.to_string_lossy().into_owned())
 }
 
-fn init_logging(app_data_dir: Option<&PathBuf>) {
-    // 기본 필터: 릴리즈에서는 info, 디버그에서는 debug
-    let default_filter = if cfg!(debug_assertions) {
-        "docufinder=debug,tauri=info"
-    } else {
-        "docufinder=info,tauri=warn"
-    };
-
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter));
-
-    // 콘솔 출력 레이어
-    let stdout_layer = fmt::layer()
-        .with_target(true)
-        .with_level(true)
-        .with_thread_ids(false);
-
-    // 파일 로깅 (app_data_dir이 있는 경우에만)
-    if let Some(data_dir) = app_data_dir {
-        let logs_dir = data_dir.join("logs");
-        let _ = std::fs::create_dir_all(&logs_dir);
-
-        match RollingFileAppender::builder()
-            .rotation(Rotation::DAILY)
-            .filename_prefix("docufinder")
-            .filename_suffix("log")
-            .max_log_files(7) // 7일분만 보존, C: 누적 방지
-            .build(&logs_dir)
-        {
-            Ok(file_appender) => {
-                let file_layer = fmt::layer()
-                    .with_ansi(false)
-                    .with_target(true)
-                    .with_level(true)
-                    .with_writer(file_appender);
-
-                tracing_subscriber::registry()
-                    .with(filter)
-                    .with(stdout_layer)
-                    .with(file_layer)
-                    .init();
-
-                tracing::info!("Logging initialized. Log dir: {:?}", logs_dir);
-            }
-            Err(e) => {
-                // 파일 로그 생성 실패 시 콘솔 전용으로 fallback (앱 시작은 보장)
-                tracing_subscriber::registry()
-                    .with(filter)
-                    .with(stdout_layer)
-                    .init();
-
-                tracing::warn!("File logging disabled ({}), using console only", e);
-            }
-        }
-    } else {
-        // 콘솔만
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(stdout_layer)
-            .init();
-    }
-}
-
-/// 모델 파일이 없으면 비동기 자동 다운로드 시작
-#[cfg(feature = "online")]
-fn maybe_download_models(
-    app_handle: tauri::AppHandle,
-    models_dir: PathBuf,
-    semantic_enabled: bool,
-) {
-    let e5_model_int8 = models_dir
-        .join("kosimcse-roberta-multitask")
-        .join("model_int8.onnx");
-    let e5_model = models_dir
-        .join("kosimcse-roberta-multitask")
-        .join("model.onnx");
-    let e5_model_data = models_dir
-        .join("kosimcse-roberta-multitask")
-        .join("model.onnx.data");
-    let e5_tokenizer = models_dir
-        .join("kosimcse-roberta-multitask")
-        .join("tokenizer.json");
-    let embedder_available = (e5_model_int8.exists()
-        || (e5_model.exists() && e5_model_data.exists()))
-        && e5_tokenizer.exists();
-    if !semantic_enabled || embedder_available {
-        return;
-    }
-
-    tauri::async_runtime::spawn(async move {
-        tracing::info!("모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
-        let _ = app_handle.emit("model-download-status", "downloading");
-
-        match tokio::task::spawn_blocking(move || model_downloader::ensure_models(&models_dir))
-            .await
-        {
-            Ok(Ok(result)) => {
-                let any_downloaded = result.onnx_runtime_downloaded
-                    || result.model_downloaded
-                    || result.model_data_downloaded
-                    || result.tokenizer_downloaded;
-
-                if any_downloaded {
-                    tracing::info!(
-                        "모델 다운로드 완료: ONNX Runtime={}, Model={}, ModelData={}, Tokenizer={}",
-                        result.onnx_runtime_downloaded,
-                        result.model_downloaded,
-                        result.model_data_downloaded,
-                        result.tokenizer_downloaded,
-                    );
-                }
-                let _ = app_handle.emit("model-download-status", "completed");
-            }
-            Ok(Err(e)) => {
-                tracing::error!("모델 다운로드 실패: {}. 일부 기능이 비활성화됩니다.", e);
-                let _ = app_handle.emit("model-download-status", "failed");
-            }
-            Err(e) => {
-                tracing::error!("모델 다운로드 태스크 실패: {}", e);
-                let _ = app_handle.emit("model-download-status", "failed");
-            }
-        }
-    });
-}
-
-/// OCR 모델 파일이 없으면 비동기 자동 다운로드 시작
-#[cfg(feature = "online")]
-fn maybe_download_ocr_models(app_handle: tauri::AppHandle, models_dir: PathBuf, ocr_enabled: bool) {
-    if !ocr_enabled {
-        return;
-    }
-
-    let ocr_dir = models_dir.join("paddleocr");
-    let det_exists = ocr_dir.join("det.onnx").exists();
-    let rec_exists = ocr_dir.join("rec.onnx").exists();
-    let dict_exists = ocr_dir.join("dict.txt").exists();
-
-    if det_exists && rec_exists && dict_exists {
-        return;
-    }
-
-    tauri::async_runtime::spawn(async move {
-        tracing::info!("OCR 모델 파일이 없습니다. 백그라운드 다운로드를 시작합니다...");
-        let _ = app_handle.emit("model-download-status", "downloading-ocr");
-
-        match tokio::task::spawn_blocking(move || model_downloader::ensure_ocr_models(&models_dir))
-            .await
-        {
-            Ok(Ok((det, rec, dict))) => {
-                if det || rec || dict {
-                    tracing::info!(
-                        "OCR 모델 다운로드 완료: det={}, rec={}, dict={}",
-                        det,
-                        rec,
-                        dict
-                    );
-                }
-                let _ = app_handle.emit("model-download-status", "completed-ocr");
-            }
-            Ok(Err(e)) => {
-                tracing::error!("OCR 모델 다운로드 실패: {}", e);
-                let _ = app_handle.emit("model-download-status", "failed-ocr");
-            }
-            Err(e) => {
-                tracing::error!("OCR 모델 다운로드 태스크 실패: {}", e);
-                let _ = app_handle.emit("model-download-status", "failed-ocr");
-            }
-        }
-    });
-}
-
-/// 기존 감시 폴더들 자동 감시 복원 (콜백에서 사용)
-fn resume_watchers(container: &AppContainer) {
-    if let Ok(conn) = db::get_connection(&container.db_path) {
-        if let Ok(folders) = db::get_watched_folders(&conn) {
-            let existing_folders: Vec<String> = folders
-                .into_iter()
-                .filter(|folder| std::path::Path::new(folder).exists())
-                .collect();
-            if !existing_folders.is_empty() {
-                if let Ok(wm) = container.get_watch_manager() {
-                    if let Ok(mut wm) = wm.write() {
-                        wm.resume_with_folders(&existing_folders);
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// 벡터 인덱스 파일 ↔ DB 정합성 검증
-///
-/// get_vector_indexing_stats 의 chunks JOIN files COUNT 풀스캔이 HDD 대용량 DB에서
-/// 수 초 걸릴 수 있어 setup() 에서는 백그라운드 스레드로 호출한다 (quick_check 와 동일 패턴).
-/// 벡터 검색은 lazy 초기화라 검증/복구(reset_all_vector_indexed)가 수 초 늦게 끝나도 무해.
-fn validate_vector_index(
-    vector_index_path: &std::path::Path,
-    db_path: &std::path::Path,
-    semantic_available: bool,
-) {
-    let vector_file = vector_index_path;
-    let map_file = vector_index_path.with_extension("map");
-    let vector_file_exists = vector_file.exists();
-    let map_file_exists = map_file.exists();
-
-    tracing::info!(
-        "[VectorValidate] usearch={} ({}), map={} ({})",
-        vector_file_exists,
-        vector_file.display(),
-        map_file_exists,
-        map_file.display(),
-    );
-
-    if semantic_available {
-        if let Ok(conn) = db::get_connection(db_path) {
-            if let Ok(stats) = db::get_vector_indexing_stats(&conn) {
-                tracing::info!(
-                    "[VectorValidate] DB: total={}, vector_indexed={}, pending_chunks={}",
-                    stats.total_files,
-                    stats.vector_indexed_files,
-                    stats.pending_chunks
-                );
-                if stats.vector_indexed_files > 0 && (!vector_file_exists || !map_file_exists) {
-                    tracing::warn!(
-                        "[VectorValidate] Index file missing → resetting {} files in DB",
-                        stats.vector_indexed_files
-                    );
-                    if let Ok(reset_count) = db::reset_all_vector_indexed(&conn) {
-                        tracing::info!(
-                            "[VectorValidate] Reset vector_indexed_at for {} files",
-                            reset_count
-                        );
-                    }
-                } else if vector_file_exists && map_file_exists {
-                    tracing::info!("[VectorValidate] Both files present — no reset needed");
-                }
-            }
-        }
-    }
-}
-
 // spawn_startup_sync は initialize_app → spawn_startup_sync_async (index.rs) に統合済み。
 // lib.rs setup() での二重呼び出しを防止するために削除。
-
-/// 벡터 워커 정리 + 인덱스 저장 + DB 최적화 (종료/트레이 quit 공통)
-fn cleanup_vector_resources(container: &AppContainer) {
-    // FTS 파이프라인 즉시 취소 신호 (인덱싱 중 종료 시 스레드가 빠르게 탈출하도록)
-    container.cancel_indexing();
-    // 주기 sync task 중단 신호 (v2.5.2) — 루프가 최대 60초 내 탈출
-    container.signal_sync_shutdown();
-
-    let vector_worker = container.get_vector_worker();
-    if let Ok(mut worker) = vector_worker.write() {
-        if worker.is_running() {
-            tracing::info!("Stopping vector worker...");
-            worker.cancel();
-            worker.join();
-        }
-    }
-    if let Ok(vi) = container.get_vector_index() {
-        if let Err(e) = vi.save() {
-            tracing::error!("Failed to save vector index: {}", e);
-        }
-    }
-    // DB 최적화: WAL 체크포인트 + 쿼리 플래너 통계 갱신
-    cleanup_database(&container.db_path);
-}
-
-/// 앱 종료 절차 (트레이 quit + 창 닫기 공통):
-/// 즉시 취소 신호 → cleanup 교착 대비 3초 watchdog → 벡터 리소스 정리 → 프로세스 종료
-fn graceful_shutdown(app: &tauri::AppHandle) {
-    // 즉시 취소 신호 (인덱싱 스레드가 최대한 빨리 탈출하도록)
-    if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-        if let Ok(container) = container.read() {
-            container.cancel_indexing();
-            container.signal_sync_shutdown();
-            if let Ok(worker) = container.get_vector_worker().read() {
-                worker.cancel();
-            }
-        }
-    }
-    // Watchdog: cleanup 교착 시 3초 후 강제 종료 (인덱싱 중 종료 안 되는 버그 방지)
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_secs(3));
-        tracing::warn!("Cleanup timeout — forcing process exit");
-        std::process::exit(0);
-    });
-    // 정상 cleanup 시도
-    if let Some(container) = app.try_state::<RwLock<AppContainer>>() {
-        if let Ok(container) = container.read() {
-            cleanup_vector_resources(&container);
-        }
-    }
-    app.exit(0);
-}
-
-/// 모델 디렉토리 내 .tmp 잔여 파일 정리 (다운로드 중 크래시 시 생성됨)
-#[cfg(feature = "online")]
-fn cleanup_tmp_files(models_dir: &std::path::Path) {
-    let mut cleaned = 0usize;
-    // models/ 하위 2단계까지 탐색 (e.g., models/kosimcse-roberta-multitask/*.tmp)
-    for entry in std::fs::read_dir(models_dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-    {
-        let path = entry.path();
-        if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("tmp") {
-            if std::fs::remove_file(&path).is_ok() {
-                cleaned += 1;
-            }
-        } else if path.is_dir() {
-            for sub in std::fs::read_dir(&path).into_iter().flatten().flatten() {
-                let sub_path = sub.path();
-                if sub_path.is_file()
-                    && sub_path.extension().and_then(|e| e.to_str()) == Some("tmp")
-                    && std::fs::remove_file(&sub_path).is_ok()
-                {
-                    cleaned += 1;
-                }
-            }
-        }
-    }
-    if cleaned > 0 {
-        tracing::info!("Cleaned up {} stale .tmp model file(s)", cleaned);
-    }
-}
-
-/// FTS5 세그먼트 점진 병합 (종료 시 시간 예산 내 실행)
-///
-/// 증분 인덱싱이 누적되면 automerge 기본값만으로는 작은 b-tree 세그먼트가 늘어나
-/// MATCH doclist 병합 비용이 점진적으로 증가한다 (prefix 와일드카드 쿼리 특히 민감).
-/// 전체 `'optimize'` 는 단일 트랜잭션이라 대용량 DB에서 graceful_shutdown 의 3초
-/// watchdog 을 초과해 통째로 롤백될 수 있으므로, FTS5 문서의 'merge=N' 점진 병합
-/// 패턴을 사용한다 — 회당 자체 트랜잭션으로 커밋되어 중단돼도 진행분이 보존되고,
-/// 남은 병합은 다음 종료 시 이어서 진행된다.
-fn merge_fts_segments(conn: &rusqlite::Connection) {
-    const MERGE_UNITS: i64 = 64;
-    const TIME_BUDGET_MS: u128 = 500; // watchdog 3초 내 체크포인트 시간 확보
-
-    // 음수 파라미터 = 모든 세그먼트를 대상으로 새 병합 사이클 시작
-    if let Err(e) = conn.execute(
-        "INSERT INTO chunks_fts(chunks_fts, rank) VALUES('merge', ?1)",
-        [-MERGE_UNITS],
-    ) {
-        tracing::warn!("FTS5 segment merge start failed: {}", e);
-        return;
-    }
-    let start = std::time::Instant::now();
-    let mut rounds = 0usize;
-    while start.elapsed().as_millis() < TIME_BUDGET_MS {
-        let before: i64 = conn
-            .query_row("SELECT total_changes()", [], |r| r.get(0))
-            .unwrap_or(0);
-        if conn
-            .execute(
-                "INSERT INTO chunks_fts(chunks_fts, rank) VALUES('merge', ?1)",
-                [MERGE_UNITS],
-            )
-            .is_err()
-        {
-            return;
-        }
-        rounds += 1;
-        let after: i64 = conn
-            .query_row("SELECT total_changes()", [], |r| r.get(0))
-            .unwrap_or(0);
-        // FTS5 문서: 'merge' 양수 호출의 total_changes 증가가 2 미만이면 병합할 작업 없음
-        if after - before < 2 {
-            tracing::info!("FTS5 segment merge complete ({} rounds)", rounds);
-            return;
-        }
-    }
-    tracing::info!(
-        "FTS5 segment merge: time budget reached ({} rounds, 다음 종료 시 계속)",
-        rounds
-    );
-}
-
-/// 앱 종료 시 DB 정리: 풀 drain → FTS 세그먼트 병합 → WAL 체크포인트 + PRAGMA optimize
-fn cleanup_database(db_path: &std::path::Path) {
-    // 풀의 모든 커넥션을 먼저 닫아야 WAL 체크포인트가 완전히 적용됨
-    // (풀 커넥션이 WAL read lock을 보유하면 TRUNCATE 모드 체크포인트 실패)
-    crate::db::pool::drain_pool();
-
-    if let Ok(conn) = crate::db::get_connection(db_path) {
-        // FTS5 세그먼트 병합 — WAL 체크포인트 전에 실행해 병합분이 본 DB 파일에 흡수되게 함
-        merge_fts_segments(&conn);
-
-        match conn.execute_batch(
-            "PRAGMA wal_checkpoint(TRUNCATE);
-             PRAGMA optimize;
-             PRAGMA incremental_vacuum;",
-        ) {
-            Ok(_) => tracing::info!(
-                "DB cleanup completed (WAL checkpoint + optimize + incremental vacuum)"
-            ),
-            Err(e) => tracing::warn!("DB cleanup partial failure: {}", e),
-        }
-    }
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 크래시 핸들러 설정 (패닉 발생 시 로그 기록)
-    std::panic::set_hook(Box::new(|panic_info| {
-        let location = panic_info
-            .location()
-            .map(|l| format!("{}:{}", l.file(), l.line()))
-            .unwrap_or_else(|| "unknown".to_string());
-
-        // 파서 라이브러리의 알려진 패닉은 catch_unwind로 처리됨 → crash.log 오염 방지.
-        // 해당 파일은 에러로 스킵되고 앱은 정상 동작하므로 crash 기록 불필요.
-        // 패턴은 `panic_filter` 모듈에서 공유 — deferred flush(telemetry) 에서도 같은 필터 사용.
-        if crate::panic_filter::is_benign_location(&location) {
-            return;
-        }
-
-        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
-            s.to_string()
-        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
-            s.clone()
-        } else {
-            "Unknown panic".to_string()
-        };
-
-        // 처리 중이던 파일/단계 (있으면 메시지 끝에 덧붙임 — 향후 디버깅에 결정적)
-        let breadcrumb_line = crate::breadcrumb::snapshot()
-            .as_ref()
-            .map(crate::breadcrumb::format_for_log);
-
-        eprintln!("╔══════════════════════════════════════════════════════════╗");
-        eprintln!("║                    CRITICAL ERROR                        ║");
-        eprintln!("╚══════════════════════════════════════════════════════════╝");
-        eprintln!("Location: {}", location);
-        eprintln!("Message: {}", message);
-        if let Some(bc) = &breadcrumb_line {
-            eprintln!("{}", bc);
-        }
-        eprintln!("Please contact the development team to report this issue.");
-
-        // Telegram 자동 전송 (빌드 시 토큰 주입 + 사용자의 error_reporting_enabled
-        // 양쪽을 통과할 때만 — report_panic_sync 내부에서 검사한다).
-        let telegram_msg = match &breadcrumb_line {
-            Some(bc) => format!("{message} | {bc}"),
-            None => message.clone(),
-        };
-        crate::commands::telemetry::report_panic_sync(&location, &telegram_msg);
-
-        // 긴급 로그 flush — 날짜 기반 로테이션 (최대 3개 파일 유지)
-        if let Some(data_dir) = dirs::data_dir() {
-            let crash_dir = data_dir.join(crate::APP_IDENTIFIER);
-            let _ = std::fs::create_dir_all(&crash_dir);
-
-            // 날짜별 crash log 파일
-            let today = chrono::Local::now().format("%Y-%m-%d");
-            let crash_log = crash_dir.join(format!("crash-{}.log", today));
-
-            // 오래된 crash log 정리 (최대 3개 유지)
-            const MAX_CRASH_LOGS: usize = 3;
-            if let Ok(entries) = std::fs::read_dir(&crash_dir) {
-                let mut crash_files: Vec<_> = entries
-                    .filter_map(|e| e.ok())
-                    .filter(|e| e.file_name().to_string_lossy().starts_with("crash-"))
-                    .collect();
-                crash_files.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
-                for old_file in crash_files.into_iter().skip(MAX_CRASH_LOGS) {
-                    let _ = std::fs::remove_file(old_file.path());
-                }
-            }
-
-            // 단일 파일 크기 제한 (1MB)
-            const MAX_CRASH_LOG_SIZE: u64 = 1024 * 1024;
-            if let Ok(meta) = std::fs::metadata(&crash_log) {
-                if meta.len() > MAX_CRASH_LOG_SIZE {
-                    let _ = std::fs::remove_file(&crash_log);
-                }
-            }
-
-            let entry = match &breadcrumb_line {
-                Some(bc) => format!(
-                    "[{}] PANIC at {}: {}\n  {}\n",
-                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    location,
-                    message,
-                    bc
-                ),
-                None => format!(
-                    "[{}] PANIC at {}: {}\n",
-                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    location,
-                    message
-                ),
-            };
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&crash_log)
-            {
-                let _ = file.write_all(entry.as_bytes());
-                let _ = file.sync_all(); // 전원 차단 시 유실 방지
-            }
-        }
-    }));
+    crash::install_panic_hook();
 
     // tokenizers 병렬 처리 비활성화 (rayon과의 데드락 방지)
     // SAFETY: run() 진입 직후, main 스레드만 존재하는 단일 스레드 컨텍스트.
@@ -918,34 +423,9 @@ pub fn run() {
             #[cfg_attr(not(feature = "online"), allow(unused_variables))]
             let resource_dir = app.path().resource_dir().ok();
 
-            // macOS: ad-hoc 서명 + dmg 다운로드 시 .app 내부 sub-binary(node, *.node, dylib)에
-            // `com.apple.quarantine` xattr 가 상속되어 spawn 시 Gatekeeper 가 차단 → kordoc CLI
-            // 가 실행 안 됨 → HWP5 파싱 전수 실패(이슈 #22). 사용자가 직접 `xattr -dr` 하기 전엔
-            // 발현되므로 startup 1회로 자동 제거한다. xattr 실행 자체는 quarantine 영향 안 받음.
             // sync 유지 — 아래 kordoc::is_available 진단이 quarantine 제거 후에 실행돼야 한다.
             #[cfg(target_os = "macos")]
-            if let Some(resource_dir) = resource_dir.as_ref() {
-                let sidecar_root = resource_dir.join("resources");
-                if sidecar_root.exists() {
-                    match std::process::Command::new("/usr/bin/xattr")
-                        .args(["-rd", "com.apple.quarantine"])
-                        .arg(&sidecar_root)
-                        .output()
-                    {
-                        Ok(out) if out.status.success() => {
-                            tracing::info!(
-                                "macOS 사이드카 quarantine 제거: {}",
-                                sidecar_root.display()
-                            );
-                        }
-                        Ok(out) => {
-                            let stderr = String::from_utf8_lossy(&out.stderr);
-                            tracing::warn!("xattr 종료코드 {}: {}", out.status, stderr.trim());
-                        }
-                        Err(e) => tracing::warn!("xattr 실행 실패: {}", e),
-                    }
-                }
-            }
+            startup::remove_sidecar_quarantine(&resource_dir);
 
             // ORT_DYLIB_PATH 설정: 단일 스레드(setup) 시점에서 환경변수 설정
             // (아래 모델 준비 스레드 spawn 전에 실행 — set_var 단일 스레드 안전 논거 유지)
@@ -997,129 +477,21 @@ pub fn run() {
 
             let setup_settings = crate::commands::settings::get_settings_sync(&app_data_dir);
 
-            // 번들 모델 seed + ONNX Runtime DLL 검증 + 모델 자동 다운로드 — 백그라운드 실행.
-            // 기존에는 setup() 동기 실행이라 ~43MB SHA-256 해싱(DLL+OCR 3종)이 콜드 스타트
-            // (AV 상주 PC)에서 첫 창 표시를 1초+ 지연시켰다. 기존 실행 순서(seed → DLL 검증 →
-            // 모델/OCR 다운로드 체크)는 같은 스레드에서 순차 실행으로 그대로 유지 — 번들 적용
-            // 전에 다운로드 체크가 돌아 같은 파일을 동시에 쓰는 레이스를 막는다.
-            // Embedder/OCR 는 lazy(OnceCell) 초기화로 첫 사용 시점(빠르면 initialize_app 1초 후
-            // startup sync)이 DLL 검증 완료(통상 수백 ms)보다 늦어 ort panic 방지 목적은 유지된다.
-            //
-            // lite(내부망) 빌드에는 이 스레드가 통째로 없다. seed 는 "실행 중인 프로세스가
-            // AppData 에 PE(onnxruntime.dll·pdfium.dll)를 쓰고 그걸 로드"하는 상관을 만들어
-            // ZombieZERO 계열이 dropper 로 격리했던 바로 그 동작이고(이슈 #35), 나머지는 전부
-            // 런타임 다운로드다. lite 는 두 기능(시맨틱·OCR)을 제공하지 않으므로 손실이 없다.
             #[cfg(feature = "online")]
-            {
-                let models_dir_bg = models_dir.clone();
-                let app_handle_bg = app.handle().clone();
-                let semantic_enabled = setup_settings.semantic_search_enabled;
-                let ocr_enabled = setup_settings.ocr_enabled;
-                std::thread::spawn(move || {
-                    // 번들 모델 적용: ONNX Runtime DLL + PaddleOCR 3종을 MSI 리소스에서
-                    // APPDATA/models/ 로 복사. 이미 같은 해시면 skip, 다르면 덮어쓰기.
-                    // 실패해도 다운로드 fallback 으로 자연 진행. 회사망/방화벽 등으로
-                    // huggingface·github 차단된 환경에서도 첫 실행 즉시 OCR/시맨틱 가능.
-                    if let Some(resource_dir) = resource_dir {
-                        model_downloader::seed_bundled_models(&resource_dir, &models_dir_bg);
-                    }
-
-                    // ONNX Runtime DLL 선제 준비 (14MB).
-                    // ort 2.x 는 DLL 버전 불일치 시 ort::init 단계에서 panic 을 일으키므로
-                    // OCR/Embedder 가 처음 DLL 을 건드리기 전에 SHA-256 검증으로 구버전을 강제 교체한다.
-                    // 검증만 하면 수백 ms, 다운로드가 필요하면 수초. 실패해도 앱 자체는 부팅시킨다
-                    // (시맨틱/OCR 기능이 비활성될 뿐 키워드 검색은 동작).
-                    if let Err(e) = model_downloader::ensure_onnx_runtime_dll(&models_dir_bg) {
-                        tracing::error!(
-                            "ONNX Runtime DLL 준비 실패: {}. 시맨틱/OCR 기능이 비활성됩니다.",
-                            e
-                        );
-                    }
-
-                    // 모델 자동 다운로드 — seed/DLL 검증 후에 존재 여부를 검사해야
-                    // 번들로 채워진 파일을 재다운로드하거나 동시에 쓰지 않는다.
-                    maybe_download_models(
-                        app_handle_bg.clone(),
-                        models_dir_bg.clone(),
-                        semantic_enabled,
-                    );
-
-                    // pdfium 준비 (스캔/이미지 PDF 페이지 래스터화 fallback) — OCR 활성 시에만.
-                    // best-effort: 실패해도 born-digital/JPEG 스캔 경로는 그대로 동작한다.
-                    if ocr_enabled {
-                        if let Err(e) = model_downloader::ensure_pdfium(&models_dir_bg) {
-                            tracing::warn!(
-                                "pdfium 준비 실패 (스캔 PDF 래스터화 OCR 비활성): {}",
-                                e
-                            );
-                        }
-                    }
-
-                    maybe_download_ocr_models(app_handle_bg.clone(), models_dir_bg, ocr_enabled);
-
-                    // OCR 엔진 워밍업 — **반드시 seed 이후**. seed_one 은 해시가 다르면
-                    // dict.txt 를 지웠다가 다시 복사하는데, 그 창에 OcrEngine::new 가 읽으면
-                    // "Dictionary not found" 로 실패하고 그 세션은 OCR 이 죽는다(이슈 #35).
-                    // AppContainer 는 setup 본류에서 manage 되므로 잠깐 기다렸다 잡는다.
-                    if ocr_enabled || semantic_enabled {
-                        for _ in 0..50 {
-                            if let Some(state) =
-                                app_handle_bg.try_state::<RwLock<AppContainer>>()
-                            {
-                                if let Ok(container) = state.read() {
-                                    if ocr_enabled {
-                                        container.spawn_ocr_warmup();
-                                    }
-                                    // 검색 경로는 더 이상 임베더를 블로킹 초기화하지 않으므로
-                                    // (#44) 시맨틱이 켜진 세션은 부팅 때 미리 준비해 첫
-                                    // 시맨틱 검색부터 동작하게 한다.
-                                    if semantic_enabled {
-                                        container.spawn_embedder_warmup();
-                                    }
-                                }
-                                break;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(100));
-                        }
-                    }
-                });
-            }
+            startup::spawn_model_preparation(
+                app.handle().clone(),
+                models_dir.clone(),
+                resource_dir,
+                setup_settings.semantic_search_enabled,
+                setup_settings.ocr_enabled,
+            );
 
             // Initialize database with AppContainer
             let container = AppContainer::new(&app_data_dir);
             db::init_database(&container.db_path)
                 .map_err(|e| format!("Failed to initialize database: {}", e))?;
 
-            // DB 무결성 검사 — 대용량 DB에서 수십 초 걸릴 수 있어 백그라운드로 실행.
-            // 시작 시간을 차단하지 않고, 문제 감지 시 이벤트로 프론트엔드에 경고한다.
-            {
-                let db_path_for_check = container.db_path.clone();
-                let app_for_check = app.handle().clone();
-                std::thread::spawn(move || {
-                    let conn = match db::get_connection(&db_path_for_check) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::error!("DB integrity check: connection failed: {}", e);
-                            return;
-                        }
-                    };
-                    match conn.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0)) {
-                        Ok(result) if result == "ok" => {
-                            tracing::info!("DB integrity check passed");
-                        }
-                        Ok(result) => {
-                            tracing::error!("DB integrity check failed: {}", result);
-                            let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)");
-                            tracing::warn!("Attempted WAL recovery after integrity check failure");
-                            let _ = app_for_check.emit("db-integrity-warning", "데이터베이스 무결성 검사에 실패했습니다. 데이터가 손상되었을 수 있습니다.");
-                        }
-                        Err(e) => {
-                            tracing::error!("DB integrity check error: {}", e);
-                            let _ = app_for_check.emit("db-integrity-warning", format!("데이터베이스 검사 오류: {}", e));
-                        }
-                    }
-                });
-            }
+            startup::spawn_db_integrity_check(app, &container);
 
             tracing::info!("DocuFinder initialized. DB: {:?}", container.db_path);
 
@@ -1173,20 +545,7 @@ pub fn run() {
             // 사용자 설정 백엔드 게이트는 함수 내부에서 처리한다.
             commands::telemetry::spawn_flush_pending_crash_logs(container.app_data_dir.clone());
 
-            // kordoc 사이드카 가용성 진단 — HWP5 는 Rust fallback 이 없어 kordoc 미가용 시 전수 실패한다.
-            // 미가용이면 frontend 에 즉시 알려 인덱싱 시작 전에 사용자가 인지할 수 있게 한다 (이슈 #22).
-            {
-                let kordoc_ok = parsers::kordoc::is_available();
-                if kordoc_ok {
-                    tracing::info!("kordoc 사이드카 가용 — hwp/hwpx/docx/pdf 변환 활성");
-                } else {
-                    tracing::error!(
-                        "kordoc 사이드카 미가용 — HWP 파일 인덱싱 불가. \
-                         번들 node / kordoc CLI 가 .app 내부에 누락되었거나 실행 권한이 없습니다."
-                    );
-                }
-                let _ = app.handle().emit("kordoc-availability", kordoc_ok);
-            }
+            startup::report_kordoc_availability(app);
 
             // Check semantic search availability
             if container.is_semantic_available() {
@@ -1215,31 +574,7 @@ pub fn run() {
                 tracing::info!("OCR: disabled");
             }
 
-            // 증분 인덱싱 완료 시 프론트엔드 알림 콜백 설정
-            {
-                let app_handle = app.handle().clone();
-                container.set_incremental_update_callback(Arc::new(move |count| {
-                    tracing::info!("[WatchManager] Incremental update: {} files", count);
-                    let _ = app_handle.emit("incremental-index-updated", count);
-                }));
-            }
-
-            // watcher가 자동 트리거한 벡터 인덱싱도 완료 시 watcher를 정상 재개해야 한다.
-            {
-                let app_handle = app.handle().clone();
-                container.set_vector_progress_callback(Arc::new(move |progress| {
-                    let _ = app_handle.emit("vector-indexing-progress", &progress);
-                    if progress.is_complete {
-                        if let Some(container_state) =
-                            app_handle.try_state::<RwLock<AppContainer>>()
-                        {
-                            if let Ok(container) = container_state.read() {
-                                resume_watchers(&container);
-                            }
-                        }
-                    }
-                }));
-            }
+            startup::set_indexing_callbacks(app, &container);
 
             // 기존 감시 폴더들 자동 감시 복원 — app.manage 이후 백그라운드 스레드로 실행한다.
             // v3.4.5 이전에는 resume_watchers 가 get_watch_manager 를 통해 OCR 엔진(ort 세션)을
@@ -1248,54 +583,9 @@ pub fn run() {
             // WatchManager 생성은 감시 폴더 수만큼 파일시스템을 훑으므로 백그라운드가 맞다.
             // (아래로 이동됨)
 
-            // ⚡ 디스크 타입 사전 감지 (C:, D: — PowerShell 호출 1-3초를 앱 시작 시 흡수)
-            tauri::async_runtime::spawn(async {
-                tokio::task::spawn_blocking(|| {
-                    for letter in ['C', 'D', 'E'] {
-                        let path = format!("{}:\\", letter);
-                        if std::path::Path::new(&path).exists() {
-                            let _ = crate::utils::disk_info::detect_disk_type(
-                                std::path::Path::new(&path),
-                            );
-                        }
-                    }
-                    tracing::debug!("Disk type pre-detection completed");
-                })
-                .await
-                .ok();
-            });
+            startup::spawn_disk_type_detection();
 
-            // ⚡ 파일명 캐시 로드 (Everything 스타일 빠른 검색) + 벡터 인덱스 ↔ DB 정합성 검증
-            // — 백그라운드 실행. 캐시 DB 전체 SELECT 는 HDD 5-10초(filename_cache.rs 주석),
-            // 정합성 검증은 chunks JOIN files COUNT 풀스캔 2회로 역시 수 초 걸릴 수 있어
-            // setup() 동기 실행 시 첫 창 표시를 그만큼 지연시킨다. 캐시 로드 완료 전 파일명
-            // 검색은 기존 DB LIKE 폴백이 처리하고(search_service/keyword.rs use_cache 게이트:
-            // !is_empty && !is_truncated), 두 작업은 기존 순서대로 같은 스레드에서 순차 실행해
-            // HDD 디스크 경합을 피한다. container 는 아래 app.manage 로 move 되므로
-            // Arc/PathBuf 만 복제해 넘긴다.
-            {
-                let filename_cache = container.get_filename_cache();
-                let db_path = container.db_path.clone();
-                let vector_index_path = container.vector_index_path.clone();
-                let semantic_available = container.is_semantic_available();
-                std::thread::spawn(move || {
-                    match db::get_connection(&db_path) {
-                        Ok(conn) => match filename_cache.load_from_db(&conn) {
-                            Ok(count) => {
-                                tracing::info!("FilenameCache loaded: {} files", count);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Failed to load filename cache: {}", e);
-                            }
-                        },
-                        Err(e) => {
-                            tracing::warn!("Failed to load filename cache: {}", e);
-                        }
-                    }
-
-                    validate_vector_index(&vector_index_path, &db_path, semantic_available);
-                });
-            }
+            startup::spawn_filename_cache_load(&container);
 
             // Store app container
             app.manage(RwLock::new(container));
@@ -1304,18 +594,7 @@ pub fn run() {
             // 번들 seed 의 dict.txt 재복사와 레이스가 난다(이슈 #35).
 
             // 감시 폴더 자동 복원 (위에서 이동) — OCR 엔진 빌드가 창 표시를 막지 않도록 분리.
-            {
-                let app_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    if let Some(container_state) =
-                        app_handle.try_state::<RwLock<AppContainer>>()
-                    {
-                        if let Ok(container) = container_state.read() {
-                            resume_watchers(&container);
-                        }
-                    }
-                });
-            }
+            startup::spawn_resume_watchers(app);
 
             // 🔄 주기 sync task 시작 (v2.5.2) — watcher 이벤트 누락 보완.
             // lib.rs setup 에서 1회만 spawn. AtomicBool shutdown 신호는
@@ -1336,78 +615,7 @@ pub fn run() {
                 }
             }
 
-            // 시스템 트레이 설정
-            let show_item = MenuItem::with_id(app, "show", "열기", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-            // 트레이 전용 아이콘 로드 (anything-l.png), 실패 시 기본 아이콘 fallback
-            let tray_icon = {
-                let tray_icon_path = app
-                    .path()
-                    .resource_dir()
-                    .ok()
-                    .map(|d| d.join("icons").join("tray-icon.png"))
-                    .unwrap_or_default();
-                if tray_icon_path.exists() {
-                    match tauri::image::Image::from_path(&tray_icon_path) {
-                        Ok(img) => {
-                            tracing::info!("Loaded tray icon from {:?}", tray_icon_path);
-                            img
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                "Failed to load tray icon: {e}, falling back to default"
-                            );
-                            app.default_window_icon()
-                                .cloned()
-                                .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
-                        }
-                    }
-                } else {
-                    tracing::debug!(
-                        "Tray icon file not found at {:?}, using default",
-                        tray_icon_path
-                    );
-                    app.default_window_icon()
-                        .cloned()
-                        .unwrap_or_else(|| tauri::image::Image::new(&[], 0, 0))
-                }
-            };
-            let _tray = TrayIconBuilder::new()
-                .icon(tray_icon)
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .tooltip("Anything")
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                    "quit" => {
-                        graceful_shutdown(app);
-                    }
-                    _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
-
-            tracing::info!("System tray initialized");
+            startup::setup_tray(app)?;
 
             // 시작 시 최소화 처리 (--minimized 인자 또는 설정)
             let args: Vec<String> = std::env::args().collect();
@@ -1539,6 +747,7 @@ pub fn run() {
             commands::lineage::get_lineage_diff,
             commands::maintenance::prune_missing_files,
             commands::maintenance::probe_kordoc_runtime,
+            commands::maintenance::get_startup_warnings,
             commands::tags::add_file_tag,
             commands::tags::remove_file_tag,
             commands::tags::get_file_tags,
@@ -1575,34 +784,5 @@ pub fn run() {
             Ok::<(), tauri::Error>(())
         })
         .and_then(|r| r)
-        .unwrap_or_else(|e| {
-            eprintln!("Fatal: Tauri failed to start: {}", e);
-            // 크래시 로그에도 기록 (append 모드: 이전 기록 보존)
-            if let Some(data_dir) = dirs::data_dir() {
-                let crash_dir = data_dir.join(crate::APP_IDENTIFIER);
-                let _ = std::fs::create_dir_all(&crash_dir);
-                let crash_log = crash_dir.join("crash.log");
-                // 크기 제한: 1MB 초과 시 truncate
-                const MAX_CRASH_LOG_SIZE: u64 = 1024 * 1024;
-                if let Ok(meta) = std::fs::metadata(&crash_log) {
-                    if meta.len() > MAX_CRASH_LOG_SIZE {
-                        let _ = std::fs::remove_file(&crash_log);
-                    }
-                }
-                let entry = format!(
-                    "[{}] FATAL: Tauri failed to start: {}\n",
-                    chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    e
-                );
-                use std::io::Write;
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&crash_log)
-                {
-                    let _ = file.write_all(entry.as_bytes());
-                }
-            }
-            std::process::exit(1);
-        });
+        .unwrap_or_else(crash::exit_on_start_failure);
 }

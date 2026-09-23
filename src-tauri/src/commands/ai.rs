@@ -527,6 +527,93 @@ fn to_analysis(
     }
 }
 
+/// RAG 문서 검색: 1차 하이브리드 검색 + 저결과·0건 폴백 (동기).
+///
+/// 하이브리드 검색은 임베딩 추론 + FTS 라 수백 ms 걸린다. async 태스크에서 바로 부르면
+/// 그동안 tokio 워커 스레드가 묶여 같은 워커의 다른 IPC 가 밀리므로 spawn_blocking 에서 호출한다.
+fn rag_retrieve(
+    service: &crate::application::services::search_service::SearchService,
+    search_query: &str,
+    folder_scope: Option<&str>,
+    parsed: &crate::search::nl_query::ParsedQuery,
+) -> Result<Vec<SearchResult>, String> {
+    let search_result = service.search_hybrid(search_query, RAG_RETRIEVE_LIMIT, folder_scope);
+
+    let results = search_result
+        .map_err(|e| format!("검색 실패: {}", e))?
+        .results;
+
+    // NL 파서가 추출한 필터 적용 (exclude, file_type만)
+    // ⚠ date_filter는 RAG에 적용하지 않음:
+    //   "2026년 노인일자리"에서 "2026년"은 문서 내용의 연도이지 파일 수정일이 아님.
+    //   파일 수정일 필터를 걸면 관련 문서를 놓칠 수 있음.
+    //   연도는 키워드로 FTS 검색에 반영됨.
+    let mut results: Vec<_> = results
+        .into_iter()
+        .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+        .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+        .collect();
+
+    // 저결과 폴백 — 복합명사 접미사 때문에 매칭이 빈약할 수 있음.
+    // 예: "예산액"으로 4건만 걸릴 때 "예산"으로 재검색해서 커버리지 확보.
+    // 한국어에서 "예산액/집행률/사용량" 같은 복합명사가 FTS5 토큰 경계로
+    // 쪼개지거나 원본에 다른 표기로 존재하는 경우를 구제한다.
+    if results.len() < RAG_LOW_RESULTS_THRESHOLD {
+        if let Some(fallback_query) = strip_suffix_variants(search_query) {
+            tracing::debug!(
+                "RAG 저결과 폴백: '{}' ({} hits) → '{}'",
+                search_query,
+                results.len(),
+                fallback_query
+            );
+            if let Ok(fallback_resp) =
+                service.search_hybrid(&fallback_query, RAG_RETRIEVE_LIMIT, folder_scope)
+            {
+                let existing: std::collections::HashSet<(String, i64)> = results
+                    .iter()
+                    .map(|r| (r.file_path.clone(), r.chunk_index))
+                    .collect();
+
+                let additional = fallback_resp
+                    .results
+                    .into_iter()
+                    .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+                    .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+                    .filter(|r| !existing.contains(&(r.file_path.clone(), r.chunk_index)));
+
+                for r in additional {
+                    results.push(r);
+                }
+                tracing::debug!("RAG 폴백 병합 후 {} hits", results.len());
+            }
+        }
+    }
+
+    // 최장 단어 폴백 — NL 파서가 "관련"/"요약" 같은 자연어 보조어까지 키워드로 잡아서
+    // FTS AND 쿼리가 과도하게 좁아진 경우 구제. "금연도시 관련 요약" → "금연도시"만
+    // 단독 검색. 2글자 이상, 원본과 달라야 하고 공백 2개 이상 포함된 쿼리에만 적용.
+    if results.is_empty() && search_query.split_whitespace().count() >= 2 {
+        if let Some(longest) = search_query
+            .split_whitespace()
+            .filter(|w| w.chars().count() >= 2)
+            .max_by_key(|w| w.chars().count())
+        {
+            tracing::debug!("RAG 0건 폴백: 최장 단어 '{}' 재시도", longest);
+            if let Ok(resp) = service.search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope) {
+                results = resp
+                    .results
+                    .into_iter()
+                    .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
+                    .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
+                    .collect();
+                tracing::debug!("RAG 최장단어 폴백 결과 {} hits", results.len());
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 // ── 커맨드 ──────────────────────────────────────────────
 
 /// RAG 질문 (스트리밍) — 전체 인덱스 기반
@@ -618,95 +705,38 @@ pub async fn ask_ai(
             return;
         }
 
-        let search_result =
-            service.search_hybrid(&search_query, RAG_RETRIEVE_LIMIT, folder_scope.as_deref());
-
-        let results = match search_result {
-            Ok(resp) => resp.results,
-            Err(e) => {
-                tracing::error!("RAG 검색 실패: {}", e);
+        let retrieval = {
+            let search_query = search_query.clone();
+            tokio::task::spawn_blocking(move || {
+                rag_retrieve(&service, &search_query, folder_scope.as_deref(), &parsed)
+            })
+            .await
+        };
+        let mut results = match retrieval {
+            Ok(Ok(results)) => results,
+            Ok(Err(error)) => {
+                tracing::error!("RAG {}", error);
                 let _ = app_clone.emit(
                     "ai-error",
                     AiErrorEvent {
                         request_id: rid,
-                        error: format!("검색 실패: {}", e),
+                        error,
+                    },
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::error!("RAG 검색 태스크 실패: {}", e);
+                let _ = app_clone.emit(
+                    "ai-error",
+                    AiErrorEvent {
+                        request_id: rid,
+                        error: format!("처리 중 오류: {}", e),
                     },
                 );
                 return;
             }
         };
-
-        // NL 파서가 추출한 필터 적용 (exclude, file_type만)
-        // ⚠ date_filter는 RAG에 적용하지 않음:
-        //   "2026년 노인일자리"에서 "2026년"은 문서 내용의 연도이지 파일 수정일이 아님.
-        //   파일 수정일 필터를 걸면 관련 문서를 놓칠 수 있음.
-        //   연도는 키워드로 FTS 검색에 반영됨.
-        let mut results: Vec<_> = results
-            .into_iter()
-            .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
-            .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
-            .collect();
-
-        // 저결과 폴백 — 복합명사 접미사 때문에 매칭이 빈약할 수 있음.
-        // 예: "예산액"으로 4건만 걸릴 때 "예산"으로 재검색해서 커버리지 확보.
-        // 한국어에서 "예산액/집행률/사용량" 같은 복합명사가 FTS5 토큰 경계로
-        // 쪼개지거나 원본에 다른 표기로 존재하는 경우를 구제한다.
-        if results.len() < RAG_LOW_RESULTS_THRESHOLD {
-            if let Some(fallback_query) = strip_suffix_variants(&search_query) {
-                tracing::debug!(
-                    "RAG 저결과 폴백: '{}' ({} hits) → '{}'",
-                    search_query,
-                    results.len(),
-                    fallback_query
-                );
-                if let Ok(fallback_resp) = service.search_hybrid(
-                    &fallback_query,
-                    RAG_RETRIEVE_LIMIT,
-                    folder_scope.as_deref(),
-                ) {
-                    let existing: std::collections::HashSet<(String, i64)> = results
-                        .iter()
-                        .map(|r| (r.file_path.clone(), r.chunk_index))
-                        .collect();
-
-                    let additional = fallback_resp
-                        .results
-                        .into_iter()
-                        .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
-                        .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
-                        .filter(|r| !existing.contains(&(r.file_path.clone(), r.chunk_index)));
-
-                    for r in additional {
-                        results.push(r);
-                    }
-                    tracing::debug!("RAG 폴백 병합 후 {} hits", results.len());
-                }
-            }
-        }
-
-        // 최장 단어 폴백 — NL 파서가 "관련"/"요약" 같은 자연어 보조어까지 키워드로 잡아서
-        // FTS AND 쿼리가 과도하게 좁아진 경우 구제. "금연도시 관련 요약" → "금연도시"만
-        // 단독 검색. 2글자 이상, 원본과 달라야 하고 공백 2개 이상 포함된 쿼리에만 적용.
-        if results.is_empty() && search_query.split_whitespace().count() >= 2 {
-            if let Some(longest) = search_query
-                .split_whitespace()
-                .filter(|w| w.chars().count() >= 2)
-                .max_by_key(|w| w.chars().count())
-            {
-                tracing::debug!("RAG 0건 폴백: 최장 단어 '{}' 재시도", longest);
-                if let Ok(resp) =
-                    service.search_hybrid(longest, RAG_RETRIEVE_LIMIT, folder_scope.as_deref())
-                {
-                    results = resp
-                        .results
-                        .into_iter()
-                        .filter(|r| smart_apply_exclude_filter(r, &parsed.exclude_keywords))
-                        .filter(|r| smart_apply_file_type_filter(r, &parsed.file_type))
-                        .collect();
-                    tracing::debug!("RAG 최장단어 폴백 결과 {} hits", results.len());
-                }
-            }
-        }
 
         // lineage collapse — group_versions 설정이 켜졌을 때 같은 lineage 의
         // 중복 버전을 접어 컨텍스트 예산이 버전 문서들로 잠식되는 현상을 방지.
@@ -898,10 +928,18 @@ pub async fn ask_ai_file(
         // 단일 파일 스코프 FTS 검색 — 전역 top-25 에서 파일 필터하는 기존 방식은
         // 큰 문서에서 관련 청크가 전역 랭킹 밖으로 밀려날 수 있어 파일 QA 품질이
         // 떨어진다. 처음부터 `f.path = ?` 로 좁혀 파일 내부 BM25 상위 청크를 뽑는다.
-        let targeted_results = service
-            .search_hybrid_in_file(&search_query, RAG_RETRIEVE_LIMIT, &file_path_clone)
-            .map(|resp| resp.results)
-            .unwrap_or_default();
+        // 임베딩 + FTS 동기 호출이라 async 워커를 묶지 않게 spawn_blocking (rag_retrieve 와 같은 이유).
+        let targeted_results = {
+            let file_path = file_path_clone.clone();
+            tokio::task::spawn_blocking(move || {
+                service
+                    .search_hybrid_in_file(&search_query, RAG_RETRIEVE_LIMIT, &file_path)
+                    .map(|resp| resp.results)
+                    .unwrap_or_default()
+            })
+            .await
+            .unwrap_or_default()
+        };
 
         if cancel_token.load(Ordering::Relaxed) {
             return;

@@ -6,9 +6,15 @@
 pub use super::collector::*;
 pub use super::sync::*;
 
+mod metadata_scan;
+mod save;
+
+pub use metadata_scan::{scan_metadata_only, MetadataScanProgress, MetadataScanResult};
+pub(crate) use save::{
+    index_file_fts_only_no_tx, index_file_fts_only_no_tx_opts, save_document_to_db_fts_only_no_tx,
+};
+
 use crate::constants::{METADATA_EXCLUDED_EXTENSIONS, OCR_IMAGE_EXTENSIONS, SUPPORTED_EXTENSIONS};
-use crate::db;
-use crate::indexer::exclusions::is_excluded_dir;
 use crate::ocr::OcrEngine;
 use crate::parsers::{parse_file, ParsedDocument};
 use crate::tokenizer::{LinderaKoTokenizer, TextTokenizer};
@@ -17,14 +23,14 @@ use crossbeam_channel::{bounded, RecvTimeoutError};
 use once_cell::sync::{Lazy, OnceCell};
 use rayon::prelude::*;
 use rusqlite::Connection;
-use std::fs;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::Duration;
 
 use super::collector::{collect_files, save_file_metadata_only};
+use super::sync::save_document_isolated;
 
 /// 인덱싱 경로가 공유하는 OCR 엔진 핸들.
 ///
@@ -240,37 +246,31 @@ fn index_folder_fts_impl(
         disk_settings.throttle_ms
     );
 
-    // ⚡ 진행률 throttling (100ms 또는 10파일마다) - UI 렌더링 부하 감소
+    // ⚡ 진행률 throttling (시간 기준만) - UI 렌더링 부하 감소.
+    // "10파일마다" 조건이 있으면 작은 파일이 많은 폴더에서 초당 수십 번 이벤트가 나가
+    // 앱 셸 전체가 그만큼 다시 그려진다. 시작·종료 같은 경계는 force 로 즉시 보낸다.
     use std::cell::Cell;
     let last_progress_time = Cell::new(std::time::Instant::now());
-    let last_progress_count = Cell::new(0usize);
-    const PROGRESS_THROTTLE_MS: u64 = 100;
-    const PROGRESS_THROTTLE_FILES: usize = 10;
+    const PROGRESS_THROTTLE_MS: u64 = 150;
 
-    let send_progress = |phase: &str,
-                         total: usize,
-                         processed: usize,
-                         current: Option<&str>,
-                         force: bool| {
-        if let Some(ref cb) = progress_callback {
-            // throttle: 100ms 또는 10파일마다, 또는 force=true일 때만 전송
-            let now = std::time::Instant::now();
-            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
-            let files_since = processed.saturating_sub(last_progress_count.get());
+    let send_progress =
+        |phase: &str, total: usize, processed: usize, current: Option<&str>, force: bool| {
+            if let Some(ref cb) = progress_callback {
+                let now = std::time::Instant::now();
+                let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
 
-            if force || elapsed >= PROGRESS_THROTTLE_MS || files_since >= PROGRESS_THROTTLE_FILES {
-                cb(FtsIndexingProgress {
-                    phase: phase.to_string(),
-                    total_files: total,
-                    processed_files: processed,
-                    current_file: current.map(|s| s.to_string()),
-                    folder_path: folder_str.clone(),
-                });
-                last_progress_time.set(now);
-                last_progress_count.set(processed);
+                if force || elapsed >= PROGRESS_THROTTLE_MS {
+                    cb(FtsIndexingProgress {
+                        phase: phase.to_string(),
+                        total_files: total,
+                        processed_files: processed,
+                        current_file: current.map(|s| s.to_string()),
+                        folder_path: folder_str.clone(),
+                    });
+                    last_progress_time.set(now);
+                }
             }
-        }
-    };
+        };
 
     // 1. 파일 스캔 (메타데이터 스캔에서 이미 수집한 경우 재사용하여 이중 FS 순회 방지)
     send_progress("scanning", 0, 0, None, true); // force: 시작
@@ -336,7 +336,7 @@ fn index_folder_fts_impl(
             if cancel_flag.load(Ordering::Acquire) {
                 break;
             }
-            let _ = save_file_metadata_only(conn, path);
+            let _ = save_file_metadata_only(conn, path, vector_index.as_deref());
             if (i + 1) % TRANSACTION_BATCH_SIZE == 0 {
                 if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
                     tracing::warn!("Metadata batch commit failed: {}", e);
@@ -538,23 +538,17 @@ fn index_folder_fts_impl(
                             // RAII Guard 라 정상/패닉 양쪽 경로 모두에서 자동 clear.
                             let _bc = crate::breadcrumb::Guard::new(&path, "fts_save_document");
 
-                            // save_document_to_db_fts_only_no_tx 내부의 lindera tokenize /
-                            // db::insert_chunk 등이 panic 하면 active 트랜잭션이 dangling 상태로
-                            // 남아 다음 BEGIN 이 실패한다. catch_unwind 로 감싸 panic 시
-                            // 트랜잭션을 ROLLBACK + 재시작해 인덱싱 루프 자체는 살린다.
-                            let save_result = catch_unwind(AssertUnwindSafe(|| {
-                                save_document_to_db_fts_only_no_tx(
-                                    conn,
-                                    &path,
-                                    document,
-                                    FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
-                                    vector_index.as_deref(),
-                                    chunk_tokens,
-                                )
-                            }));
-
-                            match save_result {
-                                Ok(Ok(_)) => {
+                            // 문서 하나 = SAVEPOINT 하나. 저장 실패나 패닉(lindera tokenize·insert_chunk 등)은
+                            // 그 문서의 부분 쓰기만 되돌린다. 종전엔 패닉이면 배치(최대 200건)를 통째로
+                            // ROLLBACK 해 앞서 저장한 문서까지 날렸다.
+                            match save_document_isolated(
+                                conn,
+                                &path,
+                                document,
+                                vector_index.as_deref(),
+                                chunk_tokens,
+                            ) {
+                                Ok(()) => {
                                     indexed += 1;
                                     // OCR 이미지 파일 카운트
                                     let ext = path
@@ -566,7 +560,7 @@ fn index_folder_fts_impl(
                                         ocr_image_count += 1;
                                     }
                                 }
-                                Ok(Err(e)) => {
+                                Err(e) => {
                                     failed += 1;
                                     if errors.len() < MAX_INDEXING_ERRORS {
                                         errors.push(format!(
@@ -577,34 +571,14 @@ fn index_folder_fts_impl(
                                     } else {
                                         suppressed_errors += 1;
                                     }
-                                }
-                                Err(_) => {
-                                    // 인덱싱 단계 panic — 활성 트랜잭션 강제 정리.
-                                    // ROLLBACK 후 새 BEGIN 으로 다음 파일들 처리 지속.
-                                    tracing::error!(
-                                        "[FTS] save_document panicked on {} — rolling back batch",
-                                        clean_path_display(&path)
-                                    );
-                                    let _ = conn.execute_batch("ROLLBACK");
-                                    if conn.is_autocommit() {
-                                        let _ = conn.execute_batch("BEGIN");
-                                    }
-                                    batch_count = 0;
-                                    failed += 1;
-                                    if errors.len() < MAX_INDEXING_ERRORS {
-                                        errors.push(format!(
-                                            "{}\t{}",
-                                            clean_path_display(&path),
-                                            "인덱싱 단계 패닉 (파일 본문은 스킵, 메타데이터만 저장)"
-                                        ));
-                                    } else {
-                                        suppressed_errors += 1;
-                                    }
-                                    // 메타데이터 fallback 은 별도 conn 호출이 필요 — 트랜잭션
-                                    // 재시작 후 best-effort.
-                                    if let Err(e) = save_file_metadata_only(conn, &path) {
+                                    // 본문 저장은 실패했어도 파일명 검색은 되게 메타데이터만 남긴다
+                                    if let Err(e) = save_file_metadata_only(
+                                        conn,
+                                        &path,
+                                        vector_index.as_deref(),
+                                    ) {
                                         tracing::warn!(
-                                            "Failed to save metadata after panic for {:?}: {}",
+                                            "Failed to save metadata after save failure for {:?}: {}",
                                             path,
                                             e
                                         );
@@ -613,7 +587,9 @@ fn index_folder_fts_impl(
                             }
                         }
                         ParseResult::Failure { path, error } => {
-                            if let Err(e) = save_file_metadata_only(conn, &path) {
+                            if let Err(e) =
+                                save_file_metadata_only(conn, &path, vector_index.as_deref())
+                            {
                                 tracing::warn!("Failed to save metadata for {:?}: {}", path, e);
                             }
                             failed += 1;
@@ -628,7 +604,9 @@ fn index_folder_fts_impl(
                         ParseResult::CloudSkipped { path } => {
                             // OneDrive 등 클라우드 placeholder: 본문 다운로드 회피.
                             // 메타데이터만 저장해 파일명 검색은 가능하게 두고, 실패로는 분류하지 않는다.
-                            if let Err(e) = save_file_metadata_only(conn, &path) {
+                            if let Err(e) =
+                                save_file_metadata_only(conn, &path, vector_index.as_deref())
+                            {
                                 tracing::warn!(
                                     "Failed to save metadata for cloud placeholder {:?}: {}",
                                     path,
@@ -665,8 +643,10 @@ fn index_folder_fts_impl(
         }
     }
 
-    // 항상 producer 스레드 join (취소 시에도 channel drop으로 빠르게 종료됨)
-    // receiver는 이미 drop되었으므로 producer의 sender.send()가 Err 반환 → 루프 종료
+    // 항상 producer 스레드 join. 먼저 receiver 를 버려야 한다 — 취소로 컨슈머가 빠져나온 뒤
+    // 가득 찬 채널(CHANNEL_BUFFER_SIZE)의 sender.send() 에 막힌 파서 스레드가 Err 로 풀려
+    // try_for_each 가 끝난다. 살려 두면 join 이 영원히 기다려 add_folder·재인덱싱이 끝나지 않았다.
+    drop(receiver);
     let _ = producer_handle.join();
 
     let phase = if was_cancelled {
@@ -696,441 +676,6 @@ fn index_folder_fts_impl(
         was_cancelled,
         ocr_image_count,
         cloud_skipped_count: cloud_skipped,
-    })
-}
-
-/// 문서를 DB에 저장 - FTS만 (트랜잭션 없음, 배치용)
-///
-/// `tokenizer`: 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 인덱싱.
-/// unicode61 토크나이저의 한국어 토큰화 한계를 보완하여 검색 재현율 향상.
-/// `precomputed_tokens`: 파싱 풀이 선계산한 청크별 형태소 토큰 (T3-3).
-/// `Some` 이면 인라인 tokenize 를 건너뛴다 (배치 파이프라인 경로).
-pub(crate) fn save_document_to_db_fts_only_no_tx(
-    conn: &Connection,
-    path: &Path,
-    document: ParsedDocument,
-    tokenizer: Option<&dyn crate::tokenizer::TextTokenizer>,
-    vector_index: Option<&crate::search::vector::VectorIndex>,
-    precomputed_tokens: Option<Vec<Option<String>>>,
-) -> Result<usize, IndexError> {
-    let path_str = path.to_string_lossy().to_string();
-
-    let metadata = fs::metadata(path).map_err(|e| IndexError::IoError(e.to_string()))?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let file_type = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
-    let modified_at = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    // upsert_file_fts_only 사용 (vector_indexed_at = NULL)
-    let file_id =
-        db::upsert_file_fts_only(conn, &path_str, &file_name, &file_type, size, modified_at)
-            .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    // Lineage 부여 — 같은 stem/폴더의 기존 canonical과 점수 비교 후 승자 지정
-    if let Err(e) = crate::indexer::lineage::assign_for_file(
-        conn,
-        file_id,
-        &path_str,
-        &file_name,
-        Some(modified_at),
-    ) {
-        tracing::warn!("lineage assign failed for {}: {}", path_str, e);
-    }
-
-    // 재인덱싱 시 구 청크의 벡터를 먼저 제거 (이슈 #34 후속).
-    // chunks.id(rowid)는 AUTOINCREMENT가 아니라 삭제된 id가 재사용될 수 있는데,
-    // 벡터를 남겨두면 vector_worker의 contains_chunk 스킵이 옛 내용의 임베딩을
-    // 새 청크에 오귀속시킨다. 재사용이 안 되어도 고아 벡터가 usearch에 누적된다.
-    // (제거가 커밋 전이라 강제종료+롤백 교차 시 벡터 누락 가능성이 있으나,
-    //  이는 다음 재인덱싱에서 회복되는 "누락"이지 "오답"이 아니다.)
-    if let Some(vi) = vector_index {
-        match db::get_chunk_ids_for_file(conn, file_id) {
-            Ok(old_chunk_ids) => {
-                for chunk_id in old_chunk_ids {
-                    if let Err(e) = vi.remove(chunk_id) {
-                        tracing::debug!("stale vector remove failed {}: {}", chunk_id, e);
-                    }
-                }
-            }
-            Err(e) => tracing::warn!("stale vector 조회 실패 {}: {}", path_str, e),
-        }
-    }
-
-    // _no_tx 버전 사용: 호출자(index_folder_fts_only)가 이미 트랜잭션을 관리하므로
-    // 중첩 BEGIN 방지 (SQLite는 중첩 트랜잭션 미지원)
-    db::delete_chunks_for_file_no_tx(conn, file_id)
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    let chunks_count = document.chunks.len();
-
-    // 복사 시 깨지는 문서(PDF CID/ToUnicode 누락, HWP/HWPX PUA 커스텀폰트) 판정 —
-    // 청크 본문을 이어붙여 looks_like_garbage_text 로 검사한다. chunks 를 소비하기
-    // 전에 계산해야 하므로 into_iter() 루프 앞에서 수행.
-    //
-    // 판정 자체를 pdf/hwp/hwpx 로 게이팅한다. 판정기는 "한글/라틴이 지배적이지 않으면
-    // 깨짐"으로도 보므로 한자 지배 문서(중/일)를 오탐하는데, 이 CID/PUA 깨짐은 pdf 와 한글
-    // 오피스 계열(hwp·hwpx)에서만 실제로 발생한다. hwpx 도 커스텀폰트 PUA 코드포인트가
-    // 그대로 실려 깨질 수 있어 포함한다(유니코드 네이티브라도 PUA 는 유니코드다 — hwpx 파서는
-    // PUA 를 걸러내지 않는다). 그 외 타입(docx/xlsx/txt 등)은 판정 생략 → 중/일 문서 오탐
-    // 배지를 원천 차단(항상 false = 깨끗함).
-    let garbled_flag = if matches!(file_type.as_str(), "pdf" | "hwp" | "hwpx") {
-        // 파서 힌트 OR — OCR 이 본문을 대체하면 chunks 는 깨끗해져 아래 판정이 놓치지만,
-        // 원본 텍스트층이 깨졌다는 사실(복사 시 깨짐)은 그대로다 (kordoc pageQuality /
-        // Rust PDF 파서의 페이지별 판정에서 전달).
-        document.garbled_hint || {
-            let joined: String = document
-                .chunks
-                .iter()
-                .map(|c| c.content.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
-            crate::parsers::pdf::looks_like_garbage_text(&joined)
-        }
-    } else {
-        false
-    };
-
-    let mut tokenize_panics: usize = 0;
-    let mut precomputed_tokens = precomputed_tokens;
-
-    for (idx, chunk) in document.chunks.into_iter().enumerate() {
-        // 형태소 분석기가 있으면 FTS에 형태소 토큰도 함께 저장.
-        // 배치 경로는 파싱 풀 선계산분(precomputed_tokens)을 사용 (T3-3) —
-        // 항목 None = 파싱 풀에서의 tokenize panic (형태소 없이 인덱싱).
-        // 그 외 경로(감시자 단건 등)는 기존처럼 인라인 tokenize 하되, lindera 가
-        // 특정 입력에서 panic 하는 사례 (BENIGN_PANIC_SOURCES 에 등재)에 대비해
-        // 청크 단위로 catch_unwind. panic 시 형태소 토큰 없이 진행 — 검색 재현율은
-        // 살짝 낮아지지만 인덱싱 자체는 성공 (강제종료 회피가 우선).
-        let extra_tokens = match precomputed_tokens.as_mut() {
-            Some(tokens) => {
-                let t = tokens.get_mut(idx).and_then(Option::take);
-                if t.is_none() {
-                    tokenize_panics += 1;
-                }
-                t
-            }
-            None => tokenizer.and_then(|tok| {
-                let content = &chunk.content;
-                match catch_unwind(AssertUnwindSafe(|| tok.tokenize(content))) {
-                    Ok(morphemes) => Some(morphemes.join(" ")),
-                    Err(_) => {
-                        tokenize_panics += 1;
-                        None
-                    }
-                }
-            }),
-        };
-
-        db::insert_chunk(
-            conn,
-            file_id,
-            idx,
-            &chunk.content,
-            chunk.start_offset,
-            chunk.end_offset,
-            chunk.page_number,
-            chunk.page_end,
-            chunk.location_hint.as_deref(),
-            extra_tokens.as_deref(),
-        )
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-    }
-
-    if tokenize_panics > 0 {
-        tracing::warn!(
-            "[FTS] Tokenizer panicked on {}/{} chunks of {} (indexed without morphemes)",
-            tokenize_panics,
-            chunks_count,
-            path_str
-        );
-    }
-
-    // 복사 시 깨짐 표식 저장 — 검색 결과/미리보기 배지용. 실패해도 인덱싱 자체는
-    // 성공으로 두어야 하므로(배지는 부가 정보) lineage assign 과 동일하게 warn 후 진행.
-    if let Err(e) = db::set_file_garbled(conn, file_id, garbled_flag) {
-        tracing::warn!("set_file_garbled failed for {}: {}", path_str, e);
-    }
-
-    tracing::debug!("[FTS] Indexed: {} ({} chunks)", path_str, chunks_count);
-
-    Ok(chunks_count)
-}
-
-// ==================== Phase 2: 메타데이터 전용 스캔 ====================
-
-/// 메타데이터 스캔 진행률
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct MetadataScanProgress {
-    pub phase: String,
-    pub scanned_files: usize,
-    pub folder_path: String,
-}
-
-/// 메타데이터 스캔 결과
-#[derive(Debug, Clone)]
-pub struct MetadataScanResult {
-    pub folder_path: String,
-    pub files_found: usize,
-    pub errors: Vec<String>,
-    pub was_cancelled: bool,
-}
-
-/// 메타데이터 전용 스캔 (파일 열지 않음, < 2초 목표)
-/// 파일명 검색 즉시 가능하게 함
-pub fn scan_metadata_only(
-    conn: &Connection,
-    folder_path: &Path,
-    recursive: bool,
-    cancel_flag: Arc<AtomicBool>,
-    progress_callback: Option<Box<dyn Fn(MetadataScanProgress) + Send + Sync>>,
-    _max_file_size_mb: u64,
-    excluded_dirs: &[String],
-) -> Result<MetadataScanResult, IndexError> {
-    let folder_str = folder_path.to_string_lossy().to_string();
-
-    // 진행률 throttling
-    use std::cell::Cell;
-    let last_progress_time = Cell::new(std::time::Instant::now());
-    let last_progress_count = Cell::new(0usize);
-    const PROGRESS_THROTTLE_MS: u64 = 100;
-    const PROGRESS_THROTTLE_FILES: usize = 100; // 메타 스캔은 빠르므로 100개 단위
-
-    let send_progress = |phase: &str, count: usize, force: bool| {
-        if let Some(ref cb) = progress_callback {
-            let now = std::time::Instant::now();
-            let elapsed = now.duration_since(last_progress_time.get()).as_millis() as u64;
-            let files_since = count.saturating_sub(last_progress_count.get());
-
-            if force || elapsed >= PROGRESS_THROTTLE_MS || files_since >= PROGRESS_THROTTLE_FILES {
-                cb(MetadataScanProgress {
-                    phase: phase.to_string(),
-                    scanned_files: count,
-                    folder_path: folder_str.clone(),
-                });
-                last_progress_time.set(now);
-                last_progress_count.set(count);
-            }
-        }
-    };
-
-    send_progress("scanning", 0, true);
-
-    let mut count = 0;
-    let mut errors: Vec<String> = Vec::new();
-    let mut suppressed_errors: usize = 0;
-
-    // 배치 트랜잭션 (성능 최적화)
-    conn.execute_batch("BEGIN")
-        .map_err(|e| IndexError::DbError(e.to_string()))?;
-
-    let mut batch_count = 0;
-    const BATCH_SIZE: usize = 100;
-
-    // WalkDir 직접 순회 (collect_files보다 메모리 효율적)
-    let walker = if recursive {
-        walkdir::WalkDir::new(folder_path)
-    } else {
-        walkdir::WalkDir::new(folder_path).max_depth(1)
-    };
-
-    // filter_entry로 제외 디렉토리 하위 전체를 건너뛰기
-    for entry in walker
-        .into_iter()
-        .filter_entry(|e| {
-            if e.file_type().is_dir() {
-                let name = e.file_name().to_str().unwrap_or("");
-                // 숨김 폴더 제외
-                if name.starts_with('.') {
-                    return false;
-                }
-                // 제외 디렉토리 목록 체크
-                if is_excluded_dir(e.path(), excluded_dirs) {
-                    return false;
-                }
-            }
-            true
-        })
-        .filter_map(|e| e.ok())
-    {
-        if cancel_flag.load(Ordering::Acquire) {
-            let _ = conn.execute_batch("COMMIT");
-            send_progress("cancelled", count, true);
-            return Ok(MetadataScanResult {
-                folder_path: folder_str,
-                files_found: count,
-                errors: vec![],
-                was_cancelled: true,
-            });
-        }
-
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path();
-
-        // 임시 파일 제외
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if file_name.starts_with("~$") || file_name.starts_with('.') {
-            continue;
-        }
-
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        // 파일 크기 체크 (metadata 접근 - 파일 열지 않음)
-        let metadata = match entry.metadata() {
-            Ok(m) => m,
-            Err(e) => {
-                if errors.len() < MAX_INDEXING_ERRORS {
-                    errors.push(format!("{}\t{}", clean_path_display(path), e));
-                } else {
-                    suppressed_errors += 1;
-                }
-                continue;
-            }
-        };
-
-        // 시스템 바이너리/임시 파일은 메타데이터 저장 제외
-        // (DLL/EXE/SYS 수십만 개로 인한 DB 급팽창 + 검색 노이즈 방지)
-        if METADATA_EXCLUDED_EXTENSIONS.contains(&ext.as_str()) {
-            continue;
-        }
-
-        // DB에 메타데이터만 저장 (문서/데이터 파일 — 파일명 검색용)
-        let path_str = path.to_string_lossy().to_string();
-        let file_type = ext.clone();
-        let size = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
-        let modified_at = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-
-        if let Err(e) =
-            db::insert_file_metadata_only(conn, &path_str, file_name, &file_type, size, modified_at)
-        {
-            if errors.len() < MAX_INDEXING_ERRORS {
-                errors.push(format!("{}\t{}", clean_path_str(&path_str), e));
-            } else {
-                suppressed_errors += 1;
-            }
-            continue;
-        }
-
-        count += 1;
-        batch_count += 1;
-        send_progress("scanning", count, false);
-
-        // 배치 커밋
-        if batch_count >= BATCH_SIZE {
-            if let Err(e) = conn.execute_batch("COMMIT; BEGIN") {
-                tracing::warn!("Batch commit failed: {}", e);
-                if conn.is_autocommit() {
-                    let _ = conn.execute_batch("BEGIN");
-                }
-            }
-            batch_count = 0;
-        }
-    }
-
-    // 최종 커밋
-    if let Err(e) = conn.execute_batch("COMMIT") {
-        tracing::warn!("Final commit failed: {}", e);
-    }
-
-    send_progress("completed", count, true);
-    tracing::info!("[MetadataScan] {} files found in {:?}", count, folder_path);
-
-    if suppressed_errors > 0 {
-        errors.push(format!("... 외 {}건 에러 생략", suppressed_errors));
-    }
-
-    Ok(MetadataScanResult {
-        folder_path: folder_str,
-        files_found: count,
-        errors,
-        was_cancelled: false,
-    })
-}
-
-// ==================== 단일 파일 FTS 인덱싱 (manager용) ====================
-
-/// 단일 파일 FTS 인덱싱 (트랜잭션 없음) - WatchManager 배치 처리용
-///
-/// 호출자가 BEGIN/COMMIT을 관리해야 함.
-pub(crate) fn index_file_fts_only_no_tx(
-    conn: &Connection,
-    path: &Path,
-    ocr_engine: Option<&OcrEngine>,
-    vector_index: Option<&crate::search::vector::VectorIndex>,
-) -> Result<IndexResult, IndexError> {
-    index_file_fts_only_no_tx_opts(conn, path, ocr_engine, vector_index, false)
-}
-
-/// `force_ocr`: PDF 를 kordoc `--ocr-force`(전 페이지 강제 재인식)로 파싱 —
-/// "OCR로 다시 읽기" 단건 재인덱싱 전용.
-pub(crate) fn index_file_fts_only_no_tx_opts(
-    conn: &Connection,
-    path: &Path,
-    ocr_engine: Option<&OcrEngine>,
-    vector_index: Option<&crate::search::vector::VectorIndex>,
-    force_ocr: bool,
-) -> Result<IndexResult, IndexError> {
-    let parsed = if force_ocr {
-        crate::parsers::parse_file_force_ocr(path, ocr_engine)
-    } else {
-        parse_file(path, ocr_engine)
-    };
-    let document = match parsed {
-        Ok(doc) => doc,
-        Err(crate::parsers::ParseError::CloudPlaceholder(_)) => {
-            // 클라우드 placeholder: 본문 hydrate 회피, 메타데이터만 저장.
-            save_file_metadata_only(conn, path).map_err(|e| IndexError::DbError(e.to_string()))?;
-            return Ok(IndexResult {
-                file_path: path.to_string_lossy().to_string(),
-                chunks_count: 0,
-                vectors_count: 0,
-                total_chars: 0,
-            });
-        }
-        Err(e) => return Err(IndexError::ParseError(e.to_string())),
-    };
-    // parse_file 이 전문 content 를 비우므로(T2-5) 청크 길이합으로 집계
-    // (청크 overlap 만큼 과대집계되나 이 필드는 통계 메타데이터일 뿐이다)
-    let total_chars = document.chunks.iter().map(|c| c.content.len()).sum();
-
-    let chunks_count = save_document_to_db_fts_only_no_tx(
-        conn,
-        path,
-        document,
-        FTS_TOKENIZER.as_ref().map(|t| t as &dyn TextTokenizer),
-        vector_index,
-        None, // 단건 경로 — 인라인 tokenize (파싱 풀 없음)
-    )?;
-
-    Ok(IndexResult {
-        file_path: path.to_string_lossy().to_string(),
-        chunks_count,
-        vectors_count: 0,
-        total_chars,
     })
 }
 
@@ -1174,78 +719,4 @@ pub enum IndexError {
 }
 
 #[cfg(test)]
-mod stale_vector_tests {
-    use super::*;
-    use crate::parsers::{DocumentChunk, DocumentMetadata, ParsedDocument};
-    use crate::search::vector::VectorIndex;
-
-    fn doc(text: &str) -> ParsedDocument {
-        ParsedDocument {
-            content: text.to_string(),
-            metadata: DocumentMetadata {
-                title: None,
-                author: None,
-                created_at: None,
-                page_count: None,
-            },
-            chunks: vec![DocumentChunk {
-                content: text.to_string(),
-                start_offset: 0,
-                end_offset: text.len(),
-                page_number: None,
-                page_end: None,
-                location_hint: None,
-            }],
-            garbled_hint: false,
-        }
-    }
-
-    /// 이슈 #34 후속: 재저장(재인덱싱) 시 구 청크의 벡터를 제거하지 않으면
-    /// chunks.id(rowid) 재사용 시 옛 임베딩이 새 내용에 오귀속된다.
-    #[test]
-    fn resave_removes_stale_chunk_vectors() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("t.db");
-        let conn = rusqlite::Connection::open(&db_path).unwrap();
-        crate::db::migrate_schema(&conn, &db_path).unwrap();
-
-        let file = dir.path().join("a.txt");
-        std::fs::write(&file, "v1 내용").unwrap();
-
-        // 1차 저장 (벡터 인덱스 없이) → 청크 id 확보
-        save_document_to_db_fts_only_no_tx(&conn, &file, doc("v1 내용"), None, None, None).unwrap();
-        let file_id: i64 = conn
-            .query_row(
-                "SELECT id FROM files WHERE path = ?",
-                [file.to_string_lossy()],
-                |r| r.get(0),
-            )
-            .unwrap();
-        let old_ids = crate::db::get_chunk_ids_for_file(&conn, file_id).unwrap();
-        assert!(!old_ids.is_empty());
-
-        // 구 청크 임베딩 등록
-        let vi = VectorIndex::new(&dir.path().join("vec.usearch")).unwrap();
-        let emb = vec![0.1_f32; crate::embedder::EMBEDDING_DIM];
-        for id in &old_ids {
-            vi.add(*id, &emb).unwrap();
-        }
-        assert!(old_ids.iter().all(|id| vi.contains_chunk(*id)));
-
-        // 2차 저장 (재인덱싱) — 구 벡터가 제거되어야 rowid 재사용 시 오귀속이 없다
-        std::fs::write(&file, "v2 완전히 다른 내용").unwrap();
-        save_document_to_db_fts_only_no_tx(
-            &conn,
-            &file,
-            doc("v2 완전히 다른 내용"),
-            None,
-            Some(&vi),
-            None,
-        )
-        .unwrap();
-        assert!(
-            old_ids.iter().all(|id| !vi.contains_chunk(*id)),
-            "재저장 후 구 청크 벡터가 남아있음"
-        );
-    }
-}
+mod stale_vector_tests;

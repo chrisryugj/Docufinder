@@ -174,12 +174,34 @@ fn collect_files_recursive(
 /// 파일 메타데이터만 저장 (파일명 검색용) - 외부 호출용 래퍼
 /// 반환: 저장된 파일 경로 문자열
 pub fn save_file_metadata_and_cache(conn: &Connection, path: &Path) -> Result<String, IndexError> {
-    save_file_metadata_only(conn, path)?;
+    // 감시 경로(manager)는 부르기 전에 벡터를 먼저 지운다(cleanup_stale_vectors)
+    save_file_metadata_only(conn, path, None)?;
     Ok(path.to_string_lossy().to_string())
 }
 
-/// 파일 메타데이터만 저장 (파일명 검색용)
-pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<(), IndexError> {
+/// 경로의 청크 벡터를 지운다. 청크를 지우기 전에 불러야 한다(지운 뒤엔 청크 id 를 모른다).
+/// 남기면 해제된 chunks.id 가 재사용될 때 다른 문서의 임베딩으로 오귀속된다.
+pub(crate) fn remove_vectors_for_path(
+    conn: &Connection,
+    path: &Path,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
+) {
+    let Some(vi) = vector_index else {
+        return;
+    };
+    if let Ok(chunk_ids) = db::get_chunk_ids_for_path(conn, &path.to_string_lossy()) {
+        for chunk_id in chunk_ids {
+            let _ = vi.remove(chunk_id);
+        }
+    }
+}
+
+/// 파일 메타데이터만 저장 (파일명 검색용). 예전 청크가 있으면 그 벡터와 함께 지운다.
+pub(crate) fn save_file_metadata_only(
+    conn: &Connection,
+    path: &Path,
+    vector_index: Option<&crate::search::vector::VectorIndex>,
+) -> Result<(), IndexError> {
     let path_str = path.to_string_lossy().to_string();
 
     let metadata = fs::metadata(path).map_err(|e| IndexError::IoError(e.to_string()))?;
@@ -201,14 +223,32 @@ pub(crate) fn save_file_metadata_only(conn: &Connection, path: &Path) -> Result<
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // stale chunks 정리는 하지 않음:
-    // - 문서 파일: FTS 인덱싱 시 save_document_to_db_fts_only_no_tx에서 자동 삭제
-    // - DLL/EXE 등 바이너리: 애초에 chunk가 없어 no-op DELETE만 발생 → DB 락 경쟁 원인
-
     let file_id = db::retry_on_busy(|| {
         db::upsert_file(conn, &path_str, &file_name, &file_type, size, modified_at)
     })
     .map_err(|e| IndexError::DbError(e.to_string()))?;
+
+    // 본문을 못 읽어 메타데이터만 남기는 파일에 예전 청크가 있으면 지운다. 남겨 두면 예전 본문이
+    // 계속 검색된다(나중에 암호가 걸리거나 손상된 문서가 옛 내용으로 검색되는 등). 청크가 없는
+    // 파일(DLL/EXE 등)은 존재 확인 한 번으로 끝나 쓰기 락 경쟁을 만들지 않는다. 벡터도 여기서
+    // 먼저 지운다 — 남기면 해제된 chunks.id 가 재사용될 때 다른 문서 임베딩이 붙는다
+    // (클라우드 placeholder 로 바뀐 파일·크기 초과 등 호출부가 따로 챙기지 않던 경로들).
+    let has_chunks: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM chunks WHERE file_id = ?1)",
+            [file_id],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if has_chunks {
+        remove_vectors_for_path(conn, path, vector_index);
+        db::retry_on_busy(|| db::delete_chunks_for_file_no_tx(conn, file_id))
+            .map_err(|e| IndexError::DbError(e.to_string()))?;
+        let _ = conn.execute(
+            "UPDATE files SET fts_indexed_at = NULL, vector_indexed_at = NULL WHERE id = ?1",
+            [file_id],
+        );
+    }
 
     // Lineage 부여 — 메타데이터만 수집된 파일도 즉시 그룹핑 가능하게
     if let Err(e) = crate::indexer::lineage::assign_for_file(

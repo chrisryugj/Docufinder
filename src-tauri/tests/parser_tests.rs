@@ -154,7 +154,7 @@ mod hwpx_tests {
             "Should have section count"
         );
 
-        // 청크에 섹션 정보 확인
+        // 청크에 페이지 정보 확인 (위치 힌트는 조판 시뮬레이션 기반 "페이지 N")
         for chunk in &doc.chunks {
             assert!(
                 chunk.page_number.is_some(),
@@ -164,9 +164,9 @@ mod hwpx_tests {
                 chunk
                     .location_hint
                     .as_ref()
-                    .map(|h| h.contains("섹션"))
+                    .map(|h| h.contains("페이지"))
                     .unwrap_or(false),
-                "HWPX location_hint should contain '섹션'"
+                "HWPX location_hint should contain '페이지'"
             );
         }
     }
