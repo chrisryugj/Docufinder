@@ -770,7 +770,8 @@ mod save_isolation_tests {
     }
 }
 
-#[cfg(test)]
+// 권한 비트로 폴더를 잠가 재현하는 테스트라 unix 전용 (윈도우에서는 헬퍼째 뺀다)
+#[cfg(all(test, unix))]
 mod sync_delete_tests {
     use super::sync_folder_fts;
     use std::sync::atomic::AtomicBool;
@@ -800,7 +801,6 @@ mod sync_delete_tests {
     }
 
     /// 스캔 중 읽지 못한 하위 폴더(권한 거부 등)의 파일은 지우지 않고, 정말 지워진 파일만 지운다.
-    #[cfg(unix)]
     #[test]
     fn unreadable_subfolder_is_not_treated_as_deleted() {
         use std::os::unix::fs::PermissionsExt;
