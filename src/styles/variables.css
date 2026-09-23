@@ -24,6 +24,21 @@
   --color-primary-950: #022C22;
 
   --shadow-glass: 0 8px 32px 0 rgba(28, 25, 23, 0.06);
+
+  /* Type Scale (~1.2 ratio, 15px base) — Tailwind text-* 유틸리티와 ts-* 클래스가 같은 값을 쓴다.
+     글자는 11px(text-2xs) 미만으로 쓰지 않는다. xs~2xl 줄 간격은 Tailwind 기본값 유지 */
+  --text-2xs: 0.6875rem;  /* 11px — 버전, 최소 메타 */
+  --text-2xs--line-height: 1.45;
+  --text-xs: 0.75rem;     /* 12px — 배지, 타임스탬프 */
+  --text-sm: 0.8125rem;   /* 13px — 보조 텍스트, 경로 */
+  --text-base: 0.9375rem; /* 15px — 본문 기본 */
+  --text-md: 1rem;        /* 16px — 검색바 입력 */
+  --text-md--line-height: 1.5;
+  --text-lg: 1.0625rem;   /* 17px — 본문 강조 */
+  --text-xl: 1.3125rem;   /* 21px — 서브섹션 헤딩 */
+  --text-2xl: 1.625rem;   /* 26px — 페이지 타이틀 */
+  --text-hero: 2.75rem;   /* 44px — 히어로 */
+  --text-hero--line-height: 1.1;
 }
 
 :root {
@@ -43,17 +58,18 @@
   --sidebar-collapsed-width: 48px;
   --color-sidebar-bg: #F5F5F0;
   --color-sidebar-text: #1C1917;
-  --color-sidebar-muted: #78716C;
+  --color-sidebar-muted: #736C66;
   --color-sidebar-hover: rgba(28, 25, 23, 0.04);
   --color-sidebar-active: rgba(1, 175, 122, 0.08);
   --color-sidebar-border: #E7E5E4;
-  --color-sidebar-section: #A8A29E;
+  --color-sidebar-section: #78716C;
 
   /* Typography — Stone palette */
   --color-text-primary: #1C1917;
   --color-text-secondary: #44403C;
-  --color-text-muted: #78716C;
-  --color-text-tertiary: #A8A29E;
+  /* 보조 글자도 WCAG AA(4.5:1)를 넘긴다: muted 4.9:1, tertiary 4.6:1 (bg-primary 기준) */
+  --color-text-muted: #736C66;
+  --color-text-tertiary: #78716C;
   --color-text-inverse: #FAFAF9;
 
   /* Borders — warm stone */
@@ -61,10 +77,13 @@
   --color-border-subtle: #F5F5F0;
   --color-border-hover: #D6D3D1;
 
-  /* Accent — Green (matches app icon #01AF7A) */
-  --color-accent: #01AF7A;
-  --color-accent-hover: #019468;
-  --color-accent-active: #017A56;
+  /* Accent — Green. 아이콘 색(#01AF7A)은 흰 글씨 2.8:1·글자색 2.7:1 이라 글자·버튼에 못 쓴다.
+     같은 색상각을 어둡게 한 #017F58 (글자 4.8:1, 흰 글씨 5.0:1). 연한 틴트(subtle·border·glow)는 아이콘 색 유지 */
+  --color-accent: #017F58;
+  --color-accent-hover: #016B4A;
+  --color-accent-active: #015A3E;
+  /* 강조색 채움 위 글자 (라이트 흰색, 다크는 밝은 초록 위라 어두운 글자) */
+  --color-on-accent: #FFFFFF;
   --color-accent-subtle: rgba(1, 175, 122, 0.06);
   --color-accent-light: rgba(1, 175, 122, 0.06);
   --color-accent-border: rgba(1, 175, 122, 0.2);
@@ -72,8 +91,9 @@
   --color-accent-glow: rgba(1, 175, 122, 0.25);
 
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
-  --color-accent-ai: #6366F1;
-  --color-accent-ai-hover: #4F46E5;
+  --color-accent-ai: #4F46E5;
+  --color-accent-ai-hover: #4338CA;
+  --color-on-accent-ai: #FFFFFF;
   --color-accent-ai-subtle: rgba(99, 102, 241, 0.08);
   --color-accent-ai-glow: rgba(99, 102, 241, 0.25);
 
@@ -82,16 +102,17 @@
   --color-accent-warm-subtle: rgba(217, 119, 6, 0.08);
 
   /* Functional Colors */
-  --color-success: #059669;
-  --color-warning: #D97706;
+  --color-success: #047857;
+  --color-warning: #B45309;
   --color-error: #DC2626;
+  --color-on-error: #FFFFFF;
   --color-error-hover: #991B1B;
   --color-error-rgb: 220, 38, 38;
   --color-error-bg: rgba(220, 38, 38, 0.1);
   --color-error-subtle: rgba(220, 38, 38, 0.08);
   --color-error-border: rgba(220, 38, 38, 0.2);
   --color-danger: var(--color-error);
-  --color-info: #0284C7;
+  --color-info: #0369A1;
   --color-info-bg: rgba(2, 132, 199, 0.1);
   --color-favorite: #FACC15;
   --color-favorite-bg: rgba(250, 204, 21, 0.15);
@@ -152,16 +173,7 @@
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
 
-  /* Type Scale (~1.2 ratio, 15px base) — lg/xl/2xl 사이 공백 메워 본문~제목 위계 연속화 */
-  --text-2xs: 0.6875rem;  /* 11px — 버전, 최소 메타 */
-  --text-xs: 0.75rem;     /* 12px — 배지, 타임스탬프 */
-  --text-sm: 0.8125rem;   /* 13px — 보조 텍스트, 경로 */
-  --text-base: 0.9375rem; /* 15px — 본문 기본 */
-  --text-md: 1rem;        /* 16px — 검색바 입력 */
-  --text-lg: 1.0625rem;   /* 17px — 본문 강조 */
-  --text-xl: 1.3125rem;   /* 21px — 서브섹션 헤딩 */
-  --text-2xl: 1.625rem;   /* 26px — 페이지 타이틀 */
-  --text-hero: 2.75rem;   /* 44px — 히어로 */
+  /* Type Scale 은 파일 맨 위 @theme 에 있다 (Tailwind text-* 유틸리티와 공유) */
 
   /* Layout Constraints */
   /* 창이 넓어지면 콘텐츠도 함께 확장(좁은 창 820px 가독성 유지 → 넓은 창 최대 1400px) */
@@ -189,7 +201,7 @@
      전략적 그린 강조 + 입체 depth + 곡률 언어 통일
      ============================================ */
   /* 전략적 accent — CTA/히어로 등 "한 곳"에만 사용 (그린 분산 규율 유지) */
-  --gradient-accent: linear-gradient(135deg, #10C48E 0%, #01AF7A 55%, #019468 100%);
+  --gradient-accent: linear-gradient(135deg, #019468 0%, #017F58 55%, #016B4A 100%);
   --gradient-accent-soft: linear-gradient(135deg, rgba(1, 175, 122, 0.09), rgba(1, 175, 122, 0.015));
   --gradient-surface-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0));
   /* 입체 depth — warm tint 유지하되 또렷한 lift (인터랙티브 표면 전용) */
@@ -252,13 +264,13 @@
   --color-sidebar-hover: rgba(255, 255, 255, 0.05);
   --color-sidebar-active: rgba(16, 196, 142, 0.12);
   --color-sidebar-border: rgba(255, 255, 255, 0.06);
-  --color-sidebar-section: #78716C;
+  --color-sidebar-section: #8A837D;
 
   /* Typography */
   --color-text-primary: #FAFAF9;
   --color-text-secondary: #D6D3D1;
   --color-text-muted: #A8A29E;
-  --color-text-tertiary: #78716C;
+  --color-text-tertiary: #8A837D;
   --color-text-inverse: #1C1917;
 
   /* Borders */
@@ -270,6 +282,7 @@
   --color-accent: #10C48E;
   --color-accent-hover: #34D9A5;
   --color-accent-active: #01AF7A;
+  --color-on-accent: #06281C;
   --color-accent-subtle: rgba(16, 196, 142, 0.10);
   --color-accent-light: rgba(16, 196, 142, 0.10);
   --color-accent-border: rgba(16, 196, 142, 0.25);
@@ -279,6 +292,7 @@
   /* Secondary Accent — Indigo (AI/시맨틱 기능) */
   --color-accent-ai: #818CF8;
   --color-accent-ai-hover: #6366F1;
+  --color-on-accent-ai: #111113;
   --color-accent-ai-subtle: rgba(129, 140, 248, 0.12);
   --color-accent-ai-glow: rgba(129, 140, 248, 0.25);
 
@@ -290,6 +304,7 @@
   --color-success: #34D399;
   --color-warning: #FBBF24;
   --color-error: #F87171;
+  --color-on-error: #111113;
   --color-error-hover: #B91C1C;
   --color-error-rgb: 248, 113, 113;
   --color-error-bg: rgba(248, 113, 113, 0.1);

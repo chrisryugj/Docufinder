@@ -23,7 +23,6 @@ export const MAX_RESULTS_OPTIONS = [
   { value: "100", label: "100개" },
   { value: "200", label: "200개" },
   { value: "500", label: "500개" },
-  { value: "1000", label: "1000개" },
 ];
 
 export const VIEW_DENSITY_OPTIONS = [

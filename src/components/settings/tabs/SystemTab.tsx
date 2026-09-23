@@ -18,10 +18,10 @@ interface SystemTabProps extends TabProps {
 }
 
 const CLEAR_STEP_LABELS: Record<string, string> = {
-  "stopping-watchers": "파일 감시 중지 중...",
-  "cancelling-indexing": "인덱싱 취소 중...",
-  "clearing-vectors": "벡터 데이터 삭제 중...",
-  "clearing-database": "데이터베이스 초기화 중...",
+  "stopping-watchers": "파일 감시 중지 중",
+  "cancelling-indexing": "인덱싱 취소 중",
+  "clearing-vectors": "벡터 데이터 삭제 중",
+  "clearing-database": "데이터베이스 초기화 중",
   "completed": "완료!",
 };
 
@@ -119,7 +119,7 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
               onChange={(value) => onChange("max_file_size_mb", parseInt(value))}
               placeholder="크기 선택"
             />
-            <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+            <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
               초과 파일은 인덱싱 스킵 · 큰 값은 메모리/속도 부담
             </p>
           </div>
@@ -134,14 +134,14 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
             onChange={(value) => onChange("auto_sync_interval_minutes", parseInt(value))}
             placeholder="주기 선택"
           />
-          <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+          <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
             실시간 감시가 놓친 변경분을 주기적으로 재정합 · 창 복귀 시에도 자동 실행
           </p>
         </div>
         <div className="mt-3">
           <SettingsToggle
             label="클라우드/네트워크 폴더 본문 인덱싱 자동 스킵"
-            description="OneDrive·구글·NAVER Works·UNC·SMB 매핑드라이브의 본문은 인덱싱하지 않음 (파일명 검색은 가능). 끄면 일반 로컬처럼 본문도 인덱싱 — NAS 등 빠른 환경에서만 권장"
+            description="OneDrive·구글·NAVER Works·UNC·SMB 매핑드라이브의 본문은 인덱싱하지 않음 (파일명 검색은 가능). 끄면 일반 로컬처럼 본문도 인덱싱. NAS 등 빠른 환경에서만 권장"
             checked={settings.skip_cloud_body_indexing ?? true}
             onChange={(v) => onChange("skip_cloud_body_indexing", v)}
           />

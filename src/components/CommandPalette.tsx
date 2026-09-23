@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { MOD_KEY } from "../utils/platform";
 
 export interface Command {
   id: string;
@@ -107,13 +108,13 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
       >
         {/* 검색 입력 */}
         <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-          <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>⌘K</span>
+          <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>{MOD_KEY}+K</span>
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="명령 검색… (폴더 추가, 설정, 테마, 검색 모드…)"
+            placeholder="명령 검색 (폴더 추가, 설정, 테마, 검색 모드 등)"
             className="flex-1 bg-transparent outline-none text-sm"
             style={{ color: "var(--color-text-primary)" }}
             aria-label="명령 검색"
@@ -135,7 +136,7 @@ export function CommandPalette({ isOpen, onClose, commands }: CommandPaletteProp
                 <div key={cmd.id}>
                   {showHeader && (
                     <div
-                      className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider"
+                      className="px-4 pt-2 pb-1 text-2xs font-semibold"
                       style={{ color: "var(--color-text-muted)" }}
                     >
                       {cmd.group}

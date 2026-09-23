@@ -17,7 +17,9 @@ import type {
 import { DEFAULT_FILTERS } from "../types/search";
 import { SEARCH_COMMANDS } from "../types/api";
 import { getErrorMessage } from "../types/error";
-import { textSimilarity } from "../utils/textSimilarity";
+import { charBigrams, jaccard } from "../utils/textSimilarity";
+
+const NO_GROUPS: GroupedSearchResult[] = [];
 
 /** 동일 파일 내 유사 청크 병합 임계값 (Jaccard bigram) */
 const CHUNK_DEDUP_THRESHOLD = 0.8;
@@ -28,24 +30,26 @@ function chunkCompareText(r: SearchResult): string {
   return src.replace(/\[\[\/?HL\]\]/g, "");
 }
 
-/** 같은 파일 내 중복 청크 dedup: 신뢰도 높은 순 greedy. O(N²)이지만 파일당 수십 개 수준. */
+/** 같은 파일 내 중복 청크 dedup: 신뢰도 높은 순 greedy. 비교는 O(N²)이지만 파일당 수십 개 수준.
+ *  바이그램 집합은 청크마다 한 번만 만든다 (비교마다 양쪽을 다시 만들던 것). */
 function dedupSimilarChunks(chunks: SearchResult[]): SearchResult[] {
   if (chunks.length <= 1) return chunks;
   // 신뢰도 내림차순
   const sorted = [...chunks].sort((a, b) => b.confidence - a.confidence);
   const kept: SearchResult[] = [];
-  const keptTexts: string[] = [];
+  const keptSets: Set<string>[] = [];
   for (const chunk of sorted) {
     const text = chunkCompareText(chunk);
+    const set = charBigrams(text);
     if (text.length < 10) {
       kept.push(chunk);
-      keptTexts.push(text);
+      keptSets.push(set);
       continue;
     }
-    const isDup = keptTexts.some((t) => textSimilarity(text, t) >= CHUNK_DEDUP_THRESHOLD);
+    const isDup = keptSets.some((t) => jaccard(set, t) >= CHUNK_DEDUP_THRESHOLD);
     if (!isDup) {
       kept.push(chunk);
-      keptTexts.push(text);
+      keptSets.push(set);
     }
   }
   // chunk_index 오름차순 복원 (히트맵 렌더 자연스럽게)
@@ -551,7 +555,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     // 파일 타입 필터 (다중 선택)
     if (filters.fileTypes.length > 0) {
       const extMap: Record<FileTypeFilter, string[]> = {
-        hwpx: ["hwpx"],
+        hwpx: ["hwpx", "hwp", "hml"],
         docx: ["docx", "doc"],
         pptx: ["pptx", "ppt"],
         xlsx: ["xlsx", "xls"],
@@ -637,8 +641,9 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
     return list;
   }, [filenameResults, debouncedRefineQuery, filters.sortBy]);
 
-  // 파일별 그룹핑 결과 (유사 청크 dedup 포함)
+  // 파일별 그룹핑 결과 (유사 청크 dedup 포함). 그룹 보기에서만 쓰므로 목록 보기에선 계산하지 않는다
   const groupedResults = useMemo(() => {
+    if (viewMode !== "grouped") return NO_GROUPS;
     const groups = new Map<string, GroupedSearchResult>();
 
     for (const result of filteredResults) {
@@ -676,10 +681,15 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
       groupList.sort((a, b) => b.top_confidence - a.top_confidence);
     }
     return groupList;
-  }, [filteredResults, filters.sortBy]);
+  }, [filteredResults, filters.sortBy, viewMode]);
 
   // 캐시 무효화 + 재검색 (폴더 삭제 등 데이터 변경 시)
+  // query 등은 ref 로 최신값을 읽어 identity 를 고정한다. deps 에 query 를 두면 키 입력마다
+  // 새 함수가 되어, 이를 쓰는 폴더 제거·OCR 재색인 콜백과 그걸 받는 결과 카드 memo 가 전부 깨졌다.
+  const invalidateDepsRef = useRef({ query, searchMode, executeSearch });
+  invalidateDepsRef.current = { query, searchMode, executeSearch };
   const invalidate = useCallback(() => {
+    const { query, searchMode, executeSearch } = invalidateDepsRef.current;
     searchCache.clear();
     if (query.trim()) {
       executeSearch(query, searchMode);
@@ -695,7 +705,7 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
         setSearchTime(null);
       });
     }
-  }, [query, searchMode, executeSearch]);
+  }, []);
 
   return {
     query,

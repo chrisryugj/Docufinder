@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import { ExternalLink, FolderOpen, ClipboardCopy, Search, GitCompare, ScanText, FileDown } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useUIContext } from "../../contexts/UIContext";
+import { useUIActions } from "../../contexts/UIContext";
 import { cleanPath } from "../../utils/cleanPath";
+import { MOD_KEY } from "../../utils/platform";
+import { getErrorMessage } from "../../types/error";
 
 // 코드 스플리팅: 비교 모달은 '○○와 비교' 클릭 시에만 로딩 (LineageBadge 패턴)
 const VersionDiffModal = lazy(() =>
@@ -64,7 +66,8 @@ interface ResultContextMenuProps {
 }
 
 /** OCR 재인식이 의미 있는 파일 — PDF(kordoc 강제 OCR) + 이미지(자체 엔진) */
-const OCR_ELIGIBLE_RE = /\.(pdf|jpe?g|png|bmp|tiff?)$/i;
+/** OCR 로 다시 읽을 수 있는 형식 (미리보기의 빈 문서 안내도 같은 기준) */
+export const OCR_ELIGIBLE_RE = /\.(pdf|jpe?g|png|bmp|tiff?)$/i;
 
 /** Markdown 내보내기가 가능한 파일 — 파서 지원 문서 포맷 (constants.rs SUPPORTED_EXTENSIONS) */
 const MD_EXPORT_RE = /\.(txt|md|hwpx|hwp|docx|pptx|xlsx|xls|pdf|eml)$/i;
@@ -121,7 +124,7 @@ export function ResultContextMenu({
   closeContextMenu: () => void;
 }) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const { showToast, updateToast } = useUIContext();
+  const { showToast, updateToast } = useUIActions();
   // 임의 두 문서 비교 (D4): 전역 기준 파일 + 이 인스턴스에서 연 비교 모달의 기준
   const compareBase = useCompareBase();
   const [diffBase, setDiffBase] = useState<CompareBase | null>(null);
@@ -219,7 +222,7 @@ export function ResultContextMenu({
       return;
     }
     if (!outputPath) return; // 사용자 취소
-    const toastId = showToast("문서 내용을 읽는 중...", "loading");
+    const toastId = showToast("문서 내용을 읽는 중", "loading");
     try {
       const res = await invoke<{ markdown: string; needs_password?: boolean }>(
         "load_markdown_preview",
@@ -227,7 +230,7 @@ export function ResultContextMenu({
       );
       if (res.needs_password) {
         updateToast(toastId, {
-          message: "암호로 보호된 문서예요 — 미리보기에서 암호를 입력한 뒤 저장해 주세요",
+          message: "암호로 보호된 문서예요. 미리보기에서 암호를 입력한 뒤 저장해 주세요",
           type: "error",
         });
         return;
@@ -239,8 +242,7 @@ export function ResultContextMenu({
       await invoke("export_markdown", { content: res.markdown, outputPath });
       updateToast(toastId, { message: "Markdown 파일로 저장했습니다", type: "success" });
     } catch (e) {
-      const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "저장 실패");
-      updateToast(toastId, { message: `저장 실패: ${msg}`, type: "error" });
+      updateToast(toastId, { message: `저장 실패: ${getErrorMessage(e)}`, type: "error" });
     }
   };
 
@@ -282,7 +284,7 @@ export function ResultContextMenu({
       >
         <ExternalLink className="w-4 h-4 clr-info" />
         <span className="flex-1">파일 열기</span>
-        <kbd className="text-[10px] font-mono opacity-40">Enter</kbd>
+        <kbd className="text-2xs font-mono opacity-40">Enter</kbd>
       </button>
 
       {/* 구분선 */}
@@ -310,7 +312,7 @@ export function ResultContextMenu({
       >
         <ClipboardCopy className="w-4 h-4 clr-success" />
         <span className="flex-1">경로 복사</span>
-        <kbd className="text-[10px] font-mono opacity-40">Ctrl+C</kbd>
+        <kbd className="text-2xs font-mono opacity-40">{MOD_KEY}+Shift+C</kbd>
       </button>
 
       {/* Markdown으로 저장 — 파서 지원 문서만. 파싱 불가 포맷(이미지·압축 등)은 숨김 */}
@@ -336,7 +338,7 @@ export function ResultContextMenu({
       >
         <Search className="w-4 h-4 clr-info" />
         <span className="flex-1">유사 문서 찾기</span>
-        {!onFindSimilar && <span className="text-[10px] opacity-60">시맨틱 OFF</span>}
+        {!onFindSimilar && <span className="text-2xs opacity-60">시맨틱 OFF</span>}
       </button>
 
       {/* OCR 재인식 — 스캔본·복사 시 깨지는 문서를 강제 OCR 로 다시 인덱싱 */}

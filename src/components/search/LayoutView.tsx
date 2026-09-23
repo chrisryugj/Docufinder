@@ -338,7 +338,7 @@ export const LayoutView = memo(function LayoutView({
     <div className="flex flex-col h-full flex-1 min-h-0">
       {/* 툴바 — 페이지 네비 · 줌 · 매치 이동 (에디토리얼 미니멀, hairline) */}
       <div
-        className="flex items-center gap-1 px-2 py-1 border-b text-[11px]"
+        className="flex items-center gap-1 px-2 py-1 border-b text-2xs"
         style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
       >
         <button onClick={() => goPage(page - 1)} disabled={page <= 1}

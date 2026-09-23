@@ -17,7 +17,7 @@ export const SmartFolders = memo(function SmartFolders({
   if (folders.length === 0) {
     return (
       <div
-        className="flex items-start gap-2 text-[11px] py-2 px-3 leading-relaxed"
+        className="flex items-start gap-2 text-2xs py-2 px-3 leading-relaxed"
         style={{ color: "var(--color-sidebar-section)" }}
       >
         <FolderSearch className="flex-shrink-0 w-3.5 h-3.5 mt-0.5" aria-hidden="true" />
@@ -30,28 +30,29 @@ export const SmartFolders = memo(function SmartFolders({
     <ul className="space-y-0.5" role="list" aria-label="스마트 폴더">
       {folders.map((folder) => (
         <li key={folder.id}>
-          <div
-            className="group flex items-center gap-2 px-2 py-1.5 mx-1 rounded-lg cursor-pointer hover-sidebar-item"
-            onClick={() => onApply(folder)}
-          >
-            <FolderSearch
-              className="flex-shrink-0 w-3.5 h-3.5"
-              style={{ color: "var(--color-sidebar-muted)" }}
-              aria-hidden="true"
-            />
-            <span
-              className="flex-1 text-left text-sm truncate"
-              style={{ color: "var(--color-sidebar-text)" }}
+          <div className="group flex items-center gap-2 px-2 py-1.5 mx-1 rounded-lg hover-sidebar-item">
+            <button
+              type="button"
+              className="flex-1 min-w-0 flex items-center gap-2 text-left"
+              onClick={() => onApply(folder)}
               title={folder.name}
             >
-              {folder.name}
-            </span>
+              <FolderSearch
+                className="flex-shrink-0 w-3.5 h-3.5"
+                style={{ color: "var(--color-sidebar-muted)" }}
+                aria-hidden="true"
+              />
+              <span
+                className="flex-1 text-sm truncate"
+                style={{ color: "var(--color-sidebar-text)" }}
+              >
+                {folder.name}
+              </span>
+            </button>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(folder.id);
-              }}
-              className="hidden group-hover:flex flex-shrink-0 p-0.5 rounded hover-sidebar-danger"
+              type="button"
+              onClick={() => onRemove(folder.id)}
+              className="hidden group-hover:flex group-focus-within:flex flex-shrink-0 p-0.5 rounded hover-sidebar-danger"
               aria-label={`"${folder.name}" 스마트 폴더 삭제`}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

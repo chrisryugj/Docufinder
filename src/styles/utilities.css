@@ -246,7 +246,7 @@ button[role="switch"]:active:not(:disabled) {
 }
 .btn-cancel-hover:hover {
   background-color: var(--color-error);
-  color: white;
+  color: var(--color-on-error);
 }
 
 /* 시맨틱 시작 버튼 hover */
@@ -257,7 +257,7 @@ button[role="switch"]:active:not(:disabled) {
 }
 .btn-accent-start-hover:hover {
   background-color: var(--color-accent);
-  color: white;
+  color: var(--color-on-accent);
 }
 
 /* 초기화 버튼 hover */

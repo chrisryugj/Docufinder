@@ -18,7 +18,7 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
           Anything은 내 컴퓨터 안의 문서를 <strong>단어 하나만 넣어도</strong> 찾아주는
           검색기입니다.
         </p>
-        <p className="text-[12px] opacity-80">
+        <p className="text-xs opacity-80">
           약 1분이면 핵심 기능을 모두 둘러볼 수 있어요. 언제든 <kbd>ESC</kbd> 키로
           닫을 수 있습니다.
         </p>
@@ -28,16 +28,16 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
   },
   {
     selector: '[data-tour="search-bar"]',
-    title: "1. 검색은 여기서 — 제목과 내용 모두",
+    title: "1. 검색은 여기서: 제목과 내용 모두",
     body: (
       <div className="space-y-2">
         <p>
           파일명, 문서 본문, PDF·HWPX·DOCX·XLSX 속 글자까지 한 번에 검색됩니다.
         </p>
-        <p className="text-[12px] opacity-80">
+        <p className="text-xs opacity-80">
           예: <code>보고서</code>, <code>2024 예산</code>, <code>근로기준법 제5조</code>
         </p>
-        <p className="text-[12px] opacity-80">
+        <p className="text-xs opacity-80">
           검색 후 파일 형식·수정 기간·검색 범위로 결과를 더 좁힐 수 있어요.
         </p>
       </div>
@@ -47,17 +47,17 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
   },
   {
     selector: '[data-tour="sidebar-folders"]',
-    title: "2. 검색할 폴더를 추가하세요",
+    title: "2. 검색할 폴더는 여기서 관리해요",
     body: (
       <div className="space-y-2">
         <p>
-          <strong>+ 버튼</strong>으로 폴더를 추가하면 자동으로 인덱싱이 시작됩니다.
+          <strong>+ 버튼</strong>으로 폴더를 더 추가하면 자동으로 인덱싱이 시작됩니다.
           추가된 폴더는 항상 최신 상태로 유지돼요 (파일 변경 자동 감지).
         </p>
-        <p className="text-[12px] opacity-80">
+        <p className="text-xs opacity-80">
           {isMac
-            ? "사용자 폴더(Documents, Downloads 등)나 외장 드라이브 추가 — 시스템 폴더는 자동 제외됩니다."
-            : "드라이브 루트(C:\\, D:\\ 등)도 추가 가능 — 시스템 폴더는 자동 제외됩니다."}
+            ? "사용자 폴더(Documents, Downloads 등)나 외장 드라이브도 추가할 수 있어요. 시스템 폴더는 자동 제외됩니다."
+            : "드라이브 루트(C:\\, D:\\ 등)도 추가할 수 있어요. 시스템 폴더는 자동 제외됩니다."}
         </p>
       </div>
     ),
@@ -73,9 +73,9 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
           설정 ▸ <strong>시스템</strong> 탭의 <em>"전체 드라이브 인덱싱"</em> 버튼으로
           컴퓨터의 모든 드라이브를 한 번에 인덱싱할 수 있어요.
         </p>
-        <p className="text-[12px] opacity-80">
-          각 드라이브의 진행 상태는 사이드바 상단에 실시간으로 표시됩니다 —
-          중간에 멈춘 것처럼 보여도 "DB 저장 중", "캐시 정리 중" 단계가
+        <p className="text-xs opacity-80">
+          각 드라이브의 진행 상태는 사이드바 상단에 실시간으로 표시됩니다.
+          중간에 멈춘 것처럼 보여도 "저장 중", "정리 중" 단계가
           순서대로 표시되니 안심하고 기다리시면 돼요.
         </p>
       </div>
@@ -93,7 +93,7 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
           <strong>두 번 클릭</strong>하거나 <kbd>Enter</kbd>를 누르세요
           (설정 &gt; 일반에서 한 번 클릭으로 변경 가능).
         </p>
-        <p className="text-[12px] opacity-80">
+        <p className="text-xs opacity-80">
           미리보기 위쪽 버튼으로 <strong>찾기</strong>(<kbd>Ctrl</kbd>+<kbd>F</kbd>로
           문서 안 단어 검색)·<strong>요약</strong>·<strong>질문</strong>을 쓸 수 있고,
           결과를 우클릭하면 두 문서를 <strong>비교</strong>할 수도 있습니다.
@@ -111,8 +111,8 @@ export const DOCUFINDER_TOUR_STEPS: TourStep[] = [
           이 메뉴(⋯)에서 <strong>도움말</strong>을 열면 단축키 목록과{" "}
           <strong>"기능 투어 다시 보기"</strong> 옵션을 찾을 수 있습니다.
         </p>
-        <p className="text-[12px] opacity-80">
-          이제 첫 번째 폴더를 추가하고 검색을 시작해보세요! 🚀
+        <p className="text-xs opacity-80">
+          이제 검색을 시작해 보세요.
         </p>
       </div>
     ),

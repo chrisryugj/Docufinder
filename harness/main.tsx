@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./harness.css";
 import { LayoutView } from "../src/components/search/LayoutView";
 import { PdfLayoutView } from "../src/components/search/PdfLayoutView";
-import { SearchResultList } from "../src/components/search/SearchResultList";
+import { SearchResultList, type SearchResultListNav } from "../src/components/search/SearchResultList";
+import { UIActionsContext, type UIActions } from "../src/contexts/UIContext";
 import type { SearchResult, GroupedSearchResult, ViewMode } from "../src/types/search";
 import type { ViewDensity } from "../src/types/settings";
 import svgRaw from "./test-render.svg?raw";
@@ -19,6 +20,8 @@ declare global {
     __invokeCalls: Array<{ cmd: string; args: unknown }>;
     __calls: Array<{ type: string; [k: string]: unknown }>;
     __setResultsCfg: (c: Partial<ResultsCfg>) => void;
+    /** 앱 키보드 ↑↓ 와 같은 경로: 목록의 step() 이 준 flat index 로 선택을 옮긴다 */
+    __navStep: (delta: 1 | -1) => number;
   }
 }
 
@@ -67,11 +70,14 @@ const FILENAME_RESULTS: SearchResult[] = [
 ].map((dir) =>
   fakeResult({ file_path: `${dir}/예산안.xlsx`, file_name: "예산안.xlsx", match_type: "filename" })
 );
+// 같은 파일의 두 번째 청크가 다른 파일 뒤에 온다 — 그룹 보기의 키보드 이동이 파일 단위인지 검증
+const RESULT_DEEP_2 = fakeResult({ ...RESULT_DEEP, chunk_index: 1, start_offset: 500 });
+const RESULTS: SearchResult[] = [RESULT_DEEP, RESULT_WIN, RESULT_DEEP_2];
 const GROUPED: GroupedSearchResult[] = [
   {
     file_path: RESULT_DEEP.file_path,
     file_name: RESULT_DEEP.file_name,
-    chunks: [RESULT_DEEP, fakeResult({ ...RESULT_DEEP, chunk_index: 1, start_offset: 500 })],
+    chunks: [RESULT_DEEP, RESULT_DEEP_2],
     top_confidence: 88,
     total_matches: 2,
   },
@@ -92,10 +98,17 @@ function ResultsHarness() {
     viewMode: "flat",
   });
   window.__setResultsCfg = (c) => setCfg((prev) => ({ ...prev, ...c }));
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const navRef = useRef<SearchResultListNav>(null);
+  window.__navStep = (delta) => {
+    const next = navRef.current ? navRef.current.step(delta) : -1;
+    setSelectedIndex(next);
+    return next;
+  };
   return (
     <div id="stage" style={{ width: 900, padding: 16 }}>
       <SearchResultList
-        results={[RESULT_DEEP, RESULT_WIN]}
+        results={RESULTS}
         filenameResults={FILENAME_RESULTS}
         groupedResults={GROUPED}
         viewMode={cfg.viewMode}
@@ -105,8 +118,10 @@ function ResultsHarness() {
         onOpenFile={(p, page) => window.__calls.push({ type: "open", p, page })}
         onCopyPath={(p) => window.__calls.push({ type: "copy", p })}
         onOpenFolder={(p) => window.__calls.push({ type: "folder", p })}
-        onSelectResult={(i) => window.__calls.push({ type: "select", i })}
+        onSelectResult={(i) => { window.__calls.push({ type: "select", i }); setSelectedIndex(i); }}
         onPreviewFile={(p) => window.__calls.push({ type: "preview", p })}
+        selectedIndex={selectedIndex}
+        navRef={navRef}
         openOnSingleClick={cfg.openOnSingleClick}
         showResultPath={cfg.showResultPath}
       />
@@ -151,4 +166,16 @@ function App() {
 }
 
 const isResultsView = new URLSearchParams(location.search).get("view") === "results";
-ReactDOM.createRoot(document.getElementById("root")!).render(isResultsView ? <ResultsHarness /> : <App />);
+// 결과 카드의 우클릭 메뉴가 토스트용 UI 동작 컨텍스트를 요구한다 (앱에선 UIProvider 가 준다)
+const HARNESS_UI_ACTIONS: UIActions = {
+  showToast: () => "",
+  updateToast: () => {},
+  dismissToast: () => {},
+  setPreviewFilePath: () => {},
+};
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <UIActionsContext.Provider value={HARNESS_UI_ACTIONS}>
+    {isResultsView ? <ResultsHarness /> : <App />}
+  </UIActionsContext.Provider>
+);

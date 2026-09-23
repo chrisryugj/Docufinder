@@ -115,7 +115,7 @@ export const Badge = memo(function Badge({
 
   return (
     <span
-      className={`inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold tracking-wide ${className}`}
+      className={`inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold tracking-wide ${className}`}
       style={variantStyle}
       aria-label={ariaLabel}
     >
@@ -129,6 +129,8 @@ export function getFileTypeBadgeVariant(fileName: string): BadgeVariant {
   const ext = fileName.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "hwpx":
+    case "hwp":
+    case "hml":
       return "hwpx";
     case "docx":
     case "doc":

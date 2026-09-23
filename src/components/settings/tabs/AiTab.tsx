@@ -60,10 +60,10 @@ export function AiTab({ settings, onChange }: TabProps) {
               onChange={(value) => handleProviderChange(value as "gemini" | "open_ai")}
               placeholder="provider 선택"
             />
-            <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+            <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
               {isOpenAi
-                ? "OpenAI Chat Completions 호환 endpoint — vLLM · Ollama · LiteLLM · 사내 LLM (qwen 등)"
-                : "Google Gemini 공식 API — 무료 키 발급 가능"}
+                ? "OpenAI Chat Completions 호환 endpoint: vLLM · Ollama · LiteLLM · 사내 LLM (qwen 등)"
+                : "Google Gemini 공식 API · 무료 키 발급 가능"}
             </p>
           </div>
 
@@ -85,7 +85,7 @@ export function AiTab({ settings, onChange }: TabProps) {
                   color: "var(--color-text-primary)",
                 }}
               />
-              <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
                 <code>/v1/chat/completions</code> 가 자동으로 붙습니다. <code>/v1</code> 까지 포함된 URL 도 동작.
               </p>
             </div>
@@ -99,7 +99,7 @@ export function AiTab({ settings, onChange }: TabProps) {
             const inputValue = isMasked ? "" : storedKey;
             const keyLabel = isOpenAi ? "API 키" : "Gemini API 키";
             const keyPlaceholder = isOpenAi
-              ? "사내 LLM API 키 (없으면 임의 문자열도 OK — 일부 backend는 키 검사 안 함)"
+              ? "사내 LLM API 키 (없으면 아무 문자열이나 넣어도 됨: 일부 서버는 키를 검사하지 않음)"
               : "AIza...";
 
             return (
@@ -107,8 +107,8 @@ export function AiTab({ settings, onChange }: TabProps) {
               <label className="flex items-baseline gap-2 text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
                 <span>{keyLabel}</span>
                 {isMasked && (
-                  <span className="text-[10px] font-normal" style={{ color: "var(--color-text-muted)" }}>
-                    저장됨 (···{lastFour}) — 바꾸려면 새 키 입력
+                  <span className="text-2xs font-normal" style={{ color: "var(--color-text-muted)" }}>
+                    저장됨 (···{lastFour}) · 바꾸려면 새 키 입력
                   </span>
                 )}
               </label>
@@ -177,7 +177,7 @@ export function AiTab({ settings, onChange }: TabProps) {
                   }}
                 />
                 {modelMismatch && (
-                  <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--color-error)" }}>
+                  <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-error)" }}>
                     Gemini 모델 ID 가 입력돼 있어요. 사내 LLM 서버에 이대로 보내면 <code>404 model not found</code> 가 납니다.
                     서버에 실제로 떠 있는 모델 ID 로 바꿔주세요 (예: <code>qwen3.6-35b-a3b</code>).
                   </p>
@@ -205,14 +205,15 @@ export function AiTab({ settings, onChange }: TabProps) {
                 max="2"
                 step="0.1"
                 value={settings.ai_temperature}
+                aria-label="온도"
                 onChange={(e) => onChange("ai_temperature", parseFloat(e.target.value))}
                 className="w-full accent-[var(--color-accent)]"
               />
-              <div className="flex justify-between text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+              <div className="flex justify-between text-2xs" style={{ color: "var(--color-text-muted)" }}>
                 <span>정확</span>
                 <span>창의적</span>
               </div>
-              <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
                 답변의 다양성 · 문서 QA는 <strong style={{ color: "var(--color-text-secondary)" }}>0.1~0.3</strong> 권장 (환각 감소)
               </p>
             </div>
@@ -226,6 +227,7 @@ export function AiTab({ settings, onChange }: TabProps) {
                 max="8192"
                 step="256"
                 value={settings.ai_max_tokens}
+                aria-label="최대 토큰"
                 onChange={(e) => onChange("ai_max_tokens", parseInt(e.target.value) || 2048)}
                 className="w-full px-3 py-1.5 rounded text-sm border focus:outline-none focus:ring-1 focus:ring-[var(--color-accent)]"
                 style={{
@@ -234,7 +236,7 @@ export function AiTab({ settings, onChange }: TabProps) {
                   color: "var(--color-text-primary)",
                 }}
               />
-              <p className="text-[10px] mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-2xs mt-1 leading-snug" style={{ color: "var(--color-text-muted)" }}>
                 답변 최대 길이 · 일반 <strong style={{ color: "var(--color-text-secondary)" }}>2048</strong>, 상세 요약 4096
               </p>
             </div>
@@ -244,12 +246,12 @@ export function AiTab({ settings, onChange }: TabProps) {
           <div
             className="flex items-start gap-2 px-3 py-2 rounded text-xs"
             style={{
-              backgroundColor: "rgba(234, 179, 8, 0.1)",
-              border: "1px solid rgba(234, 179, 8, 0.2)",
+              backgroundColor: "var(--color-accent-warm-subtle)",
+              border: "1px solid var(--color-warning-bg)",
               color: "var(--color-text-secondary)",
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 flex-shrink-0">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
               <line x1="12" y1="9" x2="12" y2="13" />
               <line x1="12" y1="17" x2="12.01" y2="17" />

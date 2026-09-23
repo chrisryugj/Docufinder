@@ -149,7 +149,7 @@ export interface SearchModeInfo {
 
 /** 검색 모드 목록 (UI에 노출되는 것만) */
 export const SEARCH_MODES: SearchModeInfo[] = [
-  { value: "keyword", label: "키워드", desc: "FTS5 전문검색" },
+  { value: "keyword", label: "키워드", desc: "단어가 들어간 문서 찾기" },
   { value: "filename", label: "파일명", desc: "파일명 검색" },
 ];
 
@@ -200,13 +200,18 @@ export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 
 /** 파일 타입 필터 목록 */
 export const FILE_TYPE_OPTIONS: { value: FileTypeFilter; label: string }[] = [
-  { value: "hwpx", label: "HWPX" },
-  { value: "docx", label: "DOCX" },
-  { value: "pptx", label: "PPTX" },
-  { value: "xlsx", label: "XLSX" },
+  { value: "hwpx", label: "한글" },
+  { value: "docx", label: "워드" },
+  { value: "pptx", label: "파워포인트" },
+  { value: "xlsx", label: "엑셀" },
   { value: "pdf", label: "PDF" },
-  { value: "txt", label: "TXT" },
+  { value: "txt", label: "텍스트" },
 ];
+
+/** 파일 형식 필터 값 → 화면 이름 (한글·워드…) */
+export function fileTypeLabel(ft: FileTypeFilter): string {
+  return FILE_TYPE_OPTIONS.find((o) => o.value === ft)?.label ?? ft.toUpperCase();
+}
 
 /** 날짜 범위 필터 목록 */
 export const DATE_RANGE_OPTIONS: { value: DateRangeFilter; label: string }[] = [

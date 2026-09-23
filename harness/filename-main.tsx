@@ -2,6 +2,7 @@ import { useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./harness.css";
 import { SearchResultList } from "../src/components/search/SearchResultList";
+import { UIActionsContext, type UIActions } from "../src/contexts/UIContext";
 import type { SearchResult } from "../src/types/search";
 
 // ─── 파일명 검색 컬럼 뷰 하니스 ─────────────────────────────────────────
@@ -76,4 +77,16 @@ function FilenameHarness() {
 }
 
 window.__calls = [];
-ReactDOM.createRoot(document.getElementById("root")!).render(<FilenameHarness />);
+// 결과 카드의 우클릭 메뉴가 토스트용 UI 동작 컨텍스트를 요구한다 (앱에선 UIProvider 가 준다)
+const HARNESS_UI_ACTIONS: UIActions = {
+  showToast: () => "",
+  updateToast: () => {},
+  dismissToast: () => {},
+  setPreviewFilePath: () => {},
+};
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <UIActionsContext.Provider value={HARNESS_UI_ACTIONS}>
+    <FilenameHarness />
+  </UIActionsContext.Provider>
+);

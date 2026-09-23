@@ -4,6 +4,7 @@ import { Copy, FileText, FolderOpen, Loader2, Search } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import { Badge } from "../ui/Badge";
 import { FileIcon } from "../ui/FileIcon";
+import { getErrorMessage } from "../../types/error";
 
 interface DuplicateFile {
   file_path: string;
@@ -73,7 +74,7 @@ export function DuplicateFinderModal({
         showToast(`${total}개 중복 그룹 발견 (${res.scan_time_ms}ms)`, "success");
       }
     } catch (e: unknown) {
-      const msg = e && typeof e === "object" && "message" in e ? (e as { message: string }).message : String(e);
+      const msg = getErrorMessage(e);
       showToast(`중복 탐지 실패: ${msg}`, "error");
     } finally {
       setIsScanning(false);
@@ -145,7 +146,7 @@ export function DuplicateFinderModal({
             )}
             <button
               onClick={handleScan}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white"
+              className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--color-on-accent)]"
               style={{ backgroundColor: "var(--color-accent)" }}
             >
               중복 탐지 시작
@@ -161,7 +162,7 @@ export function DuplicateFinderModal({
               style={{ color: "var(--color-accent)" }}
             />
             <p className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-              문서 비교 중... (파일 해시 계산 + 벡터 유사도 분석)
+              문서 비교 중 (파일 해시 계산 + 벡터 유사도 분석)
             </p>
           </div>
         )}
@@ -293,6 +294,7 @@ export function DuplicateFinderModal({
                           onClick={() => copyPath(file.file_path)}
                           className="p-1 rounded hover:bg-[var(--color-bg-secondary)]"
                           title="경로 복사"
+                          aria-label="경로 복사"
                         >
                           <Copy className="w-3 h-3" />
                         </button>
@@ -300,6 +302,7 @@ export function DuplicateFinderModal({
                           onClick={() => onOpenFolder(file.file_path.replace(/[/\\][^/\\]+$/, ""))}
                           className="p-1 rounded hover:bg-[var(--color-bg-secondary)]"
                           title="폴더 열기"
+                          aria-label="폴더 열기"
                         >
                           <FileText className="w-3 h-3" />
                         </button>

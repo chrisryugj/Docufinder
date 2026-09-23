@@ -186,6 +186,28 @@ await assertTypeCell("유형 셀(1200px)", { expectNoCover: true });
 await setStage(560);
 await assertTypeCell("유형 셀(560px, TYPE_MIN 근처)", { expectNoCover: false });
 
+// ── 가운데 말줄임 (v3.8.9): 좁은 이름 칸에서도 긴 파일명의 끝(확장자 쪽)이 보인다 ──
+{
+  await setStage(540);
+  const m = await page.evaluate(() => {
+    const cell = document.querySelector("#search-result-1 > .grid > :first-child");
+    const tail = cell?.querySelector("span.whitespace-pre");
+    const head = tail?.previousElementSibling;
+    if (!cell || !tail || !head) return null;
+    const c = cell.getBoundingClientRect();
+    const tr = tail.getBoundingClientRect();
+    return {
+      name: cell.textContent,
+      tail: tail.textContent,
+      tailInside: tr.right <= c.right + 0.5 && tr.width > 0,
+      headTruncated: head.scrollWidth > head.clientWidth,
+    };
+  });
+  t("M1 긴 파일명: 꼬리 조각 렌더", !!m && /\.hwpx$/.test(m.tail), JSON.stringify(m));
+  t("M1 긴 파일명: 꼬리가 이름 칸 안에 보임", !!m && m.tailInside, JSON.stringify(m));
+  t("M1 긴 파일명: 앞부분이 말줄임됨", !!m && m.headTruncated, JSON.stringify(m));
+}
+
 await browser.close();
 console.log(`\n${pass} pass / ${fail} fail`);
 process.exit(fail ? 1 : 0);

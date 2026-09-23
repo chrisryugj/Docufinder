@@ -1,5 +1,6 @@
 import { formatPathSegments, formatPathTail } from "../../utils/searchTextUtils";
 import { cleanPath } from "../../utils/cleanPath";
+import { FILE_MANAGER_NAME } from "../../utils/platform";
 
 interface PathBreadcrumbProps {
   /** 파일 전체 경로 — 컨테이너 title + 파일 위치 열기(reveal) 대상 */
@@ -50,7 +51,7 @@ export function PathBreadcrumb({
               <button
                 onClick={(e) => { e.stopPropagation(); onOpenFolder?.(reveal ? filePath : seg.fullPath); }}
                 className="text-xs px-0.5 py-0.5 rounded transition-colors hover:underline clr-muted hover-accent-text"
-                title={reveal ? "파일 위치 열기 (탐색기에서 파일 선택)" : `${seg.fullPath} 열기`}
+                title={reveal ? `파일 위치 열기 (${FILE_MANAGER_NAME}에서 파일 선택)` : `${seg.fullPath} 열기`}
               >
                 {seg.label}
               </button>
@@ -60,7 +61,7 @@ export function PathBreadcrumb({
               </span>
             )}
             {i < arr.length - 1 && (
-              <span className="text-[11px] mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
+              <span className="text-2xs mx-px" style={{ color: "var(--color-text-tertiary)" }}>/</span>
             )}
           </div>
         );

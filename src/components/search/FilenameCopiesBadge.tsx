@@ -59,7 +59,7 @@ export function FilenameCopiesBadge({ copies, currentFilePath, onOpenFile }: Pro
       <button
         ref={triggerRef}
         onClick={toggleOpen}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors hover:opacity-80"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium transition-colors hover:opacity-80"
         style={{
           backgroundColor: "var(--color-accent-subtle)",
           color: "var(--color-accent)",
@@ -113,7 +113,7 @@ export function FilenameCopiesBadge({ copies, currentFilePath, onOpenFile }: Pro
                     }}
                     className="w-full text-left px-3 py-2 flex items-start gap-2 hover:brightness-110"
                     style={{
-                      backgroundColor: isCurrent ? "var(--color-bg-hover)" : "transparent",
+                      backgroundColor: isCurrent ? "var(--color-bg-tertiary)" : "transparent",
                       borderBottom: "1px solid var(--color-border-subtle)",
                     }}
                   >
@@ -123,7 +123,7 @@ export function FilenameCopiesBadge({ copies, currentFilePath, onOpenFile }: Pro
                     />
                     <div className="flex-1 min-w-0">
                       <div
-                        className="text-[11px] truncate"
+                        className="text-2xs truncate"
                         style={{ color: "var(--color-text-primary)" }}
                         title={c.file_path}
                       >
@@ -131,7 +131,7 @@ export function FilenameCopiesBadge({ copies, currentFilePath, onOpenFile }: Pro
                       </div>
                       {c.modified_at ? (
                         <div
-                          className="text-[10px] mt-0.5"
+                          className="text-2xs mt-0.5"
                           style={{ color: "var(--color-text-muted)" }}
                           title={new Date(c.modified_at * 1000).toLocaleString("ko-KR")}
                         >

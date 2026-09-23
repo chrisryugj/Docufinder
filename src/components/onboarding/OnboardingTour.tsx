@@ -349,14 +349,14 @@ export function OnboardingTour({
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1.5">
               <span
-                className="text-[10px] font-bold tracking-[0.15em] uppercase"
+                className="text-2xs font-bold tracking-[0.15em] uppercase"
                 style={{ color: "var(--color-accent)" }}
               >
                 Step {index + 1} / {total}
               </span>
             </div>
             <h3
-              className="text-[15px] font-semibold leading-tight tracking-tight break-keep"
+              className="text-base font-semibold leading-tight tracking-tight break-keep"
               style={{ color: "var(--color-text-primary)" }}
             >
               {current.title}
@@ -373,7 +373,7 @@ export function OnboardingTour({
 
         {/* 본문 */}
         <div
-          className="px-5 pb-4 pt-2 text-[13px] leading-relaxed break-keep"
+          className="px-5 pb-4 pt-2 text-sm leading-relaxed break-keep"
           style={{ color: "var(--color-text-secondary)" }}
         >
           {current.body}
@@ -405,7 +405,7 @@ export function OnboardingTour({
         >
           <button
             onClick={() => finish(false)}
-            className="text-[12px] font-medium px-1 transition-colors"
+            className="text-xs font-medium px-1 transition-colors"
             style={{ color: "var(--color-text-muted)" }}
           >
             건너뛰기
@@ -415,7 +415,7 @@ export function OnboardingTour({
             {!isFirst && (
               <button
                 onClick={goPrev}
-                className="h-8 px-3.5 text-[12px] font-medium rounded-md btn-icon-hover"
+                className="h-8 px-3.5 text-xs font-medium rounded-md btn-icon-hover"
                 style={{ color: "var(--color-text-secondary)" }}
               >
                 이전
@@ -424,12 +424,12 @@ export function OnboardingTour({
             <button
               onClick={goNext}
               className={clsx(
-                "h-8 px-4 text-[12px] font-semibold rounded-md transition-all",
+                "h-8 px-4 text-xs font-semibold rounded-md transition-all",
                 "shadow-sm hover:shadow-md flex items-center gap-1.5",
               )}
               style={{
                 backgroundColor: "var(--color-accent)",
-                color: "#fff",
+                color: "var(--color-on-accent)",
               }}
             >
               {isLast ? (

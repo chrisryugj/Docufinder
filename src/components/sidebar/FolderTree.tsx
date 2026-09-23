@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { Folder, Star, Loader2, ShieldCheck, FolderOpen, RefreshCw, Trash2, HardDrive, Play, RotateCcw, MoreHorizontal } from "lucide-react";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../../utils/invokeWithTimeout";
 import { formatRelativeTime } from "../../utils/formatRelativeTime";
 import { cleanPath } from "../../utils/cleanPath";
 import { logToBackend } from "../../utils/errorLogger";
+import { getErrorMessage } from "../../types/error";
 import type { FolderStats, WatchedFolderInfo } from "../../types";
 import { REVEAL_LABEL } from "../../utils/platform";
-import { useUIContext } from "../../contexts/UIContext";
+import { useUIActions } from "../../contexts/UIContext";
 
 interface FolderTreeProps {
   folders: string[];
@@ -30,8 +32,13 @@ interface ContextMenuState {
 /**
  * 인덱싱된 폴더 목록 표시
  */
+
+/** 이번 실행(창 로드)을 시작할 때 미완료였던 폴더. 첫 조회에서 한 번만 정한다. 사이드바가
+ *  다시 마운트돼도 바뀌지 않게 모듈 범위에 둔다. */
+let startupIncomplete: Set<string> | null = null;
+
 export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindexStart, isIndexing, isAutoIndexing }: FolderTreeProps) {
-  const { showToast } = useUIContext();
+  const { showToast } = useUIActions();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     new Set()
   );
@@ -62,6 +69,13 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       const infoMap: Record<string, WatchedFolderInfo> = {};
       for (const info of infos) {
         infoMap[info.path] = info;
+      }
+      if (startupIncomplete === null) {
+        startupIncomplete = new Set(
+          infos
+            .filter((i) => i.indexing_status === "indexing" || i.indexing_status === "cancelled")
+            .map((i) => i.path),
+        );
       }
       setFolderInfo(infoMap);
     } catch (e) {
@@ -98,19 +112,25 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
   useEffect(() => { fetchStatsRef.current = fetchStats; });
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let disposed = false; // listen() 이 끝나기 전에 언마운트되면(사이드바 토글) 등록 직후 해제
     listen<number>("incremental-index-updated", () => {
       fetchStatsRef.current();
-    }).then((fn) => { unlisten = fn; });
-    return () => { unlisten?.(); };
+    }).then((fn) => { if (disposed) fn(); else unlisten = fn; });
+    return () => { disposed = true; unlisten?.(); };
   }, []);
 
   // 미완료 폴더 자동 재인덱싱 (앱 재시작 시)
+  // 대상은 이번 실행을 시작할 때 이미 미완료였던 폴더뿐이다(startupIncomplete). 앱을 닫을 때 진행 중
+  // 인덱싱이 취소 처리되어 "cancelled" 로 남으므로 재시작 때는 이어서 하되, 실행 중에 사용자가 취소한
+  // 폴더를 곧바로 다시 인덱싱하지는 않는다 (종전엔 취소가 먹지 않았다. 이어서 하려면 폴더 메뉴의 "이어서 인덱싱").
   useEffect(() => {
     if (isIndexing) return; // 이미 인덱싱 중이면 스킵
     if (isAutoIndexing?.current) return; // autoIndexAllDrives 실행 중이면 스킵
+    const pending = startupIncomplete;
+    if (!pending) return;
 
     const incompleteFolders = Object.entries(folderInfo)
-      .filter(([path, info]) => (info.indexing_status === "indexing" || info.indexing_status === "cancelled") && !resumedRef.current.has(path))
+      .filter(([path, info]) => (info.indexing_status === "indexing" || info.indexing_status === "cancelled") && pending.has(path) && !resumedRef.current.has(path))
       .map(([path]) => path);
 
     if (incompleteFolders.length === 0) return;
@@ -118,6 +138,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     const resumeIndexing = async () => {
       for (const path of incompleteFolders) {
         resumedRef.current.add(path);
+        pending.delete(path); // 사이드바가 다시 마운트돼도 한 번만
         console.info(`Resuming incomplete indexing: ${path}`);
         try {
           onReindexStart?.();
@@ -144,6 +165,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       onFoldersChange?.();
     } catch (err) {
       logToBackend("error", "Failed to toggle favorite", String(err), "FolderTree");
+      showToast(`즐겨찾기를 바꾸지 못했습니다: ${getErrorMessage(err)}`, "error");
     }
   };
 
@@ -164,16 +186,22 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   };
 
-  // 재인덱싱 실행 (전체 wipe → 재인덱싱)
+  // 재인덱싱 실행 (전체 wipe → 재인덱싱). 읽어 둔 데이터를 지우고 처음부터 읽으므로 한 번 묻는다
   const handleReindex = async () => {
     const path = contextMenu.folderPath;
     closeContextMenu();
+    const confirmed = await ask(
+      `"${getFolderName(path)}" 폴더를 처음부터 다시 읽습니다.\n다 읽을 때까지 이 폴더의 문서가 검색에 덜 나올 수 있어요.`,
+      { title: "다시 읽기", kind: "info", okLabel: "다시 읽기", cancelLabel: "취소" }
+    );
+    if (!confirmed) return;
     onReindexStart?.();
     try {
       await invoke("reindex_folder", { path });
       onFoldersChange?.();
     } catch (err) {
       logToBackend("error", "Failed to reindex folder", String(err), "FolderTree");
+      showToast(`다시 읽기 실패: ${getErrorMessage(err)}`, "error");
     }
   };
 
@@ -189,6 +217,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
       onFoldersChange?.();
     } catch (err) {
       logToBackend("error", "Failed to resume indexing", String(err), "FolderTree");
+      showToast(`이어서 읽기 실패: ${getErrorMessage(err)}`, "error");
     }
   };
 
@@ -278,16 +307,8 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
     : 0;
   // driveLetters는 전체 PC 모드에서 드라이브별 행으로 대체됨
 
-  if (folders.length === 0) {
-    return (
-      <div
-        className="text-sm py-2 px-3"
-        style={{ color: "var(--color-sidebar-muted)" }}
-      >
-        등록된 폴더가 없습니다
-      </div>
-    );
-  }
+  // 빈 상태 안내는 Sidebar 가 한다 (여기서도 띄우면 빈 문구가 두 번 겹쳤다)
+  if (folders.length === 0) return null;
 
   // 전체 PC 인덱싱 모드: 요약 + 드라이브별 표시 (우클릭 삭제 지원)
   if (isFullPcMode) {
@@ -449,7 +470,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
 
               {/* 인덱싱 미완료 표시 */}
               {folderInfo[folder]?.indexing_status === "indexing" && (
-                <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded flex-shrink-0" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning)" }} title="인덱싱 미완료 - 자동 재개 중">
+                <span className="flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium rounded flex-shrink-0" style={{ backgroundColor: "var(--color-warning-bg)", color: "var(--color-warning)" }} title="인덱싱 미완료 - 자동 재개 중">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   재개중
                 </span>
@@ -458,7 +479,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
               {/* 파일 수 배지 */}
               {folderStats[folder] && folderInfo[folder]?.indexing_status !== "indexing" && (
                 <span
-                  className="px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0 group-hover:hidden"
+                  className="px-1.5 py-0.5 text-xs font-medium rounded flex-shrink-0 group-hover:hidden group-focus-within:hidden"
                   style={{ backgroundColor: "var(--color-sidebar-hover)", color: "var(--color-sidebar-muted)" }}
                 >
                   {folderStats[folder].indexed_count}
@@ -472,7 +493,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
                   const rect = e.currentTarget.getBoundingClientRect();
                   setContextMenu({ isOpen: true, x: rect.left, y: rect.bottom + 2, folderPath: folder });
                 }}
-                className="hidden group-hover:flex items-center justify-center flex-shrink-0 p-0.5 rounded transition-colors"
+                className="hidden group-hover:flex group-focus-within:flex items-center justify-center flex-shrink-0 p-0.5 rounded transition-colors"
                 style={{ color: "var(--color-sidebar-muted)" }}
                 aria-label={`${getFolderName(folder)} 폴더 작업`}
                 title="재인덱싱 · 즐겨찾기 · 제거"
@@ -578,7 +599,7 @@ export function FolderTree({ folders, onRemoveFolder, onFoldersChange, onReindex
             role="menuitem"
             onClick={handleReset}
             className="ctx-menu-item w-full px-3 py-2 text-left text-sm flex items-center gap-2"
-            title="인덱싱 상태 플래그만 초기화 (데이터 유지) — 반복 실패로 멈춘 폴더의 자동 재시도 루프를 끊습니다"
+            title="인덱싱 상태 표시만 초기화 (데이터 유지). 반복 실패로 멈춘 폴더의 자동 재시도를 끊습니다"
           >
             <RotateCcw className="w-4 h-4 clr-warning" />
             인덱싱 상태 초기화

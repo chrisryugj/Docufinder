@@ -1,6 +1,7 @@
 import { memo, useRef, useState, useEffect, useLayoutEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Maximize2, Expand, X, Loader2 } from "lucide-react";
+import { getErrorMessage } from "../../types/error";
 
 interface PdfPageResponse {
   data_url: string;
@@ -133,7 +134,7 @@ export const PdfLayoutView = memo(function PdfLayoutView({
       .catch((e) => {
         if (reqRef.current !== req) return;
         setDataUrl(null);
-        setError(typeof e === "string" ? e : ((e as { message?: string })?.message ?? "PDF 렌더 실패"));
+        setError(getErrorMessage(e));
       })
       .finally(() => {
         if (reqRef.current === req) setLoading(false);
@@ -266,7 +267,7 @@ export const PdfLayoutView = memo(function PdfLayoutView({
     <div className="flex flex-col h-full">
       {/* 툴바 — 페이지 네비 · 줌 (LayoutView 와 동일 톤) */}
       <div
-        className="flex items-center gap-1 px-2 py-1 border-b text-[11px]"
+        className="flex items-center gap-1 px-2 py-1 border-b text-2xs"
         style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
       >
         <button onClick={() => goPage(page - 1)} disabled={page <= 1}
@@ -315,7 +316,7 @@ export const PdfLayoutView = memo(function PdfLayoutView({
         style={{ backgroundColor: "var(--color-bg-tertiary)", overscrollBehavior: "contain" }}
       >
         {error ? (
-          <div className="flex items-center justify-center h-full text-[13px] text-center px-6" style={{ color: "var(--color-text-muted)" }}>
+          <div className="flex items-center justify-center h-full text-sm text-center px-6" style={{ color: "var(--color-text-muted)" }}>
             {error}
           </div>
         ) : (

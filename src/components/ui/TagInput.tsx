@@ -103,7 +103,7 @@ export const TagInput = memo(function TagInput({
       {tags.map((tag) => (
         <span
           key={tag}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-medium"
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-2xs font-medium"
           style={{
             backgroundColor: "var(--color-accent-bg, color-mix(in srgb, var(--color-accent) 12%, transparent))",
             color: "var(--color-accent)",
@@ -129,9 +129,9 @@ export const TagInput = memo(function TagInput({
             value={value}
             onChange={(e) => { setValue(e.target.value); setShowSuggestions(true); setHighlightedIndex(-1); }}
             onKeyDown={handleKeyDown}
-            placeholder="태그 입력..."
+            placeholder="태그 입력"
             maxLength={50}
-            className="w-24 px-1.5 py-0.5 text-[11px] rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
+            className="w-24 px-1.5 py-0.5 text-2xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
             style={{
               backgroundColor: "var(--color-bg-secondary)",
               borderColor: "var(--color-border)",
@@ -150,7 +150,7 @@ export const TagInput = memo(function TagInput({
                 <button
                   key={s}
                   onClick={() => { onAdd(s); setValue(""); setShowSuggestions(false); setHighlightedIndex(-1); }}
-                  className={`w-full px-2 py-1 text-[11px] text-left text-[var(--color-text-primary)] ${i === highlightedIndex ? "bg-[var(--color-bg-tertiary)]" : "hover:bg-[var(--color-bg-tertiary)]"}`}
+                  className={`w-full px-2 py-1 text-2xs text-left text-[var(--color-text-primary)] ${i === highlightedIndex ? "bg-[var(--color-bg-tertiary)]" : "hover:bg-[var(--color-bg-tertiary)]"}`}
                 >
                   {s}
                 </button>
@@ -162,7 +162,7 @@ export const TagInput = memo(function TagInput({
         tags.length < maxTags && (
           <button
             onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[11px] transition-colors hover:bg-[var(--color-bg-tertiary)]"
+            className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-2xs transition-colors hover:bg-[var(--color-bg-tertiary)]"
             style={{ color: "var(--color-text-muted)" }}
             title="태그 추가"
             aria-label="태그 추가"

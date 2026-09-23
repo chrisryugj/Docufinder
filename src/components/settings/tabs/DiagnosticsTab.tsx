@@ -27,7 +27,7 @@ export function DiagnosticsTab({ settings, onChange, setError }: DiagnosticsTabP
       {/* lite: 업데이터 플러그인·Telegram 리포트가 빠진 빌드 — 왜 항목이 없는지 한 줄로 알린다 */}
       {IS_LITE && (
         <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-          내부망 전용 설치본입니다 — 자동 업데이트와 오류 자동 전송은 포함되어 있지 않습니다.
+          내부망 전용 설치본입니다. 자동 업데이트와 오류 자동 전송은 포함되어 있지 않습니다.
           오류는 아래 로그 폴더에만 기록됩니다.
         </p>
       )}

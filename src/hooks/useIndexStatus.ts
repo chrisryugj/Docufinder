@@ -72,7 +72,7 @@ async function confirmFolderAdd(path: string): Promise<boolean> {
 
   const message = info.skip_body_enabled
     ? `이 폴더는 ${label}로 감지되었습니다.\n\n현재 설정에 따라 **본문은 인덱싱하지 않고 파일명·크기·수정일만** 저장됩니다 (파일명 검색은 가능).\n\n본문까지 인덱싱하려면 [설정 → 시스템 → 클라우드/네트워크 폴더 본문 인덱싱 자동 스킵] 토글을 끄세요. (느려질 수 있음)\n\n계속하시겠습니까?`
-    : `이 폴더는 ${label}로 감지되었습니다.\n\n현재 본문 인덱싱이 켜져 있어 모든 파일을 네트워크/클라우드에서 다운로드합니다 — 매우 느려질 수 있습니다.\n\n계속하시겠습니까?`;
+    : `이 폴더는 ${label}로 감지되었습니다.\n\n현재 본문 인덱싱이 켜져 있어 모든 파일을 네트워크/클라우드에서 다운로드합니다. 매우 느려질 수 있습니다.\n\n계속하시겠습니까?`;
 
   return await ask(message, {
     title: `${label} 추가`,
@@ -153,6 +153,12 @@ export function useIndexStatus(): UseIndexStatusReturn {
           }
           setProgress(p);
 
+          // 백엔드는 감시 폴더를 등록한 직후 preparing 을 보낸다. 여기서 상태를 다시 읽어야
+          // 첫 폴더를 읽는 동안에도 사이드바에 폴더가 보인다 (종전엔 다 읽을 때까지 "폴더를 추가하세요")
+          if (p.phase === "preparing") {
+            void refreshStatus();
+          }
+
           if (p.phase === "cancelled") {
             setCancelledFolderPath(p.folder_path);
           } else if (p.phase === "preparing" || p.phase === "scanning" || p.phase === "completed") {
@@ -184,7 +190,7 @@ export function useIndexStatus(): UseIndexStatusReturn {
       if (clearTimer) clearTimeout(clearTimer);
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [refreshStatus]);
 
   // folder-removed 이벤트 리스너 (백그라운드 삭제 완료/실패 알림)
   useEffect(() => {
@@ -340,9 +346,9 @@ export function useIndexStatus(): UseIndexStatusReturn {
       // 백엔드 진실값으로 정합 확인 (이미 동기로 watched_folders 삭제됨)
       await refreshStatus();
     } catch (err) {
-      // 실패: optimistic 변경 원상복구
-      setError(`폴더 제거 실패: ${getErrorMessage(err)}`);
+      // 실패: optimistic 변경 원상복구 후 호출자에게 알린다 (삼키면 호출자가 성공 토스트를 띄웠다)
       await refreshStatus();
+      throw err;
     }
   }, [refreshStatus]);
 

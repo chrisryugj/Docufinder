@@ -5,7 +5,7 @@ import { useFilterPresets, type FilterPreset } from "../hooks/useFilterPresets";
 import { useSmartFolders, type SmartFolder } from "../hooks/useSmartFolders";
 import { useTypoCorrection } from "../hooks/useTypoCorrection";
 import type { SearchResult, SearchMode, SearchFilters, GroupedSearchResult, ViewMode, SearchParadigm, ParsedQueryInfo, RecentSearch, AiAnalysis, KeywordMatchMode } from "../types/search";
-import { useUIContext } from "./UIContext";
+import { useUIActions } from "./UIContext";
 
 // ── Types ──────────────────────────────────────────────
 
@@ -126,7 +126,7 @@ const EXPAND_FOCUS_DELAY_MS = 100;
 // ── Provider ───────────────────────────────────────────
 
 export function SearchProvider({ children }: { children: ReactNode }) {
-  const { showToast, setPreviewFilePath } = useUIContext();
+  const { showToast, setPreviewFilePath } = useUIActions();
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const compactSearchInputRef = useRef<HTMLInputElement | null>(null);

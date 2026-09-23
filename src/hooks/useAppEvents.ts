@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { clearSearchCache } from "./useSearch";
 import type { ToastType } from "../components/ui/Toast";
+import { getErrorMessage } from "../types/error";
 
 interface UseAppEventsOptions {
   query: string;
@@ -17,6 +18,7 @@ interface UseAppEventsOptions {
  * App-level Tauri 이벤트 리스너 관리:
  * - incremental-index-updated: 증분 인덱싱 완료 → 캐시 무효화 + 재검색
  * - model-download-status: 모델 다운로드 상태 → 토스트
+ * - indexing-warning: 드라이브 전체·시스템 폴더 인덱싱 안내 → 토스트
  * - db-integrity-warning / probe_kordoc_runtime: 시작 시 진단 → 에러 토스트
  */
 export function useAppEvents({
@@ -36,6 +38,7 @@ export function useAppEvents({
   // 증분 인덱싱 완료 이벤트 — ref 패턴으로 listener를 한 번만 등록 (deps 변경 시 재등록 방지)
   useEffect(() => {
     let unlistenFn: UnlistenFn | null = null;
+    let disposed = false; // listen() 이 끝나기 전에 언마운트되면 등록 직후 해제
     listen<number>("incremental-index-updated", (event) => {
       const cb = cbRef.current;
       clearSearchCache();
@@ -55,9 +58,9 @@ export function useAppEvents({
           );
         }
       }
-    }).then((fn) => { unlistenFn = fn; });
+    }).then((fn) => { if (disposed) fn(); else unlistenFn = fn; });
 
-    return () => { unlistenFn?.(); };
+    return () => { disposed = true; unlistenFn?.(); };
   }, []);
 
   // 모델 다운로드 상태 이벤트 — ref 패턴으로 listener 재등록 방지
@@ -66,12 +69,13 @@ export function useAppEvents({
     let ocrToastId: string | null = null;
     let layoutToastId: string | null = null;
     let unlistenFn: UnlistenFn | null = null;
+    let disposed = false; // listen() 이 끝나기 전에 언마운트되면 등록 직후 해제
     listen<string>("model-download-status", (event) => {
       const cb = cbRef.current;
       switch (event.payload) {
         // 시맨틱 모델
         case "downloading":
-          semanticToastId = cb.showToast("AI 모델 다운로드 중... (최초 1회)", "loading");
+          semanticToastId = cb.showToast("AI 모델 다운로드 중 (최초 1회)", "loading");
           break;
         case "completed":
           if (semanticToastId) {
@@ -87,7 +91,7 @@ export function useAppEvents({
           break;
         // OCR 모델
         case "downloading-ocr":
-          ocrToastId = cb.showToast("OCR 모델 다운로드 중...", "loading");
+          ocrToastId = cb.showToast("OCR 모델 다운로드 중", "loading");
           break;
         case "completed-ocr":
           if (ocrToastId) {
@@ -103,7 +107,7 @@ export function useAppEvents({
           break;
         // 레이아웃 분석 모델 (PP-DocLayout, 실험 기능 토글)
         case "downloading-layout":
-          layoutToastId = cb.showToast("레이아웃 분석 모델 다운로드 중...", "loading");
+          layoutToastId = cb.showToast("레이아웃 분석 모델 다운로드 중", "loading");
           break;
         case "completed-layout":
           if (layoutToastId) {
@@ -124,19 +128,40 @@ export function useAppEvents({
           break;
         }
       }
-    }).then((fn) => { unlistenFn = fn; });
+    }).then((fn) => { if (disposed) fn(); else unlistenFn = fn; });
 
-    return () => { unlistenFn?.(); };
+    return () => { disposed = true; unlistenFn?.(); };
   }, []);
 
-  // DB 무결성 경고 이벤트
+  // 인덱싱 안내 (드라이브 전체·시스템 폴더는 AI 검색 준비를 자동으로 시작하지 않음). 종전엔 받는 곳이 없었다.
   useEffect(() => {
     let unlistenFn: UnlistenFn | null = null;
-    listen<string>("db-integrity-warning", (event) => {
-      cbRef.current.showToast(event.payload, "error", 15000);
-    }).then((fn) => { unlistenFn = fn; });
+    let disposed = false;
+    listen<{ type: string; folder_path: string; message: string }>("indexing-warning", (event) => {
+      cbRef.current.showToast(event.payload.message, "info", 10000);
+    }).then((fn) => { if (disposed) fn(); else unlistenFn = fn; });
 
-    return () => { unlistenFn?.(); };
+    return () => { disposed = true; unlistenFn?.(); };
+  }, []);
+
+  // DB 무결성 경고. 검사가 이 리스너보다 먼저 끝나면 이벤트가 유실되므로 마운트 때 한 번 가져오고,
+  // 늦게 끝나면 이벤트로 받는다. 같은 문구는 한 번만 띄운다.
+  const shownWarningsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const show = (message: string) => {
+      if (shownWarningsRef.current.has(message)) return;
+      shownWarningsRef.current.add(message);
+      cbRef.current.showToast(message, "error", 15000);
+    };
+    let unlistenFn: UnlistenFn | null = null;
+    let disposed = false; // listen() 이 끝나기 전에 언마운트되면 등록 직후 해제
+    listen<string>("db-integrity-warning", (event) => show(event.payload))
+      .then((fn) => { if (disposed) fn(); else unlistenFn = fn; });
+    invoke<string[]>("get_startup_warnings")
+      .then((warnings) => { if (!disposed) warnings.forEach(show); })
+      .catch(() => {});
+
+    return () => { disposed = true; unlistenFn?.(); };
   }, []);
 
   // 문서 변환기(kordoc 사이드카) 실행 점검 — 시작 시 1회. 백엔드 setup 의 `kordoc-availability`
@@ -145,7 +170,7 @@ export function useAppEvents({
   useEffect(() => {
     let cancelled = false;
     invoke<string>("probe_kordoc_runtime").catch((e) => {
-      if (!cancelled) cbRef.current.showToast(String(e), "error", 20000);
+      if (!cancelled) cbRef.current.showToast(getErrorMessage(e), "error", 20000);
     });
     return () => { cancelled = true; };
   }, []);

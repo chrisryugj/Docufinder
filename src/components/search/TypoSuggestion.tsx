@@ -37,7 +37,7 @@ export const TypoSuggestion = memo(function TypoSuggestion({
           className="px-2 py-0.5 rounded font-medium transition-colors hover:opacity-80"
           style={{
             backgroundColor: "var(--color-accent)",
-            color: "white",
+            color: "var(--color-on-accent)",
           }}
         >
           {s.word}

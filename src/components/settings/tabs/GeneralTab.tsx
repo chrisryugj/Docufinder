@@ -12,6 +12,7 @@ import {
   OPEN_CLICK_OPTIONS,
   UI_ZOOM_OPTIONS,
 } from "./types";
+import { FILE_MANAGER_NAME } from "../../../utils/platform";
 
 const ZOOM_STORAGE_KEY = "docufinder-ui-zoom";
 
@@ -144,7 +145,7 @@ export function GeneralTab({ settings, onChange }: TabProps) {
       {/* 저장 위치 표시 */}
       <SettingsToggle
         label="결과에 저장 위치 표시"
-        description="검색 결과 카드에 폴더 경로와 액션 버튼 줄(경로 복사·위치 열기)을 표시합니다 (컴팩트 보기 포함). 경로 클릭 시 탐색기에서 열립니다. 끄면 우클릭 메뉴로 대체"
+        description={`검색 결과 카드에 폴더 경로와 액션 버튼 줄(경로 복사·위치 열기)을 표시합니다 (컴팩트 보기 포함). 경로 클릭 시 ${FILE_MANAGER_NAME}에서 열립니다. 끄면 우클릭 메뉴로 대체`}
         checked={settings.show_result_path ?? true}
         onChange={(checked) => onChange("show_result_path", checked)}
       />

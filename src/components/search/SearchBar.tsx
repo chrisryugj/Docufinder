@@ -52,7 +52,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
       onCompositionEnd,
       paradigm = "instant",
       onParadigmChange,
-      hasIndex = false,
+      hasIndex,
       onSubmitNatural,
       watchedFolders = [],
       searchScope,
@@ -64,15 +64,17 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
     // 패러다임 토글은 인덱싱이 1회라도 완료된 뒤 노출 (progressive disclosure).
     // 첫 실행(인덱스 0)에선 '키워드' 단일 모드로 고정해 첫 화면 인지부하를 낮춘다.
     // 스마트·Anything 모드는 시맨틱 OFF에서도 FTS 폴백으로 동작하므로 시맨틱 설정과 무관 (이슈 #32).
-    const canUseParadigms = hasIndex;
+    const canUseParadigms = hasIndex === true;
 
     // 토글이 숨겨졌는데 이전 세션의 paradigm이 instant가 아니면 instant로 되돌린다
     // (localStorage 복원 또는 시맨틱 OFF 전환으로 비활성 모드가 남는 경우 방지).
+    // 색인 상태를 아직 모르면(undefined, 시작 직후) 되돌리지 않는다. 종전엔 그 순간을 "색인 없음"으로
+    // 보고 되돌려서 저장한 검색 모드가 실행할 때마다 초기화됐다.
     useEffect(() => {
-      if (!canUseParadigms && paradigm !== "instant") {
+      if (hasIndex === false && paradigm !== "instant") {
         onParadigmChange?.("instant");
       }
-    }, [canUseParadigms, paradigm, onParadigmChange]);
+    }, [hasIndex, paradigm, onParadigmChange]);
 
     const isNatural = paradigm === "natural";
     const isQuestion = paradigm === "question";
@@ -211,7 +213,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               onCompositionStart={onCompositionStart}
               onCompositionEnd={(e) => onCompositionEnd?.(e.currentTarget.value)}
               rows={1}
-              placeholder="문서에 대해 무엇이든 물어보세요..."
+              placeholder="문서에 대해 무엇이든 물어보세요"
               className="flex-1 bg-transparent border-none focus:outline-none resize-none overflow-hidden py-2.5"
               style={{
                 color: "var(--color-text-primary)",
@@ -231,8 +233,8 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               {...imeHandlers}
               onKeyDown={handleKeyDown}
               placeholder={isNatural
-                ? "자연어로 검색 조건을 입력하세요..."
-                : "키워드로 문서 검색..."
+                ? "자연어로 검색 조건을 입력하세요"
+                : "키워드로 문서 검색"
               }
               className="flex-1 bg-transparent border-none focus:outline-none h-[24px]"
               style={{
@@ -246,13 +248,33 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             />
           )}
 
+          {/* 검색어 지우기 */}
+          {!isQuestion && query && (
+            <button
+              type="button"
+              onClick={() => {
+                onQueryChange("");
+                innerRef.current?.focus();
+              }}
+              className="shrink-0 ml-2 p-1 rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
+              style={{ color: "var(--color-text-muted)" }}
+              title="검색어 지우기"
+              aria-label="검색어 지우기"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+
           {/* 검색 연산자 도움말 (키워드 모드) — 궁금한 사람만 클릭하는 조용한 진입점 */}
           {isInstant && onOpenSearchHelp && (
             <button
               onClick={onOpenSearchHelp}
               className="shrink-0 ml-2 p-1 rounded-md transition-colors opacity-40 hover:opacity-100"
               style={{ color: "var(--color-text-muted)" }}
-              title='검색 연산자 도움말 — "구문", -제외, ext:hwp 등'
+              title='검색 연산자 도움말: "구문", -제외, ext:hwp 등'
               aria-label="검색 연산자 도움말"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -266,7 +288,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
           {/* Enter 힌트 (스마트 모드) */}
           {needsEnterToSubmit && query && !isQuestion && (
             <kbd
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ml-2"
+              className="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-mono ml-2"
               style={{
                 color: "var(--color-text-muted)",
                 backgroundColor: "var(--color-bg-tertiary)",
@@ -297,9 +319,10 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               className="shrink-0 ml-2 mt-0 p-1.5 rounded-md transition-all duration-150 hover:opacity-90 active:scale-95"
               style={{
                 backgroundImage: "var(--gradient-accent)",
-                color: "white",
+                color: "var(--color-on-accent)",
               }}
               title="Anything에게 질문 (Enter)"
+              aria-label="질문 보내기"
             >
               <SendIcon />
             </button>
@@ -344,19 +367,19 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
               </span>
             )}
             {smartPreview.dateLabel && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                 {smartPreview.dateLabel}
               </span>
             )}
             {smartPreview.filenameFilter && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                 파일명: {smartPreview.filenameFilter}
               </span>
             )}
             {smartPreview.fileType && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 {smartPreview.fileType}
               </span>
@@ -364,7 +387,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {smartPreview.excludeKeywords.map((ex, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/10 text-red-500 border border-red-500/20"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-error-subtle)] text-[var(--color-error)] border border-[var(--color-error-border)]"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 {ex}
@@ -384,14 +407,14 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {operatorPreview.phrases.map((p, i) => (
               <span
                 key={`ph-${i}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                 "{p}"
               </span>
             ))}
             {operatorPreview.extFilters.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 확장자: {operatorPreview.extFilters.join(", ")}
               </span>
@@ -399,26 +422,26 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {operatorPreview.pathFilters.map((p, i) => (
               <span
                 key={`pa-${i}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
                 경로: {p}
               </span>
             ))}
             {operatorPreview.afterLabel && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                 {operatorPreview.afterLabel} 이후
               </span>
             )}
             {operatorPreview.beforeLabel && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
                 {operatorPreview.beforeLabel} 이전
               </span>
             )}
             {operatorPreview.near !== null && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="18 8 22 12 18 16"/><polyline points="6 8 2 12 6 16"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
                 근접 {operatorPreview.near}단어 이내
               </span>
@@ -426,7 +449,7 @@ export const SearchBar = memo(forwardRef<HTMLInputElement, SearchBarProps>(
             {operatorPreview.excludes.map((ex, i) => (
               <span
                 key={`ex-${i}`}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-500/10 text-red-500 border border-red-500/20"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-2xs font-medium bg-[var(--color-error-subtle)] text-[var(--color-error)] border border-[var(--color-error-border)]"
               >
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 {ex}

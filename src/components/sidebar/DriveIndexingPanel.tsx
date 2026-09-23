@@ -13,8 +13,8 @@ const STAGE_LABEL: Record<string, string> = {
   scanning: "파일 검색 중",
   parsing: "문서 분석 중",
   indexing: "인덱스 저장 중",
-  fts_commit: "DB 저장 중",
-  wal_checkpoint: "캐시 정리 중",
+  fts_commit: "저장 중",
+  wal_checkpoint: "정리 중",
   cache_refresh: "파일 목록 갱신 중",
 };
 
@@ -65,7 +65,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
 
   return (
     <div className="px-2 py-1.5">
-      <div className="flex items-center gap-2 text-[12px] min-w-0">
+      <div className="flex items-center gap-2 text-xs min-w-0">
         {statusIcon(job.status)}
         <span
           className="font-medium shrink-0 tabular-nums"
@@ -74,13 +74,13 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
           {pathLabel(job.path)}
         </span>
         {job.status === "done" && (
-          <span className="text-[11px] tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+          <span className="text-2xs tabular-nums" style={{ color: "var(--color-text-muted)" }}>
             {job.indexed_count.toLocaleString()}개
           </span>
         )}
         {isActive && stageLabel && (
           <span
-            className="text-[11px] truncate min-w-0"
+            className="text-2xs truncate min-w-0"
             style={{ color: "var(--color-text-muted)" }}
           >
             · {stageLabel}
@@ -89,7 +89,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
         <div className="flex items-center gap-1.5 ml-auto shrink-0">
           {isActive && job.total > 0 && job.status === "running" && (
             <span
-              className="text-[11px] tabular-nums font-semibold"
+              className="text-2xs tabular-nums font-semibold"
               style={{ color: "var(--color-accent)" }}
             >
               {percent}%
@@ -100,7 +100,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
             job.status === "cancelled") &&
             job.started_at && (
               <span
-                className="text-[10px] tabular-nums"
+                className="text-2xs tabular-nums"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 {formatDuration(job.started_at, job.finished_at)}
@@ -135,7 +135,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
       {/* 현재 파일명 (running 상태) — 파일 전환 순간 current_file이 비어도 높이 유지 */}
       {job.status === "running" && (
         <div
-          className="mt-0.5 text-[10px] truncate leading-[14px]"
+          className="mt-0.5 text-2xs truncate leading-[14px]"
           style={{ color: "var(--color-text-muted)", minHeight: "14px" }}
           title={job.current_file ?? undefined}
         >
@@ -146,7 +146,7 @@ const JobRow = memo(function JobRow({ job }: { job: BatchJob }) {
       {/* 에러 메시지 */}
       {job.status === "failed" && job.error && (
         <div
-          className="mt-0.5 text-[10px] truncate"
+          className="mt-0.5 text-2xs truncate"
           style={{ color: "var(--color-error)" }}
           title={job.error}
         >
@@ -208,13 +208,13 @@ export const DriveIndexingPanel = memo(function DriveIndexingPanel({
             <Check className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--color-success)" }} />
           )}
           <span
-            className="text-[11px] font-bold tracking-[0.08em] uppercase"
+            className="text-2xs font-bold"
             style={{ color: "var(--color-sidebar-section)" }}
           >
             드라이브 인덱싱
           </span>
           <span
-            className="text-[11px] tabular-nums"
+            className="text-2xs tabular-nums"
             style={{ color: "var(--color-text-muted)" }}
           >
             {summary.done}/{summary.total} · {summary.percent}%
@@ -223,7 +223,7 @@ export const DriveIndexingPanel = memo(function DriveIndexingPanel({
         {batch.is_running ? (
           <button
             onClick={onCancel}
-            className="text-[10px] px-1.5 py-0.5 rounded btn-cancel-hover"
+            className="text-2xs px-1.5 py-0.5 rounded btn-cancel-hover"
           >
             취소
           </button>
@@ -264,7 +264,7 @@ export const DriveIndexingPanel = memo(function DriveIndexingPanel({
       {/* 하단 요약 (완료 시) */}
       {!batch.is_running && summary.totalIndexed > 0 && (
         <div
-          className="px-3 py-1.5 text-[11px] text-center"
+          className="px-3 py-1.5 text-2xs text-center"
           style={{
             borderTop: "1px solid var(--color-border)",
             color: "var(--color-text-muted)",

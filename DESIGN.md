@@ -1,18 +1,22 @@
-# DESIGN.md — Anything Design System
+# DESIGN.md: Anything Design System
 
 > AI-native design specification for consistent, on-brand UI generation.
 > Every AI coding agent should reference this file when creating or modifying UI components.
+> Source of truth for values: `src/styles/variables.css` (`@theme` = type scale, `:root`/`.dark` = colors).
 
 ---
 
 ## 1. Visual Theme & Atmosphere
 
-**Mood**: Government Elegance — trustworthy, precise, yet state-of-the-art.
+**Mood**: Government Elegance. Trustworthy, precise, yet state-of-the-art.
 Warm stone palette with green accent. Clean, editorial layout with generous whitespace.
 Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 
-**Density**: Medium — information-rich search results balanced by minimal chrome.
+**Density**: Medium. Information-rich search results balanced by minimal chrome.
 **Feel**: Quiet confidence, not flashy. The UI disappears; content leads.
+
+**Accessibility floor**: text and icons meet WCAG AA (4.5:1 text, 3:1 UI graphics) in both themes.
+Public-sector users read small meta text for hours; contrast is not optional.
 
 ---
 
@@ -20,40 +24,49 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 
 ### Light Mode
 
-| Role | Hex | Usage |
-|------|-----|-------|
-| **Background Primary** | `#FAFAF7` | Page background — warm ivory, not clinical white |
-| **Background Secondary** | `#FFFFFF` | Cards, elevated surfaces |
-| **Background Tertiary** | `#F0EFEB` | Hover states, inactive surfaces |
-| **Background Subtle** | `#E7E5E4` | Pressed states, dividers |
-| **Text Primary** | `#1C1917` | Main readable text — warm stone black |
-| **Text Secondary** | `#44403C` | Supportive text |
-| **Text Muted** | `#78716C` | Helper text, timestamps, captions |
-| **Accent (Green)** | `#01AF7A` | CTAs, active states, links — matches app icon |
-| **Accent Hover** | `#019468` | Darker accent for hover |
-| **Accent AI (Indigo)** | `#6366F1` | AI/semantic features |
-| **Accent Warm (Amber)** | `#D97706` | Warnings, notifications |
-| **Border** | `#E7E5E4` | Default borders |
-| **Border Hover** | `#D6D3D1` | Hover borders |
-| **Success** | `#059669` | Positive feedback |
-| **Error** | `#DC2626` | Error states |
-| **Info** | `#0284C7` | Informational |
+| Role | Token | Hex | Usage |
+|------|-------|-----|-------|
+| Background Primary | `--color-bg-primary` | `#FAFAF7` | Page background, warm ivory |
+| Background Secondary | `--color-bg-secondary` | `#FFFFFF` | Cards, elevated surfaces |
+| Background Tertiary | `--color-bg-tertiary` | `#F0EFEB` | Hover states, inactive surfaces |
+| Background Subtle | `--color-bg-subtle` | `#E7E5E4` | Pressed states, dividers |
+| Text Primary | `--color-text-primary` | `#1C1917` | Main readable text |
+| Text Secondary | `--color-text-secondary` | `#44403C` | Supportive text |
+| Text Muted | `--color-text-muted` | `#736C66` | Helper text, captions (4.9:1) |
+| Text Tertiary | `--color-text-tertiary` | `#78716C` | Least-emphasis meta (4.6:1) |
+| **Accent (Green)** | `--color-accent` | `#017F58` | Links, active states, filled CTAs (text 4.8:1, white on fill 5.0:1) |
+| Accent Hover / Active | `--color-accent-hover` / `-active` | `#016B4A` / `#015A3E` | Hover, pressed |
+| On Accent | `--color-on-accent` | `#FFFFFF` | Text/icons on accent fills |
+| Accent AI (Indigo) | `--color-accent-ai` | `#4F46E5` | AI features (text 6.0:1) |
+| On Accent AI | `--color-on-accent-ai` | `#FFFFFF` | Text on AI fills |
+| Accent Warm (Amber) | `--color-accent-warm` | `#D97706` | Highlights, relevance dots |
+| Success | `--color-success` | `#047857` | Positive feedback |
+| Warning | `--color-warning` | `#B45309` | Warning text/icons |
+| Error | `--color-error` | `#DC2626` | Error states |
+| On Error | `--color-on-error` | `#FFFFFF` | Text on error fills (danger button) |
+| Info | `--color-info` | `#0369A1` | Informational |
+| Border / Hover | `--color-border` / `-hover` | `#E7E5E4` / `#D6D3D1` | Borders |
+
+**Brand green `#01AF7A`** (app icon) stays in the `@theme` palette and in translucent tints
+(`--color-accent-subtle`, `-light`, `-border`, `-glow`). It is too light for text (2.7:1) or for
+white labels (2.8:1), so solid accent usage goes through `--color-accent`.
 
 ### Dark Mode
 
 | Role | Hex | Notes |
 |------|-----|-------|
-| **Background Primary** | `#111113` | Warm dark, NOT blue-tinted |
-| **Background Secondary** | `#1A1A1F` | Cards |
-| **Text Primary** | `#FAFAF9` | Inverted |
-| **Accent** | `#10C48E` | Brighter green for dark contrast |
-| **Accent AI** | `#818CF8` | Brighter indigo for dark |
+| Background Primary / Secondary / Tertiary | `#111113` / `#1A1A1F` / `#242429` | Warm dark, NOT blue-tinted |
+| Text Primary / Muted / Tertiary | `#FAFAF9` / `#A8A29E` / `#8A837D` | Tertiary 5.0:1 |
+| Accent | `#10C48E` | Bright green (8.4:1 as text) |
+| On Accent | `#06281C` | Dark label on bright green fill (white would be 2.3:1) |
+| Accent AI / On Accent AI | `#818CF8` / `#111113` | |
+| Error / On Error | `#F87171` / `#111113` | |
 
 ### File Type Colors
 
 | Type | Light | Dark |
 |------|-------|------|
-| HWPX | `#7C3AED` (violet) | `#A78BFA` |
+| HWPX / HWP / HML | `#7C3AED` (violet) | `#A78BFA` |
 | DOCX | `#2563EB` (blue) | `#60A5FA` |
 | PPTX | `#D97706` (amber) | `#FBBF24` |
 | XLSX | `#16A34A` (green) | `#34D399` |
@@ -65,32 +78,33 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 ## 3. Typography Rules
 
 ### Font Families
-- **Headings / Display**: `Outfit Variable` → Pretendard fallback
+- **Headings / Display**: `Outfit Variable` → Pretendard fallback (`text-display` class)
 - **Body**: `Pretendard Variable` → `Malgun Gothic` → system-ui
 - **Code**: `Consolas` → `D2Coding` → `Fira Code` → monospace
 
-### Type Scale (15px base, 1.25 ratio)
+### Type Scale (~1.2 ratio, 15px base)
 
-| Token | Size | Weight | Usage |
-|-------|------|--------|-------|
-| `--text-2xs` | 11px | 400 | Version labels, minimal meta |
-| `--text-xs` | 12px | 400-600 | Badges, timestamps |
-| `--text-sm` | 13px | 400 | Auxiliary text, file paths |
-| `--text-base` | 15px | 400 | Body default |
-| `--text-md` | 16px | 400-500 | Search input |
-| `--text-lg` | 18px | 600 | Subheadings |
-| `--text-xl` | 25px | 700 | Section titles |
-| `--text-2xl` | 31px | 700 | Page title |
-| `--text-hero` | 44px | 800 | Hero headlines |
+Defined once in `@theme` (`variables.css`). Tailwind `text-*` utilities and the `ts-*` classes read the same tokens.
+
+| Token / Utility | Size | Usage |
+|-------|------|-------|
+| `text-2xs` / `--text-2xs` | 11px | Minimum size: badges, timestamps, meta |
+| `text-xs` | 12px | Badges, secondary labels |
+| `text-sm` | 13px | Auxiliary text, file paths |
+| `text-base` | 15px | Body default |
+| `text-md` | 16px | Search input |
+| `text-lg` | 17px | Emphasized body, result file names |
+| `text-xl` | 21px | Subsection headings |
+| `text-2xl` | 26px | Page titles |
+| `text-hero` | 44px | Hero headline (`clamp()` on the home screen) |
+
+- **No text below 11px.** Do not use arbitrary sizes (`text-[10px]`); pick a scale step.
+- Korean labels get no `uppercase` and no wide letter-spacing (uppercase does nothing to Hangul; tracking scatters it). English eyebrow labels (e.g. "Step 1 / 5") may keep them.
 
 ### Letter Spacing
 - **Hero/Headings** (`ts-hero`, `ts-2xl`, `ts-xl`): `-0.04em` (tight)
 - **Subheadings** (`ts-lg`): `-0.02em`
 - **Body**: `+0.01em` (subtle open)
-
-### Font Rendering
-- `-webkit-font-smoothing: antialiased`
-- `-moz-osx-font-smoothing: grayscale`
 
 ---
 
@@ -98,39 +112,44 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 
 ### Buttons
 
-| Variant | Background | Text | Border | Hover |
-|---------|-----------|------|--------|-------|
-| Primary | `--color-accent` | white | none | `--color-accent-hover` + shadow |
-| Secondary | transparent | `--color-text-secondary` | `--color-border` | `--color-bg-tertiary` |
-| Ghost | transparent | `--color-text-muted` | none | `--color-bg-tertiary` |
-| Danger | `--color-error` | white | none | `--color-error-hover` |
+| Variant | Background | Text | Hover |
+|---------|-----------|------|-------|
+| Primary | `--color-accent` | `--color-on-accent` | `--color-accent-hover` + shadow |
+| Secondary | `--color-bg-secondary` | `--color-text-secondary` | `--color-bg-tertiary` |
+| Ghost | transparent | `--color-text-muted` | `--color-bg-tertiary` |
+| Danger | `--color-error` | `--color-on-error` | `--color-error-hover` |
 
-- Border radius: `8px` (`--radius-lg`)
-- Active: `scale(0.98)` press effect
-- Disabled: `opacity: 0.4`, no pointer events
-- Icon buttons: color transition (not opacity)
+- Never hardcode `white`/`#fff` on a colored fill; use the matching `--color-on-*` token (dark mode flips it).
+- Active: `scale(0.98)` press effect. Disabled: `opacity: 0.4`.
+- Icon-only buttons need `aria-label` (a `title` alone is not enough) and flex/grid centering.
+- Focus: global `:focus-visible` outline in accent. `ring-offset-*` picks up the panel color automatically (no white halo in dark mode).
 
-### Cards / Result Items
+### Result Items
 
-- Background: transparent (borderless, no left border)
-- Border radius: `--radius-lg` (8px)
-- Hover: `--shadow-md` elevation + subtle file-type background tint
-- Selected: `--color-accent-light` background + 1.5px accent outline
-- Spacing: `space-y-1.5` (6px) between items in normal density
+- Borderless rows (`.result-card`, radius `--radius-md`), divided by 1px lines; hover = subtle background tint.
+- Selected: `--color-accent-light` background + 1.5px accent outline, same `--radius-md` radius (no corner jump).
+- List and group views both expose `role="option"` + `aria-selected`; the listbox tracks the active option with `aria-activedescendant`.
+- Relevance: 3-dot signal (`RelevanceDots`), only for semantic/hybrid matches, in both views. No raw %.
+- File names: `HighlightedFilename middle`: long names truncate in the **middle** so the suffix (`…_최종_수정본.hwpx`) stays visible.
+- Section headers (파일명 매치 / 내용 매치): tinted background, no colored left border.
+
+### Empty & Loading States
+
+- Every empty state says **why** and offers the next action: 문서 읽는 중 (progress N / M), 필터에 가려짐 (필터 풀기), 폴더 없음 (폴더 추가), 결과 없음 (다른 검색어·파일명 검색).
+- Lazy panels show `PanelLoading` (spinner + label), never a blank area.
+- Preview errors show a plain reason plus [다시 시도] and [원본 열기].
 
 ### Inputs
 
-- Background: `--color-bg-primary`
-- Border: 1px `--color-border` + `--shadow-inner`
-- Focus: border `--color-accent` + 3px accent glow ring
-- Font size: `--text-md` (16px) — prevents zoom on mobile
+- Background `--color-bg-primary`, 1px `--color-border` + `--shadow-inner`.
+- Focus: container ring in accent.
+- Search inputs show a clear (×) button when non-empty.
 
-### Modals
+### Modals & Confirmations
 
-- Enter: `scale(0.97→1) + translateY(8px→0)`, 200ms ease-out-expo
-- Exit: reverse, 130ms (65% of entry)
-- Backdrop: `rgba(0,0,0,0.4)` light / `rgba(0,0,0,0.6)` dark
-- Focus trap: Tab cycles within modal, ESC closes
+- Enter: `scale(0.97→1) + translateY(8px→0)`, 200ms ease-out-expo; exit 130ms.
+- Backdrop: `rgba(0,0,0,0.4)` light / `rgba(0,0,0,0.6)` dark. Focus trap, ESC closes.
+- Destructive or heavy actions (폴더 제거, 다시 읽기, 전체 드라이브 인덱싱) confirm first with `ask()` and say what is kept (원본 파일은 그대로). Failures always surface a toast.
 
 ---
 
@@ -148,129 +167,96 @@ Inspired by Linear (precision) + Notion (warmth) + Apple (breathing room).
 | 2xl | 48px | Section gaps |
 
 ### Content Column
-- **Max width**: `820px` (`--content-max-width`)
-- Centered with auto margins
-- Search results and main content constrained
-- WelcomeHero: centered within column, max-w-520px for search prompt
+- **Max width**: `--content-max-width: clamp(820px, 62vw, 1400px)`: readable on narrow windows, uses space on wide ones
+- WelcomeHero: centered, max-w-520px for prompts
 
-### Sidebar
-- Expanded: `200px`
-- Collapsed: `48px`
-- Transition: 200ms ease-out
+### Sidebar & Header
+- Sidebar 200px expanded / 48px collapsed, 200ms ease-out
+- Header 44px. The collapsed search bar uses the same horizontal padding as the header (logo does not shift)
 
-### Header Height
-- `44px` fixed
+### Preview Panel
+- One `PreviewContainer`: push beside results on wide windows, overlay on narrow ones. Switching modes never remounts the panel.
+- Splitter drag updates once per animation frame.
 
 ### Border Radius Scale
-- `--radius-sm`: 4px
-- `--radius-md`: 6px
-- `--radius-lg`: 8px
-- `--radius-xl`: 12px
-- `--radius-2xl`: 16px
+- `--radius-sm` 4px · `--radius-md` 6px · `--radius-lg` 8px · `--radius-xl` 12px (`--radius-card`) · `--radius-2xl` 16px
 
 ---
 
 ## 6. Depth & Elevation
 
-### Shadow Scale (warm-tinted, stone-based)
-
-| Level | Shadow | Usage |
-|-------|--------|-------|
-| sm | `0 1px 2px rgba(28,25,23,0.04)` | Subtle depth |
-| md | `0 1px 3px ... + 0 1px 2px ...` | Result hover |
-| lg | `0 4px 6px ... + 0 2px 4px ...` | Dropdowns |
-| xl | `0 10px 15px ... + 0 4px 6px ...` | Modals |
-| card | `0 1px 3px ... + 0 0 0 1px ...` | Static cards |
-| card-hover | `0 4px 12px ... + accent tint` | Interactive cards |
-| **premium** | `0 1px 2px + 0 10px 28px -12px` | v3.0 — interactive surface lift (hero search, result-card hover, main searchbar) |
-| **premium-accent** | `... + 0 12px 28px -10px accent` | v3.0 — primary CTA / focused hero (green-tinted lift) |
-
-### v3.0 Warm-Premium Gradients
-
-| Token | Usage |
+| Level | Usage |
 |-------|-------|
-| `--gradient-accent` | Green 3-stop — primary CTA + AI send only (strategic, one per screen) |
-| `--gradient-surface-sheen` | Subtle top sheen on elevated surfaces (hero/search box) |
-| `--radius-card` | 12px — unified card radius (result/chip/panel) |
+| `--shadow-sm` / `md` / `lg` / `xl` | Subtle depth → dropdowns → modals |
+| `--shadow-card` / `card-hover` | Static / interactive cards |
+| `--shadow-premium` | Interactive surface lift (hero search, main search bar) |
+| `--shadow-premium-accent` | Primary CTA / focused hero (green-tinted lift) |
 
-### Dark Mode Shadows
-- Stronger opacity (0.3-0.5) with pure black base
-- Card hover includes accent glow border
+- `--gradient-accent`: primary CTA + AI send only (one per screen). Its stops stay dark enough for `--color-on-accent`.
+- Dark mode shadows use stronger black opacity; card hover adds an accent glow border.
 
 ---
 
 ## 7. Do's and Don'ts
 
 ### DO
-- Use colors from the defined palette only
-- Use semantic colors (success/warning/error/info) for feedback
-- Use file-type colors for file-specific UI (badges, subtle hover tint) — never as left-border stripes
+- Use tokens (`--color-*`, `--text-*`, `--radius-*`, `--shadow-*`); Tailwind palette classes (`bg-gray-200`, `text-red-500`) break dark mode
 - Use `--color-accent-ai` (indigo) for AI/semantic features
-- Keep search results in `content-column` (max 820px)
-- Apply staggered fade-in animation to result lists (max 10 items, 30ms delay)
-- Keep breathing room between result cards (space-y-1.5 normal, space-y-0.5 compact)
-- Use skeleton-shimmer for loading states
-- Use warm stone shadows, not neutral gray
+- Keep keyboard parity: clickable rows are real `<button>`s; hover-revealed actions also appear on `group-focus-within` / `focus-visible`
+- Keep selection visible and keyboard order equal to visual order (group view moves file by file)
+- Apply staggered fade-in to result lists (max 10 items, 30ms delay)
+- Use Lucide icons (not emoji) for UI glyphs
 
 ### DON'T
-- Don't invent new colors outside the palette
-- Don't use pure black (`#000`) or pure white (`#FFF`) for backgrounds
-- Don't use drop shadows on static cards — use subtle 1px borders
-- Don't use more than two typefaces on a single screen
-- Don't center-align body text
-- Don't use animations longer than 400ms (except ambient breathe/float)
-- Don't use gradient backgrounds on ordinary buttons. Reserve `--gradient-accent` for the **one primary CTA per screen** (empty-state start button) + AI features (Anything banner/send) — strategic accent, not scattered
-- Don't use opacity for hover states on buttons — use color transitions
-- Don't use left-border accents on result cards — they feel cluttered
-- Don't use virtual scrolling (react-window etc.) — use "show more" pagination
-- Don't use `opacity` to create text/icon hierarchy — use color tokens (`--color-text-muted`, `--color-text-tertiary`). Opacity muddies color; tokens stay clean (v3.0 warm-premium)
+- Don't put text below 11px or use arbitrary font sizes
+- Don't hardcode `white` on colored fills; don't use the brand `#01AF7A` as a text color
+- Don't use drop shadows on static cards; don't use colored left-border stripes
+- Don't use gradients on ordinary buttons
+- Don't use opacity to build text hierarchy or hover states; use color tokens
+- Don't use virtual scrolling; use "N개 더 보기" pagination
+- Don't animate longer than 400ms (except ambient breathe/float)
+
+### Copy (Korean UI)
+- No em-dash (U+2014) in any user-facing string; use `:` or `·`
+- No trailing "..." in loading labels or placeholders ("저장 중", "키워드로 문서 검색"); "…" only for truncation
+- Platform words come from `utils/platform`: `FILE_MANAGER_NAME` (탐색기/Finder), `MOD_KEY` (Ctrl/⌘), `REVEAL_LABEL`
+- Errors go through `getErrorMessage()` (`types/error.ts`, one message per backend `ApiError` code); never render `String(e)`
+- Plain words over internals: no "FTS5", "청크", "DB", raw token counts or ms where a user reads them
 
 ---
 
 ## 8. Responsive Behavior
 
-This is a **desktop-first Tauri app** (Windows). No mobile breakpoints required.
+Desktop-first Tauri app (Windows + macOS). No mobile breakpoints.
 
-### Adaptive Rules
-- Sidebar: collapse to 48px icon-only when user toggles
-- Search input: full width within content column
-- Result items: full width within content column (max 820px)
-- Modals: max-width `36rem` (xl), max-height `80vh`
-
-### Font Scaling
-- Use `clamp()` for hero text: `clamp(2.5rem, 5vw, 3.5rem)`
-- Body text stays consistent at 15px
+- Sidebar collapses to 48px icons
+- Preview switches push → overlay when the results area would drop below 480px
+- Modals: max-width `36rem`, max-height `80vh`
+- Hero text uses `clamp(2.5rem, 5vw, 3.5rem)`
 
 ---
 
 ## 9. Agent Prompt Guide
 
-When creating or modifying UI components for Anything:
-
 ```
 Use the design system defined in DESIGN.md:
-- Colors: Use CSS variables (--color-*) only, never hardcoded hex
-- Typography: Use type scale classes (ts-base, ts-sm, ts-xs) or CSS vars (--text-*)
-- Display font: Use text-display class for headings with Outfit
-- Spacing: Use 8px-based scale via Tailwind utilities
-- Shadows: Use shadow vars (--shadow-sm/md/lg/xl/card)
-- Borders: Use --color-border vars, --radius-* for corners
-- Animations: Use existing animation classes (animate-fade-in, stagger-item, skeleton-shimmer)
-- Result items: Borderless — hover elevation + subtle file-type background tint (no left-border stripe)
-- Content: Wrap in content-column class for max-width constraint
-- AI features: Use --color-accent-ai (indigo) for semantic/AI indicators
+- Colors: CSS variables (--color-*) only; text on fills uses --color-on-accent / --color-on-accent-ai / --color-on-error
+- Typography: Tailwind text-2xs … text-2xl (tokens in @theme) or ts-* classes; 11px minimum
+- Display font: text-display class for headings with Outfit
+- Spacing: 8px-based Tailwind utilities; radius via --radius-*; shadows via --shadow-*
+- Result items: borderless rows, selected = accent-light + outline (--radius-md), RelevanceDots, middle-truncated file names
+- Accessibility: WCAG AA contrast, real buttons, aria-label on icon buttons, focus-visible for hover actions
+- Copy: Korean, no em-dash, no "..." except truncation, platform words from utils/platform
 ```
 
 ### Quick Reference
-- **Primary accent**: `#01AF7A` (green)
-- **AI accent**: `#6366F1` (indigo)
-- **Warm accent**: `#D97706` (amber)
-- **Typography base**: Pretendard, 15px, weight 400
-- **Display font**: Outfit Variable
-- **Content max-width**: 820px
+- **Accent**: `#017F58` light / `#10C48E` dark (brand icon `#01AF7A` for tints only)
+- **AI accent**: `#4F46E5` light / `#818CF8` dark
+- **Typography base**: Pretendard 15px, minimum 11px
+- **Content max-width**: `clamp(820px, 62vw, 1400px)`
 - **Sidebar**: 200px / 48px
 - **Easing**: `cubic-bezier(0.16, 1, 0.3, 1)` (ease-out-expo)
 
 ---
 
-*Version: 1.0 | Updated: 2026-04-11 | Based on awesome-design-md 9-section framework*
+*Version: 1.1 | Updated: 2026-09-23 (v3.8.9 contrast tokens, type scale in @theme, keyboard parity, copy rules)*

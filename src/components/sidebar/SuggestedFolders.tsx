@@ -129,7 +129,7 @@ export function SuggestedFolders({ watchedFolders, onAddFolder }: SuggestedFolde
         <div className="flex-1 border-t border-dashed" style={{ borderColor: "var(--color-sidebar-border)" }} />
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider shrink-0 hover-sidebar-section"
+          className="flex items-center gap-1 text-2xs font-medium shrink-0 hover-sidebar-section"
           style={{ opacity: 0.7 }}
         >
           <svg
@@ -215,7 +215,8 @@ function FolderItem({
         <Icon className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.75} />
         <span className="truncate flex-1 text-left">{folder.label}</span>
         <svg
-          className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+          className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity flex-shrink-0"
+          aria-hidden="true"
           fill="none"
           viewBox="0 0 24 24"
           strokeWidth={2}

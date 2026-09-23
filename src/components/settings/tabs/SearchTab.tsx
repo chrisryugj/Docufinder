@@ -9,6 +9,7 @@ import type { TabProps } from "./types";
 import { CONFIDENCE_STEP } from "./types";
 import { SYSTEM_FOLDERS_HINT, isWindows } from "../../../utils/platform";
 import { IS_LITE } from "../../../utils/buildFlavor";
+import { getErrorMessage } from "../../../types/error";
 
 interface FormulaModelInfo {
   name: string;
@@ -93,10 +94,10 @@ export function SearchTab({ settings, onChange }: TabProps) {
       for (const path of ocrReindex.folders) {
         await invoke("reindex_folder", { path });
       }
-      setOcrReindexMsg(`✅ ${ocrReindex.folders.length}개 폴더 재인덱싱 완료 — 스캔 PDF·이미지가 OCR로 인식됩니다.`);
+      setOcrReindexMsg(`✅ ${ocrReindex.folders.length}개 폴더를 다시 읽었습니다. 스캔 PDF·이미지가 OCR로 인식됩니다.`);
       setOcrReindex(null);
     } catch (e) {
-      setOcrReindexMsg(`재인덱싱 실패: ${e}`);
+      setOcrReindexMsg(`재인덱싱 실패: ${getErrorMessage(e)}`);
     } finally {
       setOcrReindexing(false);
     }
@@ -116,7 +117,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
       const s = await invoke<FormulaModelsStatus>("get_formula_models_status");
       setFormulaStatus(s);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getErrorMessage(e);
       setFormulaError(msg);
     } finally {
       setFormulaChecking(false);
@@ -151,12 +152,12 @@ export function SearchTab({ settings, onChange }: TabProps) {
   const handleDownloadFormula = useCallback(async () => {
     setFormulaDownloading(true);
     setFormulaError(null);
-    setFormulaProgress("다운로드 시작…");
+    setFormulaProgress("다운로드 시작");
     try {
       await invoke("download_formula_models");
       await checkFormulaStatus();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getErrorMessage(e);
       setFormulaError(msg);
     } finally {
       setFormulaDownloading(false);
@@ -179,7 +180,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
           : `🧹 ${res.pruned.toLocaleString()}개 고아 레코드 삭제 · 전체 ${res.total_checked.toLocaleString()}개 · ${(res.elapsed_ms / 1000).toFixed(1)}s`,
       );
     } catch (e) {
-      setRebuildResult(`정리 실패: ${e}`);
+      setRebuildResult(`정리 실패: ${getErrorMessage(e)}`);
     } finally {
       setPruning(false);
     }
@@ -204,7 +205,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
       parts.push(`${(res.elapsed_ms / 1000).toFixed(1)}s`);
       setRebuildResult(parts.join(" · "));
     } catch (e) {
-      setRebuildResult(`실패: ${e}`);
+      setRebuildResult(`실패: ${getErrorMessage(e)}`);
     } finally {
       setRebuilding(false);
     }
@@ -223,7 +224,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
         `미분류 ${res.unassigned_files}개`,
       ].join(" · ");
       if (res.problem_lineages.length === 0) {
-        setRebuildResult(`✅ ${summary} — 정리 필요 lineage 없음`);
+        setRebuildResult(`✅ ${summary} · 정리할 버전 그룹 없음`);
       } else {
         const top = res.problem_lineages
           .slice(0, 3)
@@ -232,7 +233,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
         setRebuildResult(`⚠️ ${summary}\n정리 대상 ${res.problem_lineages.length}개:\n${top}`);
       }
     } catch (e) {
-      setRebuildResult(`건강도 조회 실패: ${e}`);
+      setRebuildResult(`건강도 조회 실패: ${getErrorMessage(e)}`);
     }
   }
 
@@ -317,7 +318,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
                 .filter((s): s is string => Boolean(s))
             )
           }
-          placeholder="추가 제외할 폴더명 입력..."
+          placeholder="추가로 제외할 폴더명 입력"
           rows={2}
         />
       </div>
@@ -325,7 +326,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
       {/* lite: OCR·레이아웃·수식 OCR 모델을 번들하지도 받지도 않아 백엔드가 셋 다 false 로 고정 */}
       {IS_LITE && (
         <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-          내부망 전용 설치본입니다 — OCR·레이아웃 분석·PDF 수식 OCR 은 포함되어 있지 않습니다.
+          내부망 전용 설치본입니다. OCR·레이아웃 분석·PDF 수식 OCR 은 포함되어 있지 않습니다.
         </p>
       )}
 
@@ -334,7 +335,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
       <div>
         <SettingsToggle
           label="OCR (이미지 텍스트 인식)"
-          description="이미지 파일(JPG, PNG, WebP, BMP, TIFF)과 스캔 PDF(이미지 기반)에서 텍스트 추출 — 표 서식 이미지는 표 구조까지 복원 (PaddleOCR, ~15MB 모델)"
+          description="이미지 파일(JPG, PNG, WebP, BMP, TIFF)과 스캔 PDF(이미지 기반)에서 텍스트 추출. 표 서식 이미지는 표 구조까지 복원 (PaddleOCR, ~15MB 모델)"
           checked={settings.ocr_enabled ?? false}
           onChange={(v) => {
             onChange("ocr_enabled", v);
@@ -419,7 +420,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
         <div
           className="mt-2 p-2.5 rounded-md text-xs leading-relaxed"
           style={{
-            backgroundColor: "rgba(239, 68, 68, 0.08)",
+            backgroundColor: "var(--color-error-subtle)",
             border: "1px solid var(--color-error)",
             color: "var(--color-error)",
           }}
@@ -483,7 +484,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
                             : "var(--color-text-muted)",
                       }}
                     >
-                      {m.verified ? "✓ 준비됨" : m.exists ? "⚠ SHA 불일치" : "— 없음"}
+                      {m.verified ? "✓ 준비됨" : m.exists ? "⚠ 파일 손상 의심 (SHA 불일치)" : "없음"}
                     </span>
                   </li>
                 ))}
@@ -493,7 +494,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
               </ul>
             ) : (
               <p style={{ color: "var(--color-text-muted)" }}>
-                상태 확인 필요 — "확인" 버튼을 눌러주세요.
+                상태 확인 필요: "확인" 버튼을 눌러 주세요.
               </p>
             )}
           </div>
@@ -571,7 +572,7 @@ export function SearchTab({ settings, onChange }: TabProps) {
                   border: "1px solid var(--color-border)",
                 }}
               >
-                {rebuilding ? "재계산 중..." : "버전 그룹 재계산"}
+                {rebuilding ? "재계산 중" : "버전 그룹 재계산"}
               </button>
               <button
                 type="button"
@@ -598,12 +599,12 @@ export function SearchTab({ settings, onChange }: TabProps) {
                   border: "1px solid var(--color-border)",
                 }}
               >
-                {pruning ? "정리 중..." : "없는 파일 정리"}
+                {pruning ? "정리 중" : "없는 파일 정리"}
               </button>
             </div>
             {rebuildResult && (
               <pre
-                className="text-[11px] whitespace-pre-wrap font-sans"
+                className="text-2xs whitespace-pre-wrap font-sans"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 {rebuildResult}

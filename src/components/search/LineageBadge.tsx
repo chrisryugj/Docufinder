@@ -105,9 +105,9 @@ export function LineageBadge({
       <button
         ref={triggerRef}
         onClick={toggleOpen}
-        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors hover:opacity-80"
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium transition-colors hover:opacity-80"
         style={{
-          backgroundColor: "var(--color-bg-hover)",
+          backgroundColor: "var(--color-bg-tertiary)",
           color: "var(--color-text-secondary)",
           border: "1px solid var(--color-border-subtle)",
         }}
@@ -150,7 +150,7 @@ export function LineageBadge({
             <div className="overflow-y-auto" style={{ maxHeight: 320 }}>
               {loading && (
                 <div className="p-3 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                  불러오는 중...
+                  불러오는 중
                 </div>
               )}
               {!loading && versions && versions.length === 0 && (
@@ -168,7 +168,7 @@ export function LineageBadge({
                       key={v.file_path}
                       className="flex items-stretch gap-0 transition-colors"
                       style={{
-                        backgroundColor: isCurrent ? "var(--color-bg-hover)" : "transparent",
+                        backgroundColor: isCurrent ? "var(--color-bg-tertiary)" : "transparent",
                         borderBottom: "1px solid var(--color-border-subtle)",
                       }}
                     >
@@ -195,10 +195,10 @@ export function LineageBadge({
                         <div className="flex items-center gap-1.5">
                           {v.version_label && (
                             <span
-                              className="text-[10px] px-1 rounded font-medium"
+                              className="text-2xs px-1 rounded font-medium"
                               style={{
                                 backgroundColor: isCanonical
-                                  ? "var(--color-accent-warm-bg)"
+                                  ? "var(--color-accent-warm-subtle)"
                                   : "var(--color-bg-subtle)",
                                 color: isCanonical
                                   ? "var(--color-accent-warm)"
@@ -217,7 +217,7 @@ export function LineageBadge({
                         </div>
                         {v.modified_at ? (
                           <div
-                            className="text-[10px] mt-0.5"
+                            className="text-2xs mt-0.5"
                             style={{ color: "var(--color-text-muted)" }}
                             title={new Date(v.modified_at * 1000).toLocaleString("ko-KR")}
                           >

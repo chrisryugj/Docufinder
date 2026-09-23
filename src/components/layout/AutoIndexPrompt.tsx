@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, ask } from "@tauri-apps/plugin-dialog";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
+import { SYSTEM_FOLDERS_HINT } from "../../utils/platform";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -120,7 +121,13 @@ export function AutoIndexPrompt({
   }, [selected, onIndexFolderByPath, onClose]);
 
   // 전체 드라이브 인덱싱
+  // 모든 드라이브를 읽는 무거운 작업이라 설정 > 시스템과 같게 한 번 묻는다
   const handleAutoIndex = useCallback(async () => {
+    const confirmed = await ask(
+      `모든 드라이브를 스캔하여 문서를 인덱싱합니다.\n시스템 폴더(${SYSTEM_FOLDERS_HINT})는 자동 제외됩니다.\n\n계속하시겠습니까?`,
+      { title: "전체 드라이브 인덱싱", kind: "info", okLabel: "시작", cancelLabel: "취소" }
+    );
+    if (!confirmed) return;
     onClose();
     await onAutoIndex();
   }, [onClose, onAutoIndex]);
@@ -154,7 +161,7 @@ export function AutoIndexPrompt({
           >
             <div
               className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
-              style={{ backgroundColor: "var(--color-accent)", color: "white" }}
+              style={{ backgroundColor: "var(--color-accent)", color: "var(--color-on-accent)" }}
             >
               <FolderIcon />
             </div>
@@ -217,7 +224,7 @@ export function AutoIndexPrompt({
               {/* known 폴더 */}
               {knownFolders.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  <p className="text-2xs font-semibold mb-2" style={{ color: "var(--color-text-muted)" }}>
                     추천 폴더
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -246,7 +253,7 @@ export function AutoIndexPrompt({
               {/* 드라이브 */}
               {driveFolders.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  <p className="text-2xs font-semibold mb-2" style={{ color: "var(--color-text-muted)" }}>
                     드라이브
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -274,7 +281,7 @@ export function AutoIndexPrompt({
 
               {/* 직접 선택 버튼 */}
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+                <p className="text-2xs font-semibold mb-2" style={{ color: "var(--color-text-muted)" }}>
                   직접 추가
                 </p>
                 <button
@@ -286,7 +293,7 @@ export function AutoIndexPrompt({
                   }}
                 >
                   <PlusIcon />
-                  폴더 직접 선택...
+                  폴더 직접 선택
                 </button>
               </div>
 
@@ -302,7 +309,7 @@ export function AutoIndexPrompt({
                       return (
                         <span
                           key={p}
-                          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] border"
+                          className="flex items-center gap-1 px-2 py-1 rounded text-2xs border"
                           style={{
                             backgroundColor: "var(--color-accent-light)",
                             borderColor: "var(--color-accent)",
@@ -314,6 +321,7 @@ export function AutoIndexPrompt({
                           <button
                             onClick={() => toggleFolder(p)}
                             className="ml-0.5 opacity-60 hover:opacity-100"
+                            aria-label={`${name} 선택 해제`}
                           >
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
                               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>

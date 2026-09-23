@@ -1,9 +1,12 @@
 import { useCallback, useRef } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { invokeWithTimeout, IPC_TIMEOUT } from "../utils/invokeWithTimeout";
 import { cleanPath } from "../utils/cleanPath";
+import { getErrorMessage } from "../types/error";
 import type { useToast } from "./useToast";
 import type { useIndexStatus } from "./useIndexStatus";
 import type { AddFolderResult } from "../types/index";
+import { FILE_MANAGER_NAME } from "../utils/platform";
 
 interface UseFileActionsOptions {
   query: string;
@@ -47,15 +50,14 @@ export function useFileActions({
         addSearch(trimmedQuery);
       }
 
-      const toastId = showToast("파일 여는 중...", "loading");
+      const toastId = showToast("파일 여는 중", "loading");
       try {
         await invokeWithTimeout("open_file", { path: filePath, page: page ?? null }, IPC_TIMEOUT.FILE_ACTION);
         updateToast(toastId, { message: "파일을 열었습니다", type: "success" });
       } catch (e) {
         // 백엔드 거부 사유(감시 폴더 외부·시스템 폴더 등)를 그대로 보여준다 — "실패" 만으로는
         // 사용자가 왜 안 열리는지 알 수 없었다(#46)
-        const reason = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "");
-        updateToast(toastId, { message: reason ? `파일 열기 실패: ${reason}` : "파일 열기 실패", type: "error" });
+        updateToast(toastId, { message: `파일 열기 실패: ${getErrorMessage(e)}`, type: "error" });
       }
     },
     [addSearch, showToast, updateToast]
@@ -77,9 +79,9 @@ export function useFileActions({
     async (folderPath: string) => {
       try {
         await invokeWithTimeout("open_folder", { path: cleanPath(folderPath) }, IPC_TIMEOUT.FILE_ACTION);
-        showToast("탐색기에서 열었습니다", "success");
+        showToast(`${FILE_MANAGER_NAME}에서 열었습니다`, "success");
       } catch {
-        showToast("탐색기 열기 실패", "error");
+        showToast(`${FILE_MANAGER_NAME}에서 열지 못했습니다`, "error");
       }
     },
     [showToast]
@@ -135,14 +137,21 @@ export function useFileActions({
 
   const handleRemoveFolder = useCallback(
     async (path: string) => {
-      const toastId = showToast("폴더 제거 중...", "loading");
+      // 읽어 둔 데이터를 전부 지우는 동작이라 한 번 묻는다 (원본 파일은 건드리지 않음)
+      const name = cleanPath(path).split(/[/\\]/).filter(Boolean).pop() ?? path;
+      const confirmed = await ask(
+        `"${name}" 폴더를 검색 대상에서 뺍니다.\n이 폴더에서 읽어 둔 검색 데이터가 지워집니다. 원본 파일은 그대로입니다.`,
+        { title: "폴더 제거", kind: "warning", okLabel: "제거", cancelLabel: "취소" }
+      );
+      if (!confirmed) return;
+      const toastId = showToast("폴더 제거 중", "loading");
       try {
         await removeFolder(path);
         invalidateSearch();
         await refreshVectorStatus?.();
         updateToast(toastId, { message: "폴더가 제거되었습니다", type: "success" });
-      } catch {
-        updateToast(toastId, { message: "폴더 제거 실패", type: "error" });
+      } catch (e) {
+        updateToast(toastId, { message: `폴더 제거 실패: ${getErrorMessage(e)}`, type: "error" });
       }
     },
     [removeFolder, invalidateSearch, showToast, updateToast, refreshVectorStatus]
@@ -152,7 +161,7 @@ export function useFileActions({
     async (filePath: string) => {
       const name = filePath.split(/[\\/]/).pop() ?? filePath;
       const toastId = showToast(
-        `"${name}" OCR로 다시 읽는 중... (첫 사용 시 모델 다운로드로 오래 걸릴 수 있어요)`,
+        `"${name}" OCR로 다시 읽는 중 (첫 사용 시 모델 다운로드로 오래 걸릴 수 있어요)`,
         "loading"
       );
       try {
@@ -162,13 +171,13 @@ export function useFileActions({
           IPC_TIMEOUT.OCR_REINDEX
         );
         updateToast(toastId, {
-          message: res?.message ?? "OCR 재인덱싱 완료 — 다시 검색하면 반영됩니다",
+          message: res?.message ?? "OCR로 다시 읽었습니다. 다시 검색하면 반영됩니다",
           type: "success",
         });
         invalidateSearch();
       } catch (e) {
         updateToast(toastId, {
-          message: `OCR 재인덱싱 실패: ${e instanceof Error ? e.message : String(e)}`,
+          message: `OCR 재인덱싱 실패: ${getErrorMessage(e)}`,
           type: "error",
         });
       }

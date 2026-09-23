@@ -4,6 +4,7 @@ import { X, Plus, Minus, Edit3, Check, ArrowRight, Info } from "lucide-react";
 import { invokeWithTimeout } from "../../utils/invokeWithTimeout";
 import { cleanPath } from "../../utils/cleanPath";
 import type { LineageDiffResponse, ChunkDiffEntry } from "../../types/search";
+import { getErrorMessage } from "../../types/error";
 
 interface Props {
   aPath: string;
@@ -41,7 +42,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
         );
         if (!cancelled) setData(res);
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled) setError(getErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -247,7 +248,7 @@ export function VersionDiffModal({ aPath, aName, bPath, bName, title = "버전 �
           {!hasRealChanges && unchangedSamples.length > 0 && (
             <Section
               title="모든 청크가 거의 동일"
-              subtitle="95% 이상 유사 — 아래는 비교된 청크 샘플"
+              subtitle="95% 이상 유사 · 아래는 비교한 문단 샘플"
               color="var(--color-text-muted)"
             >
               {unchangedSamples.map((c, i) => (
@@ -287,14 +288,14 @@ function FileLabel({ role, name, path }: { role: "A" | "B"; name: string; path: 
   return (
     <div className="flex-1 min-w-0 flex items-center gap-1.5" title={path}>
       <span
-        className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0"
+        className="inline-block px-1.5 py-0.5 rounded text-2xs font-bold flex-shrink-0"
         style={{ backgroundColor: "var(--color-bg-subtle)", color }}
       >
         {role}
       </span>
       <span className="truncate">
         <span className="font-medium">{name}</span>
-        <span className="ml-1 opacity-60 text-[10px]">{cleanPath(path)}</span>
+        <span className="ml-1 opacity-60 text-2xs">{cleanPath(path)}</span>
       </span>
     </div>
   );
@@ -339,7 +340,7 @@ function Section({
       >
         <span>{title}</span>
         {subtitle && (
-          <span className="text-[10px] font-normal opacity-70">· {subtitle}</span>
+          <span className="text-2xs font-normal opacity-70">· {subtitle}</span>
         )}
       </div>
       <div className="space-y-1.5">{children}</div>
@@ -357,7 +358,7 @@ function ChunkMeta({ entry }: { entry: ChunkDiffEntry }) {
   }
   if (parts.length === 0) return null;
   return (
-    <div className="text-[10px] mb-1" style={{ color: "var(--color-text-muted)" }}>
+    <div className="text-2xs mb-1" style={{ color: "var(--color-text-muted)" }}>
       {parts.join(" · ")}
     </div>
   );
@@ -384,7 +385,7 @@ function ModifiedRow({ entry }: { entry: ChunkDiffEntry }) {
             }}
           >
             <div
-              className="text-[10px] font-semibold mb-1"
+              className="text-2xs font-semibold mb-1"
               style={{ color: "var(--diff-del)" }}
             >
               A (원본)
@@ -401,7 +402,7 @@ function ModifiedRow({ entry }: { entry: ChunkDiffEntry }) {
             }}
           >
             <div
-              className="text-[10px] font-semibold mb-1"
+              className="text-2xs font-semibold mb-1"
               style={{ color: "var(--diff-add)" }}
             >
               B (대상)
@@ -448,7 +449,7 @@ function UnchangedRow({ entry }: { entry: ChunkDiffEntry }) {
       }}
     >
       <div
-        className="text-[10px] mb-1 flex items-center gap-1"
+        className="text-2xs mb-1 flex items-center gap-1"
         style={{ color: "var(--color-text-muted)" }}
       >
         <Check className="w-3 h-3" />

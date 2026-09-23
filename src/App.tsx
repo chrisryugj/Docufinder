@@ -19,8 +19,11 @@ import { IS_LITE } from "./utils/buildFlavor";
 
 // Components
 import { Header, StatusBar, ErrorBanner, FloatingUI } from "./components/layout";
+import { PreviewContainer } from "./components/layout/PreviewContainer";
+import { PanelLoading } from "./components/ui/PanelLoading";
 import { AutoIndexPrompt } from "./components/layout/AutoIndexPrompt";
 import { SearchBar, SearchFilters, SearchResultList, CompactSearchBar } from "./components/search";
+import type { SearchResultListNav } from "./components/search/SearchResultList";
 import { TypoSuggestion } from "./components/search/TypoSuggestion";
 import SmartQueryInfo from "./components/search/SmartQueryInfo";
 import { AiDisclaimerModal, isAiDisclaimerAccepted } from "./components/search/AiDisclaimerModal";
@@ -381,6 +384,16 @@ function AppContent() {
     }
   }, [search.setSelectedIndex, search.filteredResults]);
 
+  // AI 예시 질문 클릭 — 인라인 화살표면 memo(AiAnswerPanel)가 매 렌더 깨져 답을 다시 파싱했다
+  const handleAiExampleClick = useCallback((text: string) => {
+    search.setQuery(text);
+    if (!isAiDisclaimerAccepted()) {
+      setShowAiDisclaimer(true);
+    } else {
+      search.askAi(text, search.filters.searchScope);
+    }
+  }, [search.setQuery, search.askAi, search.filters.searchScope]);
+
   // ── 0건 제안 칩 콜백 ──
   // 자연어 필터(날짜/파일타입/제외)를 떼고 파싱된 키워드만 즉시 모드로 재검색
   const handleRetryWithoutFilters = useCallback(() => {
@@ -389,6 +402,20 @@ function AppContent() {
     search.setParadigm("instant");
     search.handleSelectSearch(kw);
   }, [search.parsedQuery, search.setParadigm, search.handleSelectSearch]);
+
+  // 결과 목록에 넘기는 파일명 결과 ("파일명 제외" 필터면 비움) — 진행 수치 전달 조건도 같은 값을 본다
+  const listFilenameResults = search.filters.excludeFilename ? EMPTY_RESULTS : search.filenameResults;
+
+  // 결과를 가린 파일 형식·기간·키워드 전용·결과 내 검색 조건을 푼다 (정렬·검색 범위·파일명 제외는 유지)
+  const hasResultFilters =
+    search.filters.fileTypes.length > 0 ||
+    search.filters.dateRange !== "all" ||
+    search.filters.keywordOnly ||
+    search.refineQuery.trim().length > 0;
+  const handleClearResultFilters = useCallback(() => {
+    search.setFilters((prev) => ({ ...prev, fileTypes: [], dateRange: "all", keywordOnly: false }));
+    search.clearRefine();
+  }, [search.setFilters, search.clearRefine]);
 
   const handleFocusSearch = useCallback(() => {
     const el = search.searchInputRef.current;
@@ -403,6 +430,8 @@ function AppContent() {
   }, [search.setParadigm, search.setSearchMode]);
 
   // ── Keyboard Shortcuts ──
+  // ↑↓ 는 결과 목록이 화면 순서(그룹 보기·파일명 컬럼 정렬)로 계산한다. 목록이 없으면(질문 모드) 배열 순서
+  const resultNavRef = useRef<SearchResultListNav>(null);
   useKeyboardShortcuts(
     {
       onFocusSearch: () => {
@@ -430,15 +459,20 @@ function AppContent() {
       },
       onToggleSidebar: ui.toggleSidebar,
       onArrowUp: () => {
-        if (search.selectedIndex <= 0) {
-          // -1 또는 0이면: 선택 해제 → 검색창 포커스
+        const next = resultNavRef.current ? resultNavRef.current.step(-1) : search.selectedIndex - 1;
+        if (next < 0) {
+          // 맨 위에서 위로: 선택 해제 → 검색창 포커스
           search.setSelectedIndex(-1);
           search.searchInputRef.current?.focus();
         } else {
-          search.setSelectedIndex(search.selectedIndex - 1);
+          search.setSelectedIndex(next);
         }
       },
-      onArrowDown: () => search.setSelectedIndex(Math.min(search.filteredResults.length - 1, search.selectedIndex + 1)),
+      onArrowDown: () => search.setSelectedIndex(
+        resultNavRef.current
+          ? resultNavRef.current.step(1)
+          : Math.min(search.filteredResults.length - 1, search.selectedIndex + 1)
+      ),
       onEnter: () => {
         if (search.selectedIndex >= 0 && search.selectedIndex < search.filteredResults.length) {
           const r = search.filteredResults[search.selectedIndex];
@@ -573,7 +607,7 @@ function AppContent() {
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[10000] focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
-        style={{ backgroundColor: 'var(--color-accent)', color: '#fff' }}
+        style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
       >
         본문으로 건너뛰기
       </a>
@@ -622,8 +656,6 @@ function AppContent() {
               onQueryChange={search.handleQueryChange}
               onCompositionStart={handleCompositionStart}
               onCompositionEnd={handleCompositionEnd}
-              searchMode={search.searchMode}
-              onSearchModeChange={search.setSearchMode}
               isLoading={search.isLoading}
               status={idx.status}
               resultCount={search.filteredResults.length}
@@ -633,14 +665,6 @@ function AppContent() {
               onOpenHelp={handleOpenHelp}
               isIndexing={idx.isIndexing}
               isSidebarOpen={ui.sidebarOpen}
-              filters={search.filters}
-              onFiltersChange={search.setFilters}
-              viewMode={search.viewMode}
-              onViewModeChange={search.setViewMode}
-              refineQuery={search.refineQuery}
-              onRefineQueryChange={search.setRefineQuery}
-              onRefineQueryClear={search.clearRefine}
-              totalResultCount={search.results.length}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
               onSubmitNatural={handleSubmitQuery}
@@ -683,7 +707,7 @@ function AppContent() {
               searchTime={search.searchTime}
               paradigm={search.paradigm}
               onParadigmChange={search.setParadigm}
-              hasIndex={(idx.status?.indexed_files ?? 0) > 0}
+              hasIndex={idx.status ? idx.status.indexed_files > 0 : undefined}
               onSubmitNatural={handleSubmitQuery}
               watchedFolders={idx.status?.watched_folders ?? []}
               searchScope={search.filters.searchScope}
@@ -712,7 +736,7 @@ function AppContent() {
                 <ErrorBanner
                   message={error}
                   onDismiss={clearError}
-                  onRetry={search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
+                  onRetry={search.searchError && search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
                 />
               </div>
             )}
@@ -728,7 +752,7 @@ function AppContent() {
             style={{ borderColor: "var(--color-border)" }}
           >
             {search.paradigm === "natural" && search.parsedQuery ? (
-              <SmartQueryInfo parsed={search.parsedQuery} onClear={() => search.submitNaturalQuery()} />
+              <SmartQueryInfo parsed={search.parsedQuery} onClear={search.parsedQuery.keywords?.trim() ? handleRetryWithoutFilters : undefined} />
             ) : (
               <SearchFilters
                 filters={search.filters}
@@ -764,7 +788,7 @@ function AppContent() {
                 <ErrorBanner
                   message={error}
                   onDismiss={clearError}
-                  onRetry={search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
+                  onRetry={search.searchError && search.query.trim() ? () => { clearError(); search.invalidateSearch(); } : undefined}
                 />
               </div>
             )}
@@ -782,22 +806,23 @@ function AppContent() {
                     </div>
                     <div className="space-y-1">
                       {search.similarResults.slice(0, 10).map((r, i) => (
-                        <div
+                        <button
+                          type="button"
                           key={`sim-${i}`}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--color-bg-tertiary)] cursor-pointer transition-colors"
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-[var(--color-bg-tertiary)] cursor-pointer transition-colors"
                           onClick={() => handleOpenFile(r.file_path, r.page_number)}
                         >
                           <span className="text-xs font-mono text-[var(--color-text-muted)] w-6 text-right">{r.confidence}%</span>
                           <span className="text-sm truncate text-[var(--color-text-primary)]">{r.file_name}</span>
-                          <span className="text-[10px] text-[var(--color-text-muted)] truncate ml-auto max-w-[200px]">{r.content_preview?.slice(0, 80)}</span>
-                        </div>
+                          <span className="text-2xs text-[var(--color-text-muted)] truncate ml-auto max-w-[200px]">{r.content_preview?.slice(0, 80)}</span>
+                        </button>
                       ))}
                     </div>
                   </div>
                 )}
 
                 {search.paradigm === "question" ? (
-                  <Suspense fallback={null}>
+                  <Suspense fallback={<PanelLoading label="AI 질문 화면을 여는 중" />}>
                     <AiAnswerPanel
                       answer={search.aiAnswer}
                       isStreaming={search.isAiStreaming}
@@ -807,20 +832,13 @@ function AppContent() {
                       currentQuestion={search.aiAskedQuery}
                       searchScope={search.filters.searchScope}
                       onCite={handleCitationJump}
-                      onExampleClick={(text) => {
-                        search.setQuery(text);
-                        if (!isAiDisclaimerAccepted()) {
-                          setShowAiDisclaimer(true);
-                        } else {
-                          search.askAi(text, search.filters.searchScope);
-                        }
-                      }}
+                      onExampleClick={handleAiExampleClick}
                     />
                   </Suspense>
                 ) : (
                   <SearchResultList
                     results={search.filteredResults}
-                    filenameResults={search.filters.excludeFilename ? EMPTY_RESULTS : search.filenameResults}
+                    filenameResults={listFilenameResults}
                     groupedResults={search.groupedResults}
                     viewMode={search.viewMode}
                     onViewModeChange={search.setViewMode}
@@ -857,9 +875,12 @@ function AppContent() {
                     // lite: AI 미포함 — 결과 하단 "Anything에게 물어보기" 배너 진입점을 숨긴다
                     onSwitchToAnything={IS_LITE ? undefined : handleSwitchToAnything}
                     isIndexing={idx.isIndexing}
-                    indexProgress={idx.progress}
+                    // 진행 수치는 빈 화면에서만 쓴다. 결과가 보일 때 넘기면 진행 이벤트마다 목록이 다시 그려진다
+                    indexProgress={search.filteredResults.length === 0 && listFilenameResults.length === 0 ? idx.progress : null}
                     searchMode={search.searchMode}
                     onRetryWithoutFilters={handleRetryWithoutFilters}
+                    onClearResultFilters={hasResultFilters ? handleClearResultFilters : undefined}
+                    navRef={resultNavRef}
                     onFocusSearch={handleFocusSearch}
                     onSwitchToFilenameSearch={handleSwitchToFilenameSearch}
                     openOnSingleClick={openOnSingleClick}
@@ -872,77 +893,33 @@ function AppContent() {
             </main>
           </div>
 
-          {/* Preview Panel — push(넓은 창) / overlay(좁은 창) 자동 전환 */}
-          {ui.previewFilePath && !previewOverlay && (
-            <>
-              <div
-                onMouseDown={ui.handleResizeStart}
-                className="w-1 shrink-0 cursor-col-resize hover:bg-[var(--color-accent)] transition-colors group relative"
-                style={{ backgroundColor: "var(--color-border)" }}
-                title="드래그하여 너비 조절"
-              >
-                <div className="absolute inset-y-0 -left-1 -right-1" />
-              </div>
-              <div className="shrink-0" style={{ width: Math.max(ui.previewWidth, MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH, maxWidth: '50%' }}>
-                <Suspense fallback={null}>
-                  <PreviewPanel
-                    filePath={ui.previewFilePath}
-                    highlightQuery={search.searchedQuery}
-                    jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
-                    onClose={handlePreviewClose}
-                    onOpenFile={handleOpenFile}
-                    onCopyPath={handleCopyPath}
-                    onOpenFolder={handleOpenFolder}
-                    onBookmark={ui.addBookmark}
-                    isBookmarked={ui.isBookmarked(ui.previewFilePath)}
-                    tags={ui.previewTags}
-                    tagSuggestions={ui.tagSuggestions}
-                    onAddTag={ui.handleAddTag}
-                    onRemoveTag={ui.handleRemoveTag}
-                  />
-                </Suspense>
-              </div>
-            </>
-          )}
-          {ui.previewFilePath && previewOverlay && (
-            <>
-              <div
-                className="absolute inset-0 z-40 bg-black/15 animate-fade-in"
-                onClick={handlePreviewClose}
+          {/* Preview Panel — push(넓은 창) / overlay(좁은 창) 자동 전환. 패널은 한 자리에만 둔다 */}
+          {ui.previewFilePath && (
+            <PreviewContainer
+              overlay={previewOverlay}
+              width={ui.previewWidth}
+              minWidth={MIN_PREVIEW_WIDTH}
+              overlayMaxWidth={(contentFlexRef.current?.clientWidth ?? 600) * 0.85}
+              onResizeStart={ui.handleResizeStart}
+              onClose={handlePreviewClose}
+            >
+              <PreviewPanel
+                filePath={ui.previewFilePath}
+                highlightQuery={search.searchedQuery}
+                jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
+                onClose={handlePreviewClose}
+                onOpenFile={handleOpenFile}
+                onCopyPath={handleCopyPath}
+                onOpenFolder={handleOpenFolder}
+                onBookmark={ui.addBookmark}
+                isBookmarked={ui.isBookmarked(ui.previewFilePath)}
+                tags={ui.previewTags}
+                tagSuggestions={ui.tagSuggestions}
+                onAddTag={ui.handleAddTag}
+                onRemoveTag={ui.handleRemoveTag}
+                onOcrReindex={handleOcrReindex}
               />
-              <div
-                className="absolute right-0 top-0 bottom-0 z-50 shadow-2xl preview-slide-in"
-                style={{ width: Math.max(Math.min(ui.previewWidth, (contentFlexRef.current?.clientWidth ?? 600) * 0.85), MIN_PREVIEW_WIDTH), minWidth: MIN_PREVIEW_WIDTH }}
-              >
-                {/* overlay 모드에도 리사이즈 핸들 — push 에서 넓히다 overlay 로 전환되면
-                    핸들이 사라져 다시 줄일 수 없던 버그 수정. 좁히면 push 모드로 자동 복귀. */}
-                <div
-                  onMouseDown={ui.handleResizeStart}
-                  className="absolute inset-y-0 left-0 w-1 z-10 cursor-col-resize hover:bg-[var(--color-accent)] transition-colors"
-                  style={{ backgroundColor: "var(--color-border)" }}
-                  title="드래그하여 너비 조절"
-                >
-                  <div className="absolute inset-y-0 -left-1 -right-1" />
-                </div>
-                <Suspense fallback={null}>
-                  <PreviewPanel
-                    filePath={ui.previewFilePath}
-                    highlightQuery={search.searchedQuery}
-                    jumpTarget={citationJump && citationJump.filePath === ui.previewFilePath ? citationJump : undefined}
-                    onClose={handlePreviewClose}
-                    onOpenFile={handleOpenFile}
-                    onCopyPath={handleCopyPath}
-                    onOpenFolder={handleOpenFolder}
-                    onBookmark={ui.addBookmark}
-                    isBookmarked={ui.isBookmarked(ui.previewFilePath)}
-                    tags={ui.previewTags}
-                    tagSuggestions={ui.tagSuggestions}
-                    onAddTag={ui.handleAddTag}
-                    onRemoveTag={ui.handleRemoveTag}
-                  />
-                </Suspense>
-              </div>
-            </>
+            </PreviewContainer>
           )}
         </div>
 
@@ -994,7 +971,7 @@ function AppContent() {
           onClose={() => ui.setStatsOpen(false)}
           onFilterByType={(fileType) => {
             const typeMap: Record<string, import("./types/search").FileTypeFilter> = {
-              hwpx: "hwpx", hwp: "hwpx", docx: "docx", doc: "docx",
+              hwpx: "hwpx", hwp: "hwpx", hml: "hwpx", docx: "docx", doc: "docx",
               pptx: "pptx", ppt: "pptx", xlsx: "xlsx", xls: "xlsx",
               pdf: "pdf", txt: "txt", md: "txt",
             };

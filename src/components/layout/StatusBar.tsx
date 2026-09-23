@@ -95,7 +95,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
             <div className="flex items-center gap-2 ml-auto shrink-0">
               <span className="font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>{batchSummary.percent}%</span>
               {onCancelBatch && (
-                <button onClick={onCancelBatch} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
+                <button onClick={onCancelBatch} className="px-2 py-0.5 text-2xs rounded btn-cancel-hover">
                   취소
                 </button>
               )}
@@ -135,7 +135,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
                 <span className="font-semibold tabular-nums" style={{ color: "var(--color-accent)" }}>{percent}%</span>
               )}
               {onCancelIndexing && (
-                <button onClick={onCancelIndexing} className="px-2 py-0.5 text-[11px] rounded btn-cancel-hover">
+                <button onClick={onCancelIndexing} className="px-2 py-0.5 text-2xs rounded btn-cancel-hover">
                   취소
                 </button>
               )}
@@ -185,7 +185,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
             {failedCount > 0 && onShowReport && (
               <button
                 onClick={onShowReport}
-                className="px-1.5 py-0.5 text-[11px] rounded font-medium transition-opacity hover:opacity-80"
+                className="px-1.5 py-0.5 text-2xs rounded font-medium transition-opacity hover:opacity-80"
                 style={{ color: "var(--color-warning)" }}
                 title="마지막 인덱싱에서 실패한 파일 목록을 다시 봅니다"
               >
@@ -209,7 +209,7 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
             {hasCancelledFolders && onResumeIndexing && !isIndexing && (
               <button
                 onClick={onResumeIndexing}
-                className="px-1.5 py-0.5 text-[11px] rounded btn-accent-start-hover font-medium"
+                className="px-1.5 py-0.5 text-2xs rounded btn-accent-start-hover font-medium"
                 title="취소된 인덱싱을 다시 시작합니다"
               >
                 재시작
@@ -218,9 +218,9 @@ export const StatusBar = memo(function StatusBar({ status, progress, batch, onCa
             {appVersion && (
               // 망분리 환경 사용자가 배포본과 대조할 수 있는 유일한 단서라 또렷하게 (#42)
               <span
-                className="text-[11px] font-medium tabular-nums"
+                className="text-2xs font-medium tabular-nums"
                 style={{ opacity: 0.7 }}
-                title="설치된 Anything 버전 — 도움말 창에서도 확인할 수 있습니다"
+                title="설치된 Anything 버전 (도움말 창에서도 확인할 수 있습니다)"
               >
                 v{appVersion}
               </span>

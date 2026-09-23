@@ -6,18 +6,15 @@ interface ErrorBannerProps {
   onRetry?: () => void;
 }
 
-/** 사용자 친화적 에러 메시지 변환 */
+/** 사용자 친화적 에러 메시지 변환. 코드별 문구는 getErrorMessage 가 이미 만든다 —
+ *  여기서는 검색 시간 초과와 OS 권한 오류(영문 원문)에만 행동 안내를 붙인다.
+ *  배너는 검색·색인·AI 검색 준비 오류를 한 줄로 보여 주므로, 검색어 안내는 검색 오류("검색 실패: …")에만.
+ *  (종전엔 "index" 가 들어간 아무 메시지에 "폴더를 다시 추가해 보세요"를 붙여 오진했다) */
 function humanizeError(message: string): string {
-  if (message.includes("timeout") || message.includes("Timeout")) {
+  if (message.startsWith("검색 실패") && /timeout|타임아웃|오래 걸려/i.test(message)) {
     return "검색이 너무 오래 걸렸습니다. 검색어를 단순화하거나 필터를 적용해 보세요.";
   }
-  if (message.includes("vector") || message.includes("Vector")) {
-    return "시맨틱 인덱싱 중 오류가 발생했습니다. 설정에서 시맨틱 검색을 재활성화해 보세요.";
-  }
-  if (message.includes("index") || message.includes("Index")) {
-    return "인덱싱 중 오류가 발생했습니다. 해당 폴더를 다시 추가해 보세요.";
-  }
-  if (message.includes("permission") || message.includes("Permission") || message.includes("access")) {
+  if (/permission denied|os error (5|13)\b/i.test(message)) {
     return "파일 접근 권한이 없습니다. 관리자 권한으로 실행하거나 폴더 권한을 확인하세요.";
   }
   return message;

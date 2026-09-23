@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Check } from "lucide-react";
+import { Check, ChevronUp, ChevronDown } from "lucide-react";
 import type {
   ResizableCol,
   ToggleableCol,
@@ -77,7 +77,7 @@ export function FilenameColumnHeader({
   return (
     <>
       <div
-        className="grid items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium select-none sticky top-0 z-20"
+        className="grid items-center gap-2 px-2.5 py-1.5 text-2xs font-medium select-none sticky top-0 z-20"
         style={{
           gridTemplateColumns: gridTemplate,
           color: "var(--color-text-muted)",
@@ -160,11 +160,11 @@ function ColHead({
       >
         <span className="truncate">{label}</span>
         <span
-          className="text-[8px] flex-shrink-0 leading-none"
+          className="flex-shrink-0 leading-none"
           style={{ opacity: active ? 1 : 0.25, color: active ? "var(--color-accent)" : "inherit" }}
           aria-hidden="true"
         >
-          {active ? (sort!.dir === "asc" ? "▲" : "▼") : "▲"}
+          {active && sort!.dir === "desc" ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
         </span>
       </button>
       {onResize && (

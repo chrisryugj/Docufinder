@@ -24,7 +24,7 @@ export function buildAiAnswerMarkdown(
     lines.push("## 참조 문서", "");
     files.forEach((path, i) => {
       const hint = analysis?.sources?.[i]?.location_hint;
-      lines.push(`${i + 1}. **${basename(path)}**${hint ? ` — ${hint}` : ""}`);
+      lines.push(`${i + 1}. **${basename(path)}**${hint ? ` · ${hint}` : ""}`);
       lines.push(`   \`${cleanPath(path)}\``);
     });
     lines.push("");

@@ -16,7 +16,7 @@ const getVariantStyles = (variant: ButtonVariant): CSSProperties => {
     case "primary":
       return {
         backgroundColor: "var(--color-accent)",
-        color: "white",
+        color: "var(--color-on-accent)",
         border: "1px solid var(--color-accent)",
       };
     case "secondary":
@@ -34,7 +34,7 @@ const getVariantStyles = (variant: ButtonVariant): CSSProperties => {
     case "danger":
       return {
         backgroundColor: "var(--color-error)",
-        color: "white",
+        color: "var(--color-on-error)",
         border: "1px solid var(--color-error)",
       };
   }
@@ -92,7 +92,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           <span className="flex items-center justify-center gap-2">
             <Spinner size="sm" />
             <span aria-live="polite">
-              {loadingText || (children ? "로딩 중..." : null)}
+              {loadingText || (children ? "처리 중" : null)}
             </span>
           </span>
         ) : (

@@ -1,27 +1,15 @@
-import { forwardRef, memo, useCallback, useMemo } from "react";
-import { Search, HelpCircle, Settings, Download } from "lucide-react";
+import { forwardRef, memo, useCallback } from "react";
+import { Search, HelpCircle, Settings, Download, X } from "lucide-react";
 import type { UpdatePhase } from "../../hooks/useUpdater";
 import { IS_LITE } from "../../utils/buildFlavor";
-import { cleanPath } from "../../utils/cleanPath";
 import { useSearchInput } from "../../hooks/useSearchInput";
-import type { SearchMode, SearchParadigm } from "../../types/search";
+import type { SearchParadigm } from "../../types/search";
 import type { IndexStatus } from "../../types/index";
-import type {
-  SearchFilters as FiltersType,
-  ViewMode,
-} from "../../types/search";
-import { FilterDropdown, FilterChip } from "../ui/FilterDropdown";
 import SearchParadigmToggle from "./SearchParadigmToggle";
-import {
-  SORT_OPTIONS,
-  DATE_RANGE_OPTIONS,
-} from "../../types/search";
 
 interface CompactSearchBarProps {
   query: string;
   onQueryChange: (query: string) => void;
-  searchMode: SearchMode;
-  onSearchModeChange: (mode: SearchMode) => void;
   isLoading: boolean;
   status: IndexStatus | null;
   resultCount: number;
@@ -31,21 +19,12 @@ interface CompactSearchBarProps {
   onOpenHelp: () => void;
   isIndexing: boolean;
   isSidebarOpen: boolean;
-  // 필터 관련
-  filters: FiltersType;
-  onFiltersChange: (filters: FiltersType) => void;
-  viewMode: ViewMode;
-  onViewModeChange: (mode: ViewMode) => void;
-  refineQuery: string;
-  onRefineQueryChange: (query: string) => void;
-  onRefineQueryClear: () => void;
-  totalResultCount: number;
   onCompositionStart?: () => void;
   onCompositionEnd?: (finalValue: string) => void;
   /** 검색 패러다임 */
   paradigm?: SearchParadigm;
   onParadigmChange?: (p: SearchParadigm) => void;
-  /** 자연어 검색 실행 */
+  /** 스마트 검색·질문 제출 (Enter) */
   onSubmitNatural?: () => void;
   /** 업데이트 배지 */
   updatePhase?: UpdatePhase;
@@ -57,8 +36,6 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
     {
       query,
       onQueryChange,
-      searchMode,
-      onSearchModeChange,
       isLoading,
       status,
       resultCount,
@@ -66,15 +43,6 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       onOpenSettings,
       onOpenHelp,
       isSidebarOpen,
-      // 필터 관련
-      filters,
-      onFiltersChange,
-      viewMode,
-      onViewModeChange,
-      refineQuery,
-      onRefineQueryChange,
-      onRefineQueryClear,
-      totalResultCount,
       onCompositionStart,
       onCompositionEnd,
       paradigm = "instant",
@@ -95,6 +63,9 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
       updatePhase === "installing" ||
       updatePhase === "ready-to-restart");
     const isNatural = paradigm === "natural";
+    const isQuestion = paradigm === "question";
+    // 스마트 검색·질문은 Enter 로 제출한다 (종전엔 질문 모드에서 Enter 가 아무 일도 안 했다)
+    const submitsOnEnter = isNatural || isQuestion;
     const { innerRef, imeHandlers } = useSearchInput({
       query,
       onQueryChange,
@@ -105,92 +76,31 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (isNatural && e.key === "Enter" && !e.nativeEvent.isComposing) {
+        if (submitsOnEnter && e.key === "Enter" && !e.nativeEvent.isComposing) {
           e.preventDefault();
           onSubmitNatural?.();
         }
       },
-      [isNatural, onSubmitNatural]
+      [submitsOnEnter, onSubmitNatural]
     );
-
-    // 활성 필터 라벨 생성 (filters 변경 시에만 재계산)
-    const activeFilterLabels = useMemo(() => {
-      const labels: { key: string; label: string; onRemove: () => void }[] = [];
-
-      if (filters.sortBy !== "relevance") {
-        const opt = SORT_OPTIONS.find((o) => o.value === filters.sortBy);
-        labels.push({
-          key: "sort",
-          label: `정렬:${opt?.label || filters.sortBy}`,
-          onRemove: () => onFiltersChange({ ...filters, sortBy: "relevance" }),
-        });
-      }
-
-      if (filters.fileTypes.length > 0) {
-        labels.push({
-          key: "fileType",
-          label: `확장자:${filters.fileTypes.map((ft) => ft.toUpperCase()).join(",")}`,
-          onRemove: () => onFiltersChange({ ...filters, fileTypes: [] }),
-        });
-      }
-
-      if (filters.dateRange !== "all") {
-        const dr = filters.dateRange;
-        const opt = DATE_RANGE_OPTIONS.find((o) => o.value === dr);
-        const dateLabel = dr.startsWith("custom:") ? `${dr.slice(7)}일` : opt?.label || dr;
-        labels.push({
-          key: "dateRange",
-          label: `날짜:${dateLabel}`,
-          onRemove: () => onFiltersChange({ ...filters, dateRange: "all" }),
-        });
-      }
-
-      if (filters.keywordOnly) {
-        labels.push({
-          key: "keywordOnly",
-          label: "키워드만",
-          onRemove: () => onFiltersChange({ ...filters, keywordOnly: false }),
-        });
-      }
-
-      if (filters.excludeFilename) {
-        labels.push({
-          key: "excludeFilename",
-          label: "파일명제외",
-          onRemove: () => onFiltersChange({ ...filters, excludeFilename: false }),
-        });
-      }
-
-      if (filters.searchScope !== null) {
-        const normalized = cleanPath(filters.searchScope).replace(/\//g, "\\").replace(/\\$/, "");
-        const parts = normalized.split("\\");
-        const last = parts[parts.length - 1] || "";
-        const scopeLabel = /^[A-Za-z]:?$/.test(last) ? last.replace(/:?$/, ":") : last || filters.searchScope;
-        labels.push({
-          key: "scope",
-          label: `범위:${scopeLabel}`,
-          onRemove: () => onFiltersChange({ ...filters, searchScope: null }),
-        });
-      }
-
-      return labels;
-    }, [filters, onFiltersChange]);
 
     return (
       <div
+        // 좌우 여백은 펼친 헤더(Header)와 같게 — 접고 펼 때 로고가 옆으로 튀지 않는다
         className={`flex items-center gap-3 py-2 border-b transition-all duration-300 ${
-          isSidebarOpen ? "px-4" : "pl-16 pr-4"
+          isSidebarOpen ? "px-5" : "pl-14 pr-5"
         }`}
         style={{
           backgroundColor: "var(--color-bg-primary)",
           borderColor: "var(--color-border)",
         }}
       >
-        {/* 로고 (클릭 시 확장) */}
+        {/* 로고 (클릭 시 맨 위로 + 검색창 펼치기. 펼친 헤더의 로고는 홈) */}
         <button
           onClick={onExpand}
           className="flex items-center gap-2 flex-shrink-0 hover:opacity-80 transition-opacity"
-          aria-label="검색 영역 확장"
+          aria-label="맨 위로 가서 검색창 펼치기"
+          title="맨 위로 (검색창 펼치기)"
         >
           <img src="/anything.png" alt="Anything" className="w-6 h-6 object-contain dark:hidden" />
           <img src="/anything-l.png" alt="Anything" className="w-6 h-6 object-contain hidden dark:block" />
@@ -215,12 +125,27 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             type="text"
             defaultValue={query}
             {...imeHandlers}
-            onKeyDown={isNatural ? handleKeyDown : undefined}
-            placeholder={isNatural ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만" : "예산 집행현황, 계약서, 인사발령"}
+            onKeyDown={submitsOnEnter ? handleKeyDown : undefined}
+            placeholder={isQuestion ? "문서에 대해 무엇이든 물어보세요" : isNatural ? "작년 예산 한글 문서, 최근 30일 계약서 PDF만" : "예산 집행현황, 계약서, 인사발령"}
             className="flex-1 min-w-0 bg-transparent border-none text-sm focus:outline-none ml-2"
             style={{ color: "var(--color-text-primary)" }}
             aria-label="검색어 입력"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => {
+                onQueryChange("");
+                innerRef.current?.focus();
+              }}
+              className="ml-2 p-0.5 rounded flex-shrink-0 hover:bg-[var(--color-bg-tertiary)]"
+              style={{ color: "var(--color-text-muted)" }}
+              title="검색어 지우기"
+              aria-label="검색어 지우기"
+            >
+              <X className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          )}
           {isLoading && (
             <div
               className="w-4 h-4 rounded-full border-2 animate-spin ml-2 flex-shrink-0"
@@ -233,40 +158,12 @@ export const CompactSearchBar = memo(forwardRef<HTMLInputElement, CompactSearchB
             />
           )}
 
-          {isNatural && (
+          {submitsOnEnter && (
             <span className="text-xs ml-2 flex-shrink-0" style={{ color: "var(--color-text-muted)" }}>
               Enter ↵
             </span>
           )}
         </div>
-
-        {/* 필터 버튼 + 칩 */}
-        {resultCount > 0 && (
-          <>
-            <FilterDropdown
-              filters={filters}
-              onFiltersChange={onFiltersChange}
-              searchMode={searchMode}
-              onSearchModeChange={onSearchModeChange}
-              viewMode={viewMode}
-              onViewModeChange={onViewModeChange}
-              refineQuery={refineQuery}
-              onRefineQueryChange={onRefineQueryChange}
-              onRefineQueryClear={onRefineQueryClear}
-              totalResultCount={totalResultCount}
-            />
-
-            {/* 활성 필터 칩 (최대 2개, 긴 텍스트 truncate) */}
-            {activeFilterLabels.slice(0, 2).map((f) => (
-              <FilterChip key={f.key} label={f.label} onRemove={f.onRemove} />
-            ))}
-            {activeFilterLabels.length > 2 && (
-              <span className="text-xs flex-shrink-0" style={{ color: "var(--color-text-muted)" }}>
-                +{activeFilterLabels.length - 2}
-              </span>
-            )}
-          </>
-        )}
 
         {/* 결과 수 */}
         {resultCount > 0 && (

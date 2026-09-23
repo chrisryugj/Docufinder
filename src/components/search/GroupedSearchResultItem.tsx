@@ -5,13 +5,18 @@ import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
 import { HighlightedText } from "./HighlightedText";
+import { HighlightedFilename } from "./HighlightedFilename";
+import { RelevanceDots } from "./RelevanceDots";
 import { buildPreviewContext, stripHtmlTags } from "../../utils/searchTextUtils";
 import { PathBreadcrumb } from "./PathBreadcrumb";
 import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { MatchDensityBar } from "./MatchDensityBar";
+import { FILE_MANAGER_NAME } from "../../utils/platform";
 
 interface GroupedSearchResultItemProps {
   domId?: string;
+  /** 키보드·클릭으로 고른 카드 (listbox 의 활성 option) */
+  isSelected?: boolean;
   group: GroupedSearchResult;
   onOpenFile: (filePath: string, page?: number | null) => void;
   onCopyPath?: (path: string) => void;
@@ -41,6 +46,7 @@ interface GroupedSearchResultItemProps {
  */
 export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
   domId,
+  isSelected = false,
   group,
   onOpenFile,
   onCopyPath,
@@ -132,7 +138,19 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
         padding: `${cardPaddingY} ${cardPaddingX}`,
         // sticky 헤더가 카드 경계에서 잘리지 않도록 확장 시 overflow 해제
         overflow: isStickyHeader ? "visible" : undefined,
+        // 선택 표시는 SearchResultItem 과 같은 모양 (그룹 보기에서도 키보드 위치가 보이게)
+        ...(isSelected && {
+          backgroundColor: "var(--color-accent-light)",
+          outline: "1.5px solid var(--color-accent)",
+          outlineOffset: "-1.5px",
+          // 카드 기본 곡률(.result-card --radius-md)과 같아야 선택 때 모서리가 튀지 않는다
+          borderRadius: "var(--radius-md)",
+        }),
       }}
+      role="option"
+      aria-selected={isSelected}
+      aria-label={`${group.file_name} 검색 결과, ${group.total_matches}곳 일치`}
+      tabIndex={isSelected ? 0 : -1}
       onContextMenu={handleContextMenu}
       data-context-menu
     >
@@ -184,8 +202,8 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
           title={openOnSingleClick ? "파일 열기 (우클릭: 더 많은 옵션)" : "두 번 클릭: 열기 · 한 번 클릭: 미리보기 (우클릭: 더 많은 옵션)"}
         >
           <FileIcon fileName={group.file_name} size={isCompact ? "sm" : "md"} />
-          <span className={`truncate font-semibold ${isCompact ? "text-sm" : "text-base"}`}>
-            {group.file_name}
+          <span className={`min-w-0 overflow-hidden font-semibold ${isCompact ? "text-sm" : "text-base"}`}>
+            <HighlightedFilename filename={group.file_name} query={searchQuery ?? ""} middle />
           </span>
           {!isSingleMatch && (
             <Badge variant="default">{group.total_matches}개 매칭</Badge>
@@ -199,6 +217,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               onClick={handleCopyPath}
               className="p-1.5 rounded transition-colors btn-icon-hover"
               title="경로 복사"
+              aria-label="경로 복사"
             >
               <ClipboardCopy className="w-4 h-4" />
             </button>
@@ -206,28 +225,16 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
               <button
                 onClick={handleRevealFile}
                 className="p-1.5 rounded transition-colors btn-icon-hover"
-                title="파일 위치 열기 (탐색기에서 선택)"
+                title={`파일 위치 열기 (${FILE_MANAGER_NAME}에서 선택)`}
+                aria-label="파일 위치 열기"
               >
                 <FolderOpen className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          {/* 신뢰도 — semantic/hybrid 매칭 한정 (number only) */}
-          {hasSemanticMatch && (
-            <span
-              className="text-xs font-semibold tabular-nums"
-              style={{
-                color: group.top_confidence >= 70
-                  ? "var(--color-success)"
-                  : group.top_confidence >= 40
-                    ? "var(--color-warning)"
-                    : "var(--color-text-muted)",
-              }}
-            >
-              {Math.round(group.top_confidence)}%
-            </span>
-          )}
+          {/* 관련도 — semantic/hybrid 매칭 한정. 목록 보기와 같은 점 신호 */}
+          {hasSemanticMatch && <RelevanceDots confidence={group.top_confidence} />}
 
           {/* 복사 시 글자 깨짐 경고 — CID/PUA 매핑 손상 문서 */}
           {isGarbled && (
@@ -288,13 +295,22 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             className={`flex rounded cursor-pointer result-item-hover ${isCompact ? "gap-1.5 p-1" : "gap-2 p-1.5"}`}
             // role=button: 래퍼의 더블클릭 열기 대상에서 제외 (토글 2회+열기 오동작 방지)
             role={hasMore ? "button" : undefined}
+            tabIndex={hasMore ? 0 : undefined}
+            aria-expanded={hasMore ? isExpanded : undefined}
             onClick={() => { if (hasMore) onToggleExpand?.(index); }}
+            onKeyDown={hasMore ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onToggleExpand?.(index);
+              }
+            } : undefined}
             title={hasMore
               ? (isExpanded ? "클릭: 접기" : "클릭: 모든 매칭 펼치기")
               : (openOnSingleClick ? "파일명 클릭: 외부 실행" : "파일명 두 번 클릭: 외부 실행")}
           >
             {/* Location */}
-            <div className="flex-shrink-0 w-12 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+            <div className="flex-shrink-0 w-12 text-2xs" style={{ color: "var(--color-text-muted)" }}>
               {chunk.location_hint || (chunk.page_number ? `${chunk.page_number}p` : `#${chunk.chunk_index + 1}`)}
             </div>
 
@@ -325,7 +341,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
             {/* Confidence — semantic/hybrid 매칭 한정 (number only) */}
             {showChunkConfidence && (
               <span
-                className="text-[11px] font-medium tabular-nums flex-shrink-0"
+                className="text-2xs font-medium tabular-nums flex-shrink-0"
                 style={{
                   color: chunk.confidence >= 70
                     ? "var(--color-success)"
@@ -382,7 +398,7 @@ export const GroupedSearchResultItem = memo(function GroupedSearchResultItem({
 function getStripeClass(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {
-    hwpx: "result-stripe-hwpx", hwp: "result-stripe-hwp",
+    hwpx: "result-stripe-hwpx", hwp: "result-stripe-hwp", hml: "result-stripe-hwp",
     docx: "result-stripe-docx", doc: "result-stripe-docx",
     xlsx: "result-stripe-xlsx", xls: "result-stripe-xlsx",
     pdf: "result-stripe-pdf", pptx: "result-stripe-pptx",

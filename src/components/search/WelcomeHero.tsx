@@ -5,6 +5,7 @@ import type { RecentSearch } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { useRecentDocuments } from "../../hooks/useRecentDocuments";
 import { usePointerSpotlight } from "../../hooks/usePointerSpotlight";
+import { IS_LITE } from "../../utils/buildFlavor";
 
 interface WelcomeHeroProps {
   indexedFiles?: number;
@@ -17,6 +18,9 @@ interface WelcomeHeroProps {
   onAddFolder?: () => void;
   /** 최근 작업한 문서 열기 */
   onOpenFile?: (path: string) => void;
+  /** 첫 폴더를 읽는 중이면 "폴더 추가" 대신 진행 상황을 보여 준다 */
+  isIndexing?: boolean;
+  indexProgress?: { processed_files: number; total_files: number } | null;
 }
 
 /** 홈 화면 항목 우클릭 메뉴 대상 — 최근 검색(query) 또는 최근 문서(path) */
@@ -36,6 +40,8 @@ export const WelcomeHero = memo(function WelcomeHero({
   semanticEnabled = false,
   onAddFolder,
   onOpenFile,
+  isIndexing = false,
+  indexProgress,
 }: WelcomeHeroProps) {
   const hasIndex = indexedFiles > 0;
   const { docs: recentDocs, removeDoc } = useRecentDocuments(hasIndex);
@@ -154,7 +160,7 @@ export const WelcomeHero = memo(function WelcomeHero({
         >
           내 PC 깊숙이 흩어진 문서들.
           <br />
-          이제 AI가 읽고, 답을 찾아냅니다.
+          {IS_LITE ? "이제 한 번에 찾아냅니다." : "이제 AI가 읽고, 답을 찾아냅니다."}
         </p>
       </div>
 
@@ -170,11 +176,8 @@ export const WelcomeHero = memo(function WelcomeHero({
               style={{ color: "var(--color-text-tertiary)" }}
             />
             <span
-              className="ts-xs font-semibold uppercase"
-              style={{
-                color: "var(--color-text-tertiary)",
-                letterSpacing: "0.08em",
-              }}
+              className="ts-xs font-semibold"
+              style={{ color: "var(--color-text-tertiary)" }}
             >
               최근 검색
             </span>
@@ -218,11 +221,8 @@ export const WelcomeHero = memo(function WelcomeHero({
               style={{ color: "var(--color-text-tertiary)" }}
             />
             <span
-              className="ts-xs font-semibold uppercase"
-              style={{
-                color: "var(--color-text-tertiary)",
-                letterSpacing: "0.08em",
-              }}
+              className="ts-xs font-semibold"
+              style={{ color: "var(--color-text-tertiary)" }}
             >
               최근 작업한 문서
             </span>
@@ -289,19 +289,21 @@ export const WelcomeHero = memo(function WelcomeHero({
                     className="ts-xs font-semibold"
                     style={{ color: "var(--color-accent-ai)" }}
                   >
-                    AI Ready
+                    AI 검색 사용 가능
                   </span>
                 </span>
               </>
             )}
           </>
+        ) : isIndexing ? (
+          <FirstIndexProgress progress={indexProgress} />
         ) : (
           <button
             onClick={onAddFolder}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl ts-sm font-semibold transition-all duration-150 hover:scale-[1.02] active:scale-[0.98]"
             style={{
               backgroundImage: "var(--gradient-accent)",
-              color: "white",
+              color: "var(--color-on-accent)",
               boxShadow: "var(--shadow-premium-accent)",
             }}
           >
@@ -341,3 +343,32 @@ export const WelcomeHero = memo(function WelcomeHero({
     </div>
   );
 });
+
+/** 첫 폴더를 읽는 동안 홈 화면 상태 줄 — 폴더를 이미 추가했는데 "폴더 추가" 버튼이 보이던 것을 대신한다 */
+function FirstIndexProgress({ progress }: { progress?: { processed_files: number; total_files: number } | null }) {
+  const total = progress?.total_files ?? 0;
+  const done = progress?.processed_files ?? 0;
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="ts-sm font-medium" style={{ color: "var(--color-text-secondary)" }}>
+        {/* 알림 영역은 문구만 — 진행 수치까지 넣으면 낭독기가 진행 이벤트마다 읽는다 */}
+        <span role="status">문서를 읽는 중이에요</span>
+        {total > 0 && <span className="tabular-nums"> · {done.toLocaleString()} / {total.toLocaleString()}</span>}
+      </span>
+      <div
+        className="w-48 h-1 rounded-full overflow-hidden"
+        style={{ backgroundColor: "var(--color-bg-tertiary)" }}
+        aria-hidden="true"
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ${total > 0 ? "" : "animate-search-bar"}`}
+          style={{ width: total > 0 ? `${pct}%` : "40%", backgroundColor: "var(--color-accent)" }}
+        />
+      </div>
+      <span className="ts-xs" style={{ color: "var(--color-text-tertiary)" }}>
+        다 읽기 전에도 읽은 문서부터 검색돼요
+      </span>
+    </div>
+  );
+}

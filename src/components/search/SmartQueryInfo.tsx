@@ -1,8 +1,10 @@
+import { CalendarDays, FileText, Type, Ban, X, type LucideIcon } from "lucide-react";
 import type { ParsedQueryInfo } from "../../types/search";
 
 interface Props {
   parsed: ParsedQueryInfo;
-  onClear: () => void;
+  /** 조건 빼고 다시 검색 — 남길 키워드가 없으면 넘기지 않는다 */
+  onClear?: () => void;
 }
 
 /** 자연어 검색 파싱 결과를 칩으로 표시 */
@@ -16,7 +18,7 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
 
   if (!hasFilters) return null;
 
-  const chips: { label: string; icon: string }[] = [];
+  const chips: { label: string; Icon: LucideIcon }[] = [];
 
   if (parsed.date_filter) {
     const dateLabels: Record<string, string> = {
@@ -31,14 +33,14 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
     };
     chips.push({
       label: dateLabels[parsed.date_filter.type] || parsed.date_filter.type,
-      icon: "📅",
+      Icon: CalendarDays,
     });
   }
 
   if (parsed.filename_filter) {
     chips.push({
       label: `파일명: ${parsed.filename_filter}`,
-      icon: "🔤",
+      Icon: Type,
     });
   }
 
@@ -53,12 +55,12 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
     };
     chips.push({
       label: typeLabels[parsed.file_type] || parsed.file_type,
-      icon: "📄",
+      Icon: FileText,
     });
   }
 
   for (const ex of parsed.exclude_keywords) {
-    chips.push({ label: `제외: ${ex}`, icon: "🚫" });
+    chips.push({ label: `제외: ${ex}`, Icon: Ban });
   }
 
   return (
@@ -73,17 +75,18 @@ export default function SmartQueryInfo({ parsed, onClear }: Props) {
           key={i}
           className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20"
         >
-          {chip.icon} {chip.label}
+          <chip.Icon className="w-3 h-3" aria-hidden="true" />
+          {chip.label}
         </span>
       ))}
-      <button
+      {onClear && <button
         onClick={onClear}
         className="text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] ml-1"
-        title="필터 초기화"
-        aria-label="필터 초기화"
+        title="조건 빼고 다시 검색"
+        aria-label="조건 빼고 다시 검색"
       >
-        ✕
-      </button>
+        <X className="w-3.5 h-3.5" aria-hidden="true" />
+      </button>}
     </div>
   );
 }

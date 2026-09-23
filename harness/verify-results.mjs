@@ -155,7 +155,8 @@ const filenameTitle = filenameItem.locator("div.font-medium");
 // F4: 말단 폴더 세그먼트 클릭 → 파일 위치 열기(reveal) — 열기·미리보기 오발 없음
 {
   await reset();
-  await filenameItem.getByTitle("파일 위치 열기 (탐색기에서 파일 선택)").click();
+  // 파일 관리자 이름은 OS 따라 다르다 (utils/platform FILE_MANAGER_NAME: 윈도우 탐색기 · 맥 Finder)
+  await filenameItem.getByTitle(/^파일 위치 열기 \((탐색기|Finder)에서 파일 선택\)$/).click();
   await page.waitForTimeout(100);
   const c = await calls();
   const ok = count(c, "folder") === 1
@@ -210,6 +211,49 @@ const filenameTitle = filenameItem.locator("div.font-medium");
   c = await calls();
   t("G2 그룹 청크 행 두 번 클릭 → 열기 없음", count(c, "open") === 0, JSON.stringify(c.filter((x) => x.type === "open")));
   await setCfg({ viewMode: "flat" });
+}
+
+// ─── 키보드 이동·선택 표시 (v3.8.9) ─────────────────
+// 앱의 ↑↓ 는 목록의 step() 이 화면 순서로 준 index 로 선택을 옮긴다. 결과는 [A0, B0, A1]:
+// 그룹 보기에선 파일 단위(A → B)로, 목록 보기에선 청크 단위(A0 → B0 → A1)로 움직여야 한다.
+{
+  const step = (d) => page.evaluate((x) => window.__navStep(x), d);
+  const selectedIds = () =>
+    page.evaluate(() => [...document.querySelectorAll('[role="option"][aria-selected="true"]')].map((e) => e.id));
+  const activeDesc = () =>
+    page.evaluate(() => document.querySelector('[role="listbox"]')?.getAttribute("aria-activedescendant") ?? null);
+
+  await setCfg({ viewMode: "grouped" });
+  await page.evaluate(() => window.__navStep(-1)); // 선택 해제 상태에서 시작
+  let idx = await step(1);
+  await page.waitForTimeout(80);
+  t("N1 그룹: 첫 ↓ → 첫 파일 대표 결과", idx === 0, `idx=${idx}`);
+  let ids = await selectedIds();
+  t("N1 그룹: 첫 카드에 선택 표시", ids.length === 1 && ids[0] === "grouped-search-result-0", JSON.stringify(ids));
+  t("N1 그룹: listbox 활성 항목 = 선택 카드", (await activeDesc()) === "grouped-search-result-0");
+
+  idx = await step(1);
+  await page.waitForTimeout(80);
+  ids = await selectedIds();
+  t("N2 그룹: ↓ 한 번에 다음 파일로 (같은 파일 두 번째 청크로 가지 않음)", idx === 1, `idx=${idx}`);
+  t("N2 그룹: 두 번째 카드(단일 매칭)에 선택 표시", ids.length === 1 && ids[0] === "grouped-search-result-1", JSON.stringify(ids));
+
+  idx = await step(1);
+  t("N3 그룹: 마지막에서 ↓ → 그대로", idx === 1, `idx=${idx}`);
+  idx = await step(-1);
+  t("N4 그룹: ↑ → 이전 파일", idx === 0, `idx=${idx}`);
+  idx = await step(-1);
+  t("N4 그룹: 맨 위에서 ↑ → 선택 해제(-1)", idx === -1, `idx=${idx}`);
+
+  await setCfg({ viewMode: "flat" });
+  const seq = [await step(1), await step(1), await step(1), await step(1)];
+  await page.waitForTimeout(80);
+  t("N5 목록: ↓ 가 청크 순서대로 (0→1→2→2)", JSON.stringify(seq) === "[0,1,2,2]", JSON.stringify(seq));
+  ids = await selectedIds();
+  t("N5 목록: 마지막 카드에 선택 표시", ids.length === 1 && ids[0] === "search-result-2", JSON.stringify(ids));
+  await page.evaluate(() => window.__navStep(-1));
+  await page.evaluate(() => window.__navStep(-1));
+  await page.evaluate(() => window.__navStep(-1));
 }
 
 // ─── 한 번 클릭 모드 (구버전 동작 복원) ─────────────────

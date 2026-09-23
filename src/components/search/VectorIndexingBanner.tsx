@@ -24,7 +24,7 @@ export function VectorIndexingBanner({ isVisible, progress, onCancel }: VectorIn
           className="animate-spin h-3 w-3 rounded-full"
           style={{ border: "1px solid var(--color-accent)", borderTopColor: "transparent" }}
         />
-        <span>벡터 인덱싱 중... ({progress}%) — 키워드 검색만 가능</span>
+        <span>AI 검색 준비 중 ({progress}%) · 지금은 키워드 검색만 돼요</span>
       </div>
       <button onClick={onCancel} className="font-medium" style={{ color: "var(--color-accent)" }}>
         취소

@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { ChevronDown } from "lucide-react";
 import type {
   SearchFilters as FiltersType,
   SortOption,
@@ -7,14 +8,7 @@ import type {
   SearchMode,
   KeywordMatchMode,
 } from "../../types/search";
-import {
-  SORT_OPTIONS,
-  FILE_TYPE_OPTIONS,
-  DATE_RANGE_OPTIONS,
-  DEFAULT_FILTERS,
-  KEYWORD_MATCH_MODES,
-  SEARCH_MODES,
-} from "../../types/search";
+import { SORT_OPTIONS, FILE_TYPE_OPTIONS, DATE_RANGE_OPTIONS, DEFAULT_FILTERS, KEYWORD_MATCH_MODES, SEARCH_MODES, fileTypeLabel } from "../../types/search";
 import { CustomSelect } from "../ui/CustomSelect";
 import { cleanPath } from "../../utils/cleanPath";
 import type { FilterPreset } from "../../hooks/useFilterPresets";
@@ -151,13 +145,13 @@ export const SearchFilters = memo(function SearchFilters({
           옵션
           {advancedActiveCount > 0 && (
             <span
-              className="inline-flex items-center justify-center min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold text-white"
+              className="inline-flex items-center justify-center min-w-[16px] h-[16px] px-1 rounded-full text-2xs leading-none font-bold text-[var(--color-on-accent)]"
               style={{ backgroundColor: "var(--color-accent)" }}
             >
               {advancedActiveCount}
             </span>
           )}
-          <span className="text-[9px]" style={{ display: "inline-block", transform: showAdvanced ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>▾</span>
+          <ChevronDown className="w-3 h-3" aria-hidden="true" style={{ transform: showAdvanced ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
         </button>
       )}
 
@@ -271,7 +265,7 @@ export const SearchFilters = memo(function SearchFilters({
             type="text"
             value={refineQuery}
             onChange={(e) => onRefineQueryChange(e.target.value)}
-            placeholder="결과 내 검색..."
+            placeholder="결과 내 검색"
             className="pl-6 pr-6 py-0.5 rounded border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
             style={{
               width: "130px",
@@ -399,8 +393,8 @@ function FileTypeCheckboxDropdown({
 
   const active = selected.length > 0;
   const label = active
-    ? selected.map((ft) => ft.toUpperCase()).join(", ")
-    : "확장자";
+    ? selected.map(fileTypeLabel).join(", ")
+    : "파일 형식";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -428,8 +422,8 @@ function FileTypeCheckboxDropdown({
         }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        aria-label="확장자 필터"
-        title={active ? selected.map((ft) => ft.toUpperCase()).join(", ") : "확장자 필터"}
+        aria-label="파일 형식 필터"
+        title={active ? selected.map(fileTypeLabel).join(", ") : "파일 형식 필터"}
       >
         {label}
       </button>
@@ -591,7 +585,7 @@ function DateRangeDropdown({
             <button
               onClick={handleCustomSubmit}
               disabled={!customDays || parseInt(customDays, 10) <= 0}
-              className="px-1.5 py-0.5 text-xs rounded font-medium text-white disabled:opacity-40"
+              className="px-1.5 py-0.5 text-xs rounded font-medium text-[var(--color-on-accent)] disabled:opacity-40"
               style={{ backgroundColor: "var(--color-accent)" }}
             >
               적용
@@ -681,19 +675,25 @@ function PresetDropdown({
               {presets.map((preset) => (
                 <div
                   key={preset.id}
-                  className="flex items-center gap-1 px-3 py-2 hover:bg-[var(--color-bg-tertiary)] cursor-pointer group"
-                  onClick={() => { onApply(preset); setOpen(false); }}
+                  className="flex items-center gap-1 px-3 py-2 hover:bg-[var(--color-bg-tertiary)] group"
                 >
-                  <span className="flex-1 text-xs text-[var(--color-text-primary)] truncate">
-                    {preset.name}
-                  </span>
-                  <span className="text-[10px] text-[var(--color-text-muted)]">
-                    {describePreset(preset)}
-                  </span>
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 flex items-center gap-1 text-left"
+                    onClick={() => { onApply(preset); setOpen(false); }}
+                  >
+                    <span className="flex-1 text-xs text-[var(--color-text-primary)] truncate">
+                      {preset.name}
+                    </span>
+                    <span className="text-2xs text-[var(--color-text-muted)]">
+                      {describePreset(preset)}
+                    </span>
+                  </button>
                   {onRemove && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onRemove(preset.id); }}
-                      className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] transition-opacity"
+                      type="button"
+                      onClick={() => onRemove(preset.id)}
+                      className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 p-0.5 rounded hover:bg-[var(--color-bg-secondary)] text-[var(--color-text-muted)] transition-opacity"
                       title="삭제"
                       aria-label={`프리셋 "${preset.name}" 삭제`}
                     >
@@ -720,7 +720,7 @@ function PresetDropdown({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setSaving(false); }}
-                  placeholder="프리셋 이름..."
+                  placeholder="프리셋 이름"
                   maxLength={30}
                   className="flex-1 min-w-0 px-2 py-1 text-xs rounded border focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--color-accent)]"
                   style={{
@@ -732,7 +732,7 @@ function PresetDropdown({
                 <button
                   onClick={handleSave}
                   disabled={!name.trim()}
-                  className="px-2 py-1 text-xs rounded font-medium text-white disabled:opacity-40 shrink-0"
+                  className="px-2 py-1 text-xs rounded font-medium text-[var(--color-on-accent)] disabled:opacity-40 shrink-0"
                   style={{ backgroundColor: "var(--color-accent)" }}
                 >
                   저장
@@ -759,7 +759,7 @@ function PresetDropdown({
 function describePreset(preset: FilterPreset): string {
   const parts: string[] = [];
   if (preset.filters.fileTypes && preset.filters.fileTypes.length > 0) {
-    parts.push(preset.filters.fileTypes.map((ft) => ft.toUpperCase()).join(","));
+    parts.push(preset.filters.fileTypes.map(fileTypeLabel).join(","));
   }
   if (preset.filters.dateRange !== "all") {
     const map: Record<string, string> = { today: "오늘", week: "7일", month: "30일", quarter: "90일", half: "6개월", year: "1년" };

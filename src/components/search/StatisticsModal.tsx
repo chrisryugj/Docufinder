@@ -40,7 +40,7 @@ function formatDate(ts: number): string {
 
 /** 파일 유형 → 한글 레이블 (문서 타입만; 나머지는 확장자 대문자로 표기) */
 const TYPE_LABELS: Record<string, string> = {
-  txt: "텍스트", md: "마크다운", hwpx: "한글", hwp: "한글(구)",
+  txt: "텍스트", md: "마크다운", hwpx: "한글", hwp: "한글(구)", hml: "한글(HWPML)",
   docx: "워드", doc: "워드(구)", pptx: "파워포인트", ppt: "파워포인트(구)",
   xlsx: "엑셀", xls: "엑셀(구)", pdf: "PDF",
 };
@@ -54,7 +54,7 @@ function labelFor(ext: string): string {
 
 /** 문서 타입 차트 색상 — DESIGN.md File Type Colors CSS 변수 (라이트/다크 자동). */
 const TYPE_COLORS: Record<string, string> = {
-  hwpx: "var(--color-file-hwpx)", hwp: "var(--color-file-hwpx)",
+  hwpx: "var(--color-file-hwpx)", hwp: "var(--color-file-hwpx)", hml: "var(--color-file-hwpx)",
   docx: "var(--color-file-docx)", doc: "var(--color-file-docx)",
   pptx: "var(--color-file-pptx)", ppt: "var(--color-file-pptx)",
   xlsx: "var(--color-file-xlsx)", xls: "var(--color-file-xlsx)",
@@ -174,7 +174,7 @@ function BarChart({ data, maxBars = 8 }: { data: StatEntry[]; maxBars?: number }
         const pct = (entry.count / max) * 100;
         return (
           <div key={entry.label} className="flex items-center gap-2">
-            <span className="text-[11px] w-10 text-right tabular-nums shrink-0" style={{ color: "var(--color-text-secondary)" }}>
+            <span className="text-2xs w-10 text-right tabular-nums shrink-0" style={{ color: "var(--color-text-secondary)" }}>
               {entry.label}
             </span>
             <div className="flex-1 h-4 rounded-sm overflow-hidden" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
@@ -183,7 +183,7 @@ function BarChart({ data, maxBars = 8 }: { data: StatEntry[]; maxBars?: number }
                 style={{ width: `${pct}%`, backgroundColor: "var(--color-accent)" }}
               />
             </div>
-            <span className="text-[11px] w-8 tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
+            <span className="text-2xs w-8 tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
               {entry.count.toLocaleString()}
             </span>
           </div>
@@ -212,13 +212,13 @@ function FileList({
           className="flex items-center gap-2 px-2 py-1 rounded text-left hover:bg-[var(--color-bg-tertiary)] transition-colors"
           onClick={() => onOpenFile?.(f.path)}
         >
-          <span className="text-[10px] w-4 text-right tabular-nums" style={{ color: "var(--color-text-muted)" }}>
+          <span className="text-2xs w-4 text-right tabular-nums" style={{ color: "var(--color-text-muted)" }}>
             {i + 1}
           </span>
           <span className="text-xs truncate flex-1" style={{ color: "var(--color-text-primary)" }}>
             {f.name}
           </span>
-          <span className="text-[10px] tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
+          <span className="text-2xs tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
             {type === "recent" ? formatDate(f.value) : formatSize(f.value)}
           </span>
         </button>
@@ -238,13 +238,13 @@ function FolderList({ folders }: { folders: StatEntry[] }) {
         const folderName = f.label.split(/[/\\]/).filter(Boolean).pop() || f.label;
         return (
           <div key={f.label} className="flex items-center gap-2" title={f.label}>
-            <span className="text-[11px] truncate w-24 shrink-0" style={{ color: "var(--color-text-secondary)" }}>
+            <span className="text-2xs truncate w-24 shrink-0" style={{ color: "var(--color-text-secondary)" }}>
               {folderName}
             </span>
             <div className="flex-1 h-3.5 rounded-sm overflow-hidden" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
               <div className="h-full rounded-sm" style={{ width: `${pct}%`, backgroundColor: "var(--color-accent-secondary, var(--color-accent))" }} />
             </div>
-            <span className="text-[10px] w-8 tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
+            <span className="text-2xs w-8 tabular-nums shrink-0" style={{ color: "var(--color-text-muted)" }}>
               {f.count.toLocaleString()}
             </span>
           </div>
@@ -258,7 +258,7 @@ function FolderList({ folders }: { folders: StatEntry[] }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+      <h3 className="text-xs font-semibold" style={{ color: "var(--color-text-muted)" }}>
         {title}
       </h3>
       {children}
@@ -290,13 +290,13 @@ function SearchHistoryTab({ stats, onSearchQuery }: { stats: SearchHistoryStats;
           <div className="text-lg font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
             {stats.total_searches.toLocaleString()}
           </div>
-          <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>총 검색 횟수</div>
+          <div className="text-2xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>총 검색 횟수</div>
         </div>
         <div className="text-center px-3 py-2.5 rounded-lg" style={{ backgroundColor: "var(--color-bg-tertiary)" }}>
           <div className="text-lg font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
             {stats.unique_queries.toLocaleString()}
           </div>
-          <div className="text-[10px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>고유 검색어</div>
+          <div className="text-2xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>고유 검색어</div>
         </div>
       </div>
 
@@ -429,7 +429,7 @@ export const StatisticsModal = memo(function StatisticsModal({
                   <span className="text-base font-bold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
                     {card.value}
                   </span>
-                  <span className="text-[10px] shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                  <span className="text-2xs shrink-0" style={{ color: "var(--color-text-muted)" }}>
                     {card.label}
                   </span>
                 </span>

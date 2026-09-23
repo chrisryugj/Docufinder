@@ -187,8 +187,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         <div
           className="mb-3 p-2.5 rounded-md text-xs"
           style={{
-            backgroundColor: "rgba(239, 68, 68, 0.1)",
-            border: "1px solid rgba(239, 68, 68, 0.3)",
+            backgroundColor: "var(--color-error-bg)",
+            border: "1px solid var(--color-error-border)",
             color: "var(--color-error)",
           }}
         >

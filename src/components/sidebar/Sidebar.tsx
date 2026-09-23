@@ -143,7 +143,7 @@ export const Sidebar = memo(function Sidebar({
             {watchedFolders.length > 0 && (
               <div className="mt-1 flex flex-col items-center">
                 <span
-                  className="text-[10px] font-bold tabular-nums"
+                  className="text-2xs font-bold tabular-nums"
                   style={{ color: "var(--color-sidebar-muted)" }}
                 >
                   {watchedFolders.length}
@@ -205,7 +205,7 @@ export const Sidebar = memo(function Sidebar({
                         </p>
                         <button
                           onClick={onAddFolder}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-[var(--color-on-accent)] transition-opacity hover:opacity-90"
                           style={{ backgroundColor: "var(--color-accent)" }}
                         >
                           <Plus className="w-3.5 h-3.5" /> 폴더 추가
@@ -350,7 +350,7 @@ export const Sidebar = memo(function Sidebar({
                   className="text-center leading-[1.35] select-none flex flex-col items-center"
                   style={{ color: "var(--color-sidebar-muted)" }}
                 >
-                  <p className="text-[10.5px] whitespace-nowrap">
+                  <p className="text-2xs whitespace-nowrap">
                     &copy; 2025&ndash;2026 딴짓하는 류주임
                   </p>
                   <a
@@ -359,7 +359,7 @@ export const Sidebar = memo(function Sidebar({
                       e.preventDefault();
                       invoke("open_url", { url: "https://www.threads.net/@chris_gomdori" });
                     }}
-                    className="text-[11px] font-semibold tracking-tight transition-colors hover:underline whitespace-nowrap"
+                    className="text-2xs font-semibold tracking-tight transition-colors hover:underline whitespace-nowrap"
                     style={{ color: "var(--color-accent)" }}
                     aria-label="Threads @chris_gomdori 열기"
                   >

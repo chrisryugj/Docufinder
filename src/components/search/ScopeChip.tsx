@@ -31,9 +31,6 @@ export const ScopeChip = memo(function ScopeChip({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const filterInputRef = useRef<HTMLInputElement>(null);
 
-  // 폴더 1개 이하면 표시 불필요
-  if (watchedFolders.length <= 1) return null;
-
   const displayLabel = searchScope ? folderDisplayName(searchScope) : "전체";
 
   const filteredFolders = useMemo(() => {
@@ -87,12 +84,16 @@ export const ScopeChip = memo(function ScopeChip({
     });
   }, [isOpen]);
 
+  // 폴더 1개 이하면 표시 불필요. 훅보다 먼저 반환하면 폴더 수가 1↔2 를 오갈 때
+  // 훅 개수가 달라져 React 가 예외를 던진다(앱 전체가 오류 화면으로 바뀜).
+  if (watchedFolders.length <= 1) return null;
+
   return (
     <>
       <button
         ref={chipRef}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium shrink-0 mr-1 transition-colors"
+        className="flex items-center gap-1 px-2 py-0.5 rounded text-2xs font-medium shrink-0 mr-1 transition-colors"
         style={{
           backgroundColor: searchScope ? "var(--color-accent-subtle)" : "var(--color-bg-tertiary)",
           color: searchScope ? "var(--color-accent)" : "var(--color-text-muted)",
@@ -135,7 +136,7 @@ export const ScopeChip = memo(function ScopeChip({
                 type="text"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
-                placeholder="폴더 검색..."
+                placeholder="폴더 검색"
                 className="flex-1 bg-transparent border-none outline-none text-xs"
                 style={{ color: "var(--color-text-primary)" }}
               />
@@ -179,7 +180,7 @@ export const ScopeChip = memo(function ScopeChip({
                   </svg>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{name}</div>
-                    <div className="truncate opacity-50 text-[10px]">{full}</div>
+                    <div className="truncate opacity-50 text-2xs">{full}</div>
                   </div>
                   {isSelected && (
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="ml-auto shrink-0" style={{ color: "var(--color-accent)" }}>

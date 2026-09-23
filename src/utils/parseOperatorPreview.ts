@@ -41,8 +41,9 @@ type QueryToken =
 
 /** 레거시 확장자 그룹 확장 — 백엔드 expand_ext_group 미러 */
 const EXT_GROUPS: Record<string, string[]> = {
-  hwp: ["hwp", "hwpx"],
-  hwpx: ["hwp", "hwpx"],
+  hwp: ["hwp", "hwpx", "hml"],
+  hwpx: ["hwp", "hwpx", "hml"],
+  hml: ["hwp", "hwpx", "hml"],
   doc: ["doc", "docx"],
   docx: ["doc", "docx"],
   xls: ["xls", "xlsx"],

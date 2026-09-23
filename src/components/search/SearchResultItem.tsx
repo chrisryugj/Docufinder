@@ -7,6 +7,7 @@ import { HighlightedText } from "./HighlightedText";
 import { buildPreviewContext, buildExpandedContext, stripHtmlTags } from "../../utils/searchTextUtils";
 import { PathBreadcrumb } from "./PathBreadcrumb";
 import { HighlightedFilename } from "./HighlightedFilename";
+import { RelevanceDots } from "./RelevanceDots";
 import { FileIcon } from "../ui/FileIcon";
 import { Badge, getFileTypeBadgeVariant } from "../ui/Badge";
 import { Tooltip } from "../ui/Tooltip";
@@ -15,6 +16,7 @@ import { useContextMenu, ResultContextMenu } from "./ResultContextMenu";
 import { LineageBadge } from "./LineageBadge";
 import type { FilenameVisible } from "../../hooks/useFilenameColumns";
 import { formatFileSize } from "../../utils/formatFileSize";
+import { FILE_MANAGER_NAME } from "../../utils/platform";
 
 // 네이티브 드래그아웃용 프리뷰 아이콘 경로 — 앱당 1회만 백엔드에서 가져와 캐시.
 // startDrag(icon) 가 동기 경로를 요구하므로 드래그 전에 미리 확보해 둔다.
@@ -29,6 +31,8 @@ function ensureDragIcon() {
 interface SearchResultItemProps {
   result: SearchResult;
   index: number;
+  /** DOM id 지정 (그룹 보기의 단일 매칭 카드는 그룹 카드와 같은 id 체계를 쓴다). 기본 search-result-{index} */
+  domId?: string;
   isExpanded: boolean;
   isSelected?: boolean;
   isCompact?: boolean;
@@ -59,6 +63,7 @@ function getStripeClass(fileName: string): string {
   const map: Record<string, string> = {
     hwpx: "result-stripe-hwpx",
     hwp: "result-stripe-hwp",
+    hml: "result-stripe-hwp",
     docx: "result-stripe-docx",
     doc: "result-stripe-docx",
     xlsx: "result-stripe-xlsx",
@@ -73,6 +78,7 @@ function getStripeClass(fileName: string): string {
 export const SearchResultItem = memo(function SearchResultItem({
   result,
   index,
+  domId,
   isExpanded,
   isSelected = false,
   isCompact = false,
@@ -189,7 +195,7 @@ export const SearchResultItem = memo(function SearchResultItem({
     const fnVis = filenameVisible ?? { path: true, size: true, time: true };
     return (
       <div
-        id={`search-result-${index}`}
+        id={domId ?? `search-result-${index}`}
         className={`search-result-item result-card group ${getStripeClass(result.file_name)}`}
         style={{
           "--item-index": index,
@@ -198,7 +204,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             backgroundColor: "var(--color-accent-light)",
             outline: "1.5px solid var(--color-accent)",
             outlineOffset: "-1.5px",
-            borderRadius: "var(--radius-card)",
+            borderRadius: "var(--radius-md)",
           }),
         } as React.CSSProperties}
         role="option"
@@ -228,8 +234,8 @@ export const SearchResultItem = memo(function SearchResultItem({
             title={openOnSingleClick ? "파일 열기 · 끌어서 다른 앱으로 (Shift=이동)" : "두 번 클릭: 열기 · 한 번 클릭: 미리보기"}
           >
             <FileIcon fileName={result.file_name} size="sm" />
-            <span className="truncate" style={{ fontWeight: 600, fontSize: "var(--text-base)", letterSpacing: "-0.015em" }}>
-              <HighlightedFilename filename={result.file_name} query={query} />
+            <span className="min-w-0 overflow-hidden" style={{ fontWeight: 600, fontSize: "var(--text-base)", letterSpacing: "-0.015em" }}>
+              <HighlightedFilename filename={result.file_name} query={query} middle />
             </span>
           </div>
 
@@ -249,7 +255,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           {/* 크기 (우측 정렬 — 숫자) */}
           {fnVis.size && (
             <div className="min-w-0 text-right pr-1">
-              <span className="block truncate text-[11px] tabular-nums leading-none" style={{ color: "var(--color-text-muted)" }}>
+              <span className="block truncate text-2xs tabular-nums leading-none" style={{ color: "var(--color-text-muted)" }}>
                 {formatFileSize(result.size)}
               </span>
             </div>
@@ -261,7 +267,7 @@ export const SearchResultItem = memo(function SearchResultItem({
             <div className="min-w-0">
               {relativeTime && (
                 <span
-                  className="block truncate text-[11px] tabular-nums leading-none"
+                  className="block truncate text-2xs tabular-nums leading-none"
                   style={{ color: "var(--color-text-muted)" }}
                   title={timeTooltip ?? undefined}
                 >
@@ -286,7 +292,7 @@ export const SearchResultItem = memo(function SearchResultItem({
                 <ClipboardCopy className="w-3.5 h-3.5" />
               </button>
               {onOpenFolder && (
-                <button onClick={handleRevealFile} className="p-1 rounded btn-icon-hover" title="파일 위치 열기 (탐색기에서 선택)" aria-label="파일 위치 열기">
+                <button onClick={handleRevealFile} className="p-1 rounded btn-icon-hover" title={`파일 위치 열기 (${FILE_MANAGER_NAME}에서 선택)`} aria-label="파일 위치 열기">
                   <FolderOpen className="w-3.5 h-3.5" />
                 </button>
               )}
@@ -311,7 +317,7 @@ export const SearchResultItem = memo(function SearchResultItem({
 
   return (
     <div
-      id={`search-result-${index}`}
+      id={domId ?? `search-result-${index}`}
       className={`search-result-item result-card ${getStripeClass(result.file_name)}`}
       style={{
         "--item-index": index,
@@ -320,7 +326,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           backgroundColor: "var(--color-accent-light)",
           outline: "1.5px solid var(--color-accent)",
           outlineOffset: "-1.5px",
-          borderRadius: "var(--radius-card)",
+          borderRadius: "var(--radius-md)",
         }),
       } as React.CSSProperties}
       role="option"
@@ -367,10 +373,10 @@ export const SearchResultItem = memo(function SearchResultItem({
         >
           <FileIcon fileName={result.file_name} size="sm" />
           <span
-            className="truncate ts-lg"
+            className="min-w-0 overflow-hidden ts-lg"
             style={{ fontWeight: 600, letterSpacing: "-0.015em" }}
           >
-            <HighlightedFilename filename={result.file_name} query={query} />
+            <HighlightedFilename filename={result.file_name} query={query} middle />
           </span>
           <ExternalLink className="w-3.5 h-3.5 flex-shrink-0 opacity-30 group-hover/filename:opacity-60 transition-opacity" />
         </div>
@@ -378,36 +384,13 @@ export const SearchResultItem = memo(function SearchResultItem({
         {/* Right side: confidence % + time + file type */}
         <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {/* 관련도 — semantic/hybrid 매칭 한정. 숫자 % 대신 점 신호(●●○)로 불안 제거 */}
-          {showConfidence && (() => {
-            const level = result.confidence >= 70 ? 3 : result.confidence >= 40 ? 2 : 1;
-            const levelLabel = level === 3 ? "높음" : level === 2 ? "보통" : "낮음";
-            const dotColor = level === 3
-              ? "var(--color-success)"
-              : level === 2
-                ? "var(--color-accent-warm)"
-                : "var(--color-text-muted)";
-            return (
-              <span
-                className="inline-flex items-center gap-0.5 leading-none"
-                aria-label={`관련도 ${levelLabel} (${Math.round(result.confidence)}%)`}
-                title={`관련도: ${levelLabel} (${Math.round(result.confidence)}%)`}
-              >
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: i < level ? dotColor : "var(--color-border)" }}
-                  />
-                ))}
-              </span>
-            );
-          })()}
+          {showConfidence && <RelevanceDots confidence={result.confidence} />}
 
           {/* 수정 시각 — 기본은 절대 날짜/시간 상시, 툴팁에 상대시간. 토글 off면 반대 */}
           {relativeTime && (
             <Tooltip content={showAbsoluteTime ? relativeTime : absoluteDate} position="bottom" delay={200}>
               <span
-                className="text-[11px] tabular-nums leading-none"
+                className="text-2xs tabular-nums leading-none"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 {showAbsoluteTime ? absoluteDate : relativeTime}
@@ -526,7 +509,7 @@ export const SearchResultItem = memo(function SearchResultItem({
           {/* Action buttons — muted 단색, hover 시 착색 (btn-icon-hover, ux-audit-8) */}
           <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
             {result.page_number && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
+              <span className="text-2xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "var(--color-bg-tertiary)", color: "var(--color-text-muted)" }}>
                 {result.page_number}p
               </span>
             )}
@@ -542,7 +525,7 @@ export const SearchResultItem = memo(function SearchResultItem({
               <button
                 onClick={handleRevealFile}
                 className="p-1 rounded btn-icon-hover"
-                title="파일 위치 열기 (탐색기에서 선택)"
+                title={`파일 위치 열기 (${FILE_MANAGER_NAME}에서 선택)`}
                 aria-label="파일 위치 열기"
               >
                 <FolderOpen className="w-3.5 h-3.5" />

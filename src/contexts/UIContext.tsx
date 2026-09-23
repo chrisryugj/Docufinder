@@ -80,6 +80,24 @@ export function useUIContext(): UIContextValue {
   return ctx;
 }
 
+/** 값이 바뀌지 않는 UI 동작만 모은 컨텍스트. 결과 카드마다 붙는 우클릭 메뉴처럼 토스트만 띄우는
+ *  소비자가 전체 UI 컨텍스트를 구독하면, 토스트·미리보기 폭 변경마다 전부 다시 그려졌다 */
+export interface UIActions {
+  showToast: UIContextValue["showToast"];
+  updateToast: UIContextValue["updateToast"];
+  dismissToast: UIContextValue["dismissToast"];
+  setPreviewFilePath: UIContextValue["setPreviewFilePath"];
+}
+
+/** 하니스(harness/*.tsx)가 앱 없이 결과 목록을 띄울 때 가짜 동작을 넣는 데도 쓴다 */
+export const UIActionsContext = createContext<UIActions | null>(null);
+
+export function useUIActions(): UIActions {
+  const ctx = useContext(UIActionsContext);
+  if (!ctx) throw new Error("useUIActions must be used within UIProvider");
+  return ctx;
+}
+
 // ── Provider ───────────────────────────────────────────
 
 export function UIProvider({ children }: { children: ReactNode }) {
@@ -158,13 +176,25 @@ export function UIProvider({ children }: { children: ReactNode }) {
     isResizingRef.current = true;
     const startX = e.clientX;
     const startWidth = previewWidthRef.current;
+    // 마우스 이벤트마다 setState 하면 두 창이 이벤트 수만큼 다시 배치된다. 프레임당 한 번으로 모은다
+    let lastX = startX;
+    let frame = 0;
+    const apply = () => {
+      frame = 0;
+      const delta = startX - lastX;
+      setPreviewWidth(Math.max(380, Math.min(Math.round(window.innerWidth * 0.5), startWidth + delta)));
+    };
     const onMove = (ev: MouseEvent) => {
       if (!isResizingRef.current) return;
-      const delta = startX - ev.clientX;
-      setPreviewWidth(Math.max(380, Math.min(Math.round(window.innerWidth * 0.5), startWidth + delta)));
+      lastX = ev.clientX;
+      if (!frame) frame = requestAnimationFrame(apply);
     };
     const onUp = () => {
       isResizingRef.current = false;
+      if (frame) {
+        cancelAnimationFrame(frame);
+        apply();
+      }
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       document.body.style.cursor = "";
@@ -238,5 +268,14 @@ export function UIProvider({ children }: { children: ReactNode }) {
     allTags, getFileTags, previewTags, tagSuggestions, handleAddTag, handleRemoveTag,
   ]);
 
-  return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
+  const actions: UIActions = useMemo(
+    () => ({ showToast, updateToast, dismissToast, setPreviewFilePath }),
+    [showToast, updateToast, dismissToast]
+  );
+
+  return (
+    <UIActionsContext.Provider value={actions}>
+      <UIContext.Provider value={value}>{children}</UIContext.Provider>
+    </UIActionsContext.Provider>
+  );
 }

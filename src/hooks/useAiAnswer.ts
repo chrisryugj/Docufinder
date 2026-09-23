@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { AiAnalysis } from "../types/search";
 import { IS_LITE } from "../utils/buildFlavor";
+import { getErrorMessage } from "../types/error";
 
 interface AiTokenEvent {
   request_id: string;
@@ -100,7 +101,7 @@ export function useAiAnswer(): UseAiAnswerReturn {
       folderScope: folderScope ?? null,
       requestId,
     }).catch((e) => {
-      const msg = typeof e === "object" && e?.message ? e.message : String(e);
+      const msg = getErrorMessage(e);
       setError(msg);
       setIsStreaming(false);
     });

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { Play } from "lucide-react";
 import { Modal } from "../ui/Modal";
-import { SYSTEM_FOLDERS_HINT, HAS_DRIVES, MOD_KEY } from "../../utils/platform";
+import { SYSTEM_FOLDERS_HINT, HAS_DRIVES, MOD_KEY, FILE_MANAGER_NAME } from "../../utils/platform";
 
 export type HelpSection = "start" | "search" | "filters" | "advanced" | "shortcuts" | "tips";
 
@@ -60,9 +60,9 @@ export function HelpModal({ isOpen, onClose, onRestartTour, initialSection = "st
           ))}
           {appVersion && (
             <div
-              className="mt-auto pt-3 px-3 text-[11px] tabular-nums"
+              className="mt-auto pt-3 px-3 text-2xs tabular-nums"
               style={{ color: "var(--color-text-muted)" }}
-              title="설치된 버전 — 새 버전은 GitHub Releases 의 setup.exe/dmg 로 설치합니다"
+              title="설치된 버전 · 새 버전은 GitHub Releases 의 setup.exe/dmg 로 설치합니다"
             >
               Anything v{appVersion}
             </div>
@@ -82,7 +82,7 @@ export function HelpModal({ isOpen, onClose, onRestartTour, initialSection = "st
                   className="mb-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all hover:shadow-md"
                   style={{
                     backgroundColor: "var(--color-accent)",
-                    color: "#fff",
+                    color: "var(--color-on-accent)",
                   }}
                 >
                   <Play className="w-4 h-4" />
@@ -257,7 +257,7 @@ function SearchSection() {
         <ShortcutRow keys="~10" description="근접 검색: 단어들이 10단어 이내 (~만 쓰면 10)" />
       </div>
       <InfoBox>
-        연산자는 조합할 수 있어요. 예: ext:hwp "감사 결과" -초안 path:2024 — 키워드 모드에서만 동작해요.
+        연산자는 조합할 수 있어요. 예: ext:hwp "감사 결과" -초안 path:2024. 키워드 모드에서만 동작해요.
       </InfoBox>
 
       <SubTitle>자연어 검색 (스마트)</SubTitle>
@@ -293,7 +293,7 @@ function FiltersSection() {
 
       <SubTitle>파일 형식 필터</SubTitle>
       <Paragraph>
-        HWPX, DOCX, PPTX, XLSX, PDF, TXT 중 원하는 형식만 선택해서 볼 수 있어요.
+        한글(HWP·HWPX), 워드, 파워포인트, 엑셀, PDF, 텍스트 중 원하는 형식만 골라 볼 수 있어요.
       </Paragraph>
 
       <SubTitle>검색 범위</SubTitle>
@@ -426,7 +426,7 @@ function AdvancedSection() {
 
       <SubTitle>망분리(폐쇄망) 환경</SubTitle>
       <Paragraph>
-        OCR에 필요한 파일은 설치본에 모두 들어 있어서 인터넷 없이도 동작해요. 네트워크 시도 자체를 막고 싶으면 시스템 환경변수 'DOCUFINDER_OFFLINE'을 '1'로 설정하세요 — 평소에는 설정할 필요 없어요. 이 경우 '레이아웃 분석'(온라인 전용 선택 기능)만 꺼지고 OCR과 검색은 그대로예요.
+        OCR에 필요한 파일은 설치본에 모두 들어 있어서 인터넷 없이도 동작해요. 네트워크 시도 자체를 막고 싶으면 시스템 환경변수 'DOCUFINDER_OFFLINE'을 '1'로 설정하세요. 평소에는 설정할 필요 없어요. 이 경우 '레이아웃 분석'(온라인 전용 선택 기능)만 꺼지고 OCR과 검색은 그대로예요.
       </Paragraph>
 
       <SubTitle>자동 문서 분류</SubTitle>
@@ -478,7 +478,7 @@ function TipsSection() {
         />
         <FeatureBox
           title="드래그로 꺼내기"
-          description="검색 결과 파일을 그대로 끌어서 폴더, 메일, 메신저 등 다른 앱에 놓을 수 있어요. 탐색기를 거칠 필요가 없어요."
+          description={`검색 결과 파일을 그대로 끌어서 폴더, 메일, 메신저 등 다른 앱에 놓을 수 있어요. ${FILE_MANAGER_NAME}를 거칠 필요가 없어요.`}
         />
         <FeatureBox
           title="결과 내보내기"

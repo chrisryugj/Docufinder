@@ -115,7 +115,7 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
                       {/* 경로 (연하게) */}
                       <div
                         className="ml-5 truncate"
-                        style={{ color: "var(--color-text-muted)", fontSize: "10px" }}
+                        style={{ color: "var(--color-text-muted)", fontSize: "var(--text-2xs)" }}
                         title={parsed.filePath}
                       >
                         {parsed.filePath}
@@ -123,7 +123,7 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
                       {/* 에러 사유 */}
                       <div
                         className="ml-5 mt-0.5"
-                        style={{ color: "var(--color-error)", fontSize: "11px" }}
+                        style={{ color: "var(--color-error)", fontSize: "var(--text-2xs)" }}
                       >
                         {parsed.reason}
                       </div>
@@ -135,7 +135,7 @@ export function IndexingReportModal({ isOpen, onClose, results }: IndexingReport
                     className="px-3 py-2 text-xs text-center"
                     style={{ color: "var(--color-text-muted)" }}
                   >
-                    ... 외 {allErrors.length - 50}건
+                    외 {allErrors.length - 50}건 더
                   </div>
                 )}
               </div>

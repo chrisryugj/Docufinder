@@ -2,6 +2,12 @@
    Component Styles
    ============================================ */
 
+/* Tailwind ring-offset 기본색은 흰색(#fff, 상속 안 됨)이라 다크 모드에서 포커스 링 둘레에 흰 테가 생긴다.
+   ring-offset 을 쓰는 요소는 패널 배경색으로 띄운다 (색 지정 유틸리티는 쓰지 않음) */
+[class*="ring-offset-"] {
+  --tw-ring-offset-color: var(--color-bg-secondary);
+}
+
 /* Noise Texture Overlay — 미세한 질감으로 flat 배경에 깊이감 추가 */
 .noise-overlay {
   position: fixed;
@@ -180,7 +186,7 @@ mark.hl-filename {
 
 ::highlight(docufinder-find-active) {
   background-color: var(--color-accent);
-  color: #fff;
+  color: var(--color-on-accent);
   text-decoration: underline 2px var(--color-accent-active);
 }
 
@@ -202,7 +208,7 @@ mark.hl-filename {
 }
 .cite-chip:hover:not(:disabled) {
   background-color: var(--color-accent-ai);
-  color: #fff;
+  color: var(--color-on-accent-ai);
 }
 .cite-chip:disabled {
   cursor: default;
@@ -340,7 +346,7 @@ mark.hl-filename {
 /* Interactive Elements */
 .btn-primary {
   background: var(--color-accent);
-  color: white;
+  color: var(--color-on-accent);
   box-shadow: 0 1px 2px rgba(28, 25, 23, 0.12);
   transition: all var(--transition-fast);
 }
@@ -453,6 +459,23 @@ mark.hl-filename {
 }
 .doc-preview > :first-child {
   margin-top: 0;
+}
+
+/* 그림 자리 — 앱은 문서 속 이미지 파일을 받지 않아 위치만 작은 칩으로 표시 (깨진 그림 아이콘 대신) */
+.doc-image-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  margin: 0 0.15em;
+  padding: 0.05em 0.5em;
+  border: 1px dashed var(--color-border-hover);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-2xs);
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-tertiary);
+  vertical-align: baseline;
+  user-select: none;
 }
 
 /* 단락 */

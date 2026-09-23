@@ -15,6 +15,8 @@ const sizeMap = {
 // 파일 타입별 CSS 변수 매핑 (디자인 시스템 index.css 참조)
 const colorMap: Record<string, string> = {
   hwpx: "var(--color-file-hwpx)",
+  hwp: "var(--color-file-hwpx)",
+  hml: "var(--color-file-hwpx)",
   docx: "var(--color-file-docx)",
   doc: "var(--color-file-docx)",
   pptx: "var(--color-file-pptx)",
@@ -58,6 +60,8 @@ export function getFileTypeLabel(fileName: string): string {
   const ext = fileName.split(".").pop()?.toLowerCase();
   switch (ext) {
     case "hwpx":
+    case "hwp":
+    case "hml":
       return "한글";
     case "docx":
     case "doc":

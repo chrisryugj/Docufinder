@@ -20,7 +20,7 @@ export function useSimilarDocuments(showToast: ShowToastFn): UseSimilarDocuments
 
   const handleFindSimilar = useCallback(async (filePath: string) => {
     try {
-      showToast("유사 문서 검색 중...", "info");
+      showToast("유사 문서 검색 중", "info");
       const response = await invoke<{ results: SearchResult[] }>("find_similar_documents", { filePath });
       setSimilarResults(response.results);
       setSimilarSourceFile(filePath.split(/[/\\]/).pop() || filePath);

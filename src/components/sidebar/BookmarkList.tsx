@@ -36,7 +36,7 @@ export const BookmarkList = memo(function BookmarkList({
       {expanded && (
         <div className="mt-1">
           {bookmarks.length === 0 ? (
-            <p className="px-3 py-2 text-[11px]" style={{ color: "var(--color-sidebar-section)" }}>
+            <p className="px-3 py-2 text-2xs" style={{ color: "var(--color-sidebar-section)" }}>
               북마크가 없습니다
             </p>
           ) : (
@@ -44,28 +44,32 @@ export const BookmarkList = memo(function BookmarkList({
               {bookmarks.map((bm) => (
                 <li
                   key={bm.id}
-                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[var(--color-bg-tertiary)] cursor-pointer transition-colors"
-                  onClick={() => onSelect(bm.file_path, bm.page_number)}
-                  title={bm.note || bm.file_path}
+                  className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[var(--color-bg-tertiary)] transition-colors"
                 >
-                  <FileIcon fileName={bm.file_name} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs truncate text-[var(--color-text-primary)]">
-                      {bm.file_name}
-                    </p>
-                    {bm.note && (
-                      <p className="text-[10px] truncate text-[var(--color-text-muted)]">
-                        {bm.note}
-                      </p>
-                    )}
-                  </div>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemove(bm.id);
-                    }}
+                    type="button"
+                    className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
+                    onClick={() => onSelect(bm.file_path, bm.page_number)}
+                    title={bm.note || bm.file_path}
+                  >
+                    <FileIcon fileName={bm.file_name} size="sm" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-xs truncate text-[var(--color-text-primary)]">
+                        {bm.file_name}
+                      </span>
+                      {bm.note && (
+                        <span className="block text-2xs truncate text-[var(--color-text-muted)]">
+                          {bm.note}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(bm.id)}
                     className="p-0.5 rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-[var(--color-bg-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-error)] transition-all"
                     title="삭제"
+                    aria-label={`${bm.file_name} 북마크 삭제`}
                   >
                     <Trash2 size={11} />
                   </button>

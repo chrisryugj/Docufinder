@@ -43,15 +43,23 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_DEBUG,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // 마크다운 + 수식 플러그인 (react-markdown + remark/rehype). PreviewPanel/
-          // AiAnswerPanel 이 lazy 라 이 청크도 async 분리 → 초기 번들에서 빠진다 (P2-1).
-          markdown: ["react-markdown", "remark-gfm", "remark-math", "rehype-katex"],
-          // katex 본체(~267kB)만 leaf 청크로 분리 — rehype-katex 를 여기 넣으면
-          // markdown↔katex 순환 청크가 생기므로 leaf 인 katex 만 둔다.
-          katex: ["katex"],
+        // 함수형: pnpm 은 실제 모듈이 node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/… 에 있어
+        // 객체형 목록이 하위 모듈(react/cjs/…)을 못 잡는다. 마지막 node_modules 뒤 패키지 이름으로 가른다.
+        manualChunks(id) {
+          const tail = id.split(/node_modules[\\/]/).pop();
+          if (!tail || tail === id) return undefined;
+          const parts = tail.split(/[\\/]/);
+          const pkg = parts[0].startsWith("@") ? `${parts[0]}/${parts[1]}` : parts[0];
+          // React 런타임은 따로 둔다. 안 그러면 react/jsx-runtime 이 react-markdown 쪽 청크에 묶여
+          // 진입 청크가 markdown 청크를(그 청크가 다시 katex 를) 정적으로 끌어와, 시작할 때마다
+          // 미리보기 전용 코드 ~430kB 를 받고 파싱했다. 마크다운·수식 라이브러리는 lazy 인
+          // PreviewPanel/AiAnswerPanel 에서만 쓰여 Rollup 이 비동기 공유 청크로 알아서 뗀다.
+          if (pkg === "react" || pkg === "react-dom" || pkg === "scheduler") return "vendor";
+          // katex 본체(~267kB)는 leaf 청크로
+          if (pkg === "katex") return "katex";
           // 아이콘 라이브러리
-          icons: ["lucide-react"],
+          if (pkg === "lucide-react") return "icons";
+          return undefined;
         },
       },
     },

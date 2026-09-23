@@ -80,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
               <button
                 onClick={this.handleReload}
-                className="px-4 py-2 bg-[var(--color-accent)] text-white rounded hover:bg-[var(--color-accent-hover)] transition-colors"
+                className="px-4 py-2 bg-[var(--color-accent)] text-[var(--color-on-accent)] rounded hover:bg-[var(--color-accent-hover)] transition-colors"
               >
                 앱 새로고침
               </button>

@@ -88,7 +88,7 @@ export const Header = memo(function Header({ onAddFolder, onOpenSettings, onOpen
             className="relative p-1.5 rounded-md transition-colors btn-icon-hover"
             aria-label="업데이트"
             title={
-              updatePhase === "available" ? "업데이트 사용 가능 — 클릭하여 설치" :
+              updatePhase === "available" ? "업데이트 사용 가능 · 클릭하여 설치" :
               updatePhase === "downloading" ? "업데이트 다운로드 중" :
               updatePhase === "installing" ? "업데이트 설치 중" :
               "재시작 필요"

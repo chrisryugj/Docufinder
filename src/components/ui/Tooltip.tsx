@@ -208,7 +208,7 @@ export function InfoTooltip({
     <Tooltip content={content} position={position} maxWidth={maxWidth} delay={200}>
       <button
         type="button"
-        className="inline-flex items-center justify-center w-4 h-4 ml-1.5 rounded-full text-[10px] font-medium transition-colors"
+        className="inline-flex items-center justify-center w-4 h-4 ml-1.5 rounded-full text-2xs font-medium transition-colors"
         style={{
           backgroundColor: "var(--color-bg-tertiary)",
           color: "var(--color-text-muted)",
@@ -235,7 +235,7 @@ export function ShortcutTooltip({
     <Tooltip
       content={
         <span className="flex items-center gap-1">
-          <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono" style={{ backgroundColor: "var(--color-bg-secondary)" }}>
+          <kbd className="px-1.5 py-0.5 rounded text-2xs font-mono" style={{ backgroundColor: "var(--color-bg-secondary)" }}>
             {shortcut}
           </kbd>
         </span>

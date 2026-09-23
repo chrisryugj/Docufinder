@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from "react";
+import { ClipboardList, ScrollText, BarChart3, CalendarDays, ListChecks, Search, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { cleanPath } from "../../utils/cleanPath";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -10,8 +11,9 @@ import "katex/dist/katex.min.css";
 import type { AiAnalysis, SourceRef } from "../../types/search";
 import { FileIcon } from "../ui/FileIcon";
 import { ResultContextMenu, useContextMenu } from "./ResultContextMenu";
-import { useUIContext } from "../../contexts/UIContext";
+import { useUIActions } from "../../contexts/UIContext";
 import { buildAiAnswerMarkdown, toDefaultSavePath, toSafeFileStem } from "../../utils/aiAnswerMarkdown";
+import { getErrorMessage } from "../../types/error";
 
 interface Props {
   answer: string;
@@ -27,13 +29,13 @@ interface Props {
   onCite?: (source: SourceRef) => void;
 }
 
-const EXAMPLE_CATEGORIES: { label: string; icon: string; examples: string[] }[] = [
-  { label: "요약", icon: "📋", examples: ["인사규정 핵심 조항을 요약해줘", "회의록에서 결정된 사항만 정리해줘", "보고서의 주요 결론은 뭐야?"] },
-  { label: "조건·규정", icon: "📜", examples: ["연차 사용 조건이 어떻게 되나요?", "계약 해지 시 위약금 조항은?", "재택근무 신청 자격 요건은?"] },
-  { label: "수치·데이터", icon: "📊", examples: ["2026년 예산 총액은 얼마인가요?", "프로젝트별 투입 인원 현황은?", "매출 목표 달성률이 어떻게 돼?"] },
-  { label: "일정·기한", icon: "📅", examples: ["계약 만료일이 언제야?", "분기별 제출 마감일 정리해줘", "2026년 주요 일정을 알려줘"] },
-  { label: "절차·방법", icon: "📝", examples: ["출장비 정산 절차가 어떻게 돼?", "신규 입사자 등록 방법은?", "장비 반납 프로세스 알려줘"] },
-  { label: "내용 확인", icon: "🔍", examples: ["보안 교육 이수 기준이 뭐야?", "납품 검수 기준을 알려줘", "개인정보 처리방침 내용은?"] },
+const EXAMPLE_CATEGORIES: { label: string; Icon: LucideIcon; examples: string[] }[] = [
+  { label: "요약", Icon: ClipboardList, examples: ["인사규정 핵심 조항을 요약해줘", "회의록에서 결정된 사항만 정리해줘", "보고서의 주요 결론은 뭐야?"] },
+  { label: "조건·규정", Icon: ScrollText, examples: ["연차 사용 조건이 어떻게 되나요?", "계약 해지 시 위약금 조항은?", "재택근무 신청 자격 요건은?"] },
+  { label: "수치·데이터", Icon: BarChart3, examples: ["2026년 예산 총액은 얼마인가요?", "프로젝트별 투입 인원 현황은?", "매출 목표 달성률이 어떻게 돼?"] },
+  { label: "일정·기한", Icon: CalendarDays, examples: ["계약 만료일이 언제야?", "분기별 제출 마감일 정리해줘", "2026년 주요 일정을 알려줘"] },
+  { label: "절차·방법", Icon: ListChecks, examples: ["출장비 정산 절차가 어떻게 돼?", "신규 입사자 등록 방법은?", "장비 반납 프로세스 알려줘"] },
+  { label: "내용 확인", Icon: Search, examples: ["보안 교육 이수 기준이 뭐야?", "납품 검수 기준을 알려줘", "개인정보 처리방침 내용은?"] },
 ];
 
 function basename(path: string): string {
@@ -56,6 +58,11 @@ function parseSourceRefs(text: string): { cleanText: string; refIndices: Set<num
   };
 }
 
+// ReactMarkdown 플러그인 배열 — 렌더마다 새 배열이면 매번 파이프라인을 다시 만든다
+const REMARK_PLUGINS = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS = [rehypeKatex];
+const NO_SOURCES: SourceRef[] = [];
+
 // fragment(#) 형식 사용 — react-markdown defaultUrlTransform이 커스텀 프로토콜(df-cite:)은
 // 안전하지 않다고 제거하지만, 콜론 없는 fragment URL은 그대로 통과시킨다.
 const CITE_SCHEME = "#cite-";
@@ -67,7 +74,7 @@ function linkifyCitations(text: string): string {
 }
 
 
-function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, searchScope, onCite }: Props) {
+function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQuestion, searchScope, onExampleClick, onCite }: Props) {
   const handleOpenFile = useCallback((path: string) => {
     invoke("open_file", { path }).catch(() => {});
   }, []);
@@ -76,7 +83,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
     invoke("open_folder", { path }).catch(() => {});
   }, []);
 
-  const sources = analysis?.sources ?? [];
+  const sources = analysis?.sources ?? NO_SOURCES;
 
   // 본문 마크다운 컴포넌트 — df-cite: 링크를 인용 칩으로 가로채기
   const markdownComponents = useMemo(
@@ -91,7 +98,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               onClick={() => src && onCite?.(src)}
               disabled={!src || !onCite}
               className="cite-chip"
-              title={src ? `${src.file_name} — 원문에서 보기` : "원문"}
+              title={src ? `${src.file_name} · 원문에서 보기` : "원문"}
             >
               {children}
             </button>
@@ -107,11 +114,32 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
     [sources, onCite],
   );
 
+  const { cleanText, refIndices } = useMemo(
+    () => (!isStreaming ? parseSourceRefs(answer) : { cleanText: answer, refIndices: new Set<number>() }),
+    [answer, isStreaming]
+  );
+  // 완료 답변 마크다운은 한 번만 파싱한다. 질문 입력·토스트·진행 이벤트로 패널이 다시 그려질 때마다
+  // 답 전체를 remark·KaTeX 로 다시 돌리던 것을 막는다
+  const answerMarkdown = useMemo(() => {
+    if (isStreaming) return null;
+    // 완료 후 + sources 있을 때만 인라인 [출처N]을 클릭 칩으로 변환
+    const renderText = sources.length > 0 ? linkifyCitations(cleanText) : cleanText;
+    return (
+      <ReactMarkdown
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
+        components={markdownComponents}
+      >
+        {renderText}
+      </ReactMarkdown>
+    );
+  }, [isStreaming, cleanText, sources, markdownComponents]);
+
   // 에러 상태
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-        <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center mb-3">
+        <div className="w-10 h-10 rounded-full bg-[var(--color-error-subtle)] flex items-center justify-center mb-3">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-error)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <line x1="15" y1="9" x2="9" y2="15" />
@@ -137,7 +165,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
       <div className="flex flex-col h-full px-4 sm:px-8 pt-2">
         {/* 검색 범위: 검색창 ScopeChip으로 이동 */}
 
-        {/* 예시 질문 그리드 — 표시 전용 */}
+        {/* 예시 질문 그리드 — 누르면 그 질문으로 바로 묻는다 */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
           {EXAMPLE_CATEGORIES.map((cat) => (
             <div
@@ -149,15 +177,25 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
               }}
             >
               <div className="flex items-center gap-2">
-                <span className="text-base">{cat.icon}</span>
+                <cat.Icon className="w-4 h-4" style={{ color: "var(--color-accent-ai)" }} aria-hidden="true" />
                 <span className="text-xs font-semibold text-[var(--color-text-secondary)]">
                   {cat.label}
                 </span>
               </div>
-              <ul className="space-y-1.5">
+              <ul className="space-y-1">
                 {cat.examples.map((ex) => (
-                  <li key={ex} className="text-[13px] leading-snug text-[var(--color-text-muted)]">
-                    "{ex}"
+                  <li key={ex}>
+                    {onExampleClick ? (
+                      <button
+                        type="button"
+                        onClick={() => onExampleClick(ex)}
+                        className="w-full text-left text-sm leading-snug px-1.5 py-0.5 -mx-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-accent-ai)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
+                      >
+                        "{ex}"
+                      </button>
+                    ) : (
+                      <span className="text-sm leading-snug text-[var(--color-text-muted)]">"{ex}"</span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -179,10 +217,6 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
       </div>
     );
   }
-
-  const { cleanText, refIndices } = !isStreaming ? parseSourceRefs(answer) : { cleanText: answer, refIndices: new Set<number>() };
-  // 완료 후 + sources 있을 때만 인라인 [출처N]을 클릭 칩으로 변환
-  const renderText = !isStreaming && sources.length > 0 ? linkifyCitations(cleanText) : cleanText;
 
   return (
     <div className="flex flex-col h-full overflow-y-auto px-2 py-2 gap-3">
@@ -209,6 +243,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
             className="shrink-0 p-1 rounded hover:bg-[var(--color-bg-secondary)] transition-colors"
             style={{ color: "var(--color-text-muted)" }}
             title="초기화"
+            aria-label="질문 초기화"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -232,18 +267,18 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
             className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center"
             style={{ background: "linear-gradient(135deg, var(--color-accent-ai) 0%, var(--color-accent-ai-hover) 100%)" }}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="white" stroke="none">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="var(--color-on-accent-ai)" stroke="none" aria-hidden="true">
               <path d="M12 2l2.4 6.4L21 11l-6.6 2.4L12 21l-2.4-7.6L3 11l6.6-2.4L12 2z" />
             </svg>
           </div>
-          <span className="text-[11px] font-medium" style={{ color: "var(--color-accent-ai)" }}>
+          <span className="text-2xs font-medium" style={{ color: "var(--color-accent-ai)" }}>
             AI 문서 분석 결과
           </span>
           {isStreaming && (
-            <span className="text-[10px] animate-pulse" style={{ color: "var(--color-accent-ai)" }}>분석 중...</span>
+            <span className="text-2xs animate-pulse" style={{ color: "var(--color-accent-ai)" }}>분석 중</span>
           )}
           {analysis && (
-            <span className="text-[10px] text-[var(--color-text-tertiary)] ml-auto tabular-nums">
+            <span className="text-2xs text-[var(--color-text-tertiary)] ml-auto tabular-nums">
               {(analysis.processing_time_ms / 1000).toFixed(1)}초
             </span>
           )}
@@ -262,13 +297,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
             </span>
           ) : (
             // 완료: 마크다운 렌더링 ($...$ 수식은 KaTeX 로, [출처N]은 클릭 칩으로)
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-              components={markdownComponents}
-            >
-              {renderText}
-            </ReactMarkdown>
+            answerMarkdown
           )}
         </div>
       </div>
@@ -276,7 +305,7 @@ function AiAnswerPanel({ answer, isStreaming, analysis, error, onReset, currentQ
       {/* 참조 문서 */}
       {analysis && analysis.source_files.length > 0 && (
         <div className="space-y-1.5">
-          <p className="text-[10px] font-medium text-[var(--color-text-tertiary)] px-1">
+          <p className="text-2xs font-medium text-[var(--color-text-tertiary)] px-1">
             참조 문서 {refIndices.size > 0 && <span className="font-normal">· 근거 {refIndices.size}건</span>}
           </p>
           {(() => {
@@ -353,37 +382,45 @@ function SourceFileItem({
 
   return (
     <>
+      {/* 행 = 원문 보기 버튼 + 폴더 열기 버튼(형제). 버튼 안에 버튼을 두면 낭독기가 안쪽을 놓친다 */}
       <div
         data-context-menu
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg group cursor-pointer transition-all ${
+        className={`flex items-center gap-2.5 px-3 py-2 rounded-lg group transition-all ${
           dimmed ? "opacity-40" : ""
         }`}
         style={{
           backgroundColor: isRef ? "var(--color-bg-secondary)" : "transparent",
           border: isRef ? "1px solid var(--color-border)" : "1px solid transparent",
         }}
-        onClick={handleRowClick}
         onContextMenu={handleContextMenu}
-        title={canCite ? `${cleanPath(path)} — 클릭하여 원문에서 보기` : cleanPath(path)}
       >
-        <FileIcon fileName={name} size="sm" />
-        <span className="text-[13px] text-[var(--color-text-secondary)] truncate flex-1">
-          {name}
-        </span>
-        {isRef && (
-          <span
-            className="text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0"
-            style={{ backgroundColor: "var(--color-accent-ai-subtle)", color: "var(--color-accent-ai)" }}
-          >
-            근거
-          </span>
-        )}
         <button
-          onClick={(e) => { e.stopPropagation(); onOpenFolder(path); }}
-          className="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-          title="폴더 열기"
+          type="button"
+          className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
+          onClick={handleRowClick}
+          title={canCite ? `${cleanPath(path)} · 클릭하여 원문에서 보기` : cleanPath(path)}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <FileIcon fileName={name} size="sm" />
+          <span className="text-sm text-[var(--color-text-secondary)] truncate flex-1">
+            {name}
+          </span>
+          {isRef && (
+            <span
+              className="text-2xs font-medium px-1.5 py-0.5 rounded shrink-0"
+              style={{ backgroundColor: "var(--color-accent-ai-subtle)", color: "var(--color-accent-ai)" }}
+            >
+              근거
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => onOpenFolder(path)}
+          className="text-[var(--color-text-tertiary)] hover:text-[var(--color-accent)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
+          title="폴더 열기"
+          aria-label="폴더 열기"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </button>
@@ -416,7 +453,7 @@ function CopyableActionBar({
 }) {
   const [copied, setCopied] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { showToast, updateToast } = useUIContext();
+  const { showToast, updateToast } = useUIActions();
 
   // 답변 + 참조 문서를 .md 파일로 저장 (미리보기 패널과 같은 export_markdown 커맨드 사용)
   const handleSaveMarkdown = useCallback(async () => {
@@ -437,14 +474,13 @@ function CopyableActionBar({
     if (!outputPath) return; // 사용자 취소
 
     setIsSaving(true);
-    const toastId = showToast("Markdown 저장 중...", "loading");
+    const toastId = showToast("Markdown 저장 중", "loading");
     try {
       const content = buildAiAnswerMarkdown(currentQuestion, answer, analysis);
       await invoke("export_markdown", { content, outputPath });
       updateToast(toastId, { message: "Markdown 파일로 저장했습니다", type: "success" });
     } catch (e) {
-      const msg = typeof e === "string" ? e : ((e as { message?: string })?.message ?? "저장 실패");
-      updateToast(toastId, { message: `저장 실패: ${msg}`, type: "error" });
+      updateToast(toastId, { message: `저장 실패: ${getErrorMessage(e)}`, type: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -475,7 +511,7 @@ function CopyableActionBar({
       <div className="flex items-center gap-1">
         <button
           onClick={onReset}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-2xs font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
           style={{ color: "var(--color-text-muted)" }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -487,7 +523,7 @@ function CopyableActionBar({
         {answer && (
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-2xs font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)]"
             style={{ color: copied ? "var(--color-success)" : "var(--color-text-muted)" }}
             aria-label="AI 답변 복사"
           >
@@ -508,7 +544,7 @@ function CopyableActionBar({
           <button
             onClick={handleSaveMarkdown}
             disabled={isSaving}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-2xs font-medium rounded-md transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
             style={{ color: "var(--color-text-muted)" }}
             aria-label="AI 답변을 Markdown 파일로 저장"
             title="질문·답변·참조 문서를 .md 파일로 저장"
@@ -518,14 +554,14 @@ function CopyableActionBar({
               <polyline points="17 21 17 13 7 13 7 21" />
               <polyline points="7 3 7 8 15 8" />
             </svg>
-            {isSaving ? "저장 중..." : "MD 저장"}
+            {isSaving ? "저장 중" : "MD 저장"}
           </button>
         )}
       </div>
       {analysis && (
-        <span className="text-[10px] text-[var(--color-text-tertiary)] tabular-nums">
+        <span className="text-2xs text-[var(--color-text-tertiary)] tabular-nums">
           {analysis.model}
-          {analysis.tokens_used && ` · ${analysis.tokens_used.total_tokens}t`}
+          {analysis.tokens_used && ` · 토큰 ${analysis.tokens_used.total_tokens.toLocaleString()}`}
         </span>
       )}
     </div>
