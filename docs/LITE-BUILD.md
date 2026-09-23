@@ -46,7 +46,7 @@ lite  (내부망) : cargo --no-default-features -F custom-protocol → Anything 
 | `rundll32.exe url.dll,FileProtocolHandler` | 대표 LOLBin (MITRE T1218.011) → `explorer.exe` 로 대체 | `commands/file.rs` |
 | `LoadLibraryExW(LOAD_WITH_ALTERED_SEARCH_PATH)` 진단 | DLL 사이드로딩 탐지 룰의 정면 대상 | `utils/dll_diag.rs` |
 | kordoc 수식 OCR 네이티브 deps 4종 | 서명 없는 `.node`/`.dll` 수십 개가 설치 폴더에 깔림 | `scripts/bundle-kordoc.ps1 -Lite` |
-| `--ocr` / `--formula-ocr` CLI 플래그 | kordoc 자식이 HuggingFace 에서 모델을 직접 받음 (Rust 쪽 offline 스위치가 안 닿는 경로) | `parsers/kordoc.rs` `call_kordoc_sync` |
+| `--ocr` / `--formula-ocr` CLI 플래그 | kordoc 자식이 HuggingFace 에서 모델을 직접 받음 (Rust 쪽 offline 스위치가 안 닿는 경로) | `parsers/kordoc/process.rs` `call_kordoc_sync` |
 
 번들에서 빠지는 자산: `onnxruntime.dll`, `pdfium.dll`, `paddleocr/*`.
 → **동적 DLL 로드(dlopen) 시도 자체가 프로세스 생애에 한 번도 일어나지 않는다.**

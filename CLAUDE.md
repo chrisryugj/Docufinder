@@ -22,7 +22,10 @@ Anything/
 ├── src-tauri/              # Rust 백엔드 (commands → application/services → search·indexer·db)
 │   ├── src/
 │   │   ├── main.rs         # 앱 진입점
-│   │   ├── lib.rs          # setup/초기화 + 크래시 핸들러 + invoke_handler 등록
+│   │   ├── lib.rs          # Tauri 빌더 + invoke_handler 등록
+│   │   ├── startup.rs      # setup 단계 (로깅·모델 준비·백그라운드 점검·트레이·시작 경고)
+│   │   ├── shutdown.rs     # 종료 절차 (인덱싱 취소·벡터 정리·FTS 병합·WAL 체크포인트)
+│   │   ├── crash.rs        # 패닉 훅·크래시 로그
 │   │   ├── error.rs        # 글로벌 에러 타입 (ApiError)
 │   │   ├── constants.rs    # 상수 정의
 │   │   ├── model_downloader.rs  # ONNX 모델 다운로드 + SHA-256 검증
@@ -31,14 +34,14 @@ Anything/
 │   │   ├── breadcrumb.rs   # 크래시 진단 브레드크럼
 │   │   ├── commands/       # Tauri IPC 커맨드 (search, index, settings, file, ai, lineage 등)
 │   │   ├── application/    # 응용 계층 (container, services/search_service, dto)
-│   │   ├── parsers/        # 문서 파서 (hwpx, docx, xlsx, pdf, txt, kordoc 사이드카)
+│   │   ├── parsers/        # 문서 파서 (hwpx, docx, xlsx, pdf, txt) + kordoc/ 사이드카 (process·render·text)
 │   │   ├── search/         # 검색 엔진 (fts, vector, hybrid, filename_cache, nl_query, query_syntax)
-│   │   ├── indexer/        # 인덱싱 (pipeline, manager, vector_worker, collector, sync, lineage)
+│   │   ├── indexer/        # 인덱싱 (pipeline/, manager, vector_worker, collector, sync, lineage)
 │   │   ├── embedder/       # ONNX 임베딩 (KoSimCSE, 768차원)
 │   │   ├── tokenizer/      # 한국어 형태소 분석 (Lindera)
 │   │   ├── ocr/            # PaddleOCR ONNX (이미지/스캔 PDF)
 │   │   ├── llm/            # Gemini API (RAG 질의응답)
-│   │   ├── db/             # SQLite + FTS5 스키마 (mod, migration, pool)
+│   │   ├── db/             # SQLite + FTS5 (mod, migration, pool, files, chunks, folders, stats)
 │   │   └── utils/          # disk_info, network_path, elevation, text_normalize 등
 │   └── Cargo.toml
 ├── src/                    # React 프론트엔드
@@ -48,7 +51,7 @@ Anything/
 │   │   ├── ui/             # Button, Modal, Toast, Badge, Tooltip, FileIcon 등
 │   │   ├── layout/         # Header, StatusBar, AutoIndexPrompt, AppModals
 │   │   ├── sidebar/        # Sidebar, FolderTree, SmartFolders, RecentSearches
-│   │   ├── search/         # SearchBar, SearchResultList, PreviewPanel, CommandPalette 등
+│   │   ├── search/         # SearchBar, SearchResultList(+results/), PreviewPanel(+preview/) 등
 │   │   ├── settings/       # SettingsModal + tabs/
 │   │   ├── onboarding/     # tourSteps, DisclaimerModal (투어 기반)
 │   │   ├── updater/        # 업데이트 알림
@@ -117,7 +120,7 @@ Anything/
 | 문서 비교 (v3.0) | 우클릭 '비교 대상으로 선택' → 임의 두 문서 청크 diff |
 | 팝업 뷰어 / 줌 | 미리보기 전체화면 오버레이 — 커서 기준 휠 줌·더블클릭 토글·너비↔페이지 맞춤, PDF는 경계 휠로 페이지 넘김 (search/LayoutView.tsx, PdfLayoutView.tsx) |
 | 표 네이티브 렌더 | kordoc HTML 표(병합·중첩)를 rehype-raw 로 그대로 렌더 + rehype-sanitize XSS 차단 |
-| 복사 깨짐 배지 | CID/PUA 폰트 손상 문서(pdf·hwp·hwpx)에 복사 시 글자 깨짐 경고 배지 (indexer/pipeline.rs) |
+| 복사 깨짐 배지 | CID/PUA 폰트 손상 문서(pdf·hwp·hwpx)에 복사 시 글자 깨짐 경고 배지 (indexer/pipeline/) |
 | 네이티브 드래그아웃 | 검색 결과 파일을 다른 앱/웹으로 끌어 놓기 (tauri-plugin-drag) |
 
 ## 참고 문서
