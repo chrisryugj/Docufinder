@@ -242,11 +242,13 @@ pub(super) fn spawn_worker(node: &Path, cli: &Path) -> Result<ParseWorker, Worke
         let remaining = deadline.saturating_duration_since(Instant::now());
         let line = match worker.resp_rx.recv_timeout(remaining) {
             Ok(line) => line,
-            Err(_) => {
+            Err(e) => {
                 worker.kill();
-                return Err(WorkerError::Broken(
-                    "parse 워커 준비 실패 (응답 없음)".to_string(),
-                ));
+                let why = match e {
+                    RecvTimeoutError::Disconnected => "준비 전에 종료",
+                    RecvTimeoutError::Timeout => "응답 없음",
+                };
+                return Err(WorkerError::Broken(format!("parse 워커 준비 실패 ({why})")));
             }
         };
         match parse_reply(&line) {
@@ -543,12 +545,12 @@ for await (const line of rl) {
         let Some((_d, node, cli)) = setup(OLD_KORDOC) else {
             return;
         };
-        let t = Instant::now();
-        assert!(spawn_worker(&node, &cli).is_err());
-        assert!(
-            t.elapsed() < Duration::from_secs(10),
-            "ready 타임아웃(30초)까지 기다리면 안 됨"
-        );
+        // ready 타임아웃(30초)이 아니라 프로세스 종료로 실패해야 한다. 시간이 아닌 사유로 가른다:
+        // 부하 걸린 윈도우 러너는 node 기동만 10초를 넘긴 적이 있다(v3.8.10 배포 CI)
+        match spawn_worker(&node, &cli) {
+            Err(WorkerError::Broken(msg)) => assert!(msg.contains("준비 전에 종료"), "{msg}"),
+            other => panic!("종료로 실패해야 함: {:?}", other.map(|_| ())),
+        }
     }
 
     #[test]
