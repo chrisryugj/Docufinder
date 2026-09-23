@@ -61,10 +61,22 @@ Get-ChildItem "$KordocDir\dist" -Recurse -File |
     }
 Write-Host "  -> kordoc dist copied"
 
-# 3. package.json (ESM mode)
-@'
-{"type":"module","name":"kordoc-bundle","private":true}
-'@ | Set-Content "$kordocOut\package.json" -Encoding UTF8
+# 3. package.json (ESM mode) + 런타임 의존성
+# 목록·버전 범위는 kordoc package.json 이 정본 (scripts/kordoc-runtime-deps.cjs). 범위를 npm 명령줄 인자로
+# 넘기지 않는다: npm.cmd(배치 파일)를 거치며 cmd.exe 가 ^ 를 이스케이프로 먹어 onnxruntime-node@^1.24.0 이
+# 없는 버전 1.24.0 이 되었다(v3.8.9 윈도우 배포 실패). dependencies 에 적고 아래에서 인자 없이 설치한다.
+$depsArgs = @("$PSScriptRoot\kordoc-runtime-deps.cjs", "$KordocDir\package.json", "--json")
+if ($Lite) {
+    Write-Host "  -> LITE mode: 수식 OCR optional deps 제외 (네이티브 바이너리 미포함)" -ForegroundColor Yellow
+    $depsArgs += "--lite"
+}
+$depsJson = (& $nodeExe @depsArgs | Out-String).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $depsJson.StartsWith("{") -or $depsJson -eq "{}") {
+    Write-Error "kordoc 의존성 목록 생성 실패 ($KordocDir\package.json)"
+    exit 1
+}
+"{""type"":""module"",""name"":""kordoc-bundle"",""private"":true,""dependencies"":$depsJson}" |
+    Set-Content "$kordocOut\package.json" -Encoding UTF8
 
 # 4. Install runtime node_modules (minimal)
 #
@@ -76,23 +88,11 @@ Write-Host "  -> kordoc dist copied"
 # 이들이 번들에 포함되지 않으면 `--formula-ocr` 플래그가 tryImport 단계에서 실패.
 # 모델(~155MB)은 런타임 HuggingFace 다운로드이므로 여기서는 SDK 바이너리만 포함.
 Push-Location $kordocOut
-# 목록·버전 범위는 kordoc package.json 이 정본 (scripts/kordoc-runtime-deps.cjs)
-$depsArgs = @("$PSScriptRoot\kordoc-runtime-deps.cjs", "$KordocDir\package.json")
-if ($Lite) {
-    Write-Host "  -> LITE mode: 수식 OCR optional deps 제외 (네이티브 바이너리 미포함)" -ForegroundColor Yellow
-    $depsArgs += "--lite"
-}
-$deps = @(& $nodeExe @depsArgs | Where-Object { $_ })
-if ($LASTEXITCODE -ne 0 -or $deps.Count -eq 0) {
-    Pop-Location
-    Write-Error "kordoc 의존성 목록 생성 실패 ($KordocDir\package.json)"
-    exit 1
-}
-Write-Host "  -> Installing node_modules: $($deps -join ', ')"
+Write-Host "  -> Installing node_modules: $depsJson"
 # npm이 stderr에 warn을 써도 Stop 모드에서 죽지 않도록 이 블록만 Continue로 전환
 $prevErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& npm.cmd install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error $deps 2>&1 | ForEach-Object { Write-Host $_ }
+& npm.cmd install --omit=dev --no-package-lock --no-fund --no-audit --loglevel=error 2>&1 | ForEach-Object { Write-Host $_ }
 $npmExit = $LASTEXITCODE
 $ErrorActionPreference = $prevErrorAction
 if ($npmExit -ne 0) {
