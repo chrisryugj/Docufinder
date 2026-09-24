@@ -234,6 +234,22 @@ fn kordoc_response_v42_signals_deserialize() {
     );
 }
 
+/// 복사 시 깨짐 힌트 — 텍스트층이 깨졌거나(PUA·제어문자·대체문자·자소) 글자를 곡선으로 그린 쪽(vector_text)만.
+/// 스캔(low_text)은 복사할 글이 없는 것이라 제외.
+#[test]
+fn text_layer_garbled_reasons() {
+    let pages = |reason: &str| -> Vec<KordocPageQuality> {
+        serde_json::from_str(&format!(
+            r#"[{{"page": 1, "needsOcr": true, "ocrReason": "{reason}"}}]"#
+        ))
+        .expect("역직렬화")
+    };
+    assert!(text_layer_garbled(&pages("vector_text")));
+    assert!(text_layer_garbled(&pages("garbled_hangul")));
+    assert!(!text_layer_garbled(&pages("low_text")));
+    assert!(!text_layer_garbled(&[]));
+}
+
 /// 실 kordoc CLI + OCR 모델 E2E (로컬 전용 — 환경변수 없으면 skip).
 ///
 /// 실행: KORDOC_CLI_PATH=<kordoc/dist/cli.js> KORDOC_E2E_SCAN_PDF=<scan.pdf> \

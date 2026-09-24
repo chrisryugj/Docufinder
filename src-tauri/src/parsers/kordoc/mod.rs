@@ -153,13 +153,32 @@ struct KordocCell {
     text: Option<String>,
 }
 
+/// 원본 텍스트층이 "깨진" 신호 — 스캔(low_text)은 제외 (복사할 텍스트 자체가 없음).
+/// OCR 로 본문을 채웠어도 원본을 열어 복사하면 깨진다는 사실은 그대로라 유지.
+/// vector_text(kordoc 4.14.4+): 글자를 곡선으로 그린 쪽 — 원본에서 복사하면 한글이 나오지 않는다.
+fn text_layer_garbled(pages: &[KordocPageQuality]) -> bool {
+    pages.iter().any(|p| {
+        (p.needs_ocr || p.ocr_applied)
+            && matches!(
+                p.ocr_reason.as_deref(),
+                Some(
+                    "high_pua"
+                        | "high_control"
+                        | "high_replacement"
+                        | "garbled_hangul"
+                        | "vector_text"
+                )
+            )
+    })
+}
+
 /// kordoc 페이지 품질 신호 (필요 필드만 역직렬화)
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct KordocPageQuality {
     #[serde(default)]
     needs_ocr: bool,
-    /// "low_text" | "high_pua" | "high_control" | "high_replacement" | "garbled_hangul"
+    /// "low_text" | "high_pua" | "high_control" | "high_replacement" | "garbled_hangul" | "vector_text"(kordoc 4.14.4+)
     ocr_reason: Option<String>,
     /// OCR 이 실제 적용되어 본문이 대체됨 (kordoc v4.2+)
     #[serde(default)]
@@ -305,15 +324,7 @@ pub fn parse_with_options(path: &Path, opts: KordocOptions) -> Result<ParsedDocu
         .warnings
         .iter()
         .any(|w| w.code.as_deref() == Some("OCR_APPLIED"));
-    // 원본 텍스트층이 "깨진" 신호 — 스캔(low_text)은 제외 (복사할 텍스트 자체가 없음).
-    // OCR 로 본문을 채웠어도 원본을 열어 복사하면 깨진다는 사실은 그대로라 유지.
-    let garbled_hint = resp.page_quality.iter().any(|p| {
-        (p.needs_ocr || p.ocr_applied)
-            && matches!(
-                p.ocr_reason.as_deref(),
-                Some("high_pua" | "high_control" | "high_replacement" | "garbled_hangul")
-            )
-    });
+    let garbled_hint = text_layer_garbled(&resp.page_quality);
 
     let markdown = resp.markdown.unwrap_or_default();
     // kordoc 은 병합셀 표를 HTML <table> 로 반환한다. 그대로 인덱싱하면 검색 결과 스니펫에

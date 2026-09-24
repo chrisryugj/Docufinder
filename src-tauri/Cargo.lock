@@ -1429,7 +1429,7 @@ dependencies = [
 
 [[package]]
 name = "docufinder"
-version = "3.8.10"
+version = "3.8.11"
 dependencies = [
  "base64 0.22.1",
  "calamine",
