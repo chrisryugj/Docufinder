@@ -126,8 +126,8 @@ pub(super) fn parse_iso_timestamp(s: &str) -> Option<i64> {
 ///
 /// 행은 줄바꿈, 셀은 공백으로 직렬화하고 변환되지 못한(중첩 표 등) 잔여 표/줄바꿈 태그를
 /// 제거한다. 표가 없으면 입력을 그대로 돌려준다(정규식 매칭 0 → 사실상 무비용).
-/// 밑줄 태그(`<u>`, kordoc v4.7.0+)도 함께 걷어낸다 — 표 바깥 본문에 그대로 남으면
-/// 검색 스니펫에 태그가 노출되고 구절 검색이 태그 경계에서 끊긴다.
+/// 밑줄 태그(`<u>`, kordoc v4.7.0+)·첨자 태그(`<sup>`·`<sub>`, v4.16.2+)도 함께 걷어낸다 —
+/// 표 바깥 본문에 그대로 남으면 검색 스니펫에 태그가 노출되고 구절 검색이 태그 경계에서 끊긴다.
 /// 미리보기 패널은 `get_markdown` 원본(HTML 표·밑줄 유지)을 쓰므로 GFM 렌더에는 영향이 없다.
 pub(super) fn html_tables_to_text(md: &str) -> String {
     use std::sync::OnceLock;
@@ -143,25 +143,37 @@ pub(super) fn html_tables_to_text(md: &str) -> String {
     let row_re = ROW_RE.get_or_init(|| regex::Regex::new(r"(?is)<tr[^>]*>(.*?)</tr>").unwrap());
     let cell_re =
         CELL_RE.get_or_init(|| regex::Regex::new(r"(?is)<t[dh][^>]*>(.*?)</t[dh]>").unwrap());
-    // 태그 이름은 ASCII 영문자로 시작한다. kordoc 은 셀 텍스트의 꺾쇠를 이스케이프하지 않아
+    // 태그 이름은 ASCII 영문자로 시작한다. kordoc v4.15 이하는 셀 텍스트의 꺾쇠를 이스케이프하지 않아
     // 별지서식 연혁 `<개정 2019. 7. 18.>` 가 그대로 오므로, `<[^>]+>` 로 지우면 색인에서 빠진다.
+    // v4.16+ 는 `&lt;개정 …&gt;` 로 내므로 태그를 지운 뒤 엔티티를 푼다.
     let inner_tag_re =
         INNER_TAG_RE.get_or_init(|| regex::Regex::new(r"(?is)</?[a-z][^>]*>").unwrap());
     let leftover_re = LEFTOVER_RE.get_or_init(|| {
         regex::Regex::new(r"(?is)</?(?:table|thead|tbody|tfoot|tr|td|th|col|colgroup|br)[^>]*>")
             .unwrap()
     });
-    // 낱말 중간에도 열리고 닫히므로 공백이 아니라 삭제 — 공백을 넣으면 단어가 쪼개진다.
-    let underline_re = UNDERLINE_RE.get_or_init(|| regex::Regex::new(r"(?i)</?u>").unwrap());
+    // 낱말 중간에도 열리고 닫히므로 공백이 아니라 삭제 — 공백을 넣으면 단어가 쪼개진다("m<sup>2</sup>" → "m2").
+    // 표 칸 안에서도 inner_tag_re 가 공백으로 바꾸기 전에 지워야 해서 표 변환보다 먼저 건다.
+    let underline_re =
+        UNDERLINE_RE.get_or_init(|| regex::Regex::new(r"(?i)</?(?:u|sup|sub)>").unwrap());
+    let md = underline_re.replace_all(md, "");
 
-    let replaced = table_re.replace_all(md, |caps: &regex::Captures| {
+    let replaced = table_re.replace_all(&md, |caps: &regex::Captures| {
         let table = &caps[0];
         let mut rows: Vec<String> = Vec::new();
         for row in row_re.captures_iter(table) {
             let mut cells: Vec<String> = Vec::new();
             for cell in cell_re.captures_iter(&row[1]) {
                 let stripped = inner_tag_re.replace_all(&cell[1], " ");
-                let cell_text = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
+                let cell_text = stripped
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .replace("&#39;", "'")
+                    .replace("&amp;", "&");
                 if !cell_text.is_empty() {
                     cells.push(cell_text);
                 }
@@ -178,8 +190,7 @@ pub(super) fn html_tables_to_text(md: &str) -> String {
     });
 
     // 중첩 표 등으로 위 변환을 빠져나간 잔여 표/줄바꿈 태그 제거 (정규식은 중첩을 셀 수 없음).
-    let leftover_cleaned = leftover_re.replace_all(&replaced, " ");
-    underline_re.replace_all(&leftover_cleaned, "").into_owned()
+    leftover_re.replace_all(&replaced, " ").into_owned()
 }
 
 /// 마크다운 이미지 참조(`![image](image_001.png)`)와 `<img>` 태그를 지운다.

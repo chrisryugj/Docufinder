@@ -163,6 +163,31 @@ fn angle_bracket_text_in_cell_kept() {
 }
 
 #[test]
+fn escaped_entities_in_cell_decoded() {
+    // kordoc v4.16+ 는 HTML 표 칸의 꺾쇠·앰퍼샌드를 엔티티로 낸다 — 색인에는 원래 글자로.
+    let md = "<table><tr><th colspan=\"4\">■ 시행규칙 [별표 1] &lt;개정 2023. 6. 26.&gt;</th></tr>\
+              <tr><td>Education &amp; Career</td></tr></table>";
+    let out = html_tables_to_text(md);
+    assert!(out.contains("<개정 2023. 6. 26.>"), "연혁 표기: {out:?}");
+    assert!(out.contains("Education & Career"), "앰퍼샌드: {out:?}");
+    assert!(
+        !out.contains("&lt;") && !out.contains("&amp;"),
+        "엔티티 잔존: {out:?}"
+    );
+}
+
+#[test]
+fn script_tags_removed_without_splitting_words() {
+    // kordoc v4.16.2+ 는 위·아래첨자를 <sup>·<sub> 로 낸다. 표 안팎 모두 태그만 지워
+    // 종전 색인 글("m2")과 같게 둔다.
+    let md = "면적 m<sup>2</sup> 이상\n<table><tr><td>10<sup>4</sup> m<sup>2</sup></td><td>H<sub>2</sub>O</td></tr></table>";
+    let out = html_tables_to_text(md);
+    assert!(out.starts_with("면적 m2 이상"), "본문 첨자: {out:?}");
+    assert!(out.contains("104 m2 H2O"), "표 안 첨자: {out:?}");
+    assert!(!out.contains("<su"), "태그 잔존: {out:?}");
+}
+
+#[test]
 fn multiple_tables_with_br_and_between_text() {
     let md = "<table><tr><td>a</td></tr></table>중간<table><tr><td>b<br>c</td></tr></table>";
     let out = html_tables_to_text(md);
