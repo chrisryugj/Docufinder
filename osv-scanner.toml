@@ -1,0 +1,5 @@
+# OSV-Scanner 무시 목록 (정부 GitLab push 훅 · 로컬 `osv-scanner scan source -r .` 공용, pnpm-lock.yaml 대상)
+
+[[IgnoredVulns]]
+id = "GHSA-238p-pmpm-9mq7"
+reason = "katex 0.16.x: 이미 Object.prototype 이 오염된 경우에만 trust 우회. 고친 판은 0.18.2 인데 rehype-katex 7·micromark-extension-math 3 이 ^0.16 고정이라 범위 밖. trust 옵션 미사용. (2026-10-11 점검)"
