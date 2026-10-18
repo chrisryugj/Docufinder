@@ -47,3 +47,34 @@ reason = "unic-ucd-ident: unmaintained. urlpattern(tauri) 전이"
 [[IgnoredVulns]]
 id = "RUSTSEC-2025-0098"
 reason = "unic-ucd-version: unmaintained. urlpattern(tauri) 전이"
+
+# ── 2026-10-19 추가 ──
+# zip extract() 권고 3건은 고친 판 9.0.0 이 pre 릴리스뿐이고 calamine 0.36·rhwp 가 zip 8 고정이라 교체 불가.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0367"
+reason = "zip extract() SUID/SGID 보존. 앱 코드는 extract 미사용(ZipArchive 로 항목만 읽음). zip 4.6.1 은 tauri-plugin-updater Windows zip 경로 — minisign 서명 검증 뒤에만 풀고 배포판은 nsis .exe 라 이 경로를 안 탐"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0368"
+reason = "zip extract() 심볼릭 링크 속성. 사유는 RUSTSEC-2026-0367 과 같음"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0369"
+reason = "zip extract() 권한 비트 적용. 사유는 RUSTSEC-2026-0367 과 같음"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0449"
+reason = "unsafe-libyaml: unmaintained. lindera(serde_yaml_ng) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0370"
+reason = "zvariant: unmaintained. tauri-plugin-single-instance(zbus, Linux) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0371"
+reason = "zbus_names: unmaintained. tauri-plugin-single-instance(zbus, Linux) 전이"
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0372"
+reason = "zvariant_derive: unmaintained. tauri-plugin-single-instance(zbus, Linux) 전이"
