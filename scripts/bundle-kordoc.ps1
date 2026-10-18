@@ -84,7 +84,7 @@ if ($LASTEXITCODE -ne 0 -or -not $depsJson.StartsWith("{") -or $depsJson -eq "{}
 #   @hyzyla/pdfium        — PDF 페이지 → 비트맵 렌더
 #   onnxruntime-node       — MFD + MFR ONNX 추론
 #   sharp                  — 수식 영역 crop + raw RGBA 변환
-#   @huggingface/transformers — XLMRoberta tokenizer (tokenizer.json 로드)
+#   @huggingface/tokenizers — XLMRoberta tokenizer (tokenizer.json 로드)
 # 이들이 번들에 포함되지 않으면 `--formula-ocr` 플래그가 tryImport 단계에서 실패.
 # 모델(~155MB)은 런타임 HuggingFace 다운로드이므로 여기서는 SDK 바이너리만 포함.
 Push-Location $kordocOut
@@ -128,7 +128,7 @@ if (Test-Path $ortBin) {
     }
 }
 # onnxruntime-web(약 120MB)은 브라우저용. kordoc 은 Node 에서 onnxruntime-node 만 쓰고,
-# 수식 OCR 토크나이저(@huggingface/transformers)도 이것 없이 로드된다(실측).
+# 수식 OCR 토크나이저(@huggingface/tokenizers)도 이것 없이 로드된다(실측).
 Remove-Item "$kordocOut\node_modules\onnxruntime-web" -Recurse -Force -ErrorAction SilentlyContinue
 
 $totalSize = (Get-ChildItem "$OutputDir\kordoc" -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1MB

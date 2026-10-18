@@ -105,7 +105,7 @@ if [[ -d "$ORT_BIN" ]]; then
     find "$ORT_BIN" -mindepth 2 -maxdepth 2 -type d -empty -delete
 fi
 # onnxruntime-web(약 120MB)은 브라우저용. kordoc 은 Node 에서 onnxruntime-node 만 쓰고,
-# 수식 OCR 토크나이저(@huggingface/transformers)도 이것 없이 로드된다(실측).
+# 수식 OCR 토크나이저(@huggingface/tokenizers)도 이것 없이 로드된다(실측).
 rm -rf "$KORDOC_DEST/node_modules/onnxruntime-web"
 
 echo "==> [3/4] ONNX Runtime ${ORT_VERSION} osx-arm64"
