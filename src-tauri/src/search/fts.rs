@@ -286,6 +286,18 @@ fn match_terms(expr: &str) -> Vec<String> {
             }
         }
     }
+    // 따옴표 없는 식(`예산 AND 집행`)은 연산자를 뺀 맨 단어를 검색어로
+    if terms.is_empty() {
+        for w in expr.split(|c: char| !c.is_alphanumeric()) {
+            let w = w.to_lowercase();
+            if !w.is_empty()
+                && !["and", "or", "not", "near"].contains(&w.as_str())
+                && !terms.contains(&w)
+            {
+                terms.push(w);
+            }
+        }
+    }
     terms
 }
 
@@ -1081,6 +1093,7 @@ mod tests {
         );
         assert_eq!(match_terms(r#"NEAR("예산"* "집행"*, 5)"#), ["예산", "집행"]);
         assert_eq!(match_terms(r#""예산 집행""#), ["예산", "집행"]);
+        assert_eq!(match_terms("예산 AND 집행"), ["예산", "집행"]);
     }
 
     #[test]
