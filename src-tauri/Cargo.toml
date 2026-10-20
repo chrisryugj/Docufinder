@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.8.13"
+version = "3.8.14"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 
 # Database
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "hooks"] }
 
 # File parsing
 # 읽기 전용(HWPX/DOCX 해제) — 표준 deflate만 필요, AES/bzip2/zstd/lzma 등 기본 코덱 제외

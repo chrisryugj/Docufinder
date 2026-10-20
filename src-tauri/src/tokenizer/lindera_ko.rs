@@ -214,8 +214,11 @@ impl TextTokenizer for LinderaKoTokenizer {
 
     fn tokenize_query(&self, query: &str) -> String {
         // 어절 AND + 형태소 OR 방식
-        // "고용보험료 부과" → ("고용보험료"* OR "고용"* OR "보험료"*) AND "부과"*
+        // "고용보험료 부과" → ("고용보험료"* OR "고용" OR "보험료") AND "부과"*
         // 단, 숫자+한글 복합어(예: "12세대")는 형태소 분해 없이 원본만 사용
+        // 하위 형태소는 접두어(*) 없이 정확 매칭 — 색인이 형태소를 따로 넣어 두므로 재현율은 같고,
+        // "정보"* 처럼 흔한 접두어가 정보화·정보공개… 수천 개 term 의 doclist 를 펼치던 비용을
+        // 없앤다 (1,300만 청크 DB 에서 "개인정보" 검색 30초 타임아웃, #48·#49).
         let words: Vec<&str> = query.split_whitespace().collect();
 
         if words.is_empty() {
@@ -230,6 +233,7 @@ impl TextTokenizer for LinderaKoTokenizer {
 
             // 어절별 토큰 수집: 원본 + 형태소
             let mut tokens = Vec::new();
+            let mut sub_morphemes: Vec<String> = Vec::new();
 
             // 원본 어절 추가
             let clean = Self::clean_token(word);
@@ -251,6 +255,7 @@ impl TextTokenizer for LinderaKoTokenizer {
                             for token in morphemes {
                                 let surface = token.surface.as_ref().to_string();
                                 if surface.chars().count() >= 2 && !tokens.contains(&surface) {
+                                    sub_morphemes.push(surface.clone());
                                     tokens.push(surface);
                                 }
                             }
@@ -275,7 +280,11 @@ impl TextTokenizer for LinderaKoTokenizer {
                 .iter()
                 .map(|t| {
                     let escaped = t.replace('"', "\"\"");
-                    format!("\"{}\"*", escaped)
+                    if sub_morphemes.contains(t) {
+                        format!("\"{}\"", escaped)
+                    } else {
+                        format!("\"{}\"*", escaped)
+                    }
                 })
                 .collect();
 
@@ -486,6 +495,23 @@ mod tests {
             query.contains("\"고용보험료\"*"),
             "Should contain original word"
         );
+    }
+
+    #[test]
+    fn test_sub_morphemes_exact_not_prefix() {
+        // "정보"* 같은 흔한 접두어 확장이 1,300만 청크 DB 에서 30초 타임아웃을 냈다 (#48·#49)
+        let tokenizer = LinderaKoTokenizer::new().unwrap();
+        let query = tokenizer.tokenize_query("개인정보");
+
+        println!("개인정보 query: {}", query);
+        assert!(query.starts_with("(\"개인정보\"* OR "), "{}", query);
+        assert!(
+            query.contains("\"정보\")") || query.contains("\"정보\" "),
+            "{}",
+            query
+        );
+        assert!(!query.contains("\"정보\"*"), "{}", query);
+        assert!(!query.contains("\"개인\"*"), "{}", query);
     }
 
     // ── extract_nouns 테스트 ──────────────────────────

@@ -134,15 +134,23 @@ fn search_internal(
     // 날짜·파일타입 메타 필터 (키워드와 함께 SQL 단계에서 좁힘)
     let (meta_clause, mut meta_params) = build_meta_clause(filter);
 
-    // 상위 N 을 점수만으로 먼저 고르고 본문·snippet() 은 그 N 행에만 계산한다.
-    // 한 SELECT 에 두면 정렬기에 들어가는 매칭 행 전부(흔한 검색어는 10만 건대)에 대해
-    // snippet 과 본문을 만든다 (합성 20만 청크 실측: 흔한 검색어 중앙값 111ms → 84ms, 결과 동일).
+    // 상위 N 을 점수만으로 먼저 고르고 본문은 그 N 행에만 붙인다.
+    // 범위·메타 필터가 없으면 chunks/files JOIN 도 뺀다 — 흔한 검색어는 매칭 행 전부(1,300만
+    // 청크 DB 에서 169만 행)에 JOIN 이 걸려 FTS 만의 상위 N(1.9초) 이 7.3초가 됐다 (#48·#49).
+    let top_joins = if scope_pattern.is_some() || !meta_clause.is_empty() {
+        "JOIN chunks c ON c.id = fts.rowid
+            JOIN files f ON f.id = c.file_id"
+    } else {
+        ""
+    };
+    // snippet 은 SQL 이 아니라 아래 build_snippet 으로 만든다. 행마다 `MATCH ?1 AND rowid = ?`
+    // 서브쿼리로 snippet() 을 부르면 접두어 검색어("정보"*)의 doclist 를 행마다 다시 펼쳐
+    // 50행에 20초가 들었다 (#49).
     let sql = format!(
         "WITH top AS (
             SELECT fts.rowid AS id, bm25(chunks_fts) AS score
             FROM chunks_fts fts
-            JOIN chunks c ON c.id = fts.rowid
-            JOIN files f ON f.id = c.file_id
+            {joins}
             WHERE chunks_fts MATCH ?1
             {scope}{meta}
             ORDER BY score
@@ -160,17 +168,17 @@ fn search_internal(
             c.page_number,
             c.page_end,
             c.location_hint,
-            (SELECT snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 64)
-               FROM chunks_fts WHERE chunks_fts MATCH ?1 AND rowid = top.id) AS snippet,
             f.modified_at
          FROM top
          JOIN chunks c ON c.id = top.id
          JOIN files f ON f.id = c.file_id
          ORDER BY top.score",
+        joins = top_joins,
         scope = scope_clause,
         meta = meta_clause
     );
 
+    let _deadline = QueryDeadline::new(conn, SEARCH_QUERY_DEADLINE);
     let mut stmt = conn.prepare(&sql)?;
 
     let map_row = |row: &rusqlite::Row| {
@@ -186,8 +194,8 @@ fn search_internal(
             page_number: row.get(8)?,
             page_end: row.get(9)?,
             location_hint: row.get(10)?,
-            snippet: row.get(11)?,
-            modified_at: row.get(12)?,
+            snippet: String::new(),
+            modified_at: row.get(11)?,
         })
     };
 
@@ -201,11 +209,183 @@ fn search_internal(
     params.push(Box::new(limit as i64));
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    let results: Vec<FtsResult> = stmt
+    let mut results: Vec<FtsResult> = stmt
         .query_map(param_refs.as_slice(), map_row)?
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(timeout_message)?;
+
+    let terms = match_terms(safe_query);
+    for r in &mut results {
+        r.snippet = build_snippet(&r.content, &terms);
+    }
 
     Ok(results)
+}
+
+/// 검색 SQL 한 번에 허용하는 시간. 프론트 IPC 타임아웃(30초)보다 짧게 둬서, 프론트가 포기한
+/// 검색이 백엔드에서 계속 돌며 다음 검색과 겹치지 않게 하고 사용자에게는 "오래 걸려" 안내가 간다.
+const SEARCH_QUERY_DEADLINE: std::time::Duration = std::time::Duration::from_secs(25);
+
+/// 살아 있는 동안 커넥션에 데드라인 progress handler 를 건다 (넘으면 SQLITE_INTERRUPT).
+/// 풀 커넥션이라 Drop 에서 반드시 해제한다.
+struct QueryDeadline<'a>(&'a Connection);
+
+impl<'a> QueryDeadline<'a> {
+    fn new(conn: &'a Connection, limit: std::time::Duration) -> Self {
+        let deadline = std::time::Instant::now() + limit;
+        conn.progress_handler(10_000, Some(move || std::time::Instant::now() > deadline));
+        Self(conn)
+    }
+}
+
+impl Drop for QueryDeadline<'_> {
+    fn drop(&mut self) {
+        self.0.progress_handler(0, None::<fn() -> bool>);
+    }
+}
+
+/// 데드라인 중단(SQLITE_INTERRUPT)을 화면 안내("오래 걸려")로 이어지는 문구로 바꾼다.
+fn timeout_message(e: rusqlite::Error) -> rusqlite::Error {
+    match e {
+        rusqlite::Error::SqliteFailure(err, _)
+            if err.code == rusqlite::ErrorCode::OperationInterrupted =>
+        {
+            rusqlite::Error::SqliteFailure(
+                err,
+                Some("검색이 너무 오래 걸려 중단했습니다".to_string()),
+            )
+        }
+        other => other,
+    }
+}
+
+/// MATCH 식에서 따옴표로 감싼 검색어를 뽑는다 (스니펫 하이라이트용, 소문자·중복 제거).
+/// `""` 는 따옴표 이스케이프, 구문(`"가 나"`)은 단어별로 나눈다.
+fn match_terms(expr: &str) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    let mut chars = expr.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '"' {
+            continue;
+        }
+        let mut quoted = String::new();
+        loop {
+            match chars.next() {
+                Some('"') if chars.peek() == Some(&'"') => {
+                    chars.next();
+                    quoted.push('"');
+                }
+                Some('"') | None => break,
+                Some(ch) => quoted.push(ch),
+            }
+        }
+        for w in quoted.split_whitespace() {
+            let w = w.to_lowercase();
+            if !terms.contains(&w) {
+                terms.push(w);
+            }
+        }
+    }
+    // 따옴표 없는 식(`예산 AND 집행`)은 연산자를 뺀 맨 단어를 검색어로
+    if terms.is_empty() {
+        for w in expr.split(|c: char| !c.is_alphanumeric()) {
+            let w = w.to_lowercase();
+            if !w.is_empty()
+                && !["and", "or", "not", "near"].contains(&w.as_str())
+                && !terms.contains(&w)
+            {
+                terms.push(w);
+            }
+        }
+    }
+    terms
+}
+
+/// 스니펫 길이 (토큰 수) — 종전 FTS5 snippet(..., 64) 과 같은 폭
+const SNIPPET_TOKENS: usize = 64;
+
+/// 청크 본문에서 검색어가 가장 많이 모인 64토큰 구간을 골라 `[[HL]]…[[/HL]]` 로 표시한다.
+///
+/// 토큰은 FTS5 unicode61 처럼 글자·숫자 연속 구간. 검색어로 시작하는 토큰을 표시하고,
+/// 한글 검색어는 토큰 안에 들어 있어도 표시한다 (색인이 형태소를 따로 넣어 "정보" 가
+/// "개인정보" 청크에 매칭되므로). 매칭이 없으면 앞 64토큰을 표시 없이 돌려준다.
+fn build_snippet(content: &str, terms: &[String]) -> String {
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut start = None;
+    for (i, ch) in content.char_indices() {
+        if ch.is_alphanumeric() {
+            if start.is_none() {
+                start = Some(i);
+            }
+        } else if let Some(s) = start.take() {
+            spans.push((s, i));
+        }
+    }
+    if let Some(s) = start {
+        spans.push((s, content.len()));
+    }
+    if spans.is_empty() {
+        return String::new();
+    }
+
+    let hits: Vec<Option<usize>> = spans
+        .iter()
+        .map(|&(s, e)| {
+            let tok = content[s..e].to_lowercase();
+            terms.iter().position(|t| {
+                tok.starts_with(t.as_str())
+                    || (t.chars().any(|c| ('\u{AC00}'..='\u{D7AF}').contains(&c))
+                        && tok.contains(t.as_str()))
+            })
+        })
+        .collect();
+
+    // 서로 다른 검색어 수 우선, 다음은 표시 횟수. 동점이면 앞쪽 구간.
+    let n = spans.len();
+    let width = SNIPPET_TOKENS.min(n);
+    let mut best = (0usize, (0usize, 0usize));
+    for w in 0..=(n - width) {
+        let window = &hits[w..w + width];
+        let mut distinct: Vec<usize> = window.iter().flatten().copied().collect();
+        let count = distinct.len();
+        distinct.sort_unstable();
+        distinct.dedup();
+        let score = (distinct.len(), count);
+        if score > best.1 {
+            best = (w, score);
+        }
+    }
+
+    // 고른 구간의 첫·끝 표시가 가운데 오도록 옮긴다 (맨 끝 토큰에 걸린 표시 방지).
+    let mut from = best.0;
+    let first = hits[from..from + width].iter().position(Option::is_some);
+    let last = hits[from..from + width].iter().rposition(Option::is_some);
+    if let (Some(a), Some(b)) = (first, last) {
+        let mid = from + (a + b) / 2;
+        from = mid.saturating_sub(width / 2).min(n - width);
+    }
+    let to = from + width;
+
+    let mut out = String::new();
+    if from > 0 {
+        out.push_str("...");
+    }
+    let mut pos = spans[from].0;
+    for (&(s, e), hit) in spans[from..to].iter().zip(&hits[from..to]) {
+        out.push_str(&content[pos..s]);
+        if hit.is_some() {
+            out.push_str("[[HL]]");
+            out.push_str(&content[s..e]);
+            out.push_str("[[/HL]]");
+        } else {
+            out.push_str(&content[s..e]);
+        }
+        pos = e;
+    }
+    if to < n {
+        out.push_str("...");
+    }
+    out
 }
 
 /// FTS5 쿼리 전처리 (특수문자 처리 + prefix match + 검색 모드)
@@ -843,7 +1023,7 @@ mod tests {
         assert_eq!(paths, [r"C:\d\확정본.hwpx"]);
     }
 
-    /// 상위 N 을 먼저 고르고 본문·snippet 을 붙이는 쿼리가 단일 SELECT 와 같은 결과를 내는지.
+    /// 상위 N 을 먼저 고르고 본문·snippet 을 붙이는 쿼리가 단일 SELECT 와 같은 순서를 내는지.
     /// 구버전 DB 처럼 chunks.content 가 NULL 이면 본문은 FTS 에서 온다.
     #[test]
     fn search_internal_limit_then_snippet_matches_single_select() {
@@ -866,18 +1046,17 @@ mod tests {
             .unwrap();
         }
 
-        let single = "SELECT c.id, bm25(chunks_fts) AS score,
-                snippet(chunks_fts, 0, '[[HL]]', '[[/HL]]', '...', 64)
+        let single = "SELECT c.id, bm25(chunks_fts) AS score
              FROM chunks_fts fts JOIN chunks c ON c.id = fts.rowid JOIN files f ON f.id = c.file_id
              WHERE chunks_fts MATCH ?1 ORDER BY score LIMIT 10";
-        let expected: Vec<(i64, String)> = conn
+        let expected: Vec<i64> = conn
             .prepare(single)
             .unwrap()
-            .query_map(["예산"], |r| Ok((r.get(0)?, r.get(2)?)))
+            .query_map(["예산"], |r| r.get(0))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        let legacy_id = expected[0].0;
+        let legacy_id = expected[0];
         conn.execute(
             "UPDATE chunks SET content = NULL WHERE id = ?1",
             [legacy_id],
@@ -885,12 +1064,11 @@ mod tests {
         .unwrap();
 
         let got = search_internal(&conn, "예산", 10, None, &MetaFilter::default()).unwrap();
-        let got_pairs: Vec<(i64, String)> = got
+        let got_ids: Vec<i64> = got.iter().map(|r| r.chunk_id).collect();
+        assert_eq!(got_ids, expected);
+        assert!(got
             .iter()
-            .map(|r| (r.chunk_id, r.snippet.clone()))
-            .collect();
-        assert_eq!(got_pairs, expected);
-        assert!(got[0].snippet.contains("[[HL]]"));
+            .all(|r| r.snippet.starts_with("[[HL]]예산[[/HL]] 집행")));
         let legacy = got.iter().find(|r| r.chunk_id == legacy_id).unwrap();
         assert!(
             legacy.content.contains("회차"),
@@ -905,5 +1083,72 @@ mod tests {
         let none =
             search_internal(&conn, "예산", 10, Some(r"C:\x"), &MetaFilter::default()).unwrap();
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn match_terms_reads_quoted_terms() {
+        assert_eq!(
+            match_terms(r#"("개인정보"* OR "개인" OR "정보") AND "ABC""D"*"#),
+            ["개인정보", "개인", "정보", "abc\"d"]
+        );
+        assert_eq!(match_terms(r#"NEAR("예산"* "집행"*, 5)"#), ["예산", "집행"]);
+        assert_eq!(match_terms(r#""예산 집행""#), ["예산", "집행"]);
+        assert_eq!(match_terms("예산 AND 집행"), ["예산", "집행"]);
+    }
+
+    #[test]
+    fn snippet_highlights_prefix_and_korean_inner_match() {
+        let terms = match_terms(r#"("개인정보"* OR "정보")"#);
+        let s = build_snippet("개인정보는 보호한다. 정보화 사업과 Info", &terms);
+        assert_eq!(
+            s,
+            "[[HL]]개인정보는[[/HL]] 보호한다. [[HL]]정보화[[/HL]] 사업과 Info"
+        );
+        // 영문은 접두어만 — 중간 포함은 표시하지 않는다
+        let s = build_snippet("happy application", &match_terms(r#""app"*"#));
+        assert_eq!(s, "happy [[HL]]application[[/HL]]");
+    }
+
+    #[test]
+    fn snippet_window_centers_on_far_match() {
+        let mut body = "가나 ".repeat(200);
+        body.push_str("예산 집행 ");
+        body.push_str(&"다라 ".repeat(200));
+        let s = build_snippet(&body, &match_terms(r#""예산"* AND "집행"*"#));
+        assert!(s.starts_with("...") && s.ends_with("..."), "{s}");
+        assert!(s.contains("[[HL]]예산[[/HL]] [[HL]]집행[[/HL]]"));
+        let before = s.find("[[HL]]").unwrap();
+        let after = s.len() - s.rfind("[[/HL]]").unwrap();
+        // 표시가 구간 가운데 근처 (앞뒤 문맥이 둘 다 남는다)
+        assert!(before > 30 && after > 30, "{s}");
+        // 매칭이 없으면 앞 64토큰만, 표시 없이
+        let s = build_snippet(&body, &match_terms(r#""없음"*"#));
+        assert!(!s.contains("[[HL]]") && s.starts_with("가나") && s.ends_with("..."));
+    }
+
+    /// 데드라인을 넘긴 검색은 SQLite 에서 중단되고 "오래 걸려" 문구로 끝나며,
+    /// 풀로 돌아간 커넥션에는 handler 가 남지 않는다.
+    #[test]
+    fn query_deadline_interrupts_and_clears() {
+        let conn = Connection::open_in_memory().unwrap();
+        let slow = "WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM r)
+                    SELECT count(*) FROM r";
+        {
+            let _d = QueryDeadline::new(&conn, std::time::Duration::from_millis(50));
+            let err = conn
+                .query_row(slow, [], |r| r.get::<_, i64>(0))
+                .map_err(timeout_message)
+                .unwrap_err();
+            assert!(err.to_string().contains("오래 걸려"), "{err}");
+        }
+        let n: i64 = conn
+            .query_row(
+                "WITH RECURSIVE r(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM r WHERE x < 200000)
+                 SELECT count(*) FROM r",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 200_000);
     }
 }
