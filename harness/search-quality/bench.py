@@ -14,6 +14,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import unicodedata
 from pathlib import Path
 
@@ -157,12 +158,48 @@ def load_embedder(max_len):
     return embed
 
 
+EG2_REPO = "onnx-community/embeddinggemma-2-ONNX"
+EG2_FILES = {"eg2-int8": "model_quantized", "eg2-q4": "model_q4", "eg2-fp32": "model"}
+# EmbeddingGemma 2 는 질의·문서 앞에 작업 프롬프트를 붙인다 (config_sentence_transformers.json "query"/"document")
+EG2_QUERY, EG2_DOC = "task: search result | query: ", "title: none | text: "
+
+
+def load_eg2(variant, max_len):
+    """EmbeddingGemma 2 (Apache-2.0) 텍스트 경로 — 그림·영상·소리 특징은 빈 배열, 출력 sentence_embedding(mean pool + 투영)."""
+    import onnxruntime as ort
+    from huggingface_hub import hf_hub_download
+    from tokenizers import Tokenizer
+
+    mdir, name = HERE / "model-eg2", EG2_FILES[variant]
+    model = hf_hub_download(EG2_REPO, f"onnx/{name}.onnx", local_dir=mdir)
+    hf_hub_download(EG2_REPO, f"onnx/{name}.onnx_data", local_dir=mdir)
+    tok = Tokenizer.from_file(hf_hub_download(EG2_REPO, "tokenizer.json", local_dir=mdir))
+    tok.enable_truncation(max_len)
+    tok.enable_padding()
+    sess = ort.InferenceSession(model)
+    empty = {i.name: np.zeros((0, 512), dtype=np.float32) for i in sess.get_inputs() if i.name.endswith("_features")}
+
+    def embed(texts, prefix):
+        out = []
+        for i in range(0, len(texts), 32):
+            enc = tok.encode_batch([prefix + t for t in texts[i : i + 32]])
+            ids = np.array([e.ids for e in enc], dtype=np.int64)
+            am = np.array([e.attention_mask for e in enc], dtype=np.int64)
+            h = sess.run(["sentence_embedding"], {"input_ids": ids, "attention_mask": am, **empty})[0]
+            out.append(h / np.linalg.norm(h, axis=1, keepdims=True))
+        return np.vstack(out)
+
+    return embed
+
+
 def evaluate(embed, corpus, queries, qv, **opts):
     ids, vecs = [], []
+    t0 = time.perf_counter()
     for did, md in corpus.items():
         cs = pipeline(md, **opts)
         vecs.append(embed(cs))
         ids += [did] * len(cs)
+    secs = time.perf_counter() - t0
     V, ids = np.vstack(vecs), np.array(ids)
     S = qv @ V.T
     top1 = top3 = mrr = 0
@@ -178,7 +215,7 @@ def evaluate(embed, corpus, queries, qv, **opts):
         if rank > 1:
             misses.append((rank, q["query"], list(order)[0]))
     n = len(queries)
-    return dict(chunks=len(ids), top1=top1 / n, top3=top3 / n, mrr=mrr / n, misses=misses)
+    return dict(chunks=len(ids), top1=top1 / n, top3=top3 / n, mrr=mrr / n, misses=misses, ms=secs * 1000 / len(ids))
 
 
 def main():
@@ -186,22 +223,28 @@ def main():
     ap.add_argument("--all", action="store_true", help="실험 변형까지 실행")
     ap.add_argument("-v", "--verbose", action="store_true", help="미스 쿼리 출력")
     ap.add_argument("--max-len", type=int, default=128, help="임베딩 토큰 절단 길이 (embedder/mod.rs MAX_LENGTH 와 같게)")
+    ap.add_argument("--model", default="kosimcse", choices=["kosimcse", *EG2_FILES], help="임베딩 모델 (eg2-* = EmbeddingGemma 2 비교용)")
     args = ap.parse_args()
 
     manifest = json.loads((HERE / "manifest.json").read_text())
     queries = json.loads((HERE / "queries.json").read_text())
     corpus = {did: (HERE / "corpus" / f"{did}.md").read_text() for did in manifest["docs"]}
-    embed = load_embedder(args.max_len)
-    qv = embed([normalize_text(q["query"]) for q in queries])
+    if args.model == "kosimcse":
+        embed = load_embedder(args.max_len)
+        qv = embed([normalize_text(q["query"]) for q in queries])
+    else:
+        eg2 = load_eg2(args.model, args.max_len)
+        qv = eg2([normalize_text(q["query"]) for q in queries], EG2_QUERY)
+        embed = lambda texts: eg2(texts, EG2_DOC)  # noqa: E731
 
     names = list(VARIANTS) if args.all else list(VARIANTS)[:2]
     results = {}
-    print(f"docs={len(corpus)} queries={len(queries)}")
-    print(f"{'variant':32s} chunks  top-1  top-3  MRR")
+    print(f"model={args.model} max_len={args.max_len} docs={len(corpus)} queries={len(queries)}")
+    print(f"{'variant':32s} chunks  top-1  top-3  MRR   ms/chunk")
     for name in names:
         r = evaluate(embed, corpus, queries, qv, **VARIANTS[name])
         results[name] = r
-        print(f"{name:32s} {r['chunks']:5d}  {r['top1']:5.0%}  {r['top3']:5.0%}  {r['mrr']:.2f}")
+        print(f"{name:32s} {r['chunks']:5d}  {r['top1']:5.0%}  {r['top3']:5.0%}  {r['mrr']:.2f}  {r['ms']:6.1f}")
         if args.verbose:
             for rank, q, top in r["misses"]:
                 print(f"    rank={rank:2d} q={q!r} top={manifest['docs'][top]['title'][:40]}")
