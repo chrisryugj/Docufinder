@@ -96,6 +96,10 @@ export interface Settings {
    * false면 상대시간("3일 전")을 표시하고 절대 날짜/시간은 툴팁으로 노출.
    */
   show_absolute_time: boolean;
+  /** 첫 화면·사이드바·명령 팔레트·통계에 최근 검색어·최근 작업한 문서 표시. 끄면 숨기기만 하고 기록은 남는다 (#52). */
+  show_recent_history: boolean;
+  /** 창 불러오기 전역 단축키 (예: "Ctrl+Alt+Space"). null 이면 쓰지 않음 (#52). */
+  global_shortcut?: string | null;
   /**
    * 사내 DRM 등으로 일반 파싱이 실패한 파일을, 설치된 MS Office 를 COM 자동화로
    * 띄워 읽는다 (Windows 전용 · 기본 off). 파싱 실패 시에만 동작하는 최후 fallback.

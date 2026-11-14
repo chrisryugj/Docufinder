@@ -35,6 +35,16 @@ export const OPEN_CLICK_OPTIONS = [
   { value: "single", label: "한 번 클릭" },
 ];
 
+// 창 불러오기 전역 단축키 프리셋 (#52). 값은 백엔드 global-hotkey 파서 형식("Ctrl+Alt+Space").
+// 자유 입력 대신 고른 조합만. 전역 단축키는 다른 프로그램 안의 같은 키를 가로채므로 워드·엑셀에서
+// 쓰는 조합(Ctrl+Shift+Space 줄 바뀜 없는 공백·전체 선택, Ctrl+Alt+F 각주)은 뺐다.
+export const GLOBAL_SHORTCUT_OPTIONS = [
+  { value: "", label: "사용 안 함 (기본)" },
+  { value: "Alt+`", label: "Alt + ` (숫자 1 왼쪽 키)" },
+  { value: "Ctrl+Alt+Space", label: "Ctrl + Alt + Space" },
+  { value: "Alt+Shift+Space", label: "Alt + Shift + Space" },
+];
+
 export const VECTOR_INDEXING_MODE_OPTIONS = [
   { value: "manual", label: "수동" },
   { value: "auto", label: "자동" },

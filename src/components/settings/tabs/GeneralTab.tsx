@@ -157,6 +157,14 @@ export function GeneralTab({ settings, onChange }: TabProps) {
         checked={settings.show_absolute_time ?? true}
         onChange={(checked) => onChange("show_absolute_time", checked)}
       />
+
+      {/* 최근 기록 표시 (#52 — 공용 PC) */}
+      <SettingsToggle
+        label="최근 검색어·문서 표시"
+        description="첫 화면·사이드바·명령 팔레트·통계에 최근 검색어와 최근 작업한 문서를 보여 줍니다. 여러 사람이 같이 쓰는 PC라면 끄세요. 끄면 숨기기만 하고 기록은 남겨 둡니다."
+        checked={settings.show_recent_history ?? true}
+        onChange={(checked) => onChange("show_recent_history", checked)}
+      />
     </div>
   );
 }

@@ -48,13 +48,13 @@ jobs:
       # 리포가 private이면 token: ${{ secrets.KORDOC_PAT }} 추가 필요
       #
       # SHA 고정으로 공급망 공격 방지. 새 kordoc 버전 릴리스 시 이 SHA를 갱신.
-      # 현재: v4.22.11 (원본 레이아웃 렌더: 한컴 조판 위치·글상자·쪽 번호·각주·쪽 넘김 표) · 2026-10-18
+      # 현재: v4.24.79 · 2026-11-15
       - name: Checkout kordoc
         uses: actions/checkout@v4
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 08538a53c329a08bc08b605c25213a9b0fe5991d
+          ref: 093cd30339c7bb32ad85269dc41ba479a4af71f5
 
       - name: Build kordoc dist
         working-directory: kordoc-src
@@ -175,6 +175,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 내부망(망연계) 전송용 분할본 (이슈 #51) — 큰 설치본이 전송 중 깨져 NSIS 무결성 검사에서
+      # 멈추는 사례. 90MB 조각 + 합치는 법(README) 을 올린다. SHA256SUMS.txt 는 lite 까지 모아 뒤에서 올린다.
+      # lite 빌드가 bundle/nsis 를 다시 쓰기 전에 돌려야 한다.
+      - name: Split installer for 내부망 transfer
+        if: success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $setup = Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "Anything_*_x64-setup.exe" | Select-Object -First 1
+          if (-not $setup) { Write-Error "일반판 설치본을 찾지 못했다"; exit 1 }
+          $files = & scripts/split-installer.ps1 -Setup $setup.FullName -OutDir release-extra
+          gh release upload "${{ github.ref_name }}" @files --clobber
+
       # ── Anything Lite (내부망 전용 빌드) ────────────────────────────────
       # 반드시 위 온라인 빌드/업로드가 **끝난 뒤** 에 돌린다:
       #   1) bundle-kordoc.ps1 -Lite 는 resources/kordoc 을 지우고 다시 깐다 (수식 OCR
@@ -212,6 +226,9 @@ jobs:
           }
           Write-Host "Lite installer: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 1)) MB)"
           gh release upload "${{ github.ref_name }}" $setup.FullName --clobber
+          # 내부망 전송용 분할본 + 일반판·lite 원본/조각 SHA256 목록 (이슈 #51)
+          $files = & scripts/split-installer.ps1 -Setup $setup.FullName -OutDir release-extra
+          gh release upload "${{ github.ref_name }}" @files "release-extra/SHA256SUMS.txt" --clobber
 
       # 내부망 검토 제출용 증빙 — lite 바이너리에 외부 호스트 문자열이 없어야 한다.
       # 하나라도 걸리면 online 경로가 lite 로 새어 들어간 것이므로 릴리스를 실패시킨다.
@@ -282,7 +299,7 @@ jobs:
         with:
           repository: chrisryugj/kordoc
           path: kordoc-src
-          ref: 08538a53c329a08bc08b605c25213a9b0fe5991d
+          ref: 093cd30339c7bb32ad85269dc41ba479a4af71f5
 
       - name: Build kordoc dist
         working-directory: kordoc-src

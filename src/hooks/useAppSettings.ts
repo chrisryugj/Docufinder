@@ -27,6 +27,8 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
   const [openOnSingleClick, setOpenOnSingleClick] = useState(false);
   const [showResultPath, setShowResultPath] = useState(true);
   const [showAbsoluteTime, setShowAbsoluteTime] = useState(true);
+  // 설정을 읽기 전엔 숨긴다 — 끈 사람의 최근 기록이 시작 직후 잠깐이라도 보이지 않게 (#52)
+  const [showRecentHistory, setShowRecentHistory] = useState(false);
 
   const applyHighlightColors = useCallback((settings: Settings) => {
     const root = document.documentElement;
@@ -70,6 +72,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
         setOpenOnSingleClick(settings.open_on_single_click ?? false);
         setShowResultPath(settings.show_result_path ?? true);
         setShowAbsoluteTime(settings.show_absolute_time ?? true);
+        setShowRecentHistory(settings.show_recent_history ?? true);
         setErrorReportingEnabled(settings.error_reporting_enabled ?? false);
 
         applyHighlightColors(settings);
@@ -92,6 +95,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
       setOpenOnSingleClick(settings.open_on_single_click ?? false);
       setShowResultPath(settings.show_result_path ?? true);
       setShowAbsoluteTime(settings.show_absolute_time ?? true);
+      setShowRecentHistory(settings.show_recent_history ?? true);
       setErrorReportingEnabled(settings.error_reporting_enabled ?? true);
       applyHighlightColors(settings);
     },
@@ -108,6 +112,7 @@ export function useAppSettings({ setSearchMode, setMinConfidence }: UseAppSettin
     openOnSingleClick,
     showResultPath,
     showAbsoluteTime,
+    showRecentHistory,
     applySettings,
   };
 }

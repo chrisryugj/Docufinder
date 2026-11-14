@@ -27,6 +27,7 @@ import { FindBar } from "./preview/FindBar";
 import { PasswordGate } from "./preview/PasswordGate";
 import { AiSection, SummaryMenu, useAiSummary } from "./preview/AiSummary";
 import { LayoutViewerDialog } from "./preview/LayoutViewerDialog";
+import { remarkNoIndentedCode } from "./preview/remarkNoIndentedCode";
 import { OCR_ELIGIBLE_RE } from "./ResultContextMenu";
 
 // ─── Types ─────────────────────────────────────────────
@@ -73,7 +74,8 @@ interface PreviewPanelProps {
 // 렌더마다 새 배열을 만들면 ReactMarkdown 이 매번 다시 파싱한다.
 // rehypePlugins 순서: raw(원시 HTML 표 파싱) → sanitize(XSS 차단) → katex(수식). katex 출력은
 // sanitize 뒤라 그대로 통과한다. kordoc의 병합·중첩 HTML 표는 여기서 네이티브로 렌더된다.
-const BODY_REMARK = [[remarkGfm, { singleTilde: false }], remarkMath] as const;
+// remarkNoIndentedCode: kordoc 이 남기는 문단 앞 들여쓰기가 코드 블록으로 읽히지 않게.
+const BODY_REMARK = [[remarkGfm, { singleTilde: false }], remarkMath, remarkNoIndentedCode] as const;
 const BODY_REHYPE = [rehypeRaw, [rehypeSanitize, PREVIEW_SANITIZE_SCHEMA], rehypeKatex] as const;
 // HTML 이 없는 문서는 rehype-raw 의 트리 재파싱을 건너뛴다 (sanitize·katex 는 유지).
 const BODY_REHYPE_NO_RAW = [[rehypeSanitize, PREVIEW_SANITIZE_SCHEMA], rehypeKatex] as const;

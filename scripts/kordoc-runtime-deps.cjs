@@ -10,8 +10,8 @@ const pkg = require(require("path").resolve(process.argv[2]));
 const lite = process.argv.includes("--lite");
 const asJson = process.argv.includes("--json");
 
-// MCP 서버 전용: 앱은 cli.js 만 띄운다.
-const SKIP = new Set(["@modelcontextprotocol/sdk"]);
+// MCP 서버 전용: 앱은 cli.js 만 띄운다. zxing-wasm 은 그림 속 QR 읽기(--qr-codes) 전용인데 앱은 그 플래그를 넘기지 않는다.
+const SKIP = new Set(["@modelcontextprotocol/sdk", "zxing-wasm"]);
 // lite(내부망)는 OCR 네이티브 바이너리를 넣지 않는다 (--ocr·--formula-ocr 를 넘기지 않음).
 const LITE_SKIP = new Set(["@hyzyla/pdfium", "onnxruntime-node", "sharp", "@huggingface/tokenizers"]);
 

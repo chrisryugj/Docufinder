@@ -11,6 +11,8 @@ interface WelcomeHeroProps {
   indexedFiles?: number;
   indexedFolders?: number;
   recentSearches?: RecentSearch[];
+  /** 최근 작업한 문서 표시 — 설정에서 끄면 조회하지도 않는다 (#52) */
+  showRecentDocuments?: boolean;
   onSelectSearch?: (query: string) => void;
   /** 최근 검색 항목 삭제 (우클릭 메뉴) */
   onRemoveSearch?: (query: string) => void;
@@ -35,6 +37,7 @@ export const WelcomeHero = memo(function WelcomeHero({
   indexedFiles = 0,
   indexedFolders = 0,
   recentSearches = [],
+  showRecentDocuments = true,
   onSelectSearch,
   onRemoveSearch,
   semanticEnabled = false,
@@ -44,7 +47,7 @@ export const WelcomeHero = memo(function WelcomeHero({
   indexProgress,
 }: WelcomeHeroProps) {
   const hasIndex = indexedFiles > 0;
-  const { docs: recentDocs, removeDoc } = useRecentDocuments(hasIndex);
+  const { docs: recentDocs, removeDoc } = useRecentDocuments(hasIndex && showRecentDocuments);
 
   // 마우스를 따라오는 ambient glow (성능 안전 — ref + rAF, 리렌더 없음)
   const glowRef = usePointerSpotlight<HTMLDivElement>();

@@ -1,6 +1,6 @@
 [package]
 name = "docufinder"
-version = "3.8.14"
+version = "3.8.15"
 description = "로컬 문서 검색 앱 - HWPX, Office, PDF 지원"
 authors = ["Chris"]
 edition = "2021"
@@ -22,6 +22,9 @@ tauri-plugin-dialog = "^2.6"
 tauri-plugin-autostart = "^2.5"
 tauri-plugin-single-instance = "^2"
 tauri-plugin-window-state = "^2.4"
+# 창 불러오기 전역 단축키 (이슈 #52) — Windows RegisterHotKey / macOS RegisterEventHotKey.
+# 키보드 훅(WH_KEYBOARD_LL)을 걸지 않는다: 키 입력을 가로채는 훅은 보안솔루션이 키로거로 잡는다.
+tauri-plugin-global-shortcut = "~2.3"  # 2.4+ 는 tauri ^2.12 를 요구해 tauri·wry·tao 가 통째로 올라간다
 # 자동 업데이트 (GitHub Releases + ed25519) — lite 빌드는 제외 (online feature)
 tauri-plugin-updater = { version = "^2.9", optional = true }
 # relaunch() — 업데이트 설치 후 재시작

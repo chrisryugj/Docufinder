@@ -126,6 +126,15 @@ Everything처럼 파일명 일부만 입력하면 인메모리 캐시에서 **�
 4. 이어서 `Anything_<버전>_x64-setup.exe` 더블클릭 — 끝
    - WebView2 가 이미 있는 PC 라면 1번에서 앱 setup 하나만 옮겨도 됩니다.
 
+**설치할 때 `Installer integrity check has failed` 가 뜨면** — 설치 파일이 전송 중 깨진 것입니다 (이슈 #51).
+릴리스에 함께 올린 **90MB 분할본**(`...-setup.exe.001`, `.002` …)을 대신 옮겨 사내 PC 에서 합치세요 (v3.8.15+).
+
+1. 조각 전부와 `...-setup.exe.README.txt` 를 같은 폴더로 옮기기
+2. 그 폴더에서 명령 프롬프트(cmd)를 열고 합치기 — 정확한 한 줄은 README.txt 에 있습니다
+   `copy /b Anything_<버전>_x64-setup.exe.001+Anything_<버전>_x64-setup.exe.002+… Anything_<버전>_x64-setup.exe`
+3. `certutil -hashfile Anything_<버전>_x64-setup.exe SHA256` 값이 릴리스의 `SHA256SUMS.txt` 와 같은지 확인 후 설치
+   (원본 파일을 그대로 옮겼을 때도 이 값으로 깨졌는지 확인할 수 있습니다)
+
 > OCR 엔진·스캔 PDF 처리에 필요한 파일은 모두 설치본에 들어 있어 실행 중 내려받지 않습니다
 > (v3.4.3+). 네트워크 시도 자체를 원천 차단하고 싶다면 시스템 환경변수
 > **`DOCUFINDER_OFFLINE=1`** 을 설정하세요 (선택 — 평상시엔 필요 없습니다).

@@ -139,6 +139,15 @@ pub struct Settings {
     #[serde(default = "default_show_absolute_time")]
     pub show_absolute_time: bool,
 
+    /// 첫 화면·사이드바·명령 팔레트·통계에 최근 검색어와 최근 작업한 문서를 표시 (이슈 #52).
+    /// 공용 PC 에서 끄면 숨기기만 한다 — 기록은 지우지 않아 다시 켜면 그대로 보인다.
+    #[serde(default = "default_show_recent_history")]
+    pub show_recent_history: bool,
+
+    /// 창 불러오기 전역 단축키 (예: "Ctrl+Alt+Space"). None 이면 쓰지 않는다(기본) (이슈 #52).
+    #[serde(default)]
+    pub global_shortcut: Option<String>,
+
     #[serde(default)]
     pub use_wincom_for_docx: bool,
 
@@ -154,6 +163,10 @@ fn default_show_result_path() -> bool {
 }
 
 fn default_show_absolute_time() -> bool {
+    true
+}
+
+fn default_show_recent_history() -> bool {
     true
 }
 
@@ -299,6 +312,8 @@ impl Default for Settings {
             open_on_single_click: false,
             show_result_path: true,
             show_absolute_time: true,
+            show_recent_history: true,
+            global_shortcut: None,
             use_wincom_for_docx: false,
             use_wincom_for_xlsx: false,
             use_wincom_for_pptx: false,
@@ -727,6 +742,20 @@ pub async fn update_settings(
     validate_settings(&settings)?;
     // 프론트가 (구버전 UI·수동 IPC 등으로) 미지원 기능을 켜서 보내도 디스크에 남기지 않는다.
     sanitize_for_lite(&mut settings);
+
+    // 전역 단축키는 저장 전에 건다 — 다른 프로그램이 이미 쓰는 조합이면 등록이 실패하므로
+    // (apply 가 원래 단축키를 다시 건 뒤) 저장하지 않은 채 사유를 돌려준다. 설정 창은 오류 줄을 띄우고
+    // 고른 값을 되돌려 나머지 변경을 다시 저장한다(SettingsModal).
+    let prev_shortcut = state.read()?.get_settings().global_shortcut;
+    if prev_shortcut != settings.global_shortcut {
+        crate::global_hotkey::apply(
+            &app,
+            prev_shortcut.as_deref(),
+            settings.global_shortcut.as_deref(),
+        )
+        .map_err(ApiError::Validation)?;
+    }
+
     tracing::info!(
         "Updating settings: mode={:?}, theme={:?}, semantic={}, ocr={}, ai_key={}",
         settings.search_mode,
@@ -1018,6 +1047,8 @@ mod tests {
         assert!(!s.open_on_single_click);
         assert!(s.show_result_path);
         assert!(s.show_absolute_time);
+        assert!(s.show_recent_history);
+        assert!(s.global_shortcut.is_none());
     }
 
     /// 드라이브 루트(`C:\`·`/`) 감시 폴더가 OCR 재인덱싱 후보 조회에서 매칭되는지 —

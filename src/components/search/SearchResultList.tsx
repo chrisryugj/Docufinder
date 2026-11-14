@@ -59,6 +59,8 @@ interface SearchResultListProps {
   indexedFolders?: number;
   /** 웰컴 화면: 최근 검색 */
   recentSearches?: RecentSearch[];
+  /** 웰컴 화면: 최근 작업한 문서 표시 (설정에서 끄면 false, #52) */
+  showRecentDocuments?: boolean;
   /** 웰컴 화면: 최근 검색 클릭 (스마트 검색 예시 클릭도 같은 동작) */
   onSelectSearch?: (query: string) => void;
   /** 웰컴 화면: 최근 검색 삭제 (우클릭 메뉴) */
@@ -140,6 +142,7 @@ export const SearchResultList = memo(function SearchResultList({
   indexedFiles,
   indexedFolders,
   recentSearches,
+  showRecentDocuments,
   onSelectSearch,
   onRemoveSearch,
   semanticEnabled,
@@ -683,6 +686,7 @@ export const SearchResultList = memo(function SearchResultList({
       indexedFiles={indexedFiles}
       indexedFolders={indexedFolders}
       recentSearches={recentSearches}
+      showRecentDocuments={showRecentDocuments}
       onSelectSearch={onSelectSearch}
       onRemoveSearch={onRemoveSearch}
       semanticEnabled={semanticEnabled}

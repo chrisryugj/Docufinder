@@ -22,6 +22,8 @@ interface SidebarProps {
   onAddFolderByPath?: (path: string) => void;
   isIndexing?: boolean;
   onFoldersChange?: () => void;
+  /** 최근 검색 섹션 표시 — 설정에서 끄면 섹션째 숨긴다 (#52) */
+  showRecentSearches?: boolean;
   recentSearches: RecentSearch[];
   onSelectSearch: (query: string) => void;
   onRemoveSearch: (query: string) => void;
@@ -49,6 +51,7 @@ export const Sidebar = memo(function Sidebar({
   onAddFolderByPath,
   isIndexing,
   onFoldersChange,
+  showRecentSearches = true,
   recentSearches,
   onSelectSearch,
   onRemoveSearch,
@@ -121,14 +124,16 @@ export const Sidebar = memo(function Sidebar({
             >
               <Plus className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
             </button>
-            <button
-              onClick={onToggle}
-              className="p-2 rounded-md btn-icon-hover"
-              title="최근 검색 (사이드바 펼치기)"
-              aria-label="최근 검색"
-            >
-              <Clock className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
-            </button>
+            {showRecentSearches && (
+              <button
+                onClick={onToggle}
+                className="p-2 rounded-md btn-icon-hover"
+                title="최근 검색 (사이드바 펼치기)"
+                aria-label="최근 검색"
+              >
+                <Clock className="w-4 h-4" style={{ color: "var(--color-sidebar-muted)" }} />
+              </button>
+            )}
             {bookmarks.length > 0 && (
               <button
                 onClick={() => onBookmarkSelect?.(bookmarks[0]?.file_path, bookmarks[0]?.page_number)}
@@ -270,6 +275,7 @@ export const Sidebar = memo(function Sidebar({
               </section>
 
               {/* Section: Recent Searches */}
+              {showRecentSearches && (
               <section className="pt-2.5 pb-3 mt-1 border-t" style={{ borderColor: "var(--color-sidebar-border)" }}>
                 <div
                   className="flex items-center justify-between px-1 pb-1 mb-1"
@@ -307,6 +313,7 @@ export const Sidebar = memo(function Sidebar({
                   />
                 )}
               </section>
+              )}
               </>)}
 
               {/* Section: Bookmarks */}

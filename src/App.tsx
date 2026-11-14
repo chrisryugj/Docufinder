@@ -62,11 +62,13 @@ import { UpdateModal } from "./components/updater/UpdateModal";
 import { DOCUFINDER_TOUR_STEPS, DOCUFINDER_TOUR_STORAGE_KEY } from "./components/onboarding/tourSteps";
 import type { Settings } from "./types/settings";
 import type { AddFolderResult } from "./types/index";
-import type { SearchResult, SourceRef } from "./types/search";
+import type { RecentSearch, SearchResult, SourceRef } from "./types/search";
 
 // excludeFilename 활성 시 매 렌더 새 [] 참조가 생성되어 1,000줄짜리 SearchResultList의
 // memo 비교를 깨는 것 방지 (frontend-debt-13) — 항상 같은 참조를 전달.
 const EMPTY_RESULTS: SearchResult[] = [];
+// 최근 기록 숨김(#52) 때 넘기는 빈 목록 — 같은 이유로 고정 참조.
+const EMPTY_RECENT: RecentSearch[] = [];
 
 // ── App Shell (Provider 래핑) ──────────────────────────
 
@@ -102,11 +104,13 @@ function AppContent() {
   // ── App Settings (cross-cutting) ──
   const {
     viewDensity, semanticEnabled, vectorIndexingMode,
-    resultsPerPage, openOnSingleClick, showResultPath, showAbsoluteTime, applySettings,
+    resultsPerPage, openOnSingleClick, showResultPath, showAbsoluteTime, showRecentHistory, applySettings,
   } = useAppSettings({
     setSearchMode: search.setSearchMode,
     setMinConfidence: search.setMinConfidence,
   });
+  // 공용 PC 에서 최근 기록을 끄면 첫 화면·사이드바·명령 팔레트·통계 어디에도 보이지 않게 (#52)
+  const visibleRecentSearches = showRecentHistory ? search.recentSearches : EMPTY_RECENT;
 
   // Document categories (cross-cutting: search results + settings)
   const categories = useDocumentCategories(search.filteredResults, semanticEnabled);
@@ -588,13 +592,13 @@ function AppContent() {
       list.push({ id: `sf-${f.id}`, group: "스마트 폴더", label: f.name, hint: f.query, keywords: `${f.name} ${f.query}`, icon: <Bookmark className={ico} />, run: () => search.handleApplySmartFolder(f) });
     }
     // 동적: 최근 검색 (최대 6)
-    for (const r of search.recentSearches.slice(0, 6)) {
+    for (const r of visibleRecentSearches.slice(0, 6)) {
       list.push({ id: `rs-${r.timestamp}`, group: "최근 검색", label: r.query, keywords: r.query, icon: <Clock className={ico} />, run: () => search.handleSelectSearch(r.query) });
     }
     return list;
   }, [
     handleAddFolder, handleGoHome, restartTour, semanticEnabled, search.searchMode,
-    search.smartFolders, search.recentSearches, search.setParadigm, search.setSearchMode,
+    search.smartFolders, visibleRecentSearches, search.setParadigm, search.setSearchMode,
     search.handleApplySmartFolder, search.handleSelectSearch,
     ui.setDuplicateOpen, ui.setStatsOpen, ui.toggleSidebar, ui.setTheme, ui.setSettingsOpen, ui.setHelpOpen,
   ]);
@@ -623,7 +627,8 @@ function AppContent() {
         isIndexing={idx.isIndexing}
         isAutoIndexing={idx.isAutoIndexing}
         onFoldersChange={idx.refreshStatus}
-        recentSearches={search.recentSearches}
+        showRecentSearches={showRecentHistory}
+        recentSearches={visibleRecentSearches}
         onSelectSearch={search.handleSelectSearch}
         onRemoveSearch={search.removeSearch}
         onClearSearches={search.clearSearches}
@@ -860,7 +865,8 @@ function AppContent() {
                     resultsPerPage={resultsPerPage}
                     indexedFiles={idx.status?.indexed_files ?? 0}
                     indexedFolders={idx.status?.watched_folders?.length ?? 0}
-                    recentSearches={search.recentSearches}
+                    recentSearches={visibleRecentSearches}
+                    showRecentDocuments={showRecentHistory}
                     onSelectSearch={search.handleSelectSearch}
                     onRemoveSearch={search.removeSearch}
                     semanticEnabled={semanticEnabled}
@@ -981,6 +987,7 @@ function AppContent() {
           }}
           onOpenFile={handleOpenFile}
           onSearchQuery={search.handleSelectSearch}
+          showSearchHistory={showRecentHistory}
         />
       </LazyMount>
 

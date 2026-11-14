@@ -38,6 +38,8 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
   const savedIndicatorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const originalDataRootRef = useRef<string | undefined>(undefined);
+  // 마지막으로 저장된(=실제로 걸린) 전역 단축키 — 등록 실패 시 되돌릴 값 (#52)
+  const savedShortcutRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -49,6 +51,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
       try {
         const result = await invokeWithTimeout<Settings>("get_settings", undefined, IPC_TIMEOUT.SETTINGS);
         originalDataRootRef.current = result.data_root;
+        savedShortcutRef.current = result.global_shortcut ?? null;
         setSettings(result);
       } catch (err) {
         setError(`설정을 불러올 수 없습니다: ${getErrorMessage(err)}`);
@@ -86,6 +89,7 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
         autosaveTimerRef.current = setTimeout(() => {
           invokeWithTimeout("update_settings", { settings: next }, IPC_TIMEOUT.SETTINGS)
             .then(() => {
+              savedShortcutRef.current = next.global_shortcut ?? null;
               onSettingsSaved?.(next);
               setError(null);
               // 토스트 대신 모달 내 조용한 '저장됨' 인디케이터
@@ -96,6 +100,16 @@ export function SettingsModal({ isOpen, onClose, onThemeChange, onSettingsSaved,
             .catch((err) => {
               // 명시 저장 버튼이 없으므로 실패는 모달 에러 배너로 노출
               setError(`설정 저장에 실패했습니다: ${getErrorMessage(err)}`);
+              // 단축키 등록 실패(다른 프로그램이 쓰는 키)면 고른 단축키만 되돌리고 나머지 변경은 다시
+              // 저장한다. 안 그러면 이후 토글마다 같은 단축키를 다시 걸다 실패해 저장이 계속 막힌다.
+              const saved = savedShortcutRef.current;
+              if ((next.global_shortcut ?? null) !== saved) {
+                const reverted = { ...next, global_shortcut: saved };
+                setSettings((cur) => (cur ? { ...cur, global_shortcut: saved } : cur));
+                invokeWithTimeout("update_settings", { settings: reverted }, IPC_TIMEOUT.SETTINGS)
+                  .then(() => onSettingsSaved?.(reverted))
+                  .catch(() => {});
+              }
             });
         }, 300);
       }

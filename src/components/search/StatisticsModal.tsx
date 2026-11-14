@@ -22,7 +22,11 @@ interface StatisticsModalProps {
   onFilterByType?: (fileType: string) => void;
   onOpenFile?: (filePath: string, pageNumber?: number | null) => void;
   onSearchQuery?: (query: string) => void;
+  /** '검색 히스토리' 탭 표시 — 설정에서 최근 기록을 끄면 탭째 숨긴다 (#52) */
+  showSearchHistory?: boolean;
 }
+
+const STATS_TABS = [["docs", "문서 통계"], ["search", "검색 히스토리"]] as const;
 
 /** 파일 크기 포맷 */
 function formatSize(bytes: number): string {
@@ -353,23 +357,27 @@ export const StatisticsModal = memo(function StatisticsModal({
   onFilterByType,
   onOpenFile,
   onSearchQuery,
+  showSearchHistory = true,
 }: StatisticsModalProps) {
   const [stats, setStats] = useState<DocumentStatistics | null>(null);
   const [searchStats, setSearchStats] = useState<SearchHistoryStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<"docs" | "search">("docs");
+  const activeTab = showSearchHistory ? tab : "docs";
 
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
     Promise.all([
       invoke<DocumentStatistics>("get_document_statistics").catch(() => null),
-      invoke<SearchHistoryStats>("get_search_history_stats").catch(() => null),
+      showSearchHistory
+        ? invoke<SearchHistoryStats>("get_search_history_stats").catch(() => null)
+        : Promise.resolve(null),
     ]).then(([docStats, srchStats]) => {
       setStats(docStats);
       setSearchStats(srchStats);
     }).finally(() => setLoading(false));
-  }, [isOpen]);
+  }, [isOpen, showSearchHistory]);
 
   const handleSegmentClick = useCallback(
     (fileType: string) => {
@@ -390,14 +398,14 @@ export const StatisticsModal = memo(function StatisticsModal({
     <Modal isOpen={isOpen} onClose={onClose} title="통계" size="lg">
       {/* 탭 헤더 */}
       <div className="flex gap-1 mb-4 border-b" style={{ borderColor: "var(--color-border)" }}>
-        {([["docs", "문서 통계"], ["search", "검색 히스토리"]] as const).map(([id, label]) => (
+        {STATS_TABS.filter(([id]) => showSearchHistory || id === "docs").map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className="px-3 py-2 text-sm font-medium transition-colors border-b-2"
             style={{
-              borderColor: tab === id ? "var(--color-accent)" : "transparent",
-              color: tab === id ? "var(--color-accent)" : "var(--color-text-muted)",
+              borderColor: activeTab === id ? "var(--color-accent)" : "transparent",
+              color: activeTab === id ? "var(--color-accent)" : "var(--color-text-muted)",
             }}
           >
             {label}
@@ -409,7 +417,7 @@ export const StatisticsModal = memo(function StatisticsModal({
         <div className="flex items-center justify-center py-12">
           <div className="w-6 h-6 rounded-full animate-spin" style={{ border: "2px solid var(--color-border)", borderTopColor: "var(--color-accent)" }} />
         </div>
-      ) : tab === "docs" && stats ? (
+      ) : activeTab === "docs" && stats ? (
         <div className="space-y-6">
           {/* 요약 — 한 줄 인라인 바 */}
           <div
@@ -464,7 +472,7 @@ export const StatisticsModal = memo(function StatisticsModal({
             </Section>
           </div>
         </div>
-      ) : tab === "search" && searchStats ? (
+      ) : activeTab === "search" && searchStats ? (
         <SearchHistoryTab stats={searchStats} onSearchQuery={(q) => { onSearchQuery?.(q); onClose(); }} />
       ) : (
         <p className="text-center py-8 text-sm" style={{ color: "var(--color-text-muted)" }}>

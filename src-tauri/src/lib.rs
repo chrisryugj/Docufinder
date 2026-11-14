@@ -6,6 +6,7 @@ mod crash; // 패닉 훅, 시작 실패 crash log
 mod db;
 mod embedder;
 mod error;
+mod global_hotkey; // 창 불러오기 전역 단축키 (이슈 #52)
 mod indexer;
 // LLM 클라이언트 · 모델 자동 다운로드 — 둘 다 런타임 네트워크 경로라 lite 빌드에선 통째로 뺀다.
 #[cfg(feature = "online")]
@@ -122,6 +123,7 @@ pub fn run() {
     builder
         // 네이티브 드래그아웃 — 검색 결과 파일을 다른 앱/웹페이지로 끌어다 놓기
         .plugin(tauri_plugin_drag::init())
+        .plugin(global_hotkey::plugin())
         // tauri-plugin-fs: 프론트엔드에서 미사용 (capabilities 미부여)
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -622,6 +624,10 @@ pub fn run() {
             let minimized_arg = args.iter().any(|a| a == "--minimized");
             let settings = commands::settings::get_settings_sync(&app_data_dir);
 
+            if let Err(e) = global_hotkey::apply(app.handle(), None, settings.global_shortcut.as_deref()) {
+                tracing::warn!("{e}");
+            }
+
             if minimized_arg || settings.start_minimized {
                 // on_page_load에서 show하지 않도록 플래그 설정
                 show_on_load.store(false, Ordering::Relaxed);
@@ -659,6 +665,9 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             match event {
+                tauri::WindowEvent::Focused(focused) if window.label() == "main" => {
+                    global_hotkey::set_main_focused(*focused);
+                }
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     let app_data_dir = window
                         .app_handle()

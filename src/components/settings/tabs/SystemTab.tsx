@@ -8,7 +8,7 @@ import { SettingsToggle } from "../SettingsToggle";
 import type { Settings } from "../../../types/settings";
 import { getErrorMessage } from "../../../types/error";
 import type { TabProps } from "./types";
-import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS } from "./types";
+import { INDEXING_INTENSITY_OPTIONS, MAX_FILE_SIZE_OPTIONS, DEFAULT_MAX_FILE_SIZE_MB, AUTO_SYNC_INTERVAL_OPTIONS, GLOBAL_SHORTCUT_OPTIONS } from "./types";
 import { AUTOSTART_DESCRIPTION, SYSTEM_FOLDERS_HINT, DEFAULT_DATA_LOCATION, HAS_DRIVES } from "../../../utils/platform";
 
 interface SystemTabProps extends TabProps {
@@ -93,6 +93,26 @@ export function SystemTab({ settings, onChange, setError, onClose, onClearData, 
           disabled={!settings.close_to_tray}
         />
       </div>
+
+      {/* 창 불러오기 전역 단축키 (#52) */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-secondary)" }}>
+            창 불러오기 단축키
+          </label>
+          <Dropdown
+            options={GLOBAL_SHORTCUT_OPTIONS}
+            value={settings.global_shortcut ?? ""}
+            onChange={(value) => onChange("global_shortcut", value || null)}
+            placeholder="단축키 선택"
+          />
+        </div>
+      </div>
+      <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+        다른 프로그램을 쓰다가도 이 키를 누르면 Anything 창이 앞으로 나옵니다. 창이 앞에 있을 때 누르면 다시 내려갑니다.
+        다른 프로그램이 같은 키를 전역 단축키로 쓰고 있으면 등록되지 않습니다. 한글·워드 같은 프로그램 안에서 쓰던 키라면
+        그 프로그램에서는 그 기능이 먹지 않게 되니 다른 조합을 고르세요.
+      </p>
 
       {/* 성능 설정 */}
       <div className="border-t pt-3" style={{ borderColor: "var(--color-border)" }}>
