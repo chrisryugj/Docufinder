@@ -116,7 +116,7 @@ jobs:
   check-backend-macos:
     name: Backend (Rust on macOS arm64)
     needs: check-frontend
-    runs-on: macos-14
+    runs-on: macos-15  # macos-14 이미지는 2026-11 폐기 ("configuration not supported")
     steps:
       - uses: actions/checkout@v4
 
