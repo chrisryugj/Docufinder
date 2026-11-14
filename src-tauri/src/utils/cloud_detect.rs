@@ -63,6 +63,9 @@ pub fn is_cloud_placeholder(path: &Path) -> bool {
 /// - UNC (`\\server\share\...`, `\\?\UNC\server\share\...`) → true
 /// - 매핑드라이브 (`Z:\`, `Y:\`, `G:\` 등) 중 `GetDriveTypeW = DRIVE_REMOTE` → true
 /// - 일반 로컬(`C:\`, `D:\`) → false
+// 맥·리눅스에선 아래 windows 블록이 빠져 `if … { return true } false` 만 남아 Rust 1.100 clippy 의
+// needless_bool 에 걸린다. 윈도우 분기를 같은 모양으로 두려고 허용한다.
+#[allow(clippy::needless_bool)]
 pub fn is_network_path(path: &Path) -> bool {
     if crate::utils::network_path::is_network(path) {
         return true;
