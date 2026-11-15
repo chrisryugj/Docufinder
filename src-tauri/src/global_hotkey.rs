@@ -99,3 +99,34 @@ pub fn apply<R: Runtime>(
     }
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    /// 설정 창 녹화기(src/utils/shortcut.ts)는 KeyboardEvent.code 이름을 그대로 저장한다 — 파서가 받는지.
+    #[test]
+    fn recorder_accelerators_parse() {
+        for acc in [
+            "Ctrl+Alt+KeyK",
+            "Ctrl+Shift+Digit5",
+            "Alt+Backquote",
+            "Shift+Super+F13",
+            "Ctrl+Alt+Shift+Super+KeyK", // 녹화기 출력 순서 그대로
+            "Ctrl+Alt+ArrowUp",
+            "Ctrl+Alt+Numpad7",
+            "Ctrl+Alt+NumpadAdd",
+            "Ctrl+Alt+BracketLeft",
+            "Ctrl+Alt+Quote",
+            "Ctrl+Alt+PageDown",
+            // 프리셋
+            "Alt+`",
+            "Ctrl+Alt+Space",
+            "Alt+Shift+Space",
+        ] {
+            assert!(parse(acc).is_ok(), "{acc}");
+        }
+        // 녹화기가 거르는 키(한/영 등)는 파서도 모른다
+        assert!(parse("Ctrl+Alt+Lang1").is_err());
+    }
+}

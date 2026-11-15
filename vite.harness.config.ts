@@ -36,10 +36,11 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // 멀티 페이지 — 뷰어(index) + 파일명 컬럼(filename) 하니스
+      // 멀티 페이지 — 뷰어(index) + 파일명 컬럼(filename) + 단축키 녹화(shortcut) 하니스
       input: {
         index: fileURLToPath(new URL("./harness/index.html", import.meta.url)),
         filename: fileURLToPath(new URL("./harness/filename.html", import.meta.url)),
+        shortcut: fileURLToPath(new URL("./harness/shortcut.html", import.meta.url)),
       },
     },
   },

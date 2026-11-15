@@ -24,6 +24,7 @@ pnpm exec vite --config vite.harness.config.ts
 node harness/verify-ui.mjs               # 뷰어 38항목
 node harness/verify-results.mjs          # 검색 결과 클릭·키보드 36항목 (?view=results 마운트)
 node harness/verify-filename-columns.mjs # 파일명 컬럼 레이아웃 28항목 (/filename.html 마운트)
+node harness/verify-shortcut.mjs         # 단축키 '직접 지정' 녹화 26항목 — Chromium·WebKit (/shortcut.html 마운트, playwright install chromium webkit)
 ```
 
 ## 검증 항목 — 뷰어 (38, verify-ui.mjs)
